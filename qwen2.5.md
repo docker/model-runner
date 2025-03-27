@@ -1,6 +1,8 @@
 
 # Qwen2.5-7B Instruct
 
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/qwen-280x184-overview@2x.svg)
+
 Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Alibaba Cloud. It is part of the Qwen2.5 series, which includes models ranging from 0.5 to 72 billion parameters. This model offers significant improvements in knowledge, coding, and mathematical capabilities, along with enhanced instruction-following and long-text generation abilities. It supports a context length of up to 131,072 tokens and can generate outputs up to 8,192 tokens. Additionally, it provides multilingual support for over 29 languages, including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, and Arabic.
 
 ## Characteristics
