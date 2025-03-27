@@ -1,6 +1,6 @@
 # mxbai-embed-large-v1
 
-![logo](logo)
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mixelbread-280x184-overview@2x.svg)
 
 **mxbai-embed-large-v1** is a state-of-the-art English language embedding model developed by Mixedbread AI. It converts text into dense vector representations, capturing the semantic essence of the input. Trained on a vast dataset exceeding 700 million pairs using contrastive training methods and fine-tuned on over 30 million high-quality triplets with the AnglE loss function, this model adapts to a wide range of topics and domains, making it suitable for various real-world applications and Retrieval-Augmented Generation (RAG) use cases.
 
