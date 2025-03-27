@@ -1,6 +1,6 @@
 # Mistral Nemo Instruct 2407
 
-![logo](logo)
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-280x184-overview@2x.svg)
 
 Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model developed by Mistral AI and NVIDIA, optimized for multilingual tasks and instruction-following capabilities.
 Compared to Mistral 7B, it is much better at following precise instructions, reasoning, handling multi-turn conversations, and generating code.
