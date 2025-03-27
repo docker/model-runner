@@ -1,29 +1,32 @@
-# Phi-4 Model Card
+# Phi-4 
 
-<img src="https://github.com/jalonsogo/model-cards/blob/4c39899ef2d3eff3bfe28253b557283c8933c811/logos/microsoft.svg" width="120" />
+![logo](logo)
 
 Phi-4 is a **14-billion parameter** language model developed by Microsoft Research. It is part of the Phi model family, emphasizing **data quality and reasoning capabilities** over pure scale.
 
 ## Characteristics
 
 | Attribute             | Details       |
-|---------------------- |--------------|
+|---------------------- |---------------|
 | **Provider**          | Microsoft     |
 | **Architecture**      | phi3          |
-| **Cutoff Date**       | June 2024 |
+| **Cutoff Date**       | June 2024     |
 | **Languages**         | English (primary), German, Spanish, French, Portuguese, Italian, Hindi, Japanese |
+| **Tool Calling**      | ❌            |
 | **Input Modalities**  | Text          |
 | **Output Modalities** | Text          |
 | **License**           | MIT           |
 
 ## Available Model Variants
 
-| Model Variant        | Parameters | Quantization | Context Window | VRAM     | Size   | Download |
-|----------------------|----------- |--------------|--------------- |--------- |------- |--------- |
-| `ai/phi4:latest`     | 14B        | Q4_K_M           | 16K tokens     |  8.2GB¹  | 9.05GB | Link     |
-| `ai/phi4:14B-F16`    | 14B        | F16          | 16K tokens     |  21.5GB¹ | 29.3GB | Link     |
-| `ai/phi4:14B-Q4_K_M` | 14B        | Q4_K_M           | 16K tokens     |  8.2GB¹  | 9.05GB | Link     |
+| Model Variant                          | Parameters | Quantization   | Context Window | VRAM     | Size   |
+|----------------------------------------|----------- |----------------|--------------- |--------- |------- |
+| `ai/phi4:14B-F16`                      | 14B        | F16            | 16K tokens     |  33.6GB¹ | 29.3GB |
+| `ai/phi4:latest`  `ai/phi4:14B-Q4_K_M` | 14B        | IQ2_XXS/Q4_K_M | 16K tokens     |  8.4GB¹  | 9.GB   |
+
 ¹: VRAM estimates based on model characteristics.
+
+`:latest` →  `phi4:14B-Q4_K_M` 
 
 ## Intended Uses
 
@@ -42,13 +45,15 @@ Phi-4 is designed for:
 ## How to Run This AI Model
 
 You can pull the model using:
+
 ```
-docker model pull ai/phi4
+docker model pull ai/phi4:latest
 ```
 
 To run the model:
+
 ```
-docker model run ai/phi4
+docker model run ai/phi4:latest
 ```
 
 ## Benchmark Performance

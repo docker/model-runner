@@ -10,22 +10,22 @@ Compared to Mistral 7B, it is much better at following precise instructions, rea
 | Attribute             | Details                                                                                 |
 |-----------------------|-----------------------------------------------------------------------------------------|
 | **Provider**          | Mistral AI & NVIDIA                                                                     |
-| **Architecture**      | Transformer                                                                             |
+| **Architecture**      | llama                                                                                   |
 | **Cutoff Date**       | July 2024                                                                               |
 | **Languages**         | English, French, German, Spanish, Italian, Portuguese, Russian, Chinese, Japanese       |
-| **Tool Calling**      | ✅                                                                                     |
+| **Tool Calling**      | ✅                                                                                      |
 | **Input Modalities**  | Text                                                                                    |
 | **Output Modalities** | Text                                                                                    |
 | **License**           | Apache 2.0                                                                              |
 
 ## Available Model Variants
 
-| Model Variant             | Parameters | Quantization | Context Window | VRAM   | Size  | Download|
-|---------------------------|------------|--------------|----------------|--------|-------|---------|
-| `mistral-nemo:12B-F16`    | 12B        | FP16         | 128k tokens    | ~28GB¹ | 24 GB | [Link](https://hub.docker.com/repository/docker/ai/mistral-nemo/tags/12B-F16/sha256-6306c42dfb6d9a1a5c86f1400f36e8af3f429fe43d09d9dc14e8979888d7958c)    |
-| `mistral-nemo:latest` `mistral-nemo:12B-Q4_K_M` | 12B        | Q4 K M       | 128k tokens    | ~7GB¹  | 7.1 GB | [Link](https://hub.docker.com/repository/docker/ai/mistral-nemo/tags/12B-Q4_K_M/sha256-ccdfa597c644d0d8798997c41eda89ac19dac074233b7947172a334ccd9a3135)    |
+| Model Variant                                         | Parameters | Quantization | Context Window | VRAM   | Size  |
+|-------------------------------------------------------|------------|--------------|----------------|--------|-------|
+| `ai/mistral-nemo:12B-F16`                             | 12B        | FP16         | 128k tokens    | 28GB¹ | 24 GB |
+| `ai/mistral-nemo:latest` `ai/mistral-nemo:12B-Q4_K_M` | 12B        | Q4 K M       | 128k tokens    | 7GB¹  | 7.1 GB|
 
-¹: VRAM estimates based on model characteristics.
+¹: VRAM estimated based on model characteristics.
 
 `:latest` →  `mistral-nemo:12B-Q4_K_M` 
 
