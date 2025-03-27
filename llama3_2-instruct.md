@@ -1,6 +1,6 @@
 # Llama 3.2 Instruct
 
-<img src="url" width=350 />
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-280x184-overview@2x.svg)
 
 Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, later adding quantized versions. These quantized models are significantly faster, with a much lower memory footprint and reduced power consumption, while maintaining nearly the same accuracy as their BF16 counterparts. 
 
