@@ -1,6 +1,6 @@
 # QwQ
 
-<img src="url" width=350 />
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/qwen-280x184-overview@2x.svg)
 
 ## Description
 QwQ-32B is a 32-billion-parameter large language model designed to deliver high-level reasoning and intelligence. It achieves performance comparable to DeepSeek R1, a 671-billion-parameter model (with 37 billion activated), highlighting the efficiency of well-optimized foundation models trained on extensive world knowledge.
