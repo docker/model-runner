@@ -1,6 +1,6 @@
 # Phi-4 
 
-![logo](logo)
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/phi-280x184-overview@2x.svg)
 
 Phi-4 is a **14-billion parameter** language model developed by Microsoft Research. It is part of the Phi model family, emphasizing **data quality and reasoning capabilities** over pure scale.
 
