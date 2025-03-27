@@ -1,6 +1,6 @@
 # Mistral 7B Instruct v0.2
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/e/e6/Mistral_AI_logo_%282025%E2%80%93%29.svg" width="120" />
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-280x184-overview@2x.svg)
 
 **A fast and powerful 7B parameter model excelling in reasoning, code, and math.**
 Mistral 7B is a powerful 7.3B parameter language model that outperforms Llama 2 13B across a wide range of benchmarks, including reasoning, reading comprehension, and code generation. Despite its smaller size, it delivers performance comparable to much larger models, making it efficient and versatile.
