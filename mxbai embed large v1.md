@@ -7,24 +7,26 @@
 
 ## Characteristics
 
-| Attribute             | Details                                             |
-|---------------------- |-----------------------------------------------------|
-| **Provider**          | Mixedbread AI                                       |
-| **Architecture**      | BERT                                                |
-| **Cutoff Date**       | September 2023                                      |
-| **Languages**         | English                                             |
-| **Tool Calling**      | ❌                                                  |
-| **Input Modalities**  | Text                                                |
-| **Output Modalities** | Text embeddings                                     |
-| **License**           | Apache 2.0                                          |
+| Attribute             | Details          |
+|---------------------- |------------------|
+| **Provider**          | Mixedbread AI    |
+| **Architecture**      | BERT             |
+| **Cutoff Date**       | September 2023   |
+| **Languages**         | English          |
+| **Tool Calling**      | ❌               |
+| **Input Modalities**  | Text             |
+| **Output Modalities** | Text embeddings  |
+| **License**           | Apache 2.0       |
 
 ## Available Model Variants
 
-| Model Variant               | Parameters | Quantization   | Context Window | VRAM      | Size   | Download                                           |
-|---------------------------- |----------- |--------------- |--------------- |---------- |------- |--------------------------------------------------- |
-| mxbai-embed-large-v1        | 335M       | F16            | 512 tokens     | ~0.8GB¹   | 670MB  | [Link](https://hub.docker.com/repository/docker/ai/mxbai-embed-large/tags/335M-F16/sha256-e5e025b145ac69b5402b63632a348d0193144fba366c86175658505f55bd56bd1) |
+| Model Variant                                                 | Parameters | Quantization   | Context Window | VRAM      | Size   | 
+|-------------------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
+| `ai/mxbai-embed-large:latest` `ai/mxbai-embed-large:335M-F16` | 335M       | F16            | 512 tokens     | 0.8GB¹    | 670MB  | 
 
 ¹: VRAM estimates based on model characteristics.
+
+`:latest` → `mxbai-embed-large:335M-F16`
 
 ## Intended Uses
 
