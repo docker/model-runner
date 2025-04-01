@@ -10,7 +10,7 @@ Welcome to this repository! Here, you'll find descriptions and details about var
 ![DeepSeek R1 Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/deepseek-120x-hub@2x.svg)
 
 📌 **Description:**  
-DeepSeek R1 is a powerful AI model designed for high-performance reasoning and deep natural language understanding. It excels at code generation, creative writing, and problem-solving tasks.
+Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 
 📂 **Model File:** [`deepseek-r1.md`](./deepseek-r1.md)
 
@@ -20,9 +20,19 @@ DeepSeek R1 is a powerful AI model designed for high-performance reasoning and d
 ![Gemma Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/gemma-120x-hub@2x.svg)
 
 📌 **Description:**  
-Gemma 3 is an efficient and lightweight model optimized for resource-constrained environments while maintaining high accuracy in text generation and comprehension. ([ai.google.dev](https://ai.google.dev/gemma?utm_source=chatgpt.com))
+Google’s latest Gemma, small yet strong for chat and generation
 
 📂 **Model File:** [`gemma3.md`](./gemma3.md)
+
+---
+### Llama 3.3 Instruct
+
+![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
+
+📌 **Description:**  
+Newest LLaMA 3 release with improved reasoning and generation quality.
+
+📂 **Model File:** [`llama3_3.md`](./llama3_3.md)
 
 ---
 
@@ -30,7 +40,7 @@ Gemma 3 is an efficient and lightweight model optimized for resource-constrained
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
 
 📌 **Description:**  
-Llama 3 2-Instruct is a fine-tuned variant of the Llama 3 model, designed to provide precise and context-aware instructions. It is ideal for chatbot applications, task automation, and content summarization. ([github.com](https://github.com/meta-llama/llama3?utm_source=chatgpt.com))
+Solid LLaMA 3 update, reliable for coding, chat, and Q&A tasks.
 
 📂 **Model File:** [`llama3_2-instruct.md`](./llama3_2-instruct.md)
 
@@ -58,7 +68,7 @@ Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model develo
 ![Mixedbread Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mixedbread-120x-hub@2x.svg)
 
 📌 **Description:**  
-**mxbai-embed-large-v1** is a state-of-the-art English language embedding model developed by Mixedbread AI.
+A state-of-the-art English language embedding model developed by Mixedbread AI.
 
 📂 **Model File:** [`mistral nemo instruct 2407.md`](./mxbai%20embed%20large%20v1.md)
 
@@ -68,7 +78,7 @@ Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model develo
 ![Microsoft Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/phi-120x-hub@2x.svg)
 
 📌 **Description:**  
-Phi-4 represents the latest advancement in the Phi series, pushing the boundaries of AI capabilities with improved accuracy, faster inference, and enhanced contextual understanding.
+Microsoft’s compact model, surprisingly capable at reasoning and code.
 
 📂 **Model File:** [`phi4.md`](./phi4.md)
 
@@ -78,7 +88,7 @@ Phi-4 represents the latest advancement in the Phi series, pushing the boundarie
 ![Qwen Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/qwen-120x-hub@2x.svg)
 
 📌 **Description:**  
-Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Alibaba Cloud.
+Versatile Qwen update with better language skills and wider support.
 
 📂 **Model File:** [`qwen2.5.md`](./qwen2.5.md)
 
@@ -88,7 +98,7 @@ Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Al
 ![Qwen Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/qwen-120x-hub@2x.svg)
 
 📌 **Description:**  
-QwQ-32B is a 32-billion-parameter large language model designed to deliver high-level reasoning and intelligence.
+Experimental Qwen variant—lean, fast, and a bit mysterious.
 
 📂 **Model File:** [`qwq.md`](./qwq.md)
 
@@ -98,6 +108,6 @@ QwQ-32B is a 32-billion-parameter large language model designed to deliver high-
 ![Huggingface Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/hugginfface-120x-hub@2x.svg)
 
 📌 **Description:**  
-SmolLM2-360M is a compact language model with 360 million parameters, designed to run efficiently on-device while performing a wide range of language tasks 
+A compact language model, designed to run efficiently on-device while performing a wide range of language tasks 
 
 📂 **Model File:** [`smolllm2.md`](./smolllm2.md)
