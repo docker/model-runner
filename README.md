@@ -32,7 +32,7 @@ Google’s latest Gemma, small yet strong for chat and generation
 📌 **Description:**  
 Newest LLaMA 3 release with improved reasoning and generation quality.
 
-📂 **Model File:** [`llama3_3.md`](./llama 3_3.md)
+📂 **Model File:** [`llama 3_3.md`](./llama%203_3.md)
 
 ---
 
