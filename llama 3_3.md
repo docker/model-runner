@@ -130,6 +130,5 @@ docker model pull ai/llama3.3:latest
 
 
 ## Links
-- [Introducing Meta Llama 3: The most capable openly available LLM to date]
-(https://ai.meta.com/blog/meta-llama-3/)
+- [Introducing Meta Llama 3: The most capable openly available LLM to date](https://ai.meta.com/blog/meta-llama-3/)
 - [The Llama 3 Herd of Models](https://arxiv.org/pdf/2407.21783)
