@@ -12,7 +12,7 @@ Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Al
 | **Provider**          | Alibaba Cloud      |
 | **Architecture**      | qwen2              |
 | **Cutoff Date**       | November 2024 (est)|
-| **Languages**         | Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, Arabic, and more (29 languajges=) |
+| **Languages**         | Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, Arabic, and more (29 languages) |
 | **Tool Calling**      | ✅                 |
 | **Input Modalities**  | Text               |
 | **Output Modalities** | Text               |
