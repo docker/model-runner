@@ -21,8 +21,8 @@ SmolLM2-360M is a compact language model with 360 million parameters, designed t
 ## Available Model Variants
 | Model Variant                                 | Parameters | Quantization   | Context Window | VRAM    | Size    | 
 |---------------------------------------------- |----------- |--------------- |--------------- |-------- |-------- |
-| `ai/smollm2:latest` `ai/smollm2:360M-F16`     | 360M       | F16            | 8K tokens      | 860 MB¹ | 3.4GB   | 
-| `ai/smollm2:360M-Q4_K_M`                      | 360M       | IQ2_XXS/Q4_K_M | 8K tokens      | 220 MB¹ | 270.6MB |
+| `ai/smollm2:latest` `ai/smollm2:360M-Q4_K_M`                      | 360M       | IQ2_XXS/Q4_K_M | 8K tokens      | 220 MB¹ | 270.6MB |
+| `ai/smollm2:360M-F16`     | 360M       | F16            | 8K tokens      | 860 MB¹ | 3.4GB   |
 
 ¹: VRAM estimation.
 
