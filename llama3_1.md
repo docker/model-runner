@@ -36,7 +36,7 @@
 
 - **Synthetic data generation:** Utilize the outputs of Llama 3.1 to create synthetic datasets, which can aid in training and improving other models. ​
 
-- **Model distillation:** Leverage Llama 3.1 to enhance smaller models by transferring knowledge, resulting in more efficient and specialized AI systems. ​
+- **Model distillation:** Leverage Llama 3.1 to enhance smaller models by transferring knowledge, resulting in more efficient and specialized AI systems, or by using it as a base model to fine-tune based on the knowledge of other bigger models (see `deepseek-r1-distill-llama` as an example) ​
 
 - **Research purposes:** Employ Llama 3.1 in academic and scientific research to explore advancements in natural language processing and artificial intelligence. 
 
