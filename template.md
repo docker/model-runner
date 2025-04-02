@@ -4,6 +4,14 @@
 
 Description
 
+## Available Model Variants
+
+| Model Variant               | Parameters | Quantization   | Context Window | VRAM      | Size   |
+|---------------------------- |----------- |--------------- |--------------- |---------- |------- |
+| {name}:{params]_{quant]     | {param}    | {quant}        | {token}        | {size}GB¹ | {size} | 
+
+¹: VRAM estimates based on model characteristics.
+
 ## Characteristics
 
 | Attribute             | Details        |
@@ -17,14 +25,6 @@ Description
 | **Output Modalities** | {output_list}  |
 | **License**           | {license}      |
 
-## Available Model Variants
-
-| Model Variant               | Parameters | Quantization   | Context Window | VRAM      | Size   | Download |
-|---------------------------- |----------- |--------------- |--------------- |---------- |------- |--------- |
-| {name}:{params]_{quant]     | {param}    | {quant}        | {token}        | {size}GB¹ | {size} | {linkl}  | 
-
-¹: VRAM estimates based on model characteristics.
-
 ## Intended Uses
 
 {small description}
@@ -32,7 +32,6 @@ Description
 - **{case name }**: {description}
 - **{case name }**: {description}
 - **{case name }**: {description}
-
 
 ## Considerations
 
@@ -51,7 +50,6 @@ To run the model:
 ```
 docker model run {model_name}
 ```
-
 
 ## Benchmark Performance
 
