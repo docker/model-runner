@@ -22,7 +22,6 @@ Compared to Mistral 7B, it is much better at following precise instructions, rea
 
 | Model Variant                                                | Parameters | Quantization | Context Window | VRAM   | Size  |
 |--------------------------------------------------------------|------------|--------------|----------------|--------|-------|
-| `ai/mistral-nemo:12B-F16`                                    | 12B        | FP16         | 128k tokens    | 28GB¹  | 24 GB |
 | `ai/mistral-nemo:latest`<br><br>`ai/mistral-nemo:12B-Q4_K_M` | 12B        | Q4_K_M       | 128k tokens    | 7GB¹   | 7.1 GB|
 
 ¹: VRAM estimated based on model characteristics.
