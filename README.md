@@ -25,6 +25,27 @@ Google’s latest Gemma, small yet strong for chat and generation
 📂 **Model File:** [`gemma3.md`](./gemma3.md)
 
 ---
+
+### Llama 3.1
+![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
+
+📌 **Description:**  
+Meta’s LLaMA 3.1: Chat-focused, benchmark-strong, multilingual-ready.
+
+📂 **Model File:** [`llama3_1.md`](./llama3_1.md)
+
+
+---
+
+### Llama 3.2-Instruct
+![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
+
+📌 **Description:**  
+Solid LLaMA 3 update, reliable for coding, chat, and Q&A tasks.
+
+📂 **Model File:** [`llama3_2-instruct.md`](./llama3_2-instruct.md)
+
+---
 ### Llama 3.3 Instruct
 
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
@@ -33,16 +54,6 @@ Google’s latest Gemma, small yet strong for chat and generation
 Newest LLaMA 3 release with improved reasoning and generation quality.
 
 📂 **Model File:** [`llama 3_3.md`](./llama%203_3.md)
-
----
-
-### Llama 3 2-Instruct
-![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
-
-📌 **Description:**  
-Solid LLaMA 3 update, reliable for coding, chat, and Q&A tasks.
-
-📂 **Model File:** [`llama3_2-instruct.md`](./llama3_2-instruct.md)
 
 ---
 
