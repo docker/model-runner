@@ -2,7 +2,7 @@
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-280x184-overview@2x.svg)
 
-Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, later adding quantized versions. These quantized models are significantly faster, with a much lower memory footprint and reduced power consumption, while maintaining nearly the same accuracy as their BF16 counterparts. 
+Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, later adding quantized versions. The quantized models are significantly faster, with a much lower memory footprint and reduced power consumption, while maintaining nearly the same accuracy as their BF16 counterparts. 
 
 ## Characteristics
 
@@ -19,16 +19,16 @@ Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, 
 
 ## Available Model Variants
 
-| Model Variant                                | Parameters | Quantization | Context Window | VRAM   | Size  | 
-|--------------------------------------------- |------------|--------------|----------------|--------|-------|
-| `ai/llama3.2:3B-F16`                         | 3B         | F16          | 128k tokens    | 7.2GB¹ | 6GB   |
-| `ai/llama3.2:latest` `ai/llama3.2:3B-Q4_K_M` | 3B         | Q4_K_M       | 8K tokens      | 1.8GB¹ | 1.8GB | 
-| `ai/llama3.2:1B-F16`                         | 1B         | F16          | 128K tokens    | 2.4GB¹ | 2.3GB |
-| `ai/llama3.2:1B-Q8_0`                        | 1B         | Q8_0         | 8K tokens      | 1.2GB¹ | 1.2GB | 
+| Model Variant                                       | Parameters | Quantization | Context Window | VRAM   | Size  | 
+|---------------------------------------------------- |------------|--------------|----------------|--------|-------|
+| `ai/llama3.2:3B-F16`                                | 3B         | F16          | 128k tokens    | 7.2GB¹ | 6GB   |
+| `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B         | Q4_K_M       | 8K tokens      | 1.8GB¹ | 1.8GB | 
+| `ai/llama3.2:1B-F16`                                | 1B         | F16          | 128K tokens    | 2.4GB¹ | 2.3GB |
+| `ai/llama3.2:1B-Q8_0`                               | 1B         | Q8_0         | 8K tokens      | 1.2GB¹ | 1.2GB | 
 
 ¹: VRAM estimated based on model characteristics.
 
-`:latest` → `ai/llama3.2:latest`
+> `:latest` → `3B-Q4_K_M`
 
 ## Intended Uses
 
@@ -44,12 +44,12 @@ Llama 3.2 instruct models are designed for:
 
 You can pull the model using:
 ```
-docker model pull ai/llama3.2:latest
+docker model pull ai/llama3.2
 ```
 
 To run the model:
 ```
-docker model run ai/llama3.2:latest
+docker model run ai/llama3.2
 ```
 
 ## Benchmark Performance
@@ -71,9 +71,6 @@ docker model run ai/llama3.2:latest
 |                      | InfiniteBench/En.MC       | 38.0         |
 |                      | NIH/Multi-needle          | 75.0         |
 | Multilingual         | MGSM (CoT)                | 24.5         |
-
-
-
 
 ## Links
 - [Llama](https://www.llama.com/)

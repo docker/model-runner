@@ -22,12 +22,12 @@ Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Al
 
 | Model Variant                        | Parameters | Quantization       | Context Window | VRAM      | Size    |                  
 |--------------------------------------|------------|--------------------|----------------|-----------|---------|
-| `qwen2.5:7B-F16`                     | 7.61B      | F16                | 128k tokens    | 18GB¹     | 14.2GB  | 
-| `qwen2.5:latest` `qwen2.5:7B-Q4_K_M` | 7.61B      | IQ2_XXS/Q4_K_MGGUF | 128k tokens    | 5GB¹      | 4.4GB   | 
+| `ai/qwen2.5:7B-F16`                     | 7.61B      | F16                | 128k tokens    | 18GB¹     | 14.2GB  | 
+| `ai/qwen2.5:latest`<br><br>`ai/qwen2.5:7B-Q4_K_M` | 7.61B      | IQ2_XXS/Q4_K_MGGUF | 128k tokens    | 5GB¹      | 4.4GB   | 
 
 ¹: VRAM estimates based on model characteristics.
 
-`:latest`→ `qwen2.5:7B-Q4_K_M`
+> `:latest`→ `7B-Q4_K_M`
 
 ## Intended Uses
 
@@ -47,15 +47,13 @@ Qwen2.5-7B-Instruct is designed to assist in various natural language processing
 ## How to Run This AI Model
 
 You can pull the model using:
-
 ```
-docker model pull Qwen2.5-7B-Instruct
+docker model pull ai/qwen2.5
 ```
 
 Run this model using:
-
 ```
-docker model run Qwen2.5-7B-Instruct
+docker model run ai/qwen2.5
 ```
 
 # Benchmark and Performance
