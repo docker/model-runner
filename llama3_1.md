@@ -2,7 +2,7 @@
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-280x184-overview@2x.svg)
 
-​Meta Llama 3.1 is a collection of multilingual large language models (LLMs) available in 8B and 70B parameter sizes. These models are designed for text-based tasks, including chat and content generation. The instruction-tuned versions are optimized for multilingual dialogue use cases and have demonstrated superior performance compared to many open-source and commercial chat models on common industry benchmarks. 
+​Meta Llama 3.1 is a collection of multilingual large language models (LLMs) available in 8B, 70B and 405B parameter sizes. These models are designed for text-based tasks, including chat and content generation. The instruction-tuned versions available here are optimized for multilingual dialogue use cases and have demonstrated superior performance compared to many open-source and commercial chat models on common industry benchmarks. 
 
 ## Characteristics
 
