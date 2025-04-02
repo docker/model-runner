@@ -20,19 +20,6 @@ const (
 	Name = "llama.cpp"
 )
 
-// VendoredServerStoragePath returns the parent path of the vendored version of
-// com.docker.llama-server. It can be overridden during init().
-var VendoredServerStoragePath = func() (string, error) {
-	return ".", nil
-}
-
-// UpdatedServerStoragePath returns the parent path of the updated version of
-// com.docker.llama-server. It is also where updates will be stored when
-// downloaded. It can be overridden during init().
-var UpdatedServerStoragePath = func() (string, error) {
-	return ".", nil
-}
-
 // llamaCpp is the llama.cpp-based backend implementation.
 type llamaCpp struct {
 	// log is the associated logger.
@@ -42,6 +29,11 @@ type llamaCpp struct {
 	// serverLog is the logger to use for the llama.cpp server process.
 	serverLog       logging.Logger
 	updatedLlamaCpp bool
+	// vendoredServerStoragePath is the parent path of the vendored version of com.docker.llama-server.
+	vendoredServerStoragePath string
+	// updatedServerStoragePath is the parent path of the updated version of com.docker.llama-server.
+	// It is also where updates will be stored when downloaded.
+	updatedServerStoragePath string
 }
 
 // New creates a new llama.cpp-based backend.
@@ -49,11 +41,15 @@ func New(
 	log logging.Logger,
 	modelManager *models.Manager,
 	serverLog logging.Logger,
+	vendoredServerStoragePath string,
+	updatedServerStoragePath string,
 ) (inference.Backend, error) {
 	return &llamaCpp{
-		log:          log,
-		modelManager: modelManager,
-		serverLog:    serverLog,
+		log:                       log,
+		modelManager:              modelManager,
+		serverLog:                 serverLog,
+		vendoredServerStoragePath: vendoredServerStoragePath,
+		updatedServerStoragePath:  updatedServerStoragePath,
 	}, nil
 }
 
@@ -82,11 +78,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	// Internet access and an available docker/docker-model-backend-llamacpp:latest-update on Docker Hub are required.
 	// Even if docker/docker-model-backend-llamacpp:latest-update has been downloaded before, we still require its
 	// digest to be equal to the one on Docker Hub.
-	llamaCppStorage, err := UpdatedServerStoragePath()
-	if err != nil {
-		return fmt.Errorf("unable to determine llama.cpp path: %w", err)
-	}
-	llamaCppPath := filepath.Join(llamaCppStorage, "com.docker.llama-server")
+	llamaCppPath := filepath.Join(l.updatedServerStoragePath, "com.docker.llama-server")
 	if err := ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
 		if errors.Is(err, context.Canceled) {
@@ -112,15 +104,9 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 		l.log.Warnln("llama.cpp may not be able to start")
 	}
 
-	binPath, err := UpdatedServerStoragePath()
-	if err != nil {
-		return fmt.Errorf("unable to determine llama.cpp path: %w", err)
-	}
-	if !l.updatedLlamaCpp {
-		binPath, err = VendoredServerStoragePath()
-		if err != nil {
-			return fmt.Errorf("unable to determine vendored llama.cpp path: %w", err)
-		}
+	binPath := l.vendoredServerStoragePath
+	if l.updatedLlamaCpp {
+		binPath = l.updatedServerStoragePath
 	}
 	llamaCppArgs := []string{"--model", modelPath, "--jinja"}
 	if mode == inference.BackendModeEmbedding {
