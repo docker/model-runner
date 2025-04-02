@@ -25,9 +25,9 @@ i: Estimated
 
 | Model Variant                                                                      | Parameters | Quantization   | Context Window  | VRAM     | Size  |
 |------------------------------------------------------------------------------------|----------- |----------------|---------------- |--------- |-------|
-| `ai/deepseek-r1-distill-llama:latest`<br><br>`ai/deepseek-r1-distill-llama:70B-Q4_K_M`| 70B        | IQ2_XXS/Q4_K_M | 128K tokens     | 42GB¹    | 42GB  |
+| `ai/deepseek-r1-distill-llama:70B-Q4_K_M`                                          | 70B        | IQ2_XXS/Q4_K_M | 128K tokens     | 42GB¹    | 42GB  |
 | `ai/deepseek-r1-distill-llama:8B-F16`                                              | 8B         | F16            | 128K tokens     | 19.2GB¹  | 16GB  |
-| `ai/deepseek-r1-distill-llama:8B-Q4_K_M`                                           | 8B         | IQ2_XXS/Q4_K_M | 128K tokens     | 4.5GB¹   | 5GB   |
+| `ai/deepseek-r1-distill-llama:latest`<br><br>`ai/deepseek-r1-distill-llama:8B-Q4_K_M`                                           | 8B         | IQ2_XXS/Q4_K_M | 128K tokens     | 4.5GB¹   | 5GB   |
 
 ¹: VRAM estimated based on model characteristics.
 
