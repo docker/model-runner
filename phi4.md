@@ -19,14 +19,14 @@ Phi-4 is a **14-billion parameter** language model developed by Microsoft Resear
 
 ## Available Model Variants
 
-| Model Variant                          | Parameters | Quantization   | Context Window | VRAM     | Size   |
-|----------------------------------------|----------- |----------------|--------------- |--------- |------- |
-| `ai/phi4:14B-F16`                      | 14B        | F16            | 16K tokens     |  33.6GB¹ | 29.3GB |
-| `ai/phi4:latest`  `ai/phi4:14B-Q4_K_M` | 14B        | IQ2_XXS/Q4_K_M | 16K tokens     |  8.4GB¹  | 9.GB   |
+| Model Variant                                | Parameters | Quantization   | Context Window | VRAM     | Size   |
+|----------------------------------------------|----------- |----------------|--------------- |--------- |------- |
+| `ai/phi4:14B-F16`                            | 14B        | F16            | 16K tokens     |  33.6GB¹ | 29.3GB |
+| `ai/phi4:latest`<br><br>`ai/phi4:14B-Q4_K_M` | 14B        | IQ2_XXS/Q4_K_M | 16K tokens     |  8.4GB¹  | 9.GB   |
 
 ¹: VRAM estimates based on model characteristics.
 
-`:latest` →  `phi4:14B-Q4_K_M` 
+> `:latest` →  `14B-Q4_K_M` 
 
 ## Intended Uses
 
@@ -45,15 +45,13 @@ Phi-4 is designed for:
 ## How to Run This AI Model
 
 You can pull the model using:
-
 ```
-docker model pull ai/phi4:latest
+docker model pull ai/phi4
 ```
 
 To run the model:
-
 ```
-docker model run ai/phi4:latest
+docker model run ai/phi4
 ```
 
 ## Benchmark Performance

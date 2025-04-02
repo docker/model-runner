@@ -20,14 +20,14 @@ Compared to Mistral 7B, it is much better at following precise instructions, rea
 
 ## Available Model Variants
 
-| Model Variant                                         | Parameters | Quantization | Context Window | VRAM   | Size  |
-|-------------------------------------------------------|------------|--------------|----------------|--------|-------|
-| `ai/mistral-nemo:12B-F16`                             | 12B        | FP16         | 128k tokens    | 28GB¹ | 24 GB |
-| `ai/mistral-nemo:latest` `ai/mistral-nemo:12B-Q4_K_M` | 12B        | Q4 K M       | 128k tokens    | 7GB¹  | 7.1 GB|
+| Model Variant                                                | Parameters | Quantization | Context Window | VRAM   | Size  |
+|--------------------------------------------------------------|------------|--------------|----------------|--------|-------|
+| `ai/mistral-nemo:12B-F16`                                    | 12B        | FP16         | 128k tokens    | 28GB¹  | 24 GB |
+| `ai/mistral-nemo:latest`<br><br>`ai/mistral-nemo:12B-Q4_K_M` | 12B        | Q4_K_M       | 128k tokens    | 7GB¹   | 7.1 GB|
 
 ¹: VRAM estimated based on model characteristics.
 
-`:latest` →  `mistral-nemo:12B-Q4_K_M` 
+> `:latest` → `12B-Q4_K_M` 
 
 ## Intended Uses
 
@@ -40,17 +40,14 @@ Mistral-Nemo-Instruct-2407 is designed for instruction-following tasks and multi
 ## How to Run This AI Model
 
 You can pull the model using:
-
 ```
-docker model pull ai/mistral-nemo:latest
+docker model pull ai/mistral-nemo
 ```
 
 To run the model:
-
 ```
-docker model run ai/mistral-nemo:latest
+docker model run ai/mistral-nemo
 ```
-
 
 ## Benchmark Performance
 
@@ -66,4 +63,5 @@ docker model run ai/mistral-nemo:latest
 | NaturalQuestions (5-shot)   | 31.2% |
 
 ## Links
+
 - [Mistral Nemo](https://mistral.ai/news/mistral-nemo)

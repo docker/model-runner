@@ -21,12 +21,12 @@ The model incorporates agent-like capabilities, allowing it to perform critical 
 
 ## Available Model Variants
 
-| Model Variant                       | Parameters | Quantization | Context Window | VRAM    | Size  | 
-|-------------------------------------|------------|--------------|----------------|---------|-------|
-| `ai/qwq:32B-F16`                    | 32.5B      | FP16         | 32K tokens     | 77GB¹   | 65.5GB|
-| `ai/qwq:latest` `ao/qwq:32B-Q4_K_M` | 32.5B      | q4_K_M       | 32K tokens     | 19GB¹   | 18.8GB|
+| Model Variant                              | Parameters | Quantization | Context Window | VRAM    | Size  | 
+|--------------------------------------------|------------|--------------|----------------|---------|-------|
+| `ai/qwq:32B-F16`                           | 32.5B      | FP16         | 32K tokens     | 77GB¹   | 65.5GB|
+| `ai/qwq:latest`<br><br>`ai/qwq:32B-Q4_K_M` | 32.5B      | Q4_K_M       | 32K tokens     | 19GB¹   | 18.8GB|
 
-`:latest` → `qwq:32B-Q4_K_M`
+> `:latest` → `32B-Q4_K_M`
 
 ¹: VRAM estimated based on model characteristics.
 
@@ -48,12 +48,12 @@ QwQ-32B is designed for tasks requiring advanced reasoning and problem-solving a
 
 You can pull the model using
 ```
-docker model pull ai/qwq:latest
+docker model pull ai/qwq
 ```
 
 Run this model using:
 ```
-docker model run ai/qwq:latest
+docker model run ai/qwq
 ```
 
 

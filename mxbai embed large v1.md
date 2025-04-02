@@ -22,11 +22,11 @@
 
 | Model Variant                                                 | Parameters | Quantization   | Context Window | VRAM      | Size   | 
 |-------------------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
-| `ai/mxbai-embed-large:latest` `ai/mxbai-embed-large:335M-F16` | 335M       | F16            | 512 tokens     | 0.8GB¹    | 670MB  | 
+| `ai/mxbai-embed-large:latest`<br><br>`ai/mxbai-embed-large:335M-F16` | 335M       | F16            | 512 tokens     | 0.8GB¹    | 670MB  | 
 
 ¹: VRAM estimates based on model characteristics.
 
-`:latest` → `mxbai-embed-large:335M-F16`
+> `:latest` → `mxbai-embed-large:335M-F16`
 
 ## Intended Uses
 

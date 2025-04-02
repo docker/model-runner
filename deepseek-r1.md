@@ -1,39 +1,41 @@
-# Deepseek-R1
+# Deepseek-R1-Distill-Llama
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/deepseek-280x184-overview@2x.svg)
 
-DeepSeek introduces its first-generation reasoning models, DeepSeek-R1-Zero and DeepSeek-R1, leveraging reinforcement learning to enhance reasoning performance, with DeepSeek-R1 achieving state-of-the-art results and open-sourcing multiple distilled models.
+DeepSeek introduced its first-generation reasoning models, DeepSeek-R1-Zero and DeepSeek-R1, leveraging reinforcement learning to enhance reasoning performance, with DeepSeek-R1 achieving state-of-the-art results and open-sourcing multiple distilled models.
+
+The models provided here are the distill-llama variants, which are llama based models that have been fine-tuned on the responses and reasoning output of the full DeepSeek-R1 model.
 
 ## Characteristics
 
-| Attribute             | Details       |
-|---------------------- |-------------- |
-| **Provider**          | Deepseek      |
-| **Architecture**      | qwen2         |
-| **Cutoff Date**       | May 2024ⁱ     |
+| Attribute             | Details          |
+|---------------------- |----------------- |
+| **Provider**          | Deepseek         |
+| **Architecture**      | llama            |
+| **Cutoff Date**       | May 2024ⁱ        |
 | **Languages**         | English, Chinese |
-| **Tool Calling**      | ✅            |
-| **Input Modalities**  | Text          |
-| **Output Modalities** | Text          |
+| **Tool Calling**      | ✅               |
+| **Input Modalities**  | Text             |
+| **Output Modalities** | Text             |
 | **License**           | [MIT](https://github.com/deepseek-ai/DeepSeek-R1/blob/main/LICENSE)           |
 
 i: Estimated
 
 ## Available Model Variants
 
-| Model Variant                                                                  | Parameters | Quantization   | Context Window  | VRAM     | Size  |
-|--------------------------------------------------------------------------------|----------- |----------------|---------------- |--------- |-------|
-| `ai/deepseek-r1-distill-llama:latest` `ai/deepseek-r1-distill-llama:70B-Q4_K_M`| 70B        | IQ2_XXS/Q4_K_M | 128K tokens     | 42GB¹    | 42GB  |
-| `ai/deepseek-r1-distill-llama:8B-F16`                                          | 8B         | F16            | 128K tokens     | 19.2GB¹  | 16GB  |
-| `ai/deepseek-r1-distill-llama:8B-Q4_K_M`                                       | 8B         | IQ2_XXS/Q4_K_M | 128K tokens     | 4.5GB¹   | 5GB   |
+| Model Variant                                                                      | Parameters | Quantization   | Context Window  | VRAM     | Size  |
+|------------------------------------------------------------------------------------|----------- |----------------|---------------- |--------- |-------|
+| `ai/deepseek-r1-distill-llama:latest`<br><br>`ai/deepseek-r1-distill-llama:70B-Q4_K_M`| 70B        | IQ2_XXS/Q4_K_M | 128K tokens     | 42GB¹    | 42GB  |
+| `ai/deepseek-r1-distill-llama:8B-F16`                                              | 8B         | F16            | 128K tokens     | 19.2GB¹  | 16GB  |
+| `ai/deepseek-r1-distill-llama:8B-Q4_K_M`                                           | 8B         | IQ2_XXS/Q4_K_M | 128K tokens     | 4.5GB¹   | 5GB   |
 
 ¹: VRAM estimated based on model characteristics.
 
-`:latest`→ `ai/deepseek-r1-distill-llama:70B-Q4_K_M`
+> `:latest` → `70B-Q4_K_M`
 
 ## Intended Uses
 
-Deepseek-R1 can help with:
+Deepseek-R1-Distill-Llama can help with:
 - **Software Development:** Generates code, debugs, and explains complex concepts.
 - **Mathematics:** Solves and explains complex problems for research and education.
 - **Content Creation & Editing:** Writes, edits, and summarizes content for various industries.
@@ -56,12 +58,12 @@ zero-shot setting for optimal results.
 
 You can pull the model using:
 ```
-docker model pull ai/deepseek-r1-distill-llama:latest
+docker model pull ai/deepseek-r1-distill-llama
 ```
 
 To run the model:
 ```
-docker model run ai/deepseek-r1-distill-llama:latest
+docker model run ai/deepseek-r1-distill-llama
 ```
 
 

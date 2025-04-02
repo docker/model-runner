@@ -19,14 +19,14 @@ Gemma is a versatile AI model family designed for tasks like question answering,
 
 ## Available Model Variants
 
-| Model Variant                            | Parameters | Quantization   | Context Window | VRAM    | Size   | 
-|------------------------------------------|----------- |----------------|--------------- |-------- |------- |
-| `ai/gemma3:4B-F16`                       | 4B         | F16            | 128K tokens    |  6.4GB¹ | 7.7GB  | 
-| `ai/gemma3:latest` `ai/gemma3:4B-Q4_K_M` | 4B         | IQ2_XXS/Q4_K_M | 128K tokens    |  3.4GB¹ | 2.5GB  | 
+| Model Variant                                   | Parameters | Quantization   | Context Window | VRAM    | Size   | 
+|-------------------------------------------------|----------- |----------------|--------------- |-------- |------- |
+| `ai/gemma3:4B-F16`                              | 4B         | F16            | 128K tokens    |  6.4GB¹ | 7.7GB  | 
+| `ai/gemma3:latest`<br><br>`ai/gemma3:4B-Q4_K_M` | 4B         | IQ2_XXS/Q4_K_M | 128K tokens    |  3.4GB¹ | 2.5GB  | 
 
 ¹: VRAM extracted from Gemma documentation ([link](https://ai.google.dev/gemma/docs/core#128k-context))
 
-`:latest`→ `ai/gemma3:4B-Q4_K_M`
+> `:latest` → `4B-Q4_K_M`
 
 ## Intended Uses
 
@@ -43,12 +43,12 @@ Gemma 3 4B model can be used for:
 
 You can pull the model using:
 ```
-docker model pull ai/gemma3:latest
+docker model pull ai/gemma3
 ```
 
 To run the model:
 ```
-docker model run ai/gemma3:latest
+docker model run ai/gemma3
 ```
 
 ## Benchmark Performance

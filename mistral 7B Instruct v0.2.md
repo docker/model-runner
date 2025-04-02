@@ -8,7 +8,7 @@ Mistral 7B is a powerful 7.3B parameter language model that outperforms Llama 2 
 ## Characteristics
 
 | Attribute             | Details                          |
-|----------------------|-----------------------------------|
+|-----------------------|----------------------------------|
 | **Provider**          | Mistral AI                       |
 | **Architecture**      | Llama                            |
 | **Cutoff Date**       | December 2023ⁱ                   |
@@ -22,14 +22,14 @@ i: Estimated
 
 ## Available Model Variants
 
-| Model Variant                              | Parameters | Quantization   | Context Window | VRAM    | Size   | 
-|--------------------------------------------|----------- |--------------- |----------------|---------|--------|
-| `ai/mistral:7B-F16`                        | 7B         | F16            | 32K            | 16.8¹   | 14.5GB |
-| `ai/mistral:latest` `ai/mistral:7B-Q4_K_M` | 7B         | IQ2_XXS/Q4_K_M | 32K            | 4.2B¹   | 4.3GB  | 
+| Model Variant                                      | Parameters | Quantization   | Context Window | VRAM    | Size   | 
+|----------------------------------------------------|----------- |--------------- |----------------|---------|--------|
+| `ai/mistral:latest`<br><br>`ai/mistral:7B-Q4_K_M`  | 7B         | IQ2_XXS/Q4_K_M | 32K            | 4.2B¹   | 4.3GB  | 
+| `ai/mistral:7B-F16`                                | 7B         | F16            | 32K            | 16.8¹   | 14.5GB |
 
 ¹: VRAM estimated based on model characteristics and quantization.
 
-`:latest` →  `mistral:7B-Q4_K_M` 
+> `:latest` → `7B-Q4_K_M` 
 
 
 ## Intended Uses
@@ -78,7 +78,7 @@ docker model run ai/mistral
 |                                | Arc-e      | 80.0%      |
 |                                | Arc-c      | 55.5%      |
 | Knowledge Retrieval            | NQ         | 28.8%      |
-|                                |TriviaQA    | 69.9%      |
+|                                | TriviaQA   | 69.9%      |
 | Code Generation & Debugging    | HumanEval  | 30.5%      |
 |                                | MBPP       | 47.5%      |
 | Mathematical Reasoning         | MATH       | 13.1%      |
