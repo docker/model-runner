@@ -1,14 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <oci-repo> or <oci-image-ref>"
+# Initialize
+VERBOSE=false
+INPUT=""
+
+# Parse arguments
+for arg in "$@"; do
+  case "$arg" in
+    --verbose)
+      VERBOSE=true
+      ;;
+    *)
+      if [ -z "$INPUT" ]; then
+        INPUT="$arg"
+      else
+        echo "❌ Unexpected argument: $arg"
+        echo "Usage: $0 <oci-repo|oci-image-ref> [--verbose]"
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [ -z "$INPUT" ]; then
+  echo "Usage: $0 <oci-repo|oci-image-ref> [--verbose]"
   echo "Example: $0 ai/qwen2.5"
-  echo "         $0 ai/qwen2.5:7B-Q4_K_M"
+  echo "         $0 ai/qwen2.5:7B-Q4_K_M --verbose"
   exit 1
 fi
-
-INPUT="$1"
 
 # Determine if input contains a tag (e.g. repo:tag)
 if [[ "$INPUT" == *:* ]]; then
@@ -72,15 +92,39 @@ for IMAGE_REF in "${IMAGE_REFS[@]}"; do
   printf "   • Model Size   : %s\n" "$MODEL_SIZE"
   printf "   • Artifact Size: %s bytes (%s MB / %s GB)\n" "$BYTES" "$MB" "$GB"
 
-  # Optional license
-  LICENSE_DIGEST=$(jq -r '.layers[]? | select(.mediaType == "application/vnd.docker.ai.license") | .digest' <<<"$MANIFEST_JSON" || true)
-  if [ -n "${LICENSE_DIGEST:-}" ]; then
-    LICENSE_CONTENT=$(crane blob "${IMAGE_REF%@*}@${LICENSE_DIGEST}")
-    echo "📜 License (first 5 lines):"
-    echo "$LICENSE_CONTENT" | head -n 5
+  # GGUF model layer digest
+  GGUF_DIGEST=$(jq -r '.layers[] | select(.mediaType == "application/vnd.docker.ai.gguf.v3") | .digest' <<<"$MANIFEST_JSON")
+  if [ -n "$GGUF_DIGEST" ]; then
+    echo "📦 GGUF Layer Digest:"
+    echo "   • $GGUF_DIGEST"
+
+    if [ "$VERBOSE" = true ]; then
+      echo "🔎 Inspecting GGUF metadata with gguf-tools..."
+      TEMP_GGUF=$(mktemp /tmp/model.XXXXXX.gguf)
+      crane blob "${IMAGE_REF%@*}@${GGUF_DIGEST}" > "$TEMP_GGUF"
+      echo ""
+      gguf-tools show "$TEMP_GGUF" || echo "⚠️  gguf-tools failed"
+      echo ""
+      rm -f "$TEMP_GGUF"
+    fi
   else
-    echo "⚠️  No license blob found."
+    echo "⚠️  No GGUF layer with mediaType application/vnd.docker.ai.gguf.v3 found."
   fi
+
+  # License
+LICENSE_DIGESTS=($(jq -r '.layers[]? | select(.mediaType == "application/vnd.docker.ai.license") | .digest' <<<"$MANIFEST_JSON"))
+
+if [ "${#LICENSE_DIGESTS[@]}" -eq 0 ]; then
+  echo "⚠️  No license blob found."
+else
+  echo "📜 License(s):"
+  for DIGEST in "${LICENSE_DIGESTS[@]}"; do
+    echo "   • Digest: $DIGEST"
+    LICENSE_CONTENT=$(crane blob "${IMAGE_REF%@*}@${DIGEST}")
+    echo "$LICENSE_CONTENT" | head -n 5
+    echo "   ─────────────────────────────────────"
+  done
+fi
 
   echo "----------------------------------------"
 done

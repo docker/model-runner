@@ -22,9 +22,9 @@ Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, 
 | Model Variant                                       | Parameters | Quantization | Context Window | VRAM   | Size  | 
 |---------------------------------------------------- |------------|--------------|----------------|--------|-------|
 | `ai/llama3.2:3B-F16`                                | 3B         | F16          | 128k tokens    | 7.2GB¹ | 6GB   |
-| `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B         | Q4_K_M       | 8K tokens      | 1.8GB¹ | 1.8GB | 
+| `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B         | Q4_K_M       | 128K tokens    | 1.8GB¹ | 1.8GB | 
 | `ai/llama3.2:1B-F16`                                | 1B         | F16          | 128K tokens    | 2.4GB¹ | 2.3GB |
-| `ai/llama3.2:1B-Q8_0`                               | 1B         | Q8_0         | 8K tokens      | 1.2GB¹ | 1.2GB | 
+| `ai/llama3.2:1B-Q8_0`                               | 1B         | Q8_0         | 128K tokens    | 1.2GB¹ | 1.2GB | 
 
 ¹: VRAM estimated based on model characteristics.
 
