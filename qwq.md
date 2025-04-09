@@ -23,8 +23,8 @@ The model incorporates agent-like capabilities, allowing it to perform critical 
 
 | Model Variant                              | Parameters | Quantization | Context Window | VRAM    | Size  | 
 |--------------------------------------------|------------|--------------|----------------|---------|-------|
-| `ai/qwq:32B-F16`                           | 32.5B      | FP16         | 32K tokens     | 77GB¹   | 65.5GB|
-| `ai/qwq:latest`<br><br>`ai/qwq:32B-Q4_K_M` | 32.5B      | Q4_K_M       | 32K tokens     | 19GB¹   | 18.8GB|
+| `ai/qwq:32B-F16`                           | 32.5B      | FP16         | 40K tokens     | 77GB¹   | 65.5GB|
+| `ai/qwq:latest`<br><br>`ai/qwq:32B-Q4_K_M` | 32.5B      | Q4_K_M       | 40K tokens     | 19GB¹   | 18.8GB|
 
 > `:latest` → `32B-Q4_K_M`
 

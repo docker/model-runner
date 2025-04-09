@@ -20,15 +20,19 @@ Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Al
 
 ## Available Model Variants
 
-| Model Variant                        | Parameters | Quantization       | Context Window | VRAM      | Size    |                  
-|--------------------------------------|------------|--------------------|----------------|-----------|---------|
-| `ai/qwen2.5:7B-F16`                     | 7.61B      | F16                | 128k tokens    | 18GB¹     | 14.2GB  | 
-| `ai/qwen2.5:latest`<br><br>`ai/qwen2.5:7B-Q4_K_M` | 7.61B      | IQ2_XXS/Q4_K_MGGUF | 128k tokens    | 5GB¹      | 4.4GB   | 
+| Model Variant                                    | Parameters | Quantization     | Context Window | VRAM     | Size   |
+|--------------------------------------------------|------------|------------------|----------------|----------|--------|
+| `ai/qwen2.5:0.5B-F16`                            | 0.5B       | F16              | 32K tokens     | ~1.2GB¹  | 0.99GB |
+| `ai/qwen2.5:1.5B-F16`                            | 1.5B       | F16              | 32K tokens     | ~3.5GB¹  | 3.09GB |
+| `ai/qwen2.5:3B-F16`                              | 3.09B      | F16              | 32K tokens     | ~7GB¹    | 6.18GB |
+| `ai/qwen2.5:3B-Q4_K_M`                           | 3.09B      | IQ2_XXS/Q4_K_M   | 32K tokens     | ~2.2GB¹  | 1.93GB |
+| `ai/qwen2.5:7B-F16`                              | 7.62B      | F16              | 32K tokens     | ~16GB¹   | 15.24GB|
+| `ai/qwen2.5:7B-Q4_K_M`<br><br>`ai/qwen2.5:latest`| 7.62B      | IQ2_XXS/Q4_K_M   | 32K tokens     | ~4.7GB¹  | 4.68GB |
 
 ¹: VRAM estimates based on model characteristics.
 
 > `:latest`→ `7B-Q4_K_M`
-
+docker 
 ## Intended Uses
 
 Qwen2.5-7B-Instruct is designed to assist in various natural language processing tasks, including:
