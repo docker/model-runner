@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"html"
 	"net/http"
 
@@ -33,14 +34,38 @@ type Manager struct {
 	distributionClient *distribution.Client
 }
 
+type ClientConfig struct {
+	// StoreRootPath is the root path for the model store.
+	StoreRootPath string
+	// Logger is the logger to use.
+	Logger *logrus.Entry
+	// Transport is the HTTP transport to use.
+	Transport http.RoundTripper
+	// UserAgent is the user agent to use.
+	UserAgent string
+}
+
 // NewManager creates a new model's manager.
-func NewManager(log logging.Logger, client *distribution.Client) *Manager {
+func NewManager(log logging.Logger, c ClientConfig) *Manager {
+	// Create the model distribution client.
+	distClient, err := distribution.NewClient(
+		distribution.WithStoreRootPath(c.StoreRootPath),
+		distribution.WithLogger(c.Logger),
+		distribution.WithTransport(c.Transport),
+		distribution.WithUserAgent(c.UserAgent),
+	)
+	if err != nil {
+		log.Errorf("Failed to create distribution client: %v", err)
+		// Continue without distribution client. The model manager will still
+		// respond to requests, but may return errors if the client is required.
+	}
+
 	// Create the manager.
 	m := &Manager{
 		log:                log,
 		pullTokens:         make(chan struct{}, maximumConcurrentModelPulls),
 		router:             http.NewServeMux(),
-		distributionClient: client,
+		distributionClient: distClient,
 	}
 
 	// Register routes.
