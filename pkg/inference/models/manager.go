@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"html"
 	"net/http"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/docker/model-distribution/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/sirupsen/logrus"
 )
 
 const (
