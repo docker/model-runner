@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/docker/model-distribution/pkg/distribution"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -32,14 +31,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get user home directory: %v", err)
 	}
-	distributionClient, err := distribution.NewClient(
-		distribution.WithStoreRootPath(filepath.Join(userHomeDir, ".docker", "models")),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create distribution client: %v", err)
-	}
 
-	modelManager := models.NewManager(log, distributionClient)
+	modelManager := models.NewManager(log, models.ClientConfig{
+		StoreRootPath: filepath.Join(userHomeDir, ".docker", "models"),
+		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+	})
 
 	llamaCppBackend, err := llamacpp.New(
 		log,

@@ -48,7 +48,7 @@ type ClientConfig struct {
 // NewManager creates a new model's manager.
 func NewManager(log logging.Logger, c ClientConfig) *Manager {
 	// Create the model distribution client.
-	distClient, err := distribution.NewClient(
+	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
 		distribution.WithLogger(c.Logger),
 		distribution.WithTransport(c.Transport),
@@ -65,7 +65,7 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		log:                log,
 		pullTokens:         make(chan struct{}, maximumConcurrentModelPulls),
 		router:             http.NewServeMux(),
-		distributionClient: distClient,
+		distributionClient: distributionClient,
 	}
 
 	// Register routes.
