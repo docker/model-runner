@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/docker/model-distribution/pkg/distribution"
+	"github.com/docker/model-distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"

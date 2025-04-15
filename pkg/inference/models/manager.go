@@ -8,8 +8,8 @@ import (
 	"html"
 	"net/http"
 
-	"github.com/docker/model-distribution/pkg/distribution"
-	"github.com/docker/model-distribution/pkg/types"
+	"github.com/docker/model-distribution/distribution"
+	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/sirupsen/logrus"
