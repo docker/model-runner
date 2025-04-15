@@ -219,6 +219,10 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 	err := m.distributionClient.DeleteModel(r.PathValue("name"))
 	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		m.log.Warnln("Error while deleting model:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
