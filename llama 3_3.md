@@ -4,22 +4,36 @@
 
 Meta Llama 3.3 is a powerful 70B parameter multilingual language model designed by Meta for text-based tasks like chat and content generation. The instruction-tuned version is optimized for multilingual dialogue and performs better than many open-source and commercial models on common benchmarks.
 
+## Intended uses
+
+- **Multilingual assistant-like chat**: Using instruction-tuned models for conversational AI across multiple languages, enabling natural and context-aware interactions in various linguistic settings.
+
+- **Coding support and software development tasks**: Leveraging language models to assist with code generation, debugging, documentation, and other software engineering workflows.
+
+- **Multilingual content creation and localization**: Generating and adapting written content across different languages and cultures, supporting global communication and engagement.
+
+- **Knowledge-based applications**: Integrating LLMs with structured or unstructured data sources to answer questions, extract insights, or support decision-making.
+
+- **General natural language generation**: Various NLG tasks such as summarization, translation, or content generation across different domains.
+
+- **Synthetic data generation (synth)**: Creating realistic, high-quality synthetic text data to augment datasets for training, testing, or anonymization purposes.
+
 ## Characteristics
 
 | Attribute             | Details        |
 |---------------------- |----------------|
 | **Provider**          | Meta           |
 | **Architecture**      | llama          |
-| **Cutoff Date**       | December 2023  |
+| **Cutoff date**       | December 2023  |
 | **Languages**         | English, German, French, Italian, Portuguese, Hindi, Spanish, and Thai.|
-| **Tool Calling**      | ✅             |
-| **Input Modalities**  | Text           |
-| **Output Modalities** | Text and Code  |
+| **Tool calling**      | ✅             |
+| **Input modalities**  | Text           |
+| **Output modalities** | Text and Code  |
 | **License**           | [Llama 3.3 Community license](https://github.com/meta-llama/llama-models/blob/main/models/llama3_3/LICENSE)     |
 
-## Available Model Variants
+## Available model variants
 
-| Model Variant                                        | Parameters | Quantization   | Context Window | VRAM      | Size   | 
+| Model variant                                        | Parameters | Quantization   | Context window | VRAM      | Size   | 
 |----------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
 | `ai/llama3.3:latest`<br><br>`ai/llama3.3:70B-Q4_K_M` | 70B        | Q4_K_M         | 128K           | 42GB¹     | 42.5GB | 
 
@@ -27,34 +41,23 @@ Meta Llama 3.3 is a powerful 70B parameter multilingual language model designed 
 
 > `:latest` → `70B-Q4_K_M`
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-- **Multilingual Assistant-like Chat**: Using instruction-tuned models for conversational AI across multiple languages, enabling natural and context-aware interactions in various linguistic settings.
+First, pull the model:
 
-- **Coding Support and Software Development Tasks**: Leveraging language models to assist with code generation, debugging, documentation, and other software engineering workflows.
-
-- **Multilingual Content Creation and Localization**: Generating and adapting written content across different languages and cultures, supporting global communication and engagement.
-
-- **Knowledge-based Applications**: Integrating LLMs with structured or unstructured data sources to answer questions, extract insights, or support decision-making.
-
-- **General Natural Language Generation**: Various NLG tasks such as summarization, translation, or content generation across different domains.
-
-- **Synthetic Data Generation (Synth)**: Creating realistic, high-quality synthetic text data to augment datasets for training, testing, or anonymization purposes.
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/llama3.3
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/llama3.3
 ```
 
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
 
-## Benchmark Performance
+## Benchmark performance
 
 | Category     | Benchmark                | Llama-3.3 70B Instruct |
 |--------------|--------------------------|------------------------|
@@ -67,7 +70,6 @@ docker model run ai/llama3.3
 | Math         | MATH (CoT)               | 77.0                   |
 | Tool Use     | BFCL v2                  | 77.3                   |
 | Multilingual | MGSM                     | 91.1                   |
-
 
 ## Links
 - [Introducing Meta Llama 3: The most capable openly available LLM to date](https://ai.meta.com/blog/meta-llama-3/)

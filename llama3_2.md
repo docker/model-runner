@@ -4,22 +4,32 @@
 
 Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, later adding quantized versions. The quantized models are significantly faster, with a much lower memory footprint and reduced power consumption, while maintaining nearly the same accuracy as their BF16 counterparts. 
 
+## Intended uses
+
+Llama 3.2 instruct models are designed for:
+
+- **AI assistance on edge devices**, Running chatbots and virtual assistants with minimal latency on low-power * hardware.
+-  **Code assistance** , Writing, debugging, and optimizing code on mobile or embedded systems.
+- **Content generation** ,Drafting emails, summaries, and creative content on lightweight devices.
+- **Low-power AI for smart gadgets**, Enhancing voice assistants on wearables and IoT devices.
+- **Edge-based data processing**, Summarizing and analyzing data locally for security and efficiency.
+
 ## Characteristics
 
 | Attribute             | Details       |
 |---------------------- |-------------- |
 | **Provider**          | Meta          |
 | **Architecture**      | Llama         |
-| **Cutoff Date**       | December 2023 |
+| **Cutoff date**       | December 2023 |
 | **Languages**         | English, German, French, Italian, Portuguese, Hindi, Spanish, and Thai |
-| **Tool Calling**      | ✅            |
-| **Input Modalities**  | Text          |
-| **Output Modalities** | Text, Code    |
+| **Tool calling**      | ✅            |
+| **Input modalities**  | Text          |
+| **Output modalities** | Text, Code    |
 | **License**           | [Llama 3.2 Community License](https://github.com/meta-llama/llama-models/blob/main/models/llama3_2/LICENSE) |
 
-## Available Model Variants
+## Available model variants
 
-| Model Variant                                       | Parameters | Quantization | Context Window | VRAM   | Size  | 
+| Model Variant                                       | Parameters | Quantization | Context window | VRAM   | Size  | 
 |---------------------------------------------------- |------------|--------------|----------------|--------|-------|
 | `ai/llama3.2:3B-F16`                                | 3B         | F16          | 128k tokens    | 7.2GB¹ | 6GB   |
 | `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B         | Q4_K_M       | 128K tokens    | 1.8GB¹ | 1.8GB | 
@@ -30,29 +40,23 @@ Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, 
 
 > `:latest` → `3B-Q4_K_M`
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-Llama 3.2 instruct models are designed for:
+First, pull the model:
 
-- **AI Assistance on Edge Devices**, Running chatbots and virtual assistants with minimal latency on low-power * hardware.
--  **Code Assistance** , Writing, debugging, and optimizing code on mobile or embedded systems.
-- **Content Generation** ,Drafting emails, summaries, and creative content on lightweight devices.
-- **Low-Power AI for Smart Gadgets**, Enhancing voice assistants on wearables and IoT devices.
-- **Edge-Based Data Processing**, Summarizing and analyzing data locally for security and efficiency.
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/llama3.2
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/llama3.2
 ```
 
-## Benchmark Performance
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
+
+## Benchmark performance
 
 | Capability            | Benchmark                | Llama 3.2 1B |
 |----------------------|---------------------------|--------------|
@@ -73,4 +77,5 @@ docker model run ai/llama3.2
 | Multilingual         | MGSM (CoT)                | 24.5         |
 
 ## Links
+
 - [Llama](https://www.llama.com/)

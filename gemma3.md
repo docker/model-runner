@@ -4,20 +4,31 @@
 
 Gemma is a versatile AI model family designed for tasks like question answering, summarization, and reasoning. With open weights and responsible commercial use, it supports image-text input, a 128K token context, and over 140 languages.
 
+## Intended uses
+
+Gemma 3 4B model can be used for:
+
+- **Text generation:** Create poems, scripts, code, marketing copy, and email drafts.  
+- **Chatbots and conversational AI:** Enable virtual assistants and customer service bots.  
+- **Text summarization:** Produce concise summaries of reports and research papers.  
+- **Image data extraction:** Interpret and summarize visual data for text-based communication.  
+- **Language learning tools:** Aid in grammar correction and interactive writing practice.  
+- **Knowledge exploration:** Assist researchers by generating summaries and answering questions.  
+
 ## Characteristics
 
 | Attribute             | Details         |
 |---------------------- |---------------- |
 | **Provider**          | Google DeepMind |
 | **Architecture**      | Gemma3          |
-| **Cutoff Date**       | -               |
+| **Cutoff date**       | -               |
 | **Languages**         | 140 languages   |
-| **Tool Calling**      | ✅              |
-| **Input Modalities**  | Text, Image     |
-| **Output Modalities** | Text, Code      |
+| **Tool calling**      | ✅              |
+| **Input modalities**  | Text, Image     |
+| **Output modalities** | Text, Code      |
 | **License**           | [Gemma Terms](https://ai.google.dev/gemma/terms) |
 
-## Available Model Variants
+## Available model variants
 
 | Model Variant                                   | Parameters | Quantization   | Context Window | VRAM      | Size   | 
 |-------------------------------------------------|----------- |----------------|--------------- |---------- |------- |
@@ -30,30 +41,23 @@ Gemma is a versatile AI model family designed for tasks like question answering,
 
 `:latest`→ `4B-Q4_K_M`
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-Gemma 3 4B model can be used for:
+First, pull the model:
 
-- **Text Generation:** Create poems, scripts, code, marketing copy, and email drafts.  
-- **Chatbots and Conversational AI:** Enable virtual assistants and customer service bots.  
-- **Text Summarization:** Produce concise summaries of reports and research papers.  
-- **Image Data Extraction:** Interpret and summarize visual data for text-based communication.  
-- **Language Learning Tools:** Aid in grammar correction and interactive writing practice.  
-- **Knowledge Exploration:** Assist researchers by generating summaries and answering questions.  
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/gemma3
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/gemma3
 ```
 
-## Benchmark Performance
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
+
+## Benchmark performance
 
 | Category       | Benchmark          | Value  |
 |---------------|--------------------|--------|
@@ -71,8 +75,6 @@ docker model run ai/gemma3
 | Multimodal    | VQAv2              | 63.9   |
 |               | TextVQA            | 58.9   |
 |               | DocVQA             | 72.8   |
-
-
 
 ## Links
 - [Gemma 3 Model Overview](https://ai.google.dev/gemma/docs/core)

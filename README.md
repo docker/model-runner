@@ -1,6 +1,6 @@
 # 📦 Multi-Model Repository
 
-Welcome to this repository! Here, you'll find descriptions and details about various AI models, including their capabilities, use cases, and specifications.
+Find descriptions and details about various AI models, including their capabilities, use cases, and specifications.
 
 ---
 

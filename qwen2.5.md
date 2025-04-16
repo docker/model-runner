@@ -5,22 +5,32 @@
 
 Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Alibaba Cloud. It is part of the Qwen2.5 series, which includes models ranging from 0.5 to 72 billion parameters. This model offers significant improvements in knowledge, coding, and mathematical capabilities, along with enhanced instruction-following and long-text generation abilities. It supports a context length of up to 131,072 tokens and can generate outputs up to 8,192 tokens. Additionally, it provides multilingual support for over 29 languages, including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, and Arabic.
 
+## Intended uses
+
+Qwen2.5-7B-Instruct is designed to assist in various natural language processing tasks, including:
+
+- **Conversational AI**: Engaging in dialogue with users, providing informative and contextually relevant responses.
+- **Text generation**: Creating coherent and contextually appropriate text based on prompts.
+- **Multilingual support**: Understanding and generating text in multiple languages, facilitating cross-lingual communication.
+- **Structured data understanding**: Working with tables, JSON, and semi-structured input/output
+
+
 ## Characteristics
 
 | Attribute             | Details            |
 |---------------------- |--------------------|
 | **Provider**          | Alibaba Cloud      |
 | **Architecture**      | qwen2              |
-| **Cutoff Date**       | November 2024 (est)|
+| **Cutoff date**       | November 2024 (est)|
 | **Languages**         | Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, Arabic, and more (29 languages) |
-| **Tool Calling**      | ✅                 |
-| **Input Modalities**  | Text               |
-| **Output Modalities** | Text               |
+| **Tool calling**      | ✅                 |
+| **Input modalities**  | Text               |
+| **Output modalities** | Text               |
 | **License**           | Apache 2.0         |
 
-## Available Model Variants
+## Available model variants
 
-| Model Variant                                    | Parameters | Quantization     | Context Window | VRAM     | Size   |
+| Model Variant                                    | Parameters | Quantization     | Context window | VRAM     | Size   |
 |--------------------------------------------------|------------|------------------|----------------|----------|--------|
 | `ai/qwen2.5:0.5B-F16`                            | 0.5B       | F16              | 32K tokens     | ~1.2GB¹  | 0.99GB |
 | `ai/qwen2.5:1.5B-F16`                            | 1.5B       | F16              | 32K tokens     | ~3.5GB¹  | 3.09GB |
@@ -32,15 +42,22 @@ Qwen2.5-7B-Instruct is an instruction-tuned large language model developed by Al
 ¹: VRAM estimates based on model characteristics.
 
 > `:latest`→ `7B-Q4_K_M`
-docker 
-## Intended Uses
 
-Qwen2.5-7B-Instruct is designed to assist in various natural language processing tasks, including:
+## Use this AI model with Docker Model Runner
 
-- **Conversational AI**: Engaging in dialogue with users, providing informative and contextually relevant responses.
-- **Text Generation**: Creating coherent and contextually appropriate text based on prompts.
-- **Multilingual Support**: Understanding and generating text in multiple languages, facilitating cross-lingual communication.
-- **Structured Data Understanding**: Working with tables, JSON, and semi-structured input/output
+First, pull the model:
+
+```bash
+docker model pull ai/qwen2.5
+```
+
+Then run the model:
+
+```bash
+docker model run ai/qwen2.5
+```
+
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
 
 ## Considerations
 
@@ -48,19 +65,8 @@ Qwen2.5-7B-Instruct is designed to assist in various natural language processing
 - Be mindful of the computational resources required, especially when handling long-context inputs.
 - Regularly update to the latest version to benefit from improvements and security updates.
 
-## How to Run This AI Model
+# Benchmark performance
 
-You can pull the model using:
-```
-docker model pull ai/qwen2.5
-```
-
-Run this model using:
-```
-docker model run ai/qwen2.5
-```
-
-# Benchmark and Performance
 | Metrics                   | Benchmark                | Qwen2.5-7B-Instruct |
 |---------------------------|--------------------------|---------------------|
 | Knowledge & QA            | MMLU-Pro                 | 56.3                |

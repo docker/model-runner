@@ -6,22 +6,32 @@ DeepSeek introduced its first-generation reasoning models, DeepSeek-R1-Zero and 
 
 The models provided here are the distill-llama variants, which are llama based models that have been fine-tuned on the responses and reasoning output of the full DeepSeek-R1 model.
 
+## Intended uses
+
+Deepseek-R1-Distill-Llama can help with:
+- **Software development:** Generates code, debugs, and explains complex concepts.
+- **Mathematics:** Solves and explains complex problems for research and education.
+- **Content creation and editing:** Writes, edits, and summarizes content for various industries.
+- **Customer service:** Powers chatbots to engage users and answer queries.
+- **Data analysis:** Extracts insights and generates reports from large datasets.
+- **Education:** Acts as a digital tutor, providing clear explanations and personalized lessons.
+
 ## Characteristics
 
 | Attribute             | Details          |
 |---------------------- |----------------- |
 | **Provider**          | Deepseek         |
 | **Architecture**      | llama            |
-| **Cutoff Date**       | May 2024ⁱ        |
+| **Cutoff date**       | May 2024ⁱ        |
 | **Languages**         | English, Chinese |
-| **Tool Calling**      | ✅               |
-| **Input Modalities**  | Text             |
-| **Output Modalities** | Text             |
+| **Tool calling**      | ✅               |
+| **Input modalities**  | Text             |
+| **Output modalities** | Text             |
 | **License**           | [MIT](https://github.com/deepseek-ai/DeepSeek-R1/blob/main/LICENSE)           |
 
 i: Estimated
 
-## Available Model Variants
+## Available model variants
 
 | Model Variant                                                                      | Parameters | Quantization   | Context Window  | VRAM     | Size  |
 |------------------------------------------------------------------------------------|----------- |----------------|---------------- |--------- |-------|
@@ -33,41 +43,33 @@ i: Estimated
 
 > `:latest` → `70B-Q4_K_M`
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-Deepseek-R1-Distill-Llama can help with:
-- **Software Development:** Generates code, debugs, and explains complex concepts.
-- **Mathematics:** Solves and explains complex problems for research and education.
-- **Content Creation & Editing:** Writes, edits, and summarizes content for various industries.
-- **Customer Service:** Powers chatbots to engage users and answer queries.
-- **Data Analysis:** Extracts insights and generates reports from large datasets.
-- **Education:** Acts as a digital tutor, providing clear explanations and personalized lessons.
+First, pull the model:
 
-## Considerations
-
-- Set the **temperature between 0.5 and 0.7 (recommended: 0.6)** to avoid repetition or incoherence.
-- **Do not use a system prompt**; include all instructions within the user prompt.
-- For math problems, add a directive like: "Please reason step by step and enclose the final answer in \boxed{}."
-
-This model is sensitive to prompts. Few-shot prompting consistently degrades its performance. Therefore, we
-recommend users directly describe the problem and specify the output format using a
-zero-shot setting for optimal results.
-
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/deepseek-r1-distill-llama
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash 
 docker model run ai/deepseek-r1-distill-llama
 ```
 
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
 
-## Benchmark Performance
+## Usage tips
+
+- Set the temperature between 0.5 and 0.7 (recommended: 0.6) to avoid repetition or incoherence.
+- Do not use a system prompt. Include all instructions within the user prompt.
+- For math problems, add a directive like: "Please reason step by step and enclose the final answer in \boxed{}."
+
+This model is sensitive to prompts. Few-shot prompting consistently degrades its performance. Therefore, we
+recommend you directly describe the problem and specify the output format using a
+zero-shot setting for optimal results.
+
+## Benchmark performance
 
 | Category    | Benchmark                   | DeepSeek R1  |
 |-------------|-----------------------------|------------- |
