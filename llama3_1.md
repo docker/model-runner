@@ -4,31 +4,7 @@
 
 ​Meta Llama 3.1 is a collection of multilingual large language models (LLMs) available in 8B, 70B and 405B parameter sizes. These models are designed for text-based tasks, including chat and content generation. The instruction-tuned versions available here are optimized for multilingual dialogue use cases and have demonstrated superior performance compared to many open-source and commercial chat models on common industry benchmarks. 
 
-## Characteristics
-
-| Attribute             | Details        |
-|---------------------- |----------------|
-| **Provider**          | Meta           |
-| **Architecture**      | llama          |
-| **Cutoff Date**       | December 2023  |
-| **Languages**         | English, German, French, Italian, Portuguese, Hindi, Spanish, and Thai.|
-| **Tool Calling**      | ✅             |
-| **Input Modalities**  | Text           |
-| **Output Modalities** | Text and Code  |
-| **License**           | [Llama 3.1 Community license](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE)|
-
-## Available Model Variants
-
-| Model Variant                                        | Parameters | Quantization   | Context Window | VRAM      | Size   | 
-|----------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
-| `ai/llama3.1:latest`<br><br>`ai/llama3.1:8B-Q4_K_M`  | 8B         | Q4_K_M         | 128K           | 4.8GB¹    | 5GB    |
-| `ai/llama3.1:8B-F16`                                 | 8B         | F16            | 128K           | 19.2GB¹   | 16GB   | 
-
-¹: VRAM estimates based on model characteristics.
-
-> `:latest` → `8B-Q4_K_M`
-
-## Intended Uses
+## Intended uses
 
 - **Assistant-like chat:** Instruction-tuned text-only models are optimized for multilingual dialogue, making them ideal for developing conversational AI assistants. ​
 
@@ -40,22 +16,49 @@
 
 - **Research purposes:** Employ Llama 3.1 in academic and scientific research to explore advancements in natural language processing and artificial intelligence. 
 
-## How to Run This AI Model
+## Characteristics
 
-You can pull the model using:
-```
+| Attribute             | Details        |
+|---------------------- |----------------|
+| **Provider**          | Meta           |
+| **Architecture**      | llama          |
+| **Cutoff date**       | December 2023  |
+| **Languages**         | English, German, French, Italian, Portuguese, Hindi, Spanish, and Thai.|
+| **Tool calling**      | ✅             |
+| **Input modalities**  | Text           |
+| **Output modalities** | Text and Code  |
+| **License**           | [Llama 3.1 Community license](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE)|
+
+## Available model variants
+
+| Model variant                                        | Parameters | Quantization   | Context window | VRAM      | Size   | 
+|----------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
+| `ai/llama3.1:latest`<br><br>`ai/llama3.1:8B-Q4_K_M`  | 8B         | Q4_K_M         | 128K           | 4.8GB¹    | 5GB    |
+| `ai/llama3.1:8B-F16`                                 | 8B         | F16            | 128K           | 19.2GB¹   | 16GB   | 
+
+¹: VRAM estimates based on model characteristics.
+
+> `:latest` → `8B-Q4_K_M`
+
+## Use this AI model with Docker Model Runner
+
+First, pull the model:
+
+```bash
 docker model pull ai/llama3.1
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/llama3.1
 ```
 
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
 
-## Benchmark Performance
+## Benchmark performance
 
-| category    | benchmark                    | Llama 3.1 8B |
+| Category    | Benchmark                    | Llama 3.1 8B |
 |-------------|------------------------------|--------------|
 | General     | MMLU                         | 69.4         |
 |             | MMLU (CoT)                   | 73.0         |
@@ -81,7 +84,6 @@ docker model run ai/llama3.1
 |             | MMLU (5-shot) - French       | 62.34        |
 |             | MMLU (5-shot) - Hindi        | 50.88        |
 |             | MMLU (5-shot) - Thai         | 50.32        |
-
 
 ## Links
 - [https://ai.meta.com/blog/meta-llama-3-1/](https://ai.meta.com/blog/meta-llama-3-1/)

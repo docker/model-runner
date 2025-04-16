@@ -4,22 +4,30 @@
 
 SmolLM2-360M is a compact language model with 360 million parameters, designed to run efficiently on-device while performing a wide range of language tasks. Trained on 4 trillion tokens from a diverse mix of datasets—including FineWeb-Edu, DCLM, The Stack, and newly curated filtered sources—it delivers strong performance in instruction following, knowledge, and reasoning. The instruct version was developed through supervised fine-tuning (SFT) on a blend of public and proprietary datasets, followed by Direct Preference Optimization (DPO) using UltraFeedback.
 
+## Intended uses
+
+SmolLM2 is designed for:
+
+- **Chat assistants** 
+- **Text-extraction**
+- **Rewriting and summarization**
+
 ## Characteristics
 
 | Attribute             | Details       |
 |---------------------- |---------------|
 | **Provider**          | Hugging Face  |
 | **Architecture**      | Llama2        |
-| **Cutoff Date**       | June 2024     |
+| **Cutoff date**       | June 2024     |
 | **Languages**         | English       |
-| **Tool Calling**      | ✅            |
-| **Input Modalities**  | Text          |
-| **Output Modalities** | Text          |
+| **Tool calling**      | ✅            |
+| **Input modalities**  | Text          |
+| **Output modalities** | Text          |
 | **License**           | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 
 
-## Available Model Variants
-| Model Variant                                 | Parameters | Quantization   | Context Window | VRAM    | Size    | 
+## Available model variants
+| Model Variant                                 | Parameters | Quantization   | Context window | VRAM    | Size    | 
 |---------------------------------------------- |----------- |--------------- |--------------- |-------- |-------- |
 | `ai/smollm2:360M-F16`     | 360M       | F16            | 8K tokens      | 860 MB¹ | 3.4GB   | 
 | `ai/smollm2:latest`<br><br>`ai/smollm2:360M-Q4_K_M`                      | 360M       | IQ2_XXS/Q4_K_M | 8K tokens      | 220 MB¹ | 270.6MB |
@@ -28,27 +36,23 @@ SmolLM2-360M is a compact language model with 360 million parameters, designed t
 
 > `:latest` → `360M-Q4_K_M`
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-SmolLM2 is designed for:
+First, pull the model:
 
-- **Chat Assistants** 
-- **Text-extraction**
-- **Rewriting and summarization**
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/smollm2
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/smollm2
 ```
 
-## Benchmark Performance
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
+
+## Benchmark performance
 
 | Category                     | Benchmark                   | Score |
 |------------------------------|---------------------------- |-------|
@@ -64,4 +68,5 @@ docker model run ai/smollm2
 
 
 ## Links
+
 - [SmolLM2: When Smol Goes Big -- Data-Centric Training of a Small Language Model](https://arxiv.org/abs/2502.02737) 

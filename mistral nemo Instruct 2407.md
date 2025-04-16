@@ -5,22 +5,30 @@
 Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model developed by Mistral AI and NVIDIA, optimized for multilingual tasks and instruction-following capabilities.
 Compared to Mistral 7B, it is much better at following precise instructions, reasoning, handling multi-turn conversations, and generating code.
 
+## Intended Uses
+
+Mistral-Nemo-Instruct-2407 is designed for instruction-following tasks and multilingual applications, including:
+
+- **Conversational AI**: Developing interactive, multilingual chatbots.
+- **Knowledge retrieval**: Answering questions across multiple languages.
+- **Code assistance**: Generating and understanding code snippets.
+
 ## Characteristics
 
 | Attribute             | Details                                                                                 |
 |-----------------------|-----------------------------------------------------------------------------------------|
 | **Provider**          | Mistral AI & NVIDIA                                                                     |
 | **Architecture**      | llama                                                                                   |
-| **Cutoff Date**       | July 2024                                                                               |
+| **Cutoff date**       | July 2024                                                                               |
 | **Languages**         | English, French, German, Spanish, Italian, Portuguese, Russian, Chinese, Japanese       |
-| **Tool Calling**      | ✅                                                                                      |
-| **Input Modalities**  | Text                                                                                    |
-| **Output Modalities** | Text                                                                                    |
+| **Tool calling**      | ✅                                                                                      |
+| **Input modalities**  | Text                                                                                    |
+| **Output modalities** | Text                                                                                    |
 | **License**           | Apache 2.0                                                                              |
 
-## Available Model Variants
+## Available model variants
 
-| Model Variant                                                | Parameters | Quantization | Context Window | VRAM   | Size  |
+| Model Variant                                                | Parameters | Quantization | Context window | VRAM   | Size  |
 |--------------------------------------------------------------|------------|--------------|----------------|--------|-------|
 | `ai/mistral-nemo:latest`<br><br>`ai/mistral-nemo:12B-Q4_K_M` | 12B        | Q4_K_M       | 128k tokens    | 7GB¹   | 7.1 GB|
 
@@ -28,27 +36,23 @@ Compared to Mistral 7B, it is much better at following precise instructions, rea
 
 > `:latest` → `12B-Q4_K_M` 
 
-## Intended Uses
+## Use this AI model with Docker Model Runner
 
-Mistral-Nemo-Instruct-2407 is designed for instruction-following tasks and multilingual applications, including:
+First, pull the model:
 
-- **Conversational AI**: Developing interactive, multilingual chatbots.
-- **Knowledge Retrieval**: Answering questions across multiple languages.
-- **Code Assistance**: Generating and understanding code snippets.
-
-## How to Run This AI Model
-
-You can pull the model using:
-```
+```bash
 docker model pull ai/mistral-nemo
 ```
 
-To run the model:
-```
+Then run the model:
+
+```bash
 docker model run ai/mistral-nemo
 ```
 
-## Benchmark Performance
+For more information on Docker Model Runner, [explore the documentation](https://docs.docker.com/desktop/features/model-runner/).
+
+## Benchmark performance
 
 | Benchmark                   | Score |
 |-----------------------------|-------|
