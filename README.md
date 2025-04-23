@@ -71,7 +71,8 @@ curl --unix-socket model-runner.sock localhost/models/ai/smollm2
 To chat with a model, you can send a POST request to the model's chat endpoint:
 
 ```sh
-curl --unix-socket model-runner.sock localhost/models/ai/smollm2/chat -X POST -d '{
+curl --unix-socket model-runner.sock localhost/engines/llama.cpp/v1/chat/completions -X POST -d '{
+  "model": "ai/smollm2",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello, how are you?"}
