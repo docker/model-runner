@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -74,7 +75,8 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	// never support it on Intel Macs.
 	if runtime.GOOS == "linux" {
 		return errors.New("not implemented")
-	} else if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") || (runtime.GOOS == "windows" && runtime.GOARCH == "arm64") {
+	} else if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") ||
+		(runtime.GOOS == "windows" && !slices.Contains([]string{"amd64", "arm64"}, runtime.GOARCH)) {
 		return errors.New("platform not supported")
 	}
 
