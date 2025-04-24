@@ -1,0 +1,76 @@
+# Version control
+.git/
+.gitignore
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go build and cache artifacts
+/vendor/
+*.test
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.obj
+*.cgo*
+*.coverprofile
+*.prof
+*.tmp
+*.log
+
+# Go tool cache
+/go-build/
+/go-cache/
+
+# Test and development artifacts
+test/
+tests/
+*_test.go
+
+# Build outputs
+dist/
+build/
+out/
+debug/
+
+# Temporary and local files
+tmp/
+temp/
+.local/
+local/
+
+# Environment and secrets
+.env*
+*.env
+*.pem
+*.key
+*.crt
+config.local.*
+*.local.yml
+
+# Documentation and markdown
+docs/
+*.md
+README*
+LICENSE
+
+# Docker files
+Dockerfile*
+
+# Miscellaneous
+*.bak
+*.old
+*.orig
+*.rej
+*.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Exclude nothing else; keep source code and necessary files for build

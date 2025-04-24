@@ -39,6 +39,8 @@ github.com/docker/docker-credential-helpers v0.8.2 h1:bX3YxiGzFP5sOXWc3bTPEXdEaZ
 github.com/docker/docker-credential-helpers v0.8.2/go.mod h1:P3ci7E3lwkZg6XiHdRKft1KckHiO9a2rNtyFbZ/ry9M=
 github.com/docker/model-distribution v0.0.0-20250418222450-8f6c05a5ffa4 h1:v7DyBUd08t4XQe4NC2Rb8ZSWOiWVXD0TbdgIOQZ/IQo=
 github.com/docker/model-distribution v0.0.0-20250418222450-8f6c05a5ffa4/go.mod h1:fd9H/2KAY0+ByxbohWfCkxp0rxf0pqSlHEtFTjTXbLk=
+github.com/docker/model-distribution v0.0.0-20250423075433-587f475e591d h1:lyxdxjNHTSyQ2w1rjbuu5pbgX42AD3kmxWLNv3mdqQ4=
+github.com/docker/model-distribution v0.0.0-20250423075433-587f475e591d/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
@@ -59,6 +61,8 @@ github.com/google/go-containerregistry v0.20.3 h1:oNx7IdTI936V8CQRveCjaxOiegWwvM
 github.com/google/go-containerregistry v0.20.3/go.mod h1:w00pIgBRDVUDFM6bq+Qx8lwNWK+cxgCuX1vd3PIBDNI=
 github.com/gpustack/gguf-parser-go v0.14.0 h1:9kMdbJ9pHhvEeATx163WE9q+O74bi05KPJLEtVBUjw0=
 github.com/gpustack/gguf-parser-go v0.14.0/go.mod h1:GvHh1Kvvq5ojCOsJ5UpwiJJmIjFw3Qk5cW7R+CZ3IJo=
+github.com/gpustack/gguf-parser-go v0.14.1 h1:tmz2eTnSEFfE52V10FESqo9oAUquZ6JKQFntWC/wrEg=
+github.com/gpustack/gguf-parser-go v0.14.1/go.mod h1:GvHh1Kvvq5ojCOsJ5UpwiJJmIjFw3Qk5cW7R+CZ3IJo=
 github.com/henvic/httpretty v0.1.4 h1:Jo7uwIRWVFxkqOnErcoYfH90o3ddQyVrSANeS4cxYmU=
 github.com/henvic/httpretty v0.1.4/go.mod h1:Dn60sQTZfbt2dYsdUSNsCljyF4AfdqnuJFDLJA1I4AM=
 github.com/jaypipes/ghw v0.16.0 h1:3HurCTS38VNpeQLo5fIdZsySuo/qAfpPSJ5t05QBFPM=

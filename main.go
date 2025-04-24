@@ -37,11 +37,16 @@ func main() {
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 	})
 
+	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
+	if llamaServerPath == "" {
+		llamaServerPath = "/Applications/Docker.app/Contents/Resources/bin"
+	}
+
 	llamaCppBackend, err := llamacpp.New(
 		log,
 		modelManager,
 		log.WithFields(logrus.Fields{"component": "llama.cpp"}),
-		"/Applications/Docker.app/Contents/Resources/bin",
+		llamaServerPath,
 		func() string { wd, _ := os.Getwd(); return wd }(),
 	)
 	if err != nil {
