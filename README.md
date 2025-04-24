@@ -55,7 +55,7 @@ curl --unix-socket model-runner.sock localhost/models
 To create a new model:
 
 ```sh
-curl --unix-socket model-runner.sock localhost/models/create -X POST -d '{"from": "ai/smollm2:"}'
+curl --unix-socket model-runner.sock localhost/models/create -X POST -d '{"from": "ai/smollm2"}'
 ```
 
 ### Getting Model Information
@@ -104,4 +104,11 @@ The response will contain the model's reply:
     "total_tokens": 40
   }
 }
+```
+
+### Deleting a model
+To delete a model from the server, send a DELETE request to the model's endpoint:
+
+```sh
+curl --unix-socket model-runner.sock localhost/models/ai/smollm2 -X DELETE
 ```
