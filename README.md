@@ -23,6 +23,80 @@ The Makefile provides the following targets:
 - `build` - Build the Go application
 - `run` - Run the application locally
 - `clean` - Clean build artifacts
+- `test` - Run tests
+- `docker-build` - Build the Docker image
+- `docker-run` - Run the application in a Docker container
+- `help` - Show available targets
+
+### llama.cpp integration
+
+The Docker image includes the llama.cpp server binary from the `docker/docker-model-backend-llamacpp` image. You can specify the version of the image to use by setting the `LLAMA_SERVER_VERSION` variable. Additionally, you can configure the target OS, architecture, and acceleration type:
+
+```sh
+# Build with a specific llama.cpp server version
+LLAMA_SERVER_VERSION=v0.0.4-rc2-cpu make docker-build
+
+# Specify all parameters
+LLAMA_SERVER_VERSION=v0.0.4-rc2-cpu TARGET_OS=linux TARGET_ARCH=amd64 ACCEL=cpu make docker-build
+```
+
+Default values:
+- `LLAMA_SERVER_VERSION`: v0.0.4-rc2-cpu
+- `TARGETOS`: linux
+- `TARGETARCH`: amd64
+- `ACCEL`: cpu
+
+The binary path in the image follows this pattern: `/com.docker.llama-server.native.${TARGETOS}.${ACCEL}.${TARGETARCH}`
+
+### Examples
+
+```sh
+# Build the application
+make build
+
+# Run the application locally
+make run
+
+# Show all available targets
+make help
+```
+
+## API Examples
+
+The Model Runner exposes a REST API over a Unix socket. You can interact with it using curl commands with the `--unix-socket` option.
+
+### Listing Models
+
+To list all available models:
+
+```sh
+curl --unix-socket model-runner.sock localhost/models
+```
+
+### Creating a Model
+
+To create a new model:
+
+```sh
+curl --unix-socket model-runner.sock localhost/models/create -X POST -d '{"from": "ai/smollm2:"}'
+```
+
+### Getting Model Information
+
+To get information about a specific model:
+
+```sh
+curl --unix-socket model-runner.sock localhost/models/ai/smollm2
+```
+
+## Using the Makefile
+
+This project includes a Makefile to simplify common development tasks. It requires Docker Desktop >= 4.41.0 
+The Makefile provides the following targets:
+
+- `build` - Build the Go application
+- `run` - Run the application locally
+- `clean` - Clean build artifacts
 - `help` - Show available targets
 
 ### Examples
