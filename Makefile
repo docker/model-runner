@@ -8,9 +8,10 @@ ACCEL := cpu
 DOCKER_IMAGE := go-model-runner:latest
 LLAMA_BINARY := /com.docker.llama-server.native.$(TARGET_OS).$(ACCEL).$(TARGET_ARCH)
 SOCKET_PATH := $(shell pwd)/socket
+PORT := 8080
 
 # Main targets
-.PHONY: build run clean test docker-build docker-run docker-run-socket help
+.PHONY: build run clean test docker-build docker-run docker-run-tcp help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -44,18 +45,18 @@ docker-build:
 docker-run: docker-build
 	docker run --rm $(DOCKER_IMAGE)
 
-# Run in Docker container with socket accessible from host
-docker-run-socket: docker-build clean
-	mkdir -p $(SOCKET_PATH)
-	chmod 777 $(SOCKET_PATH)
+# Run in Docker container with TCP port access
+docker-run-tcp: docker-build
+	@echo ""
+	@echo "Starting service on port $(PORT)..."
+	@echo "Service will be available at: http://localhost:$(PORT)"
+	@echo "Example usage: curl http://localhost:$(PORT)/models"
+	@echo ""
 	docker run --rm \
-		-v "$(SOCKET_PATH):/var/run/model-runner" \
-		-e MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock \
+		-p $(PORT):$(PORT) \
+		-e MODEL_RUNNER_PORT=$(PORT) \
 		-e LLAMA_SERVER_PATH=/app/bin \
 		$(DOCKER_IMAGE)
-	@echo ""
-	@echo "Socket available at: $(SOCKET_PATH)/model-runner.sock"
-	@echo "Example usage: curl --unix-socket $(SOCKET_PATH)/model-runner.sock http://localhost/models"
 
 # Show help
 help:
@@ -66,5 +67,5 @@ help:
 	@echo "  test           	- Run tests"
 	@echo "  docker-build   	- Build Docker image"
 	@echo "  docker-run     	- Run in Docker container"
-	@echo "  docker-run-socket 	- Run in Docker container with socket accessible from host"
+	@echo "  docker-run-tcp 	- Run in Docker container with TCP port access"
 	@echo "  help           	- Show this help message"

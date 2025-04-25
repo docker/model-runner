@@ -75,22 +75,34 @@ func main() {
 		router.Handle(route, scheduler)
 	}
 
-	if err := os.Remove(sockName); err != nil {
-		if !os.IsNotExist(err) {
-			log.Fatalf("Failed to remove existing socket: %v", err)
-		}
-	}
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockName, Net: "unix"})
-	if err != nil {
-		log.Fatalf("Failed to listen on socket: %v", err)
-	}
-
 	server := &http.Server{Handler: router}
 	serverErrors := make(chan error, 1)
-	go func() {
-		serverErrors <- server.Serve(ln)
-	}()
-	defer server.Close()
+
+	// Check if we should use TCP port instead of Unix socket
+	tcpPort := os.Getenv("MODEL_RUNNER_PORT")
+	if tcpPort != "" {
+		// Use TCP port
+		addr := ":" + tcpPort
+		log.Infof("Listening on TCP port %s", tcpPort)
+		server.Addr = addr
+		go func() {
+			serverErrors <- server.ListenAndServe()
+		}()
+	} else {
+		// Use Unix socket
+		if err := os.Remove(sockName); err != nil {
+			if !os.IsNotExist(err) {
+				log.Fatalf("Failed to remove existing socket: %v", err)
+			}
+		}
+		ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockName, Net: "unix"})
+		if err != nil {
+			log.Fatalf("Failed to listen on socket: %v", err)
+		}
+		go func() {
+			serverErrors <- server.Serve(ln)
+		}()
+	}
 
 	schedulerErrors := make(chan error, 1)
 	go func() {
