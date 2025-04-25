@@ -31,20 +31,20 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION} AS llama-server
 
 # --- Final image ---
-FROM alpine:latest AS final
+FROM debian:bookworm-slim AS final
 
 # Create non-root user
-RUN addgroup -S modelrunner && adduser -S modelrunner -G modelrunner
+RUN groupadd --system modelrunner && useradd --system --gid modelrunner modelrunner
 
 # Install ca-certificates for HTTPS
-RUN --mount=type=cache,target=/var/cache/apk \
-    apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin && \
-    chown -R modelrunner:modelrunner /var/run/model-runner /app/bin
+RUN mkdir -p /var/run/model-runner /app/bin /home/modelrunner/.docker/models && \
+    chown -R modelrunner:modelrunner /var/run/model-runner /app/bin /home/modelrunner && \
+    chmod -R 755 /home/modelrunner
 
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
@@ -58,5 +58,6 @@ USER modelrunner
 # Set the environment variable for the socket path and LLaMA server binary path
 ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
 ENV LLAMA_SERVER_PATH=/app/bin
+ENV HOME=/home/modelrunner
 
 ENTRYPOINT ["/app/model-runner"]

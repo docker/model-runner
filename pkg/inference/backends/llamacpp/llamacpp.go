@@ -69,12 +69,7 @@ func (l *llamaCpp) UsesExternalModelManagement() bool {
 // Install implements inference.Backend.Install.
 func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	l.updatedLlamaCpp = false
-
-	// We don't currently support this backend on Windows or Linux. We'll likely
-	// never support it on Intel Macs.
-	if runtime.GOOS == "linux" {
-		return errors.New("not implemented")
-	} else if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") || (runtime.GOOS == "windows" && runtime.GOARCH == "arm64") {
+	if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") || (runtime.GOOS == "windows" && runtime.GOARCH == "arm64") {
 		return errors.New("platform not supported")
 	}
 
@@ -90,6 +85,8 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	// Even if docker/docker-model-backend-llamacpp:latest has been downloaded before, we still require its
 	// digest to be equal to the one on Docker Hub.
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
+	l.log.Infof("llamaCppPath: %s", llamaCppPath)
+	l.log.Infof("vendoredServerStoragePath: %s", l.vendoredServerStoragePath)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
 		if !errors.Is(err, errLlamaCppUpToDate) {

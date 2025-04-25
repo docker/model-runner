@@ -51,6 +51,7 @@ docker-run-socket: docker-build clean
 	docker run --rm \
 		-v "$(SOCKET_PATH):/var/run/model-runner" \
 		-e MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock \
+		-e LLAMA_SERVER_PATH=/app/bin \
 		$(DOCKER_IMAGE)
 	@echo ""
 	@echo "Socket available at: $(SOCKET_PATH)/model-runner.sock"

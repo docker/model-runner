@@ -33,6 +33,7 @@ var (
 func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
 	llamaCppPath, vendoredServerStoragePath, desiredVersion, desiredVariant string,
 ) error {
+	log.Infof("downloadLatestLlamaCpp: %s, %s, %s, %s", desiredVersion, desiredVariant, vendoredServerStoragePath, llamaCppPath)
 	desiredTag := desiredVersion + "-" + desiredVariant
 	url := fmt.Sprintf("https://hub.docker.com/v2/namespaces/%s/repositories/%s/tags/%s", hubNamespace, hubRepo, desiredTag)
 	resp, err := httpClient.Get(url)

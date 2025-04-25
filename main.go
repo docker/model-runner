@@ -27,10 +27,14 @@ func main() {
 		sockName = "model-runner.sock"
 	}
 
+	log.Infof("sockName: %s", sockName)
+
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("Failed to get user home directory: %v", err)
 	}
+
+	log.Infof("userHomeDir: %s", userHomeDir)
 
 	modelManager := models.NewManager(log, models.ClientConfig{
 		StoreRootPath: filepath.Join(userHomeDir, ".docker", "models"),
@@ -41,6 +45,8 @@ func main() {
 	if llamaServerPath == "" {
 		llamaServerPath = "/Applications/Docker.app/Contents/Resources/bin"
 	}
+
+	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
 	llamaCppBackend, err := llamacpp.New(
 		log,
