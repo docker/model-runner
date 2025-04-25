@@ -7,11 +7,11 @@ TARGET_ARCH := amd64
 ACCEL := cpu
 DOCKER_IMAGE := go-model-runner:latest
 LLAMA_BINARY := /com.docker.llama-server.native.$(TARGET_OS).$(ACCEL).$(TARGET_ARCH)
-SOCKET_PATH := $(shell pwd)/socket
 PORT := 8080
+MODELS_PATH := $(shell pwd)/models
 
 # Main targets
-.PHONY: build run clean test docker-build docker-run docker-run-tcp help
+.PHONY: build run clean test docker-build docker-run help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -28,7 +28,7 @@ run: build
 clean:
 	rm -f $(APP_NAME)
 	rm -f model-runner.sock
-	rm -rf ./socket
+	rm -rf $(MODELS_PATH)
 
 # Run tests
 test:
@@ -41,19 +41,17 @@ docker-build:
 		--build-arg LLAMA_BINARY_PATH=$(LLAMA_BINARY) \
 		-t $(DOCKER_IMAGE) .
 
-# Run in Docker container
+# Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build
-	docker run --rm $(DOCKER_IMAGE)
-
-# Run in Docker container with TCP port access
-docker-run-tcp: docker-build
 	@echo ""
-	@echo "Starting service on port $(PORT)..."
+	@echo "Starting service on port $(PORT) with model storage at $(MODELS_PATH)..."
 	@echo "Service will be available at: http://localhost:$(PORT)"
 	@echo "Example usage: curl http://localhost:$(PORT)/models"
 	@echo ""
+	mkdir -p $(MODELS_PATH)
 	docker run --rm \
 		-p $(PORT):$(PORT) \
+		-v "$(MODELS_PATH):/home/modelrunner/.docker/models" \
 		-e MODEL_RUNNER_PORT=$(PORT) \
 		-e LLAMA_SERVER_PATH=/app/bin \
 		$(DOCKER_IMAGE)
@@ -66,6 +64,5 @@ help:
 	@echo "  clean          	- Clean build artifacts"
 	@echo "  test           	- Run tests"
 	@echo "  docker-build   	- Build Docker image"
-	@echo "  docker-run     	- Run in Docker container"
-	@echo "  docker-run-tcp 	- Run in Docker container with TCP port access"
+	@echo "  docker-run     	- Run in Docker container with TCP port access and mounted model storage"
 	@echo "  help           	- Show this help message"
