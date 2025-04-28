@@ -12,7 +12,11 @@ Find descriptions and details about various AI models, including their capabilit
 📌 **Description:**  
 Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 
-📂 **Model File:** [`deepseek-r1.md`](./deepseek-r1.md)
+📂 **Model File:** [`ai/deepseek-r1-distill-llama.md`](ai/deepseek-r1-distill-llama.md)
+
+**URLs:**
+- https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+- https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B
 
 ---
 
@@ -22,7 +26,10 @@ Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 📌 **Description:**  
 Google’s latest Gemma, small yet strong for chat and generation
 
-📂 **Model File:** [`gemma3.md`](./gemma3.md)
+📂 **Model File:** [`ai/gemma3.md`](ai/gemma3.md)
+
+**URLs:**
+- https://huggingface.co/google/gemma-3-4b-it
 
 ---
 
@@ -32,47 +39,59 @@ Google’s latest Gemma, small yet strong for chat and generation
 📌 **Description:**  
 Meta’s LLaMA 3.1: Chat-focused, benchmark-strong, multilingual-ready.
 
-📂 **Model File:** [`llama3_1.md`](./llama3_1.md)
+📂 **Model File:** [`ai/llama3.1.md`](ai/llama3.1.md)
 
+**URLs:**
+- https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
 
 ---
 
-### Llama 3.2-Instruct
+### Llama 3.2
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
 
 📌 **Description:**  
 Solid LLaMA 3 update, reliable for coding, chat, and Q&A tasks.
 
-📂 **Model File:** [`llama3_2-instruct.md`](./llama3_2-instruct.md)
+📂 **Model File:** [`ai/llama3.2.md`](ai/llama3.2.md)
+
+**URL:**
+- https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct
+- https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct
 
 ---
-### Llama 3.3 Instruct
+### Llama 3.3
 
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
 
 📌 **Description:**  
 Newest LLaMA 3 release with improved reasoning and generation quality.
 
-📂 **Model File:** [`llama 3_3.md`](./llama%203_3.md)
+📂 **Model File:** [`ai/llama3.3.md`](ai/llama3.3.md)
 
 ---
 
-### Mistral 7b Instruct v0.02
+### Mistral 7b
 ![Mistral Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-120x-hub@2x.svg)
 
 📌 **Description:**  
 A fast and powerful 7B parameter model excelling in reasoning, code, and math.
 
-📂 **Model File:** [`mistral 7B Instruct v0.2.md`](./mistral%207B%20Instruct%20v0.2.md)
+📂 **Model File:** [`ai/mistral.md`](ai/mistral.md)
+
+**URLs:**
+- https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3
 
 ---
-### Mistral Nemo 2407
+### Mistral Nemo
 ![Mistral Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-120x-hub@2x.svg)
 
 📌 **Description:**  
 Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model developed by Mistral AI and NVIDIA.
 
-📂 **Model File:** [`mistral nemo instruct 2407.md`](./mistral%20nemo%20Instruct%202407.md)
+📂 **Model File:** [`ai/mistral-nemo.md`](ai/mistral-nemo.md)
+
+**URLs:**
+- https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
 
 ---
 ### mxbai-embed-large
@@ -81,7 +100,10 @@ Mistral-Nemo-Instruct-2407 is an instruct fine-tuned large language model develo
 📌 **Description:**  
 A state-of-the-art English language embedding model developed by Mixedbread AI.
 
-📂 **Model File:** [`mistral nemo instruct 2407.md`](./mxbai%20embed%20large%20v1.md)
+📂 **Model File:** [`ai/mxbai-embed-large.md`](ai/mxbai-embed-large.md)
+
+**URLs:**
+- https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1
 
 ---
 
@@ -91,7 +113,10 @@ A state-of-the-art English language embedding model developed by Mixedbread AI.
 📌 **Description:**  
 Microsoft’s compact model, surprisingly capable at reasoning and code.
 
-📂 **Model File:** [`phi4.md`](./phi4.md)
+📂 **Model File:** [`ai/phi4.md`](ai/phi4.md)
+
+**URLs:**
+- https://huggingface.co/microsoft/phi-4
 
 ---
 
@@ -101,7 +126,10 @@ Microsoft’s compact model, surprisingly capable at reasoning and code.
 📌 **Description:**  
 Versatile Qwen update with better language skills and wider support.
 
-📂 **Model File:** [`qwen2.5.md`](./qwen2.5.md)
+📂 **Model File:** [`ai/qwen2.5.md`](ai/qwen2.5.md)
+
+**URLs:**
+- https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
 
 ---
 
@@ -111,7 +139,10 @@ Versatile Qwen update with better language skills and wider support.
 📌 **Description:**  
 Experimental Qwen variant—lean, fast, and a bit mysterious.
 
-📂 **Model File:** [`qwq.md`](./qwq.md)
+📂 **Model File:** [`ai/qwq.md`](ai/qwq.md)
+
+**URLs:**
+- https://huggingface.co/Qwen/QwQ-32B
 
 ---
 
@@ -121,4 +152,11 @@ Experimental Qwen variant—lean, fast, and a bit mysterious.
 📌 **Description:**  
 A compact language model, designed to run efficiently on-device while performing a wide range of language tasks 
 
-📂 **Model File:** [`smolllm2.md`](./smolllm2.md)
+📂 **Model File:** [`ai/smolllm2.md`](ai/smollm2.md)
+
+**URLs:**
+- https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct
+- https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct
+
+---
+
