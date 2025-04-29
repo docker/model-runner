@@ -36,8 +36,13 @@ func main() {
 
 	log.Infof("userHomeDir: %s", userHomeDir)
 
+	modelPath := os.Getenv("MODELS_PATH")
+	if modelPath == "" {
+		modelPath = filepath.Join(userHomeDir, ".docker", "models")
+	}
+
 	modelManager := models.NewManager(log, models.ClientConfig{
-		StoreRootPath: filepath.Join(userHomeDir, ".docker", "models"),
+		StoreRootPath: modelPath,
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 	})
 

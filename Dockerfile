@@ -42,9 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 
 # Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /home/modelrunner/.docker/models && \
-    chown -R modelrunner:modelrunner /var/run/model-runner /app/bin /home/modelrunner && \
-    chmod -R 755 /home/modelrunner
+RUN mkdir -p /var/run/model-runner /app/bin /models && \
+    chown -R modelrunner:modelrunner /var/run/model-runner /app/bin /models && \
+    chmod -R 755 /models
 
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner

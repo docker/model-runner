@@ -51,9 +51,10 @@ docker-run: docker-build
 	mkdir -p $(MODELS_PATH)
 	docker run --rm \
 		-p $(PORT):$(PORT) \
-		-v "$(MODELS_PATH):/home/modelrunner/.docker/models" \
+		-v "$(MODELS_PATH):/models" \
 		-e MODEL_RUNNER_PORT=$(PORT) \
 		-e LLAMA_SERVER_PATH=/app/bin \
+		-e MODELS_PATH=/models \
 		$(DOCKER_IMAGE)
 
 # Show help
