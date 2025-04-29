@@ -27,14 +27,10 @@ func main() {
 		sockName = "model-runner.sock"
 	}
 
-	log.Infof("sockName: %s", sockName)
-
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("Failed to get user home directory: %v", err)
 	}
-
-	log.Infof("userHomeDir: %s", userHomeDir)
 
 	modelPath := os.Getenv("MODELS_PATH")
 	if modelPath == "" {
