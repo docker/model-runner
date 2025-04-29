@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.23.7
+ARG GO_VERSION=1.24.2
 ARG LLAMA_SERVER_VERSION=latest
 ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.cpu.amd64
 
-FROM golang:${GO_VERSION}-alpine AS builder
+FROM golang:${GO_VERSION}-bookworm AS builder
 
 # Install git for go mod download if needed
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION} AS llama-server
 
 # --- Final image ---
-FROM debian:bookworm-slim AS final
+FROM ubuntu:24.04 AS final
 
 # Create non-root user
 RUN groupadd --system modelrunner && useradd --system --gid modelrunner modelrunner
