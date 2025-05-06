@@ -174,9 +174,6 @@ func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVaria
 
 	// Then add the rest of the variants in sorted order
 	for _, variant := range sortedVariants {
-		if variant.IsLatest() {
-			continue
-		}
 		modelVariant := fmt.Sprintf("`%s:%s`", variant.RepoName, variant.Tags[0])
 		row := u.getRow(variant, modelVariant)
 		tableBuilder.WriteString(row)

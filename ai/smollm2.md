@@ -36,6 +36,7 @@ SmolLM2 is designed for:
 | `ai/smollm2:135M-F16` | 135M | F16 | 8K tokens | 0.93 GB | 256.63 MB |
 | `ai/smollm2:135M-Q2_K` | 135M | Q2_K | 8K tokens | 0.68 GB | 82.41 MB |
 | `ai/smollm2:360M-Q4_0` | 360M | Q4_0 | 8K tokens | 1.35 GB | 216.80 MB |
+| `ai/smollm2:360M-Q4_K_M` | 360M | IQ2_XXS/Q4_K_M | 8K tokens | 1.23 GB | 256.35 MB |
 | `ai/smollm2:360M-F16` | 360M | F16 | 8K tokens | 1.93 GB | 690.24 MB |
 
 ¹: VRAM estimated based on model characteristics.

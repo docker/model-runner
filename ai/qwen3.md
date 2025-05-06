@@ -37,6 +37,7 @@ With strong agentic and tool-use capabilities and support for over 100 languages
 | `ai/qwen3:30B-A3B-F16` | 30B-A3B | F16 | 41K tokens | 680.86 GB | 56.89 GB |
 | `ai/qwen3:30B-A3B-Q4_K_M` | 30B-A3B | IQ2_XXS/Q4_K_M | 41K tokens | 90.90 GB | 17.28 GB |
 | `ai/qwen3:8B-Q4_0` | 8B | Q4_0 | 41K tokens | 8.03 GB | 4.44 GB |
+| `ai/qwen3:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 41K tokens | 5.31 GB | 4.68 GB |
 | `ai/qwen3:8B-F16` | 8B | F16 | 41K tokens | 20.88 GB | 15.26 GB |
 
 ¹: VRAM estimated based on model characteristics.

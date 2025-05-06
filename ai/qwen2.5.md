@@ -38,6 +38,7 @@ Qwen2.5-7B-Instruct is designed to assist in various natural language processing
 | `ai/qwen2.5:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 33K tokens | 2.06 GB | 1.79 GB |
 | `ai/qwen2.5:3B-F16` | 3B | F16 | 33K tokens | 7.91 GB | 5.75 GB |
 | `ai/qwen2.5:7B-Q4_0` | 7B | Q4_0 | 33K tokens | 4.70 GB | 4.12 GB |
+| `ai/qwen2.5:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 2.32 GB | 4.36 GB |
 | `ai/qwen2.5:7B-F16` | 7B | F16 | 33K tokens | 15.95 GB | 14.19 GB |
 
 ¹: VRAM estimated based on model characteristics.

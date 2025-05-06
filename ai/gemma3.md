@@ -36,6 +36,7 @@ Gemma 3 4B model can be used for:
 | `ai/gemma3:1B-Q4_K_M` | 1B | IQ2_XXS/Q4_K_M | 33K tokens | 4.68 GB | 762.49 MB |
 | `ai/gemma3:1B-F16` | 1B | F16 | 33K tokens | 6.62 GB | 1.86 GB |
 | `ai/gemma3:4B-Q4_0` | 4B | Q4_0 | 131K tokens | 5.51 GB | 2.19 GB |
+| `ai/gemma3:4B-Q4_K_M` | 4B | IQ2_XXS/Q4_K_M | 131K tokens | 4.15 GB | 2.31 GB |
 | `ai/gemma3:4B-F16` | 4B | F16 | 131K tokens | 11.94 GB | 7.23 GB |
 
 ¹: VRAM estimated based on model characteristics.
