@@ -32,8 +32,8 @@ QwQ-32B is designed for tasks requiring advanced reasoning and problem-solving a
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
 | `ai/qwq:latest`<br><br>`ai/qwq:32B-Q4_K_M` | 32B | IQ2_XXS/Q4_K_M | 41K tokens | 11.62 GB | 18.48 GB |
-| `ai/qwq:32B-F16` | 32B | F16 | 41K tokens | 73.93 GB | 61.03 GB |
 | `ai/qwq:32B-Q4_0` | 32B | Q4_0 | 41K tokens | 22.52 GB | 17.35 GB |
+| `ai/qwq:32B-F16` | 32B | F16 | 41K tokens | 73.93 GB | 61.03 GB |
 
 ¹: VRAM estimated based on model characteristics.
 

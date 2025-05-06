@@ -182,7 +182,7 @@ make inspect REPOSITORY=ai/smollm2 OPTIONS="--all"
 make run
 
 # Update specific model
-make run-single MODEL=ai/smollm2.md
+make run-single MODEL=smollm2.md
 ```
 
 ### Available Options

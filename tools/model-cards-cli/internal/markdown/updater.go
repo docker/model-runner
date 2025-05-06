@@ -2,16 +2,136 @@ package markdown
 
 import (
 	"fmt"
-	"github.com/docker/model-cards/tools/build-tables/internal/utils"
 	"os"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/docker/model-cards/tools/build-tables/internal/utils"
 
 	"github.com/docker/model-cards/tools/build-tables/internal/domain"
 )
 
 // Updater implements the domain.MarkdownUpdater interface
 type Updater struct{}
+
+// Define the sort order for each quantization type
+var quantizationOrder = map[string]int{
+	"Q2_K": 0,
+	"Q3_K": 1,
+	"Q4_0": 2,
+	"Q4_1": 3,
+	"Q4_K": 4,
+	"Q5_0": 5,
+	"Q5_1": 6,
+	"Q5_K": 7,
+	"Q6_K": 8,
+	"Q8_0": 9,
+	"I16":  10,
+	"I32":  11,
+	"I64":  12,
+	"F16":  13,
+	"BF16": 14,
+	"F32":  15,
+	"F64":  16,
+}
+
+// Sort suffixes (if needed, you can customize this)
+var suffixOrder = map[string]int{
+	"":   0, // no suffix
+	"_S": 1,
+	"_M": 2,
+	"_G": 3,
+}
+
+// parseWeight converts a weight string (e.g., "12B", "7M") to a float64
+func (u *Updater) parseWeight(weight string) (float64, error) {
+	// Remove any non-numeric characters except decimal point
+	toParse := strings.Map(func(r rune) rune {
+		if (r >= '0' && r <= '9') || r == '.' {
+			return r
+		}
+		return -1
+	}, weight)
+
+	// Parse the number
+	value, err := strconv.ParseFloat(toParse, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	// Convert to actual number based on unit
+	if strings.Contains(strings.ToUpper(weight), "B") {
+		value *= 1e9 // billions
+	} else if strings.Contains(strings.ToUpper(weight), "M") {
+		value *= 1e6 // millions
+	}
+
+	return value, nil
+}
+
+func getSortKey(tag string) int {
+	re := regexp.MustCompile(`^([A-Z0-9_]+?)(_[A-Z])?$`)
+	matches := re.FindStringSubmatch(tag)
+
+	if len(matches) == 3 {
+		base := matches[1]
+		suffix := matches[2] // may be empty
+
+		baseRank, baseExists := quantizationOrder[base]
+		suffixRank, suffixExists := suffixOrder[suffix]
+
+		if baseExists {
+			if !suffixExists {
+				suffixRank = 99 // unknown suffix gets low priority
+			}
+			return baseRank*10 + suffixRank
+		}
+	}
+
+	return 1000 // completely unknown tag
+}
+
+// sortVariants sorts variants by weights and quantization
+func (u *Updater) sortVariants(variants []domain.ModelVariant) []domain.ModelVariant {
+	// Create a copy of the variants slice to avoid modifying the original
+	sortedVariants := make([]domain.ModelVariant, len(variants))
+	copy(sortedVariants, variants)
+
+	sort.Slice(sortedVariants, func(i, j int) bool {
+		// Get the first tag for each variant
+		tagI := sortedVariants[i].Tags[0]
+		tagJ := sortedVariants[j].Tags[0]
+
+		// Split tags into weights and quantization
+		partsI := strings.Split(tagI, "-")
+		partsJ := strings.Split(tagJ, "-")
+
+		if len(partsI) != 2 || len(partsJ) != 2 {
+			return tagI < tagJ // Fallback to string comparison if format is unexpected
+		}
+
+		// Compare weights
+		weightI, errI := u.parseWeight(partsI[0])
+		weightJ, errJ := u.parseWeight(partsJ[0])
+
+		if errI != nil || errJ != nil {
+			return tagI < tagJ // Fallback to string comparison if parsing fails
+		}
+
+		if weightI != weightJ {
+			return weightI < weightJ // Sort by weights ascending
+		}
+
+		// If weights are equal, sort by quantization
+		quantI := getSortKey(partsI[1])
+		quantJ := getSortKey(partsJ[1])
+		return quantI < quantJ // Sort by quantization ascending
+	})
+
+	return sortedVariants
+}
 
 // UpdateModelTable updates the "Available model variants" table in a markdown file
 func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVariant) error {
@@ -31,6 +151,9 @@ func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVaria
 	// Extract the content before the table section
 	beforeTable := content[:sectionMatch[1]]
 
+	// Sort all variants first
+	sortedVariants := u.sortVariants(variants)
+
 	// Generate the new table
 	var latestTag string
 	var tableBuilder strings.Builder
@@ -49,12 +172,11 @@ func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVaria
 		}
 	}
 
-	// Then add the rest of the variants
-	for _, variant := range variants {
+	// Then add the rest of the variants in sorted order
+	for _, variant := range sortedVariants {
 		if variant.IsLatest() {
 			continue
 		}
-		// For non-latest variants, show all their tags
 		modelVariant := fmt.Sprintf("`%s:%s`", variant.RepoName, variant.Tags[0])
 		row := u.getRow(variant, modelVariant)
 		tableBuilder.WriteString(row)
