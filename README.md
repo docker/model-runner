@@ -24,7 +24,7 @@ Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 ![Gemma Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/gemma-120x-hub@2x.svg)
 
 📌 **Description:**  
-Google’s latest Gemma, small yet strong for chat and generation
+Google's latest Gemma, small yet strong for chat and generation
 
 📂 **Model File:** [`ai/gemma3.md`](ai/gemma3.md)
 
@@ -37,7 +37,7 @@ Google’s latest Gemma, small yet strong for chat and generation
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
 
 📌 **Description:**  
-Meta’s LLaMA 3.1: Chat-focused, benchmark-strong, multilingual-ready.
+Meta's LLaMA 3.1: Chat-focused, benchmark-strong, multilingual-ready.
 
 📂 **Model File:** [`ai/llama3.1.md`](ai/llama3.1.md)
 
@@ -111,7 +111,7 @@ A state-of-the-art English language embedding model developed by Mixedbread AI.
 ![Microsoft Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/phi-120x-hub@2x.svg)
 
 📌 **Description:**  
-Microsoft’s compact model, surprisingly capable at reasoning and code.
+Microsoft's compact model, surprisingly capable at reasoning and code.
 
 📂 **Model File:** [`ai/phi4.md`](ai/phi4.md)
 
@@ -152,11 +152,49 @@ Experimental Qwen variant—lean, fast, and a bit mysterious.
 📌 **Description:**  
 A compact language model, designed to run efficiently on-device while performing a wide range of language tasks 
 
-📂 **Model File:** [`ai/smolllm2.md`](ai/smollm2.md)
+📂 **Model File:** [`ai/smollm2.md`](ai/smollm2.md)
 
 **URLs:**
 - https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct
 - https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct
 
 ---
+
+## 🔧 CLI Usage
+
+The model-cards-cli tool provides commands to inspect and update model information:
+
+### Inspect Command
+```bash
+# Basic inspection
+make inspect REPOSITORY=ai/smollm2
+
+# Inspect specific tag
+make inspect REPOSITORY=ai/smollm2 TAG=360M-Q4_K_M
+
+# Show all metadata
+make inspect REPOSITORY=ai/smollm2 OPTIONS="--all"
+```
+
+### Update Command
+```bash
+# Update all models
+make run
+
+# Update specific model
+make run-single MODEL=ai/smollm2.md
+```
+
+### Available Options
+
+#### Inspect Command Options
+- `REPOSITORY`: (Required) The repository to inspect (e.g., `ai/smollm2`)
+- `TAG`: (Optional) Specific tag to inspect (e.g., `360M-Q4_K_M`)
+- `OPTIONS`: (Optional) Additional options:
+  - `--all`: Show all metadata fields
+  - `--log-level`: Set log level (debug, info, warn, error)
+
+#### Update Command Options
+- `MODEL`: (Required for run-single) Specific model file to update (e.g., `ai/smollm2.md`)
+- `--log-level`: Set log level (debug, info, warn, error)
 

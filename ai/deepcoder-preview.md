@@ -32,12 +32,14 @@ DeepCoder-14B is purpose-built for advanced code reasoning, programming task sol
 
 ## Available model variants
 
-| Model variant                | Parameters | Quantization | Context window | VRAM  | Size    |
-|------------------------------|------------|--------------|----------------|--------|--------|
-| `deepcoder-preview:14B-F16`    | 14.77B     | F16          | 131,072        | 24GB¹  | 29.5GB |
-| `deepcoder-preview:14B:latest` <br><br> `deepcoder-preview:14B-Q4_K_M` | 14.77B     | Q4_K_M       | 131,072        | 8GB¹   | 9GB    |
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/deepcoder-preview:latest`<br><br>`ai/deepcoder-preview:14B-Q4_K_M` | 14B | IQ2_XXS/Q4_K_M | 131K tokens | 4.03 GB | 8.37 GB |
+| `ai/deepcoder-preview:14B-F16` | 14B | F16 | 131K tokens | 31.29 GB | 27.51 GB |
 
-¹: VRAM estimated based on GGUF model characteristics.
+¹: VRAM estimated based on model characteristics.
+
+> `latest` → `14B-Q4_K_M`
 
 ## Use this AI model with Docker Model Runner
 

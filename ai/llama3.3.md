@@ -33,13 +33,14 @@ Meta Llama 3.3 is a powerful 70B parameter multilingual language model designed 
 
 ## Available model variants
 
-| Model variant                                        | Parameters | Quantization   | Context window | VRAM      | Size   | 
-|----------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
-| `ai/llama3.3:latest`<br><br>`ai/llama3.3:70B-Q4_K_M` | 70B        | Q4_K_M         | 128K           | 42GB¹     | 42.5GB | 
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/llama3.3:latest`<br><br>`ai/llama3.3:70B-Q4_K_M` | 70B | IQ2_XXS/Q4_K_M | 131K tokens | 20.17 GB | 39.59 GB |
+| `ai/llama3.3:70B-Q4_0` | 70B | Q4_0 | 131K tokens | 44.00 GB | 37.22 GB |
 
-¹: VRAM estimates based on model characteristics.
+¹: VRAM estimated based on model characteristics.
 
-> `:latest` → `70B-Q4_K_M`
+> `latest` → `70B-Q4_K_M`
 
 ## Use this AI model with Docker Model Runner
 

@@ -27,13 +27,13 @@ mxbai-embed-large-v1 is designed for generating sentence embeddings suitable for
 
 ## Available model variants
 
-| Model Variant                                                 | Parameters | Quantization   | Context window | VRAM      | Size   | 
-|-------------------------------------------------------------- |----------- |--------------- |--------------- |---------- |------- |
-| `ai/mxbai-embed-large:latest`<br><br>`ai/mxbai-embed-large:335M-F16` | 335M       | F16            | 512 tokens     | 0.8GB¹    | 670MB  | 
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/mxbai-embed-large:latest`<br><br>`ai/mxbai-embed-large:335M-F16` | 334.09 M | F16 | 512 tokens | 0.80 GB | 638.85 MB |
 
-¹: VRAM estimates based on model characteristics.
+¹: VRAM estimated based on model characteristics.
 
-> `:latest` → `mxbai-embed-large:335M-F16`
+> `latest` → `335M-F16`
 
 ## Use this AI model with Docker Model Runner
 
