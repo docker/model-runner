@@ -26,19 +26,22 @@ With strong agentic and tool-use capabilities and support for over 100 languages
 ---
 
 
-## 📦 Available Model Variants
+## Available model variants
 
-| Model Variant                               | Parameters | Quantization       | Context Length | VRAM     | Size    |
-|---------------------------------------------|------------|--------------------|----------------|----------|---------|
-| `ai/qwen3:8B-F16`                           | 8.19B      | F16                | 40,960 tokens  | ~16GB¹   | 15.26GB |
-| `ai/qwen3:8B-Q4_0`                          | 8.19B      | Q4_0               | 40,960 tokens  | ~4.5GB¹  | 4.44GB  |
-| `ai/qwen3:8B-Q4_K_M` <br> `ai/qwen3:latest` | 8.19B      | IQ2_XXS / Q4_K_M   | 40,960 tokens  | ~4.7GB¹  | 4.68GB  |
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/qwen3:latest`<br><br>`ai/qwen3:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 41K tokens | 5.31 GB | 4.68 GB |
+| `ai/qwen3:0.6B-Q4_0` | 0.6B | Q4_0 | 41K tokens | 0.83 GB | 441.67 MB |
+| `ai/qwen3:0.6B-Q4_K_M` | 0.6B | IQ2_XXS/Q4_K_M | 41K tokens | 0.62 GB | 456.11 MB |
+| `ai/qwen3:0.6B-F16` | 0.6B | F16 | 41K tokens | 1.79 GB | 1.40 GB |
+| `ai/qwen3:30B-A3B-F16` | 30B-A3B | F16 | 41K tokens | 680.86 GB | 56.89 GB |
+| `ai/qwen3:30B-A3B-Q4_K_M` | 30B-A3B | IQ2_XXS/Q4_K_M | 41K tokens | 90.90 GB | 17.28 GB |
+| `ai/qwen3:8B-Q4_0` | 8B | Q4_0 | 41K tokens | 8.03 GB | 4.44 GB |
+| `ai/qwen3:8B-F16` | 8B | F16 | 41K tokens | 20.88 GB | 15.26 GB |
 
-¹: Estimated VRAM requirements. Actual usage may vary depending on system configuration and inference backend.
+¹: VRAM estimated based on model characteristics.
 
-> `:latest` → `8B-Q4_K_M`
-
----
+> `latest` → `8B-Q4_K_M`
 
 ## 🧠 Intended uses
 
