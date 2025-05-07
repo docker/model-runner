@@ -185,6 +185,15 @@ make run
 make run-single MODEL=smollm2.md
 ```
 
+### Upload Overview Command
+```bash
+# Upload a single overview to Docker Hub
+make -C tools/model-cards-cli upload-overview FILE=ai/llama3.1.md REPO=ai/llama3 USERNAME=your_username TOKEN=your_pat_here
+
+# Upload all overviews in the ai/ folder to their corresponding repositories
+./tools/upload-all-overviews.sh your_username your_pat_here
+```
+
 ### Available Options
 
 #### Inspect Command Options
@@ -198,3 +207,8 @@ make run-single MODEL=smollm2.md
 - `MODEL`: (Required for run-single) Specific model file to update (e.g., `ai/smollm2.md`)
 - `--log-level`: Set log level (debug, info, warn, error)
 
+#### Upload Overview Options
+- `FILE`: (Required) Path to the markdown file containing the overview content
+- `REPO`: (Required) Repository to upload the overview to (format: namespace/repository)
+- `USERNAME`: (Required) Docker Hub username
+- `TOKEN`: (Required) Personal Access Token (PAT)

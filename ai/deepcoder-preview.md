@@ -1,6 +1,6 @@
 # DeepCoder-14B
 
-![Agentica](../logos/agentica-280x184-overview.png)
+![Agentica](https://github.com/docker/model-cards/raw/refs/heads/main/logos/agentica-280x184-overview.png)
 
 
 DeepCoder-14B is a powerful AI model built to write and understand code, especially in longer and more complex tasks.  
