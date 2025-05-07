@@ -2,7 +2,9 @@
 
 ARG GO_VERSION=1.24.2
 ARG LLAMA_SERVER_VERSION=latest
-ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.cpu.${TARGETARCH}
+ARG LLAMA_SERVER_VARIANT=cpu
+ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
+ARG BASE_IMAGE=ubuntu:24.04
 
 FROM golang:${GO_VERSION}-bookworm AS builder
 
@@ -28,10 +30,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o model-runner ./main.go
 
 # --- Get llama.cpp binary ---
-FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION} AS llama-server
+FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
 
 # --- Final image ---
-FROM ubuntu:24.04 AS final
+FROM ${BASE_IMAGE} AS final
 
 # Create non-root user
 RUN groupadd --system modelrunner && useradd --system --gid modelrunner modelrunner

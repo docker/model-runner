@@ -1,7 +1,9 @@
 # Project variables
 APP_NAME := model-runner
 GO_VERSION := 1.23.7
-LLAMA_SERVER_VERSION := v0.0.4-cpu
+LLAMA_SERVER_VERSION := v0.0.4
+LLAMA_SERVER_VARIANT := cpu
+BASE_IMAGE := ubuntu:24.04
 TARGET_OS := linux
 ACCEL := cpu
 DOCKER_IMAGE := docker/model-runner:latest
@@ -37,6 +39,8 @@ docker-build:
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
+		--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		-t $(DOCKER_IMAGE) .
 
 # Run in Docker container with TCP port access and mounted model storage
