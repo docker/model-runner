@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/docker/model-distribution/distribution"
+	"github.com/docker/model-distribution/registry"
 	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/logging"
@@ -129,17 +130,17 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
 	if err := m.PullModel(r.Context(), request.From, w); err != nil {
-		if errors.Is(err, distribution.ErrInvalidReference) {
+		if errors.Is(err, registry.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", request.From, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
-		if errors.Is(err, distribution.ErrUnauthorized) {
+		if errors.Is(err, registry.ErrUnauthorized) {
 			m.log.Warnf("Unauthorized to pull model %q: %v", request.From, err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if errors.Is(err, distribution.ErrModelNotFound) {
+		if errors.Is(err, registry.ErrModelNotFound) {
 			m.log.Warnf("Failed to pull model %q: %v", request.From, err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
@@ -388,7 +389,7 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
-		if errors.Is(err, distribution.ErrUnauthorized) {
+		if errors.Is(err, registry.ErrUnauthorized) {
 			m.log.Warnf("Unauthorized to push model %q: %v", model, err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
