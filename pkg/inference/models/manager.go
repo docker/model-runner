@@ -129,7 +129,7 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
-	if err := m.PullModel(r.Context(), request.From, w); err != nil {
+	if err := m.PullModel(request.From, r, w); err != nil {
 		if errors.Is(err, registry.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", request.From, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
@@ -378,7 +378,7 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 	}
 
 	// Call the PushModel method on the distribution client.
-	if err := m.PushModel(r.Context(), model, w); err != nil {
+	if err := m.PushModel(model, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", model, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
@@ -428,11 +428,11 @@ func (m *Manager) GetModelPath(ref string) (string, error) {
 
 // PullModel pulls a model to local storage. Any error it returns is suitable
 // for writing back to the client.
-func (m *Manager) PullModel(ctx context.Context, model string, w http.ResponseWriter) error {
+func (m *Manager) PullModel(model string, r *http.Request, w http.ResponseWriter) error {
 	// Restrict model pull concurrency.
 	select {
 	case <-m.pullTokens:
-	case <-ctx.Done():
+	case <-r.Context().Done():
 		return context.Canceled
 	}
 	defer func() {
@@ -440,10 +440,20 @@ func (m *Manager) PullModel(ctx context.Context, model string, w http.ResponseWr
 	}()
 
 	// Set up response headers for streaming
-	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
+
+	// Check Accept header to determine content type
+	acceptHeader := r.Header.Get("Accept")
+	isJSON := acceptHeader == "application/json"
+
+	if isJSON {
+		w.Header().Set("Content-Type", "application/json")
+	} else {
+		// Defaults to text/plain
+		w.Header().Set("Content-Type", "text/plain")
+	}
 
 	// Create a flusher to ensure chunks are sent immediately
 	flusher, ok := w.(http.Flusher)
@@ -455,11 +465,12 @@ func (m *Manager) PullModel(ctx context.Context, model string, w http.ResponseWr
 	progressWriter := &progressResponseWriter{
 		writer:  w,
 		flusher: flusher,
+		isJSON:  isJSON,
 	}
 
 	// Pull the model using the Docker model distribution client
 	m.log.Infoln("Pulling model:", model)
-	err := m.distributionClient.PullModel(ctx, model, progressWriter)
+	err := m.distributionClient.PullModel(r.Context(), model, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while pulling model: %w", err)
 	}
@@ -468,12 +479,21 @@ func (m *Manager) PullModel(ctx context.Context, model string, w http.ResponseWr
 }
 
 // PushModel pushes a model from the store to the registry.
-func (m *Manager) PushModel(ctx context.Context, model string, w http.ResponseWriter) error {
+func (m *Manager) PushModel(model string, r *http.Request, w http.ResponseWriter) error {
 	// Set up response headers for streaming
-	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
+
+	// Check Accept header to determine content type
+	acceptHeader := r.Header.Get("Accept")
+	isJSON := acceptHeader == "application/json"
+
+	if isJSON {
+		w.Header().Set("Content-Type", "application/json")
+	} else {
+		w.Header().Set("Content-Type", "text/plain")
+	}
 
 	// Create a flusher to ensure chunks are sent immediately
 	flusher, ok := w.(http.Flusher)
@@ -485,11 +505,12 @@ func (m *Manager) PushModel(ctx context.Context, model string, w http.ResponseWr
 	progressWriter := &progressResponseWriter{
 		writer:  w,
 		flusher: flusher,
+		isJSON:  isJSON,
 	}
 
 	// Pull the model using the Docker model distribution client
 	m.log.Infoln("Pushing model:", model)
-	err := m.distributionClient.PushModel(ctx, model, progressWriter)
+	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)
 	}
@@ -501,11 +522,21 @@ func (m *Manager) PushModel(ctx context.Context, model string, w http.ResponseWr
 type progressResponseWriter struct {
 	writer  http.ResponseWriter
 	flusher http.Flusher
+	isJSON  bool
 }
 
 func (w *progressResponseWriter) Write(p []byte) (n int, err error) {
-	escapedData := html.EscapeString(string(p))
-	n, err = w.writer.Write([]byte(escapedData))
+	var data []byte
+	if w.isJSON {
+		// For JSON, write the raw bytes without escaping
+		data = p
+	} else {
+		// For plain text, escape HTML
+		escapedData := html.EscapeString(string(p))
+		data = []byte(escapedData)
+	}
+
+	n, err = w.writer.Write(data)
 	if err != nil {
 		return 0, err
 	}
