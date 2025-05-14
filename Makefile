@@ -6,7 +6,7 @@ LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
 DOCKER_IMAGE := docker/model-runner:latest
 PORT := 8080
-MODELS_PATH := $(shell pwd)/models
+MODELS_PATH := $(shell pwd)/models-store
 
 # Main targets
 .PHONY: build run clean test docker-build docker-run help

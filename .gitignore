@@ -2,4 +2,4 @@
 model-runner
 model-runner.sock
 # Default MODELS_PATH in Makefile
-models/
+models-store/
