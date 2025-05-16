@@ -22,7 +22,7 @@ QwQ-32B is designed for tasks requiring advanced reasoning and problem-solving a
 | **Architecture**      | qwen2              |
 | **Cutoff date**       | -                  |
 | **Languages**         | +29                |
-| **Tool calling**      | ❌                 |
+| **Tool calling**      | ✅                 |
 | **Input modalities**  | Text               |
 | **Output modalities** | Text               |
 | **License**           | [Apache 2.0](https://github.com/QwenLM/QwQ/blob/main/LICENSE)|
