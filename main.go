@@ -148,6 +148,17 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 
 	// Split the string by spaces, respecting quoted arguments
 	args := splitArgs(argsStr)
+
+	// Check for disallowed arguments
+	disallowedArgs := []string{"--model", "--host", "--embeddings", "--mmproj"}
+	for _, arg := range args {
+		for _, disallowed := range disallowedArgs {
+			if arg == disallowed {
+				log.Fatalf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed)
+			}
+		}
+	}
+
 	log.Infof("Using custom arguments: %v", args)
 	return &llamacpp.Config{
 		Args: args,
