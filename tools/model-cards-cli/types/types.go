@@ -20,7 +20,7 @@ type ModelDescriptor interface {
 	GetContextLength() (uint32, error)
 
 	// GetVRAM returns the estimated VRAM requirements (bytes, error)
-	GetVRAM() (float64, error)
+	GetVRAM() (uint64, error)
 
 	// GetMetadata returns the model metadata (map[string]string)
 	GetMetadata() map[string]string

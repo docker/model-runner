@@ -94,57 +94,31 @@ func (g *File) GetContextLength() (uint32, error) {
 }
 
 // GetVRAM returns the estimated VRAM requirements (bytes, error)
-func (g *File) GetVRAM() (float64, error) {
-	// Get parameter count
-	params, _, err := g.GetParameters()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get parameters: %w", err)
-	}
+func (g *File) GetVRAM() (uint64, error) {
+	estimate := g.file.EstimateLLaMACppRun(parser.WithLLaMACppContextSize(4096), // Set context size
+		parser.WithLLaMACppLogicalBatchSize(2048), // default batch size in llama.cpp
+		parser.WithLLaMACppOffloadLayers(100),     // -ngl param in llama.cpp
+	)
 
-	// Determine quantization
-	quantization := g.GetQuantization()
-	ggmlType := quantization.GGMLType()
-	trait, ok := ggmlType.Trait()
-	if !ok {
-		return 0, fmt.Errorf("unknown quantization type: %v", quantization)
-	}
+	//TODO: Add RAM estimation
+	//totalRam := totalMemory(estimate.Devices[0])
+	totalVRAM := totalMemory(estimate.Devices[1])
 
-	// Calculate bytes per parameter based on quantization type
-	var bytesPerParam float64
-	if trait.Quantized {
-		// For quantized types, calculate bytes per parameter based on type size and block size
-		bytesPerParam = float64(trait.TypeSize) / float64(trait.BlockSize)
-	} else {
-		// For non-quantized types, use the type size directly
-		bytesPerParam = float64(trait.TypeSize)
-	}
-
-	// Extract KV cache dimensions
-	arch := g.GetArchitecture()
-	nLayer, found := g.file.Header.MetadataKV.Get(arch + ".block_count")
-	if !found {
-		return 0, NewFieldNotFoundError(arch + ".block_count")
-	}
-	nEmb, found := g.file.Header.MetadataKV.Get(arch + ".embedding_length")
-	if !found {
-		return 0, NewFieldNotFoundError(arch + ".embedding_length")
-	}
-
-	// Get context length
-	contextLength, err := g.GetContextLength()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get context length: %w", err)
-	}
-
-	// Calculate model weights size
-	modelSize := params * bytesPerParam
-	// Calculate KV cache size
-	kvCacheBytes := contextLength * nLayer.ValueUint32() * nEmb.ValueUint32() * 2 * 2
-	kvCache := float64(kvCacheBytes)
-
-	// Total VRAM estimate with 20% overhead
-	totalVRAM := (modelSize + kvCache) * 1.2
 	return totalVRAM, nil
+
+}
+
+func totalMemory(device parser.LLaMACppRunDeviceUsage) uint64 {
+	return uint64(device.Footprint) +
+		uint64(device.Weight.Input) +
+		uint64(device.Weight.Compute) +
+		uint64(device.Weight.Output) +
+		uint64(device.KVCache.Key) +
+		uint64(device.KVCache.Value) +
+		uint64(device.Computation.Footprint) +
+		uint64(device.Computation.Input) +
+		uint64(device.Computation.Compute) +
+		uint64(device.Computation.Output)
 }
 
 // parseParameters converts parameter string to float64

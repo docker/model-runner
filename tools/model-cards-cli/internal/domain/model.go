@@ -13,7 +13,7 @@ type ModelVariant struct {
 	Quantization  string
 	Size          uint64
 	ContextLength uint32
-	VRAM          float64
+	VRAM          uint64
 	Descriptor    types.ModelDescriptor
 }
 

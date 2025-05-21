@@ -31,13 +31,13 @@ Llama 3.2 instruct models are designed for:
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 131K tokens | 3.26 GB | 1.87 GB |
-| `ai/llama3.2:1B-Q4_0` | 1B | Q4_0 | 131K tokens | 0.63 GB | 727.75 MB |
-| `ai/llama3.2:1B-Q8_0` | 1B | Q8_0 | 131K tokens | 1.19 GB | 1.22 GB |
-| `ai/llama3.2:1B-F16` | 1B | F16 | 131K tokens | 2.24 GB | 2.30 GB |
-| `ai/llama3.2:3B-Q4_0` | 3B | Q4_0 | 131K tokens | 4.29 GB | 1.78 GB |
-| `ai/llama3.2:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 131K tokens | 3.26 GB | 1.87 GB |
-| `ai/llama3.2:3B-F16` | 3B | F16 | 131K tokens | 9.11 GB | 5.98 GB |
+| `ai/llama3.2:latest`<br><br>`ai/llama3.2:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 131K tokens | 2.77 GiB | 1.87 GB |
+| `ai/llama3.2:1B-Q4_0` | 1B | Q4_0 | 131K tokens | 1.35 GiB | 727.75 MB |
+| `ai/llama3.2:1B-Q8_0` | 1B | Q8_0 | 131K tokens | 1.87 GiB | 1.22 GB |
+| `ai/llama3.2:1B-F16` | 1B | F16 | 131K tokens | 2.95 GiB | 2.30 GB |
+| `ai/llama3.2:3B-Q4_0` | 3B | Q4_0 | 131K tokens | 2.68 GiB | 1.78 GB |
+| `ai/llama3.2:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 131K tokens | 2.77 GiB | 1.87 GB |
+| `ai/llama3.2:3B-F16` | 3B | F16 | 131K tokens | 6.89 GiB | 5.98 GB |
 
 ¹: VRAM estimated based on model characteristics.
 

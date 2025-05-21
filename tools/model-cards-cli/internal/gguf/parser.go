@@ -3,7 +3,6 @@ package gguf
 import (
 	"context"
 	"fmt"
-	"github.com/docker/model-cards/tools/build-tables/types"
 
 	parser "github.com/gpustack/gguf-parser-go"
 )
@@ -17,7 +16,7 @@ func NewParser() *Parser {
 }
 
 // ParseRemote parses a remote GGUF file
-func (p *Parser) ParseRemote(ctx context.Context, url, token string) (types.ModelDescriptor, error) {
+func (p *Parser) ParseRemote(ctx context.Context, url, token string) (*File, error) {
 	gf, err := parser.ParseGGUFFileRemote(ctx, url, parser.UseBearerAuth(token))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GGUF: %w", err)

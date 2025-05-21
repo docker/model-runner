@@ -35,12 +35,12 @@ i: Estimated
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/deepseek-r1-distill-llama:latest`<br><br>`ai/deepseek-r1-distill-llama:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 131K tokens | 2.31 GB | 4.58 GB |
-| `ai/deepseek-r1-distill-llama:8B-Q4_0` | 8B | Q4_0 | 131K tokens | 5.03 GB | 4.33 GB |
-| `ai/deepseek-r1-distill-llama:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 131K tokens | 2.31 GB | 4.58 GB |
-| `ai/deepseek-r1-distill-llama:8B-F16` | 8B | F16 | 131K tokens | 17.88 GB | 14.96 GB |
-| `ai/deepseek-r1-distill-llama:70B-Q4_0` | 70B | Q4_0 | 131K tokens | 44.00 GB | 37.22 GB |
-| `ai/deepseek-r1-distill-llama:70B-Q4_K_M` | 70B | IQ2_XXS/Q4_K_M | 131K tokens | 20.17 GB | 39.59 GB |
+| `ai/deepseek-r1-distill-llama:latest`<br><br>`ai/deepseek-r1-distill-llama:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 131K tokens | 5.33 GiB | 4.58 GB |
+| `ai/deepseek-r1-distill-llama:8B-Q4_0` | 8B | Q4_0 | 131K tokens | 5.09 GiB | 4.33 GB |
+| `ai/deepseek-r1-distill-llama:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 131K tokens | 5.33 GiB | 4.58 GB |
+| `ai/deepseek-r1-distill-llama:8B-F16` | 8B | F16 | 131K tokens | 15.01 GiB | 14.96 GB |
+| `ai/deepseek-r1-distill-llama:70B-Q4_0` | 70B | Q4_0 | 131K tokens | 38.73 GiB | 37.22 GB |
+| `ai/deepseek-r1-distill-llama:70B-Q4_K_M` | 70B | IQ2_XXS/Q4_K_M | 131K tokens | 41.11 GiB | 39.59 GB |
 
 ¹: VRAM estimated based on model characteristics.
 

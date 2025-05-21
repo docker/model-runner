@@ -32,14 +32,14 @@ func FormatParameters(params string) string {
 
 // FormatVRAM converts bytes to GB and returns a formatted string
 // The value is rounded to 2 decimal places
-func FormatVRAM(bytes float64) string {
-	// Convert bytes to GB (1 GB = 1024^3 bytes)
-	gb := bytes / (1024 * 1024 * 1024)
+func FormatVRAM(bytes uint64) string {
+	// Convert bytes to GiB as float64
+	gb := float64(bytes) / (1024 * 1024 * 1024)
 
 	// Round to 2 decimal places
 	rounded := math.Round(gb*100) / 100
 
-	return fmt.Sprintf("%.2f GB", rounded)
+	return fmt.Sprintf("%.2f GiB", rounded)
 }
 
 // FormatContextLength formats a token count with K/M/B suffixes

@@ -32,14 +32,14 @@ Qwen2.5-7B-Instruct is designed to assist in various natural language processing
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/qwen2.5:latest`<br><br>`ai/qwen2.5:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 2.32 GB | 4.36 GB |
-| `ai/qwen2.5:0.5B-F16` | 0.5B | F16 | 33K tokens | 4.27 GB | 942.43 MB |
-| `ai/qwen2.5:1.5B-F16` | 1.5B | F16 | 33K tokens | 4.85 GB | 2.88 GB |
-| `ai/qwen2.5:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 33K tokens | 2.06 GB | 1.79 GB |
-| `ai/qwen2.5:3B-F16` | 3B | F16 | 33K tokens | 7.91 GB | 5.75 GB |
-| `ai/qwen2.5:7B-Q4_0` | 7B | Q4_0 | 33K tokens | 4.70 GB | 4.12 GB |
-| `ai/qwen2.5:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 2.32 GB | 4.36 GB |
-| `ai/qwen2.5:7B-F16` | 7B | F16 | 33K tokens | 15.95 GB | 14.19 GB |
+| `ai/qwen2.5:latest`<br><br>`ai/qwen2.5:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 4.83 GiB | 4.36 GB |
+| `ai/qwen2.5:0.5B-F16` | 0.5B | F16 | 33K tokens | 1.38 GiB | 942.43 MB |
+| `ai/qwen2.5:1.5B-F16` | 1.5B | F16 | 33K tokens | 3.39 GiB | 2.88 GB |
+| `ai/qwen2.5:3B-Q4_K_M` | 3B | IQ2_XXS/Q4_K_M | 33K tokens | 2.37 GiB | 1.79 GB |
+| `ai/qwen2.5:3B-F16` | 3B | F16 | 33K tokens | 6.33 GiB | 5.75 GB |
+| `ai/qwen2.5:7B-Q4_0` | 7B | Q4_0 | 33K tokens | 4.60 GiB | 4.12 GB |
+| `ai/qwen2.5:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 4.83 GiB | 4.36 GB |
+| `ai/qwen2.5:7B-F16` | 7B | F16 | 33K tokens | 13.93 GiB | 14.19 GB |
 
 ¹: VRAM estimated based on model characteristics.
 

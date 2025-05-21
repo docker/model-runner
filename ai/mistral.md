@@ -37,10 +37,10 @@ i: Estimated
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/mistral:latest`<br><br>`ai/mistral:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 2.02 GB | 4.07 GB |
-| `ai/mistral:7B-Q4_0` | 7B | Q4_0 | 33K tokens | 4.40 GB | 3.83 GB |
-| `ai/mistral:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 2.02 GB | 4.07 GB |
-| `ai/mistral:7B-F16` | 7B | F16 | 33K tokens | 15.65 GB | 13.50 GB |
+| `ai/mistral:latest`<br><br>`ai/mistral:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 4.85 GiB | 4.07 GB |
+| `ai/mistral:7B-Q4_0` | 7B | Q4_0 | 33K tokens | 4.61 GiB | 3.83 GB |
+| `ai/mistral:7B-Q4_K_M` | 7B | IQ2_XXS/Q4_K_M | 33K tokens | 4.85 GiB | 4.07 GB |
+| `ai/mistral:7B-F16` | 7B | F16 | 33K tokens | 14.10 GiB | 13.50 GB |
 
 ¹: VRAM estimated based on model characteristics.
 
