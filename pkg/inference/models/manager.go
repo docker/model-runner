@@ -98,6 +98,7 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
 		"POST " + inference.ModelsPrefix + "/{nameAndAction...}":              m.handleModelAction,
+		"DELETE " + inference.ModelsPrefix + "/prune":                         m.handlePrune,
 		"GET " + inference.InferencePrefix + "/{backend}/v1/models":           m.handleOpenAIGetModels,
 		"GET " + inference.InferencePrefix + "/{backend}/v1/models/{name...}": m.handleOpenAIGetModel,
 		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
@@ -395,6 +396,20 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlePrune handles DELETE <inference-prefix>/models/prune requests.
+func (m *Manager) handlePrune(w http.ResponseWriter, _ *http.Request) {
+	if m.distributionClient == nil {
+		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := m.distributionClient.ResetStore(); err != nil {
+		m.log.Warnf("Failed to prune models: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -5,7 +5,7 @@ go 1.23.7
 require (
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/containerd/platforms v1.0.0-rc.1
-	github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57
+	github.com/docker/model-distribution v0.0.0-20250521125643-a9b8592eff18
 	github.com/jaypipes/ghw v0.16.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
