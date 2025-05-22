@@ -39,6 +39,12 @@ github.com/docker/docker-credential-helpers v0.8.2 h1:bX3YxiGzFP5sOXWc3bTPEXdEaZ
 github.com/docker/docker-credential-helpers v0.8.2/go.mod h1:P3ci7E3lwkZg6XiHdRKft1KckHiO9a2rNtyFbZ/ry9M=
 github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57 h1:ZqfKknb+0/uJid8XLFwSl/osjE+WuS6o6I3dh3ZqO4U=
 github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250521121637-af0fc7f16ad1 h1:akgUvCRqic2fLyq5zhWF1I6xunWXHwKaQBZYRStpqf0=
+github.com/docker/model-distribution v0.0.0-20250521121637-af0fc7f16ad1/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250521123835-b72b1c87354a h1:VMwswLhzJVPhovYLlYEyzVYMjEqWDewcyKoKA8q89PY=
+github.com/docker/model-distribution v0.0.0-20250521123835-b72b1c87354a/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250521125643-a9b8592eff18 h1:tB4cBxmfR35osqXeKrqUbxBMARCUv+YRKJfqyrb9Qg0=
+github.com/docker/model-distribution v0.0.0-20250521125643-a9b8592eff18/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
