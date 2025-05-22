@@ -19,7 +19,7 @@ import (
 const (
 	// maximumReadinessPings is the maximum number of retries that a runner will
 	// perform when pinging a backend for readiness.
-	maximumReadinessPings = 60
+	maximumReadinessPings = 600
 	// readinessRetryInterval is the interval at which a runner will retry
 	// readiness checks for a backend.
 	readinessRetryInterval = 500 * time.Millisecond

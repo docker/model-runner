@@ -177,6 +177,42 @@ func (l *loader) evict(idleOnly bool) int {
 	return len(l.runners)
 }
 
+// evictRunner evicts a specific runner. The caller must hold the loader lock.
+// It returns the number of remaining runners.
+func (l *loader) evictRunner(backend, model string) int {
+	allBackends := backend == ""
+	for r, slot := range l.runners {
+		if (allBackends || r.backend == backend) && r.model == model {
+			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
+				r.backend, r.model, r.mode,
+			)
+			l.slots[slot].terminate()
+			l.slots[slot] = nil
+			l.availableMemory += l.allocations[slot]
+			l.allocations[slot] = 0
+			l.timestamps[slot] = time.Time{}
+			delete(l.runners, r)
+		}
+	}
+	return len(l.runners)
+}
+
+// Unload unloads runners and returns the number of unloaded runners.
+func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
+	if !l.lock(ctx) {
+		return 0
+	}
+	defer l.unlock()
+
+	return len(l.runners) - func() int {
+		if unload.All {
+			return l.evict(false)
+		} else {
+			return l.evictRunner(unload.Backend, unload.Model)
+		}
+	}()
+}
+
 // stopAndDrainTimer stops and drains a timer without knowing if it was running.
 func stopAndDrainTimer(timer *time.Timer) {
 	timer.Stop()

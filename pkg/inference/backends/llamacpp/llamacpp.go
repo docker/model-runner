@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -183,4 +184,12 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 
 func (l *llamaCpp) Status() string {
 	return l.status
+}
+
+func (l *llamaCpp) GetDiskUsage() (float64, error) {
+	size, err := diskusage.Size(l.updatedServerStoragePath)
+	if err != nil {
+		return 0, fmt.Errorf("error while getting store size: %v", err)
+	}
+	return size, nil
 }

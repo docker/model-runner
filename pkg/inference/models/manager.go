@@ -14,6 +14,7 @@ import (
 	"github.com/docker/model-distribution/distribution"
 	"github.com/docker/model-distribution/registry"
 	"github.com/docker/model-distribution/types"
+	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/sirupsen/logrus"
@@ -397,6 +398,21 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// GetDiskUsage returns the disk usage of the model store.
+func (m *Manager) GetDiskUsage() (float64, error, int) {
+	if m.distributionClient == nil {
+		return 0, errors.New("model distribution service unavailable"), http.StatusServiceUnavailable
+	}
+
+	storePath := m.distributionClient.GetStorePath()
+	size, err := diskusage.Size(storePath)
+	if err != nil {
+		return 0, fmt.Errorf("error while getting store size: %v", err), http.StatusInternalServerError
+	}
+
+	return size, nil, http.StatusOK
 }
 
 // ServeHTTP implement net/http.Handler.ServeHTTP.

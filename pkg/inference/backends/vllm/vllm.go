@@ -58,3 +58,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.Bac
 func (v *vLLM) Status() string {
 	return "not running"
 }
+
+func (v *vLLM) GetDiskUsage() (float64, error) {
+	return 0, nil
+}

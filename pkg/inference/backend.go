@@ -69,4 +69,6 @@ type Backend interface {
 	Run(ctx context.Context, socket, model string, mode BackendMode) error
 	// Status returns a description of the backend's state.
 	Status() string
+	// GetDiskUsage returns the disk usage of the backend.
+	GetDiskUsage() (float64, error)
 }

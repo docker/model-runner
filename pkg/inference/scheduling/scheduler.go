@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/docker/model-distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
@@ -81,6 +82,9 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 		m[route] = s.handleOpenAIInference
 	}
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
+	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
+	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
+	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
 	return m
 }
 
@@ -222,6 +226,95 @@ func (s *Scheduler) GetBackendStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Scheduler) ResetInstaller(httpClient *http.Client) {
 	s.installer = newInstaller(s.log, s.backends, httpClient)
+}
+
+// GetRunningBackends returns information about all running backends
+func (s *Scheduler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
+	runningBackends := s.getLoaderStatus()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(runningBackends); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// getLoaderStatus returns information about all running backends managed by the loader
+func (s *Scheduler) getLoaderStatus() []BackendStatus {
+	if !s.loader.lock(context.Background()) {
+		return []BackendStatus{}
+	}
+	defer s.loader.unlock()
+
+	result := make([]BackendStatus, 0, len(s.loader.runners))
+
+	for key, slot := range s.loader.runners {
+		if s.loader.slots[slot] != nil {
+			status := BackendStatus{
+				BackendName: key.backend,
+				ModelName:   key.model,
+				Mode:        key.mode.String(),
+				LastUsed:    time.Time{},
+			}
+
+			if s.loader.references[slot] == 0 {
+				status.LastUsed = s.loader.timestamps[slot]
+			}
+
+			result = append(result, status)
+		}
+	}
+
+	return result
+}
+
+func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
+	modelsDiskUsage, err, httpCode := s.modelManager.GetDiskUsage()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get models disk usage: %v", err), httpCode)
+		return
+	}
+
+	// TODO: Get disk usage for each backend once the backends are implemented.
+	defaultBackendDiskUsage, err := s.defaultBackend.GetDiskUsage()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get disk usage for %s: %v", s.defaultBackend.Name(), err), http.StatusInternalServerError)
+		return
+	}
+
+	diskUsage := DiskUsage{modelsDiskUsage, defaultBackendDiskUsage}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(diskUsage); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// Unload unloads the specified runners (backend, model) from the backend.
+// Currently, this doesn't work for runners that are handling an OpenAI request.
+func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var unloadRequest UnloadRequest
+	if err := json.Unmarshal(body, &unloadRequest); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	unloadedRunners := UnloadResponse{s.loader.Unload(r.Context(), unloadRequest)}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(unloadedRunners); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.

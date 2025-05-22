@@ -2,6 +2,7 @@ package scheduling
 
 import (
 	"strings"
+	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
 )
@@ -41,4 +42,34 @@ func backendModeForRequest(path string) (inference.BackendMode, bool) {
 type OpenAIInferenceRequest struct {
 	// Model is the requested model name.
 	Model string `json:"model"`
+}
+
+// BackendStatus represents information about a running backend
+type BackendStatus struct {
+	// BackendName is the name of the backend
+	BackendName string `json:"backend_name"`
+	// ModelName is the name of the model loaded in the backend
+	ModelName string `json:"model_name"`
+	// Mode is the mode the backend is operating in
+	Mode string `json:"mode"`
+	// LastUsed represents when this (backend, model, mode) tuple was last used
+	LastUsed time.Time `json:"last_used,omitempty"`
+}
+
+// DiskUsage represents the disk usage of the models and default backend.
+type DiskUsage struct {
+	ModelsDiskUsage         float64 `json:"models_disk_usage"`
+	DefaultBackendDiskUsage float64 `json:"default_backend_disk_usage"`
+}
+
+// UnloadRequest is used to specify which models to unload.
+type UnloadRequest struct {
+	All     bool   `json:"all"`
+	Backend string `json:"backend"`
+	Model   string `json:"model"`
+}
+
+// UnloadResponse is used to return the number of unloaded runners (backend, model).
+type UnloadResponse struct {
+	UnloadedRunners int `json:"unloaded_runners"`
 }

@@ -58,3 +58,7 @@ func (m *mlx) Run(ctx context.Context, socket, model string, mode inference.Back
 func (m *mlx) Status() string {
 	return "not running"
 }
+
+func (m *mlx) GetDiskUsage() (float64, error) {
+	return 0, nil
+}
