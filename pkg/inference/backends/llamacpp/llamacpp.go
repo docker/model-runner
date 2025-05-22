@@ -129,7 +129,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 	if l.updatedLlamaCpp {
 		binPath = l.updatedServerStoragePath
 	}
-	llamaCppArgs := []string{"--model", modelPath, "--jinja", "--host", socket}
+	llamaCppArgs := []string{"--model", modelPath, "--jinja", "--host", socket, "--no-warmup"}
 	if mode == inference.BackendModeEmbedding {
 		llamaCppArgs = append(llamaCppArgs, "--embeddings")
 	}
