@@ -10,10 +10,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
 )
@@ -39,8 +39,6 @@ type llamaCpp struct {
 	updatedServerStoragePath string
 	// status is the state in which the llama.cpp backend is in.
 	status string
-	// config is the configuration for the llama.cpp backend.
-	config config.BackendConfig
 }
 
 // New creates a new llama.cpp-based backend.
@@ -50,20 +48,13 @@ func New(
 	serverLog logging.Logger,
 	vendoredServerStoragePath string,
 	updatedServerStoragePath string,
-	conf config.BackendConfig,
 ) (inference.Backend, error) {
-	// If no config is provided, use the default configuration
-	if conf == nil {
-		conf = NewDefaultLlamaCppConfig()
-	}
-
 	return &llamaCpp{
 		log:                       log,
 		modelManager:              modelManager,
 		serverLog:                 serverLog,
 		vendoredServerStoragePath: vendoredServerStoragePath,
 		updatedServerStoragePath:  updatedServerStoragePath,
-		config:                    conf,
 	}, nil
 }
 
@@ -124,6 +115,11 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 		return fmt.Errorf("failed to get model path: %w", err)
 	}
 
+	modelDesc, err := l.modelManager.GetModel(model)
+	if err != nil {
+		return fmt.Errorf("failed to get model: %w", err)
+	}
+
 	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		l.log.Warnf("failed to remove socket file %s: %w\n", socket, err)
 		l.log.Warnln("llama.cpp may not be able to start")
@@ -133,13 +129,32 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 	if l.updatedLlamaCpp {
 		binPath = l.updatedServerStoragePath
 	}
+	llamaCppArgs := []string{"--model", modelPath, "--jinja", "--host", socket}
+	if mode == inference.BackendModeEmbedding {
+		llamaCppArgs = append(llamaCppArgs, "--embeddings")
+	}
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		// Using a thread count equal to core count results in bad performance, and there seems to be little to no gain
+		// in going beyond core_count/2.
+		// TODO(p1-0tr): dig into why the defaults don't work well on windows/arm64
+		nThreads := min(2, runtime.NumCPU()/2)
+		llamaCppArgs = append(llamaCppArgs, "--threads", strconv.Itoa(nThreads))
 
-	args := l.config.GetArgs(modelPath, socket, mode)
-	l.log.Infof("llamaCppArgs: %v", args)
+		modelConfig, err := modelDesc.Config()
+		if err != nil {
+			return fmt.Errorf("failed to get model config: %w", err)
+		}
+		// The Adreno OpenCL implementation currently only supports Q4_0
+		if modelConfig.Quantization == "Q4_0" {
+			llamaCppArgs = append(llamaCppArgs, "-ngl", "100")
+		}
+	} else {
+		llamaCppArgs = append(llamaCppArgs, "-ngl", "100")
+	}
 	llamaCppProcess := exec.CommandContext(
 		ctx,
 		filepath.Join(binPath, "com.docker.llama-server"),
-		args...,
+		llamaCppArgs...,
 	)
 	llamaCppProcess.Cancel = func() error {
 		if runtime.GOOS == "windows" {
