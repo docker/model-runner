@@ -7,12 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
-	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/routing"
@@ -52,9 +50,6 @@ func main() {
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
-	// Create llama.cpp configuration from environment variables
-	llamaCppConfig := createLlamaCppConfigFromEnv()
-
 	llamaCppBackend, err := llamacpp.New(
 		log,
 		modelManager,
@@ -66,7 +61,6 @@ func main() {
 			_ = os.MkdirAll(d, 0o755)
 			return d
 		}(),
-		llamaCppConfig,
 	)
 	if err != nil {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
@@ -139,60 +133,4 @@ func main() {
 		}
 	}
 	log.Infoln("Docker Model Runner stopped")
-}
-
-// createLlamaCppConfigFromEnv creates a LlamaCppConfig from environment variables
-func createLlamaCppConfigFromEnv() config.BackendConfig {
-	// Check if any configuration environment variables are set
-	argsStr := os.Getenv("LLAMA_ARGS")
-
-	// If no environment variables are set, use default configuration
-	if argsStr == "" {
-		return nil // nil will cause the backend to use its default configuration
-	}
-
-	// Split the string by spaces, respecting quoted arguments
-	args := splitArgs(argsStr)
-
-	// Check for disallowed arguments
-	disallowedArgs := []string{"--model", "--host", "--embeddings", "--mmproj"}
-	for _, arg := range args {
-		for _, disallowed := range disallowedArgs {
-			if arg == disallowed {
-				log.Fatalf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed)
-			}
-		}
-	}
-
-	log.Infof("Using custom arguments: %v", args)
-	return &llamacpp.Config{
-		Args: args,
-	}
-}
-
-// splitArgs splits a string into arguments, respecting quoted arguments
-func splitArgs(s string) []string {
-	var args []string
-	var currentArg strings.Builder
-	inQuotes := false
-
-	for _, r := range s {
-		switch {
-		case r == '"' || r == '\'':
-			inQuotes = !inQuotes
-		case r == ' ' && !inQuotes:
-			if currentArg.Len() > 0 {
-				args = append(args, currentArg.String())
-				currentArg.Reset()
-			}
-		default:
-			currentArg.WriteRune(r)
-		}
-	}
-
-	if currentArg.Len() > 0 {
-		args = append(args, currentArg.String())
-	}
-
-	return args
 }
