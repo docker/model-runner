@@ -209,7 +209,10 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 		if unload.All {
 			return l.evict(false)
 		} else {
-			return l.evictRunner(unload.Backend, unload.Model)
+			for _, model := range unload.Models {
+				l.evictRunner(unload.Backend, model)
+			}
+			return len(l.runners)
 		}
 	}()
 }
