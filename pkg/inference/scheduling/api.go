@@ -58,8 +58,8 @@ type BackendStatus struct {
 
 // DiskUsage represents the disk usage of the models and default backend.
 type DiskUsage struct {
-	ModelsDiskUsage         float64 `json:"models_disk_usage"`
-	DefaultBackendDiskUsage float64 `json:"default_backend_disk_usage"`
+	ModelsDiskUsage         int64 `json:"models_disk_usage"`
+	DefaultBackendDiskUsage int64 `json:"default_backend_disk_usage"`
 }
 
 // UnloadRequest is used to specify which models to unload.

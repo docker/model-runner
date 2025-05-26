@@ -201,7 +201,7 @@ func (l *llamaCpp) Status() string {
 	return l.status
 }
 
-func (l *llamaCpp) GetDiskUsage() (float64, error) {
+func (l *llamaCpp) GetDiskUsage() (int64, error) {
 	size, err := diskusage.Size(l.updatedServerStoragePath)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %v", err)

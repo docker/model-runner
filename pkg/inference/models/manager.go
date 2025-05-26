@@ -401,7 +401,7 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 }
 
 // GetDiskUsage returns the disk usage of the model store.
-func (m *Manager) GetDiskUsage() (float64, error, int) {
+func (m *Manager) GetDiskUsage() (int64, error, int) {
 	if m.distributionClient == nil {
 		return 0, errors.New("model distribution service unavailable"), http.StatusServiceUnavailable
 	}

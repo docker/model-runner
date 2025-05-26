@@ -59,6 +59,6 @@ func (v *vLLM) Status() string {
 	return "not running"
 }
 
-func (v *vLLM) GetDiskUsage() (float64, error) {
+func (v *vLLM) GetDiskUsage() (int64, error) {
 	return 0, nil
 }
