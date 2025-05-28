@@ -14,6 +14,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/metrics"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -34,6 +35,8 @@ type Scheduler struct {
 	loader *loader
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// tracker is the metrics tracker.
+	tracker *metrics.Tracker
 }
 
 // NewScheduler creates a new inference scheduler.
@@ -53,6 +56,7 @@ func NewScheduler(
 		installer:      newInstaller(log, backends, httpClient),
 		loader:         newLoader(log, backends, modelManager),
 		router:         http.NewServeMux(),
+		tracker:        metrics.NewTracker(httpClient, log.WithField("component", "metrics")),
 	}
 
 	// Register routes.
@@ -189,7 +193,8 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		if _, err := s.modelManager.GetModel(request.Model); err != nil {
+		model, err := s.modelManager.GetModel(request.Model)
+		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
 			} else {
@@ -197,6 +202,8 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 			}
 			return
 		}
+		// Non-blocking call to track the model usage.
+		s.tracker.TrackModel(model)
 	}
 
 	// Request a runner to execute the request and defer its release.
