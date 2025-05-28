@@ -45,7 +45,7 @@ func main() {
 
 	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
 	if llamaServerPath == "" {
-		llamaServerPath = "/Applications/Docker.app/Contents/Resources/bin"
+		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
 	}
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
