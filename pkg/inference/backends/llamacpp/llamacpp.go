@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/tailbuffer"
 )
 
 const (
@@ -147,9 +150,11 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 		}
 		return llamaCppProcess.Process.Signal(os.Interrupt)
 	}
+	tailBuf := tailbuffer.NewTailBuffer(1024)
 	serverLogStream := l.serverLog.Writer()
+	out := io.MultiWriter(serverLogStream, tailBuf)
 	llamaCppProcess.Stdout = serverLogStream
-	llamaCppProcess.Stderr = serverLogStream
+	llamaCppProcess.Stderr = out
 
 	if err := llamaCppProcess.Start(); err != nil {
 		return fmt.Errorf("unable to start llama.cpp: %w", err)
@@ -159,6 +164,18 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 	go func() {
 		llamaCppErr := llamaCppProcess.Wait()
 		serverLogStream.Close()
+
+		errOutput := new(strings.Builder)
+		if _, err := io.Copy(errOutput, tailBuf); err != nil {
+			l.log.Warnf("failed to read server output tail: %w", err)
+		}
+
+		if len(errOutput.String()) != 0 {
+			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w\nwith output: %s", llamaCppErr, errOutput.String())
+		} else {
+			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w", llamaCppErr)
+		}
+
 		llamaCppErrors <- llamaCppErr
 		close(llamaCppErrors)
 		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
