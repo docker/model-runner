@@ -14,5 +14,5 @@ func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _
 ) error {
 	l.status = fmt.Sprintf("running llama.cpp version: %s",
 		getLlamaCppVersion(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server")))
-	return errLlamaCppUpToDate
+	return errLlamaCppUpdateDisabled
 }

@@ -25,11 +25,12 @@ const (
 )
 
 var (
-	ShouldUseGPUVariant     bool
-	ShouldUseGPUVariantLock sync.Mutex
-	ShouldUpdateServer      = true
-	ShouldUpdateServerLock  sync.Mutex
-	errLlamaCppUpToDate     = errors.New("bundled llama.cpp version is up to date, no need to update")
+	ShouldUseGPUVariant       bool
+	ShouldUseGPUVariantLock   sync.Mutex
+	ShouldUpdateServer        = true
+	ShouldUpdateServerLock    sync.Mutex
+	errLlamaCppUpToDate       = errors.New("bundled llama.cpp version is up to date, no need to update")
+	errLlamaCppUpdateDisabled = errors.New("llama.cpp auto-updated is disabled")
 )
 
 func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
@@ -40,7 +41,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	ShouldUpdateServerLock.Unlock()
 	if !shouldUpdateServer {
 		log.Infof("downloadLatestLlamaCpp: update disabled")
-		return nil
+		return errLlamaCppUpdateDisabled
 	}
 
 	log.Infof("downloadLatestLlamaCpp: %s, %s, %s, %s", desiredVersion, desiredVariant, vendoredServerStoragePath, llamaCppPath)

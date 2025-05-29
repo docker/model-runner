@@ -94,7 +94,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
-		if !errors.Is(err, errLlamaCppUpToDate) {
+		if !(errors.Is(err, errLlamaCppUpToDate) || errors.Is(err, errLlamaCppUpdateDisabled)) {
 			l.status = fmt.Sprintf("failed to install llama.cpp: %v", err)
 		}
 		if errors.Is(err, context.Canceled) {
