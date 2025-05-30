@@ -29,6 +29,10 @@ const (
 // long to initialize and respond to a readiness request.
 var errBackendNotReadyInTime = errors.New("inference backend took too long to initialize")
 
+// errBackendQuitUnexpectedly indicates that an inference backend terminated
+// unexpectedly
+var errBackendQuitUnexpectedly = errors.New("inference backend quit unexpectedly")
+
 // RunnerSocketPath determines the Unix domain socket path used to communicate
 // with runners at the specified slot. It can be overridden during init().
 var RunnerSocketPath = func(slot int) (string, error) {
@@ -58,6 +62,8 @@ type runner struct {
 	proxy *httputil.ReverseProxy
 	// proxyLog is the stream used for logging by proxy.
 	proxyLog io.Closer
+	// err is the error returned by the runner's backend, only valid after done is closed.
+	err error
 }
 
 // run creates a new runner instance.
@@ -115,18 +121,7 @@ func run(
 	runCtx, runCancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})
 
-	// Start the backend run loop.
-	go func() {
-		if err := backend.Run(runCtx, socket, model, mode); err != nil {
-			log.Warnf("Backend %s running model %s exited with error: %v",
-				backend.Name(), model, err,
-			)
-		}
-		close(runDone)
-	}()
-
-	// Create the runner.
-	return &runner{
+	r := &runner{
 		log:       log,
 		backend:   backend,
 		model:     model,
@@ -137,13 +132,35 @@ func run(
 		client:    client,
 		proxy:     proxy,
 		proxyLog:  proxyLog,
-	}, nil
+	}
+
+	// Start the backend run loop.
+	go func() {
+		if err := backend.Run(runCtx, socket, model, mode); err != nil {
+			log.Warnf("Backend %s running model %s exited with error: %v",
+				backend.Name(), model, err,
+			)
+			r.err = err
+		}
+		close(runDone)
+	}()
+
+	// Create the runner.
+	return r, nil
 }
 
 // wait waits for the runner to be ready.
 func (r *runner) wait(ctx context.Context) error {
 	// Loop and poll for readiness.
 	for p := 0; p < maximumReadinessPings; p++ {
+		select {
+		case <-r.done:
+			if r.err == nil {
+				return errBackendQuitUnexpectedly
+			}
+			return r.err
+		default:
+		}
 		// Create and execute a request targeting a known-valid endpoint.
 		readyRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/v1/models", http.NoBody)
 		if err != nil {

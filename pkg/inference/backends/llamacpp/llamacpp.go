@@ -103,7 +103,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
-		if !errors.Is(err, errLlamaCppUpToDate) {
+		if !(errors.Is(err, errLlamaCppUpToDate) || errors.Is(err, errLlamaCppUpdateDisabled)) {
 			l.status = fmt.Sprintf("failed to install llama.cpp: %v", err)
 		}
 		if errors.Is(err, context.Canceled) {
@@ -186,7 +186,7 @@ func (l *llamaCpp) Status() string {
 	return l.status
 }
 
-func (l *llamaCpp) GetDiskUsage() (float64, error) {
+func (l *llamaCpp) GetDiskUsage() (int64, error) {
 	size, err := diskusage.Size(l.updatedServerStoragePath)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %v", err)

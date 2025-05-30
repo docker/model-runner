@@ -59,6 +59,6 @@ func (m *mlx) Status() string {
 	return "not running"
 }
 
-func (m *mlx) GetDiskUsage() (float64, error) {
+func (m *mlx) GetDiskUsage() (int64, error) {
 	return 0, nil
 }

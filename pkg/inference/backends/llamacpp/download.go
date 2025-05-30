@@ -25,14 +25,25 @@ const (
 )
 
 var (
-	ShouldUseGPUVariant     bool
-	ShouldUseGPUVariantLock sync.Mutex
-	errLlamaCppUpToDate     = errors.New("bundled llama.cpp version is up to date, no need to update")
+	ShouldUseGPUVariant       bool
+	ShouldUseGPUVariantLock   sync.Mutex
+	ShouldUpdateServer        = true
+	ShouldUpdateServerLock    sync.Mutex
+	errLlamaCppUpToDate       = errors.New("bundled llama.cpp version is up to date, no need to update")
+	errLlamaCppUpdateDisabled = errors.New("llama.cpp auto-updated is disabled")
 )
 
 func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
 	llamaCppPath, vendoredServerStoragePath, desiredVersion, desiredVariant string,
 ) error {
+	ShouldUpdateServerLock.Lock()
+	shouldUpdateServer := ShouldUpdateServer
+	ShouldUpdateServerLock.Unlock()
+	if !shouldUpdateServer {
+		log.Infof("downloadLatestLlamaCpp: update disabled")
+		return errLlamaCppUpdateDisabled
+	}
+
 	log.Infof("downloadLatestLlamaCpp: %s, %s, %s, %s", desiredVersion, desiredVariant, vendoredServerStoragePath, llamaCppPath)
 	desiredTag := desiredVersion + "-" + desiredVariant
 	url := fmt.Sprintf("https://hub.docker.com/v2/namespaces/%s/repositories/%s/tags/%s", hubNamespace, hubRepo, desiredTag)

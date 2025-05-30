@@ -70,5 +70,5 @@ type Backend interface {
 	// Status returns a description of the backend's state.
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.
-	GetDiskUsage() (float64, error)
+	GetDiskUsage() (int64, error)
 }

@@ -40,6 +40,13 @@ func main() {
 		modelPath = filepath.Join(userHomeDir, ".docker", "models")
 	}
 
+	_, disableServerUpdate := os.LookupEnv("DISABLE_SERVER_UPDATE")
+	if disableServerUpdate {
+		llamacpp.ShouldUpdateServerLock.Lock()
+		llamacpp.ShouldUpdateServer = false
+		llamacpp.ShouldUpdateServerLock.Unlock()
+	}
+
 	modelManager := models.NewManager(log, models.ClientConfig{
 		StoreRootPath: modelPath,
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
@@ -47,7 +54,7 @@ func main() {
 
 	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
 	if llamaServerPath == "" {
-		llamaServerPath = "/Applications/Docker.app/Contents/Resources/bin"
+		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
 	}
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)

@@ -6,7 +6,7 @@ LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
 DOCKER_IMAGE := docker/model-runner:latest
 PORT := 8080
-MODELS_PATH := $(shell pwd)/models
+MODELS_PATH := $(shell pwd)/models-store
 LLAMA_ARGS ?=
 
 # Main targets
