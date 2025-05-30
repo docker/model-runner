@@ -69,7 +69,7 @@ func main() {
 		llamaServerPath,
 		func() string {
 			wd, _ := os.Getwd()
-			d := filepath.Join(wd, "updated-inference")
+			d := filepath.Join(wd, "updated-inference", "bin")
 			_ = os.MkdirAll(d, 0o755)
 			return d
 		}(),

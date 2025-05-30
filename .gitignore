@@ -3,3 +3,5 @@ model-runner
 model-runner.sock
 # Default MODELS_PATH in Makefile
 models-store/
+# Directory where we store the updated llama.cpp
+updated-inference/
