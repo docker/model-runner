@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/docker/model-distribution/distribution"
@@ -34,6 +35,8 @@ type Scheduler struct {
 	loader *loader
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// handler is the top-level HTTP handler that wraps the internal router with the CORS middleware (corsMiddleware).
+	handler http.Handler
 }
 
 // NewScheduler creates a new inference scheduler.
@@ -64,8 +67,33 @@ func NewScheduler(
 		s.router.HandleFunc(route, handler)
 	}
 
+	s.handler = corsMiddleware(s.router)
+
 	// Scheduler successfully initialized.
 	return s
+}
+
+// corsMiddleware handles CORS and OPTIONS preflight requests and sets the necessary CORS headers.
+// TODO: This will be useful for Model Manager as well once it's integrated with other projects/frameworks/SDKs, etc.
+// Currently the OPTIONS requests are only allowed for OpenAI inference requests. See routeHandlers.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers for all requests.
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		// Handle OPTIONS requests.
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
@@ -80,6 +108,9 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	m := make(map[string]http.HandlerFunc)
 	for _, route := range openAIRoutes {
 		m[route] = s.handleOpenAIInference
+		// Register OPTIONS for CORS preflight.
+		optionsRoute := "OPTIONS " + route[strings.Index(route, " "):]
+		m[optionsRoute] = s.handleOpenAIInference
 	}
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
@@ -319,5 +350,5 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	s.handler.ServeHTTP(w, r)
 }
