@@ -55,6 +55,8 @@ docker-run: docker-build
 		-e MODEL_RUNNER_PORT=$(PORT) \
 		-e LLAMA_SERVER_PATH=/app/bin \
 		-e MODELS_PATH=/models \
+		-e DO_NOT_TRACK=${DO_NOT_TRACK} \
+		-e DEBUG=${DEBUG} \
 		$(DOCKER_IMAGE)
 
 # Show help
