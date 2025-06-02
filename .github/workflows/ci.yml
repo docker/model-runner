@@ -59,7 +59,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64, linux/arm64
           build-args: |
-            "LLAMA_SERVER_VERSION=v0.0.5-rc2"
+            "LLAMA_SERVER_VERSION=latest"
           push: true
           sbom: true
           provenance: mode=max
@@ -71,7 +71,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64, linux/arm64
           build-args: |
-            "LLAMA_SERVER_VERSION=v0.0.5-rc2"
+            "LLAMA_SERVER_VERSION=latest"
             "LLAMA_SERVER_VARIANT=cuda"
             "BASE_IMAGE=nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04"
           push: true
