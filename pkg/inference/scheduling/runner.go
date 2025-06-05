@@ -2,6 +2,7 @@ package scheduling
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -132,6 +133,28 @@ func run(
 		client:    client,
 		proxy:     proxy,
 		proxyLog:  proxyLog,
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		w.WriteHeader(http.StatusInternalServerError)
+		// If the error is EOF, the underlying runner likely bailed. Try to gather its
+		// error, but time out in case the the runner process only killed its comms and
+		// is stuck.
+		if errors.Is(err, io.EOF) {
+			select {
+			case <-r.done:
+				errJson, err := json.Marshal(map[string]string{"error": r.err.Error()})
+				if err == nil {
+					w.Write(errJson)
+				}
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
+		errJson, err := json.Marshal(map[string]string{"error": err.Error()})
+		if err == nil {
+			w.Write(errJson)
+		}
 	}
 
 	// Start the backend run loop.
