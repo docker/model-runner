@@ -134,6 +134,22 @@ func run(
 		proxyLog:  proxyLog,
 	}
 
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		// If the error is EOF, the underlying runner likely bailed, and closed its socket
+		// unexpectedly. Wait for the runner process to complete, but time out in case
+		// the runner process only killed its comms and is stuck.
+		if errors.Is(err, io.EOF) {
+			w.WriteHeader(http.StatusInternalServerError)
+			select {
+			case <-r.done:
+				return
+			case <-time.After(30 * time.Second):
+			}
+		} else {
+			w.WriteHeader(http.StatusBadGateway)
+		}
+	}
+
 	// Start the backend run loop.
 	go func() {
 		if err := backend.Run(runCtx, socket, model, mode); err != nil {
