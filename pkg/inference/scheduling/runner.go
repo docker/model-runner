@@ -2,6 +2,7 @@ package scheduling
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -143,11 +144,24 @@ func run(
 			w.WriteHeader(http.StatusInternalServerError)
 			select {
 			case <-r.done:
+				res := OpenAIErrorResponse{
+					Type:           "error",
+					Code:           nil,
+					Message:        r.err.Error(),
+					Param:          nil,
+					SequenceNumber: 1,
+				}
+				errJson, err := json.Marshal(&res)
+				if err == nil {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.Write(errJson)
+				}
 				return
 			case <-time.After(30 * time.Second):
 			}
 		} else {
 			w.WriteHeader(http.StatusBadGateway)
+
 		}
 	}
 
