@@ -162,7 +162,13 @@ func (l *loader) evict(idleOnly bool) int {
 	for r, slot := range l.runners {
 		unused := l.references[slot] == 0
 		idle := unused && now.Sub(l.timestamps[slot]) > runnerIdleTimeout
-		if unused && (!idleOnly || idle) {
+		defunct := false
+		select {
+		case <-l.slots[slot].done:
+			defunct = true
+		default:
+		}
+		if unused && (!idleOnly || idle || defunct) {
 			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
 				r.backend, r.model, r.mode,
 			)
@@ -372,9 +378,17 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 		// See if we can satisfy the request with an existing runner.
 		existing, ok := l.runners[runnerKey{backendName, model, mode}]
 		if ok {
-			l.references[existing] += 1
-			l.timestamps[existing] = time.Time{}
-			return l.slots[existing], nil
+			select {
+			case <-l.slots[existing].done:
+				l.log.Warnf("Will reload defunct %s runner for %s. Runner error: %s.", backendName, model,
+					l.slots[existing].err)
+				// Evict the defunct runner if it is not in use by anyone else.
+				l.evictRunner(backendName, model)
+			default:
+				l.references[existing] += 1
+				l.timestamps[existing] = time.Time{}
+				return l.slots[existing], nil
+			}
 		}
 
 		// If there's not sufficient memory or all slots are full, then try
