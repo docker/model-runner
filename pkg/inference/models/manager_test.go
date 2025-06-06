@@ -2,13 +2,14 @@ package models
 
 import (
 	"context"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/registry"
 
 	"github.com/docker/model-distribution/builder"
 	reg "github.com/docker/model-distribution/registry"
@@ -108,7 +109,7 @@ func TestPullModel(t *testing.T) {
 			m := NewManager(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			})
+			}, nil)
 
 			r := httptest.NewRequest("POST", "/models/create", strings.NewReader(`{"from": "`+tag+`"}`))
 			if tt.acceptHeader != "" {
