@@ -1,80 +1,26 @@
-name: Release model-runner images for CE
-run-name: Release model-runner images for CE, version ${{ inputs.releaseTag }}
+name: CI
 
 on:
-  workflow_dispatch:
-    inputs:
-      pushLatest:
-        description: 'Tag images produced by this job as latest'
-        required: false
-        type: boolean
-        default: false
-      releaseTag:
-        description: 'Release tag'
-        required: false
-        type: string
-        default: "test"
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Format tags
-        id: tags
-        shell: bash
-        run: |
-          echo "cpu<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          username: "docker"
-          password: ${{ secrets.ORG_ACCESS_TOKEN }}
+          go-version: 1.24.2
+          cache: true
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          version: "lab:latest"
-          driver: cloud
-          endpoint: "docker/make-product-smarter"
-          install: true
+      - name: Run tests
+        run: go test -v ./...
 
-      - name: Build CPU image
-        uses: docker/build-push-action@v5
-        with:
-          file: Dockerfile
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=latest"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.cpu }}
-
-      - name: Build CUDA image
-        uses: docker/build-push-action@v5
-        with:
-          file: Dockerfile
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=latest"
-            "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.cuda }}
+      - name: Run tests with race detection
+        run: go test -race ./...
