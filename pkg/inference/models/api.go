@@ -88,7 +88,7 @@ type Model struct {
 	// ID is the globally unique model identifier.
 	ID string `json:"id"`
 	// Tags are the list of tags associated with the model.
-	Tags []string `json:"tags"`
+	Tags []string `json:"tags,omitempty"`
 	// Created is the Unix epoch timestamp corresponding to the model creation.
 	Created int64 `json:"created"`
 	// Config describes the model.

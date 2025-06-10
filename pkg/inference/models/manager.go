@@ -37,6 +37,8 @@ type Manager struct {
 	router *http.ServeMux
 	// distributionClient is the client for model distribution.
 	distributionClient *distribution.Client
+	// registryClient is the client for model registry.
+	registryClient *registry.Client
 }
 
 type ClientConfig struct {
@@ -65,12 +67,19 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string) *Ma
 		// respond to requests, but may return errors if the client is required.
 	}
 
+	// Create the model registry client.
+	registryClient := registry.NewClient(
+		registry.WithTransport(c.Transport),
+		registry.WithUserAgent(c.UserAgent),
+	)
+
 	// Create the manager.
 	m := &Manager{
 		log:                log,
 		pullTokens:         make(chan struct{}, maximumConcurrentModelPulls),
 		router:             http.NewServeMux(),
 		distributionClient: distributionClient,
+		registryClient:     registryClient,
 	}
 
 	// Register routes.
@@ -189,24 +198,36 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Query the model.
-	model, err := m.GetModel(r.PathValue("name"))
-	if err != nil {
-		if errors.Is(err, distribution.ErrModelNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+	// Parse remote query parameter
+	remote := false
+	if r.URL.Query().Has("remote") {
+		if val, err := strconv.ParseBool(r.URL.Query().Get("remote")); err != nil {
+			m.log.Warnln("Error while parsing remote query parameter:", err)
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			remote = val
 		}
+	}
+
+	if remote && m.registryClient == nil {
+		http.Error(w, "registry client unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	apiModel, err := ToModel(model)
+	var apiModel *Model
+	var err error
+
+	if remote {
+		apiModel, err = getRemoteModel(m, r.PathValue("name"))
+	} else {
+		apiModel, err = getLocalModel(m, r.PathValue("name"))
+	}
+
 	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) || errors.Is(err, registry.ErrModelNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -216,6 +237,55 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(apiModel); err != nil {
 		m.log.Warnln("Error while encoding model response:", err)
 	}
+}
+
+func getLocalModel(m *Manager, name string) (*Model, error) {
+	if m.distributionClient == nil {
+		return nil, errors.New("model distribution service unavailable")
+	}
+
+	// Query the model.
+	model, err := m.GetModel(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return ToModel(model)
+}
+
+func getRemoteModel(m *Manager, name string) (*Model, error) {
+	if m.registryClient == nil {
+		return nil, errors.New("registry client unavailable")
+	}
+
+	model, err := m.registryClient.Model(context.Background(), name)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := model.ID()
+	if err != nil {
+		return nil, err
+	}
+
+	descriptor, err := model.Descriptor()
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := model.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	apiModel := &Model{
+		ID:      id,
+		Tags:    make([]string, 0),
+		Created: descriptor.Created.Unix(),
+		Config:  config,
+	}
+
+	return apiModel, nil
 }
 
 // handleDeleteModel handles DELETE <inference-prefix>/models/{name} requests.

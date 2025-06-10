@@ -201,7 +201,7 @@ func TestHandleGetModel(t *testing.T) {
 			expectedCode:  http.StatusNotFound,
 			expectedError: "error while getting model",
 		},
-		/*{
+		{
 			name:         "get remote model - success",
 			remote:       true,
 			modelName:    tag,
@@ -210,10 +210,10 @@ func TestHandleGetModel(t *testing.T) {
 		{
 			name:          "get remote model - not found",
 			remote:        true,
-			modelName:     "nonexistent:v1",
-			expectedCode:  http.StatusInternalServerError,
+			modelName:     uri.Host + "/ai/nonexistent:v1",
+			expectedCode:  http.StatusNotFound,
 			expectedError: "not found",
-		},*/
+		},
 	}
 
 	for _, tt := range tests {
