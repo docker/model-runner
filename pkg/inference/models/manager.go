@@ -217,7 +217,7 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if remote {
-		apiModel, err = getRemoteModel(m, r.PathValue("name"))
+		apiModel, err = getRemoteModel(r.Context(), m, r.PathValue("name"))
 	} else {
 		apiModel, err = getLocalModel(m, r.PathValue("name"))
 	}
@@ -253,12 +253,12 @@ func getLocalModel(m *Manager, name string) (*Model, error) {
 	return ToModel(model)
 }
 
-func getRemoteModel(m *Manager, name string) (*Model, error) {
+func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error) {
 	if m.registryClient == nil {
 		return nil, errors.New("registry client unavailable")
 	}
 
-	model, err := m.registryClient.Model(context.Background(), name)
+	model, err := m.registryClient.Model(ctx, name)
 	if err != nil {
 		return nil, err
 	}
