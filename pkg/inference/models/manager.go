@@ -258,6 +258,7 @@ func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error
 		return nil, errors.New("registry client unavailable")
 	}
 
+	m.log.Infoln("Getting remote model:", name)
 	model, err := m.registryClient.Model(ctx, name)
 	if err != nil {
 		return nil, err
@@ -280,7 +281,7 @@ func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error
 
 	apiModel := &Model{
 		ID:      id,
-		Tags:    make([]string, 0),
+		Tags:    nil,
 		Created: descriptor.Created.Unix(),
 		Config:  config,
 	}
