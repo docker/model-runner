@@ -10,7 +10,7 @@ import (
 func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
 	llamaCppPath, vendoredServerStoragePath string,
 ) error {
-	desiredVersion := "latest"
+	desiredVersion := GetDesiredServerVersion()
 	desiredVariant := "metal"
 	return l.downloadLatestLlamaCpp(ctx, log, httpClient, llamaCppPath, vendoredServerStoragePath, desiredVersion,
 		desiredVariant)

@@ -48,6 +48,11 @@ func main() {
 		llamacpp.ShouldUpdateServerLock.Unlock()
 	}
 
+	desiredSeverVersion, ok := os.LookupEnv("LLAMACPP_SERVER_VERSION")
+	if ok {
+		llamacpp.SetDesiredServerVersion(desiredSeverVersion)
+	}
+
 	modelManager := models.NewManager(
 		log,
 		models.ClientConfig{

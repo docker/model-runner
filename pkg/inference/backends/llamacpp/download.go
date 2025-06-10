@@ -29,9 +29,23 @@ var (
 	ShouldUseGPUVariantLock   sync.Mutex
 	ShouldUpdateServer        = true
 	ShouldUpdateServerLock    sync.Mutex
+	DesiredServerVersion      = "latest"
+	DesiredServerVersionLock  sync.Mutex
 	errLlamaCppUpToDate       = errors.New("bundled llama.cpp version is up to date, no need to update")
 	errLlamaCppUpdateDisabled = errors.New("llama.cpp auto-updated is disabled")
 )
+
+func GetDesiredServerVersion() string {
+	DesiredServerVersionLock.Lock()
+	defer DesiredServerVersionLock.Unlock()
+	return DesiredServerVersion
+}
+
+func SetDesiredServerVersion(version string) {
+	DesiredServerVersionLock.Lock()
+	defer DesiredServerVersionLock.Unlock()
+	DesiredServerVersion = version
+}
 
 func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
 	llamaCppPath, vendoredServerStoragePath, desiredVersion, desiredVariant string,
