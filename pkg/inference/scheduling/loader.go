@@ -29,6 +29,9 @@ var (
 	// errModelTooBig indicates that the model is too big to ever load into the
 	// available system memory.
 	errModelTooBig = errors.New("model too big")
+	// errRunnerAlreadyActive indicates that a given runner is already active
+	// and therefore can't be reconfigured for example
+	errRunnerAlreadyActive = errors.New("runner already active")
 )
 
 // runnerKey is used to index runners.
@@ -82,6 +85,8 @@ type loader struct {
 	// timestamps maps slot indices to last usage times. Values in this slice
 	// are only valid if the corresponding reference count is zero.
 	timestamps []time.Time
+	// runnerConfigs maps model names to runner configurations
+	runnerConfigs map[runnerKey]inference.BackendConfiguration
 }
 
 // newLoader creates a new loader.
@@ -122,6 +127,7 @@ func newLoader(
 		references:      make([]uint, nSlots),
 		allocations:     make([]uint64, nSlots),
 		timestamps:      make([]time.Time, nSlots),
+		runnerConfigs:   make(map[runnerKey]inference.BackendConfiguration),
 	}
 	l.guard <- struct{}{}
 	return l
@@ -214,9 +220,11 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 
 	return len(l.runners) - func() int {
 		if unload.All {
+			l.runnerConfigs = make(map[runnerKey]inference.BackendConfiguration)
 			return l.evict(false)
 		} else {
 			for _, model := range unload.Models {
+				delete(l.runnerConfigs, runnerKey{unload.Backend, model, inference.BackendModeCompletion})
 				// Evict both, completion and embedding models. We should consider
 				// accepting a mode parameter in unload requests.
 				l.evictRunner(unload.Backend, model, inference.BackendModeCompletion)
@@ -413,9 +421,13 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 
 		// If we've identified a slot, then we're ready to start a runner.
 		if slot >= 0 {
+			var runnerConfig *inference.BackendConfiguration
+			if rc, ok := l.runnerConfigs[runnerKey{backendName, model, mode}]; ok {
+				runnerConfig = &rc
+			}
 			// Create the runner.
 			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, model, mode)
-			runner, err := run(l.log, backend, model, mode, slot)
+			runner, err := run(l.log, backend, model, mode, slot, runnerConfig)
 			if err != nil {
 				l.log.Warnf("Unable to start %s backend runner with model %s in %s mode: %v",
 					backendName, model, mode, err,
@@ -491,4 +503,19 @@ func (l *loader) release(runner *runner) {
 
 	// Signal waiters.
 	l.broadcast()
+}
+
+func (l *loader) setRunnerConfig(ctx context.Context, backendName, model string, mode inference.BackendMode, runnerConfig inference.BackendConfiguration) error {
+	l.lock(ctx)
+	defer l.unlock()
+
+	runnerId := runnerKey{backendName, model, mode}
+
+	if _, ok := l.runners[runnerId]; ok {
+		return errRunnerAlreadyActive
+	}
+
+	l.log.Infof("Configuring %s runner for %s", backendName, model)
+	l.runnerConfigs[runnerId] = runnerConfig
+	return nil
 }

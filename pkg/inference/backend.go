@@ -29,6 +29,11 @@ func (m BackendMode) String() string {
 	}
 }
 
+type BackendConfiguration struct {
+	ContextSize int64
+	RawFlags    []string
+}
+
 // Backend is the interface implemented by inference engine backends. Backend
 // implementations need not be safe for concurrent invocation of the following
 // methods, though their underlying server implementations do need to support
@@ -66,7 +71,7 @@ type Backend interface {
 	// to be loaded. Backends should not load multiple models at once and should
 	// instead load only the specified model. Backends should still respond to
 	// OpenAI API requests for other models with a 421 error code.
-	Run(ctx context.Context, socket, model string, mode BackendMode) error
+	Run(ctx context.Context, socket, model string, mode BackendMode, config *BackendConfiguration) error
 	// Status returns a description of the backend's state.
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.

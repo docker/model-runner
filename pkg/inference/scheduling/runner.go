@@ -73,6 +73,7 @@ func run(
 	model string,
 	mode inference.BackendMode,
 	slot int,
+	runnerConfig *inference.BackendConfiguration,
 ) (*runner, error) {
 	// Create a dialer / transport that target backend on the specified slot.
 	socket, err := RunnerSocketPath(slot)
@@ -152,7 +153,7 @@ func run(
 
 	// Start the backend run loop.
 	go func() {
-		if err := backend.Run(runCtx, socket, model, mode); err != nil {
+		if err := backend.Run(runCtx, socket, model, mode, runnerConfig); err != nil {
 			log.Warnf("Backend %s running model %s exited with error: %v",
 				backend.Name(), model, err,
 			)

@@ -17,6 +17,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -112,6 +113,8 @@ func (s *Scheduler) routeHandlers(allowedOrigins []string) map[string]http.Handl
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
 	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
+	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = s.Configure
+	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
 	return m
 }
 
@@ -345,6 +348,61 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
+	// Determine the requested backend and ensure that it's valid.
+	var backend inference.Backend
+	if b := r.PathValue("backend"); b == "" {
+		backend = s.defaultBackend
+	} else {
+		backend = s.backends[b]
+	}
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	configureRequest := ConfigureRequest{
+		Model:           "",
+		ContextSize:     -1,
+		RawRuntimeFlags: "",
+	}
+	if err := json.Unmarshal(body, &configureRequest); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	rawFlags, err := shellwords.Parse(configureRequest.RawRuntimeFlags)
+	if err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	var runnerConfig inference.BackendConfiguration
+	runnerConfig.ContextSize = configureRequest.ContextSize
+	runnerConfig.RawFlags = rawFlags
+
+	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), configureRequest.Model, inference.BackendModeCompletion, runnerConfig); err != nil {
+		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), configureRequest.Model, err)
+		if err == errRunnerAlreadyActive {
+			w.WriteHeader(http.StatusConflict)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.

@@ -49,7 +49,7 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 }
 
 // Run implements inference.Backend.Run.
-func (m *mlx) Run(ctx context.Context, socket, model string, mode inference.BackendMode) error {
+func (m *mlx) Run(ctx context.Context, socket, model string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
 	// TODO: Implement.
 	m.log.Warn("MLX backend is not yet supported")
 	return errors.New("not implemented")

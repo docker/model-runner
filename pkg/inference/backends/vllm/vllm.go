@@ -49,7 +49,7 @@ func (v *vLLM) Install(ctx context.Context, httpClient *http.Client) error {
 }
 
 // Run implements inference.Backend.Run.
-func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.BackendMode) error {
+func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
 	// TODO: Implement.
 	v.log.Warn("vLLM backend is not yet supported")
 	return errors.New("not implemented")

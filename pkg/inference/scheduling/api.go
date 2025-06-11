@@ -73,3 +73,10 @@ type UnloadRequest struct {
 type UnloadResponse struct {
 	UnloadedRunners int `json:"unloaded_runners"`
 }
+
+// ConfigureRequest specifies per-model runtime configuration options.
+type ConfigureRequest struct {
+	Model           string `json:"model"`
+	ContextSize     int64  `json:"context-size,omitempty"`
+	RawRuntimeFlags string `json:"raw-runtime-flags,omitempty"`
+}
