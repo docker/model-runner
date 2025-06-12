@@ -347,6 +347,74 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetAllActiveRunners returns information about all active runners
+func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
+	runningBackends := s.getLoaderStatus(context.Background())
+	var activeRunners []metrics.ActiveRunner
+
+	for _, backend := range runningBackends {
+		// Find the runner slot for this backend/model combination
+		key := runnerKey{
+			backend: backend.BackendName,
+			model:   backend.ModelName,
+			mode:    parseBackendMode(backend.Mode),
+		}
+
+		if slot, exists := s.loader.runners[key]; exists {
+			socket, err := RunnerSocketPath(slot)
+			if err != nil {
+				s.log.Warnf("Failed to get socket path for runner %s/%s: %v", backend.BackendName, backend.ModelName, err)
+				continue
+			}
+
+			activeRunners = append(activeRunners, metrics.ActiveRunner{
+				BackendName: backend.BackendName,
+				ModelName:   backend.ModelName,
+				Mode:        backend.Mode,
+				Socket:      socket,
+			})
+		}
+	}
+
+	return activeRunners
+}
+
+// GetLlamaCppSocket returns the Unix socket path for an active llama.cpp runner
+func (s *Scheduler) GetLlamaCppSocket() (string, error) {
+	runningBackends := s.getLoaderStatus(context.Background())
+
+	// Look for an active llama.cpp backend
+	for _, backend := range runningBackends {
+		if backend.BackendName == "llama.cpp" {
+			// Find the runner slot for this backend/model combination
+			key := runnerKey{
+				backend: backend.BackendName,
+				model:   backend.ModelName,
+				mode:    parseBackendMode(backend.Mode),
+			}
+
+			if slot, exists := s.loader.runners[key]; exists {
+				// Use the RunnerSocketPath function to get the socket path
+				return RunnerSocketPath(slot)
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no active llama.cpp backend found")
+}
+
+// parseBackendMode converts a string mode to BackendMode
+func parseBackendMode(mode string) inference.BackendMode {
+	switch mode {
+	case "completion":
+		return inference.BackendModeCompletion
+	case "embedding":
+		return inference.BackendModeEmbedding
+	default:
+		return inference.BackendModeCompletion
+	}
+}
+
 // ServeHTTP implements net/http.Handler.ServeHTTP.
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.lock.Lock()

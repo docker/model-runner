@@ -81,6 +81,7 @@ func TestGetArgs(t *testing.T) {
 			expected: []string{
 				"--jinja",
 				"-ngl", "100",
+				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
 			},
@@ -91,6 +92,7 @@ func TestGetArgs(t *testing.T) {
 			expected: []string{
 				"--jinja",
 				"-ngl", "100",
+				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",

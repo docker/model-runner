@@ -95,6 +95,9 @@ curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
 
 # Delete a model
 curl http://localhost:8080/models/ai/smollm2 -X DELETE
+
+# Get metrics
+curl http://localhost:8080/metrics
 ```
 
 The response will contain the model's reply:
@@ -122,3 +125,22 @@ The response will contain the model's reply:
   }
 }
 ```
+
+## Metrics
+
+The Model Runner exposes [the metrics endpoint](https://github.com/ggml-org/llama.cpp/tree/master/tools/server#get-metrics-prometheus-compatible-metrics-exporter) of llama.cpp server at the `/metrics` endpoint. This allows you to monitor model performance, request statistics, and resource usage.
+
+### Accessing Metrics
+
+```sh
+# Get metrics in Prometheus format
+curl http://localhost:8080/metrics
+```
+
+### Configuration
+
+- **Enable metrics (default)**: Metrics are enabled by default
+- **Disable metrics**: Set `DISABLE_METRICS=1` environment variable
+- **Monitoring integration**: Add the endpoint to your Prometheus configuration
+
+Check [METRICS.md](./METRICS.md) for more details.
