@@ -53,7 +53,7 @@ COPY --from=builder /app/model-runner /app/model-runner
 
 # Copy the llama.cpp binary from the llama-server stage
 ARG LLAMA_BINARY_PATH
-COPY --from=llama-server ${LLAMA_BINARY_PATH}/bin/com.docker.llama-server /app/bin/com.docker.llama-server
+COPY --from=llama-server ${LLAMA_BINARY_PATH}/ /app/.
 RUN chmod +x /app/bin/com.docker.llama-server
 
 USER modelrunner
@@ -64,6 +64,7 @@ ENV MODEL_RUNNER_PORT=12434
 ENV LLAMA_SERVER_PATH=/app/bin
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
+ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
