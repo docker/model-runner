@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
@@ -120,7 +121,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 }
 
 // Run implements inference.Backend.Run.
-func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference.BackendMode) error {
+func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
 	modelPath, err := l.modelManager.GetModelPath(model)
 	l.log.Infof("Model path: %s", modelPath)
 	if err != nil {
@@ -138,6 +139,14 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 	}
 
 	args := l.config.GetArgs(modelPath, socket, mode)
+
+	if config != nil {
+		if config.ContextSize >= 0 {
+			args = append(args, "--ctx-size", strconv.Itoa(int(config.ContextSize)))
+		}
+		args = append(args, config.RawFlags...)
+	}
+
 	l.log.Infof("llamaCppArgs: %v", args)
 	llamaCppProcess := exec.CommandContext(
 		ctx,
