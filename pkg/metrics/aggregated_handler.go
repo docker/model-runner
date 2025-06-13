@@ -10,11 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/model-runner/pkg/logging"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
-	"google.golang.org/protobuf/proto"
-
-	"github.com/docker/model-runner/pkg/logging"
 )
 
 // AggregatedMetricsHandler collects metrics from all active runners and aggregates them with labels
@@ -140,8 +138,8 @@ func (h *AggregatedMetricsHandler) addLabelsAndMerge(families map[string]*dto.Me
 			// Add our labels to the existing label pairs
 			for key, value := range labels {
 				metric.Label = append(metric.Label, &dto.LabelPair{
-					Name:  proto.String(key),
-					Value: proto.String(value),
+					Name:  &key,
+					Value: &value,
 				})
 			}
 		}
