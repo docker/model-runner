@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"time"
 
+	"github.com/docker/model-runner/pkg/environment"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
@@ -110,7 +112,12 @@ func newLoader(
 	// VRAM size here (and potentially even reserving a portion of it) and
 	// computing model size through estimation (using parameter count and
 	// quantization data type size).
+	//
+	// HACK: On GPU-enabled cloud engines, we'll temporarily bump this to 2.
 	totalMemory := uint64(1)
+	if environment.Get() == environment.EnvironmentCloud && os.Getenv("NVIDIA_VISIBLE_DEVICES") != "" {
+		totalMemory = 2
+	}
 
 	// Create the loader.
 	l := &loader{
