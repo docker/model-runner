@@ -8,6 +8,7 @@ require (
 	github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57
 	github.com/google/go-containerregistry v0.20.3
 	github.com/jaypipes/ghw v0.16.0
+	github.com/mattn/go-shellwords v1.0.12
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/prometheus/client_model v0.6.2
