@@ -6,9 +6,13 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/docker/model-runner/pkg/logging"
 )
@@ -17,7 +21,6 @@ import (
 type AggregatedMetricsHandler struct {
 	log       logging.Logger
 	scheduler SchedulerInterface
-	parser    *PrometheusParser
 }
 
 // NewAggregatedMetricsHandler creates a new aggregated metrics handler
@@ -25,7 +28,6 @@ func NewAggregatedMetricsHandler(log logging.Logger, scheduler SchedulerInterfac
 	return &AggregatedMetricsHandler{
 		log:       log,
 		scheduler: scheduler,
-		parser:    NewPrometheusParser(),
 	}
 }
 
@@ -44,51 +46,49 @@ func (h *AggregatedMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Collect metrics from all runners concurrently
-	allMetrics, helpMap, typeMap := h.collectMetricsFromRunners(r.Context(), runners)
+	// Collect and aggregate metrics from all runners
+	allFamilies := h.collectAndAggregateMetrics(r.Context(), runners)
 
-	// Generate aggregated response
-	h.writeAggregatedMetrics(w, allMetrics, helpMap, typeMap)
+	// Write aggregated response using Prometheus encoder
+	h.writeAggregatedMetrics(w, allFamilies)
 }
 
-// collectMetricsFromRunners fetches metrics from all runners concurrently
-func (h *AggregatedMetricsHandler) collectMetricsFromRunners(ctx context.Context, runners []ActiveRunner) ([]PrometheusMetric, map[string]string, map[string]string) {
+// collectAndAggregateMetrics fetches metrics from all runners and aggregates them
+func (h *AggregatedMetricsHandler) collectAndAggregateMetrics(ctx context.Context, runners []ActiveRunner) map[string]*dto.MetricFamily {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var allMetrics []PrometheusMetric
-	helpMap := make(map[string]string)
-	typeMap := make(map[string]string)
+	allFamilies := make(map[string]*dto.MetricFamily)
 
 	for _, runner := range runners {
 		wg.Add(1)
 		go func(runner ActiveRunner) {
 			defer wg.Done()
 
-			metrics, help, types, err := h.fetchRunnerMetrics(ctx, runner)
+			families, err := h.fetchRunnerMetrics(ctx, runner)
 			if err != nil {
 				h.log.Warnf("Failed to fetch metrics from runner %s/%s: %v", runner.BackendName, runner.ModelName, err)
 				return
 			}
 
+			// Add labels to metrics and merge into allFamilies
+			labels := map[string]string{
+				"backend": runner.BackendName,
+				"model":   runner.ModelName,
+				"mode":    runner.Mode,
+			}
+
 			mu.Lock()
-			allMetrics = append(allMetrics, metrics...)
-			// Merge help and type maps
-			for k, v := range help {
-				helpMap[k] = v
-			}
-			for k, v := range types {
-				typeMap[k] = v
-			}
+			h.addLabelsAndMerge(families, labels, allFamilies)
 			mu.Unlock()
 		}(runner)
 	}
 
 	wg.Wait()
-	return allMetrics, helpMap, typeMap
+	return allFamilies
 }
 
-// fetchRunnerMetrics fetches metrics from a single runner
-func (h *AggregatedMetricsHandler) fetchRunnerMetrics(ctx context.Context, runner ActiveRunner) ([]PrometheusMetric, map[string]string, map[string]string, error) {
+// fetchRunnerMetrics fetches and parses metrics from a single runner
+func (h *AggregatedMetricsHandler) fetchRunnerMetrics(ctx context.Context, runner ActiveRunner) (map[string]*dto.MetricFamily, error) {
 	// Create HTTP client for Unix socket communication
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -102,98 +102,72 @@ func (h *AggregatedMetricsHandler) fetchRunnerMetrics(ctx context.Context, runne
 	// Create request to the runner's metrics endpoint
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://unix/metrics", nil)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create metrics request: %w", err)
+		return nil, fmt.Errorf("failed to create metrics request: %w", err)
 	}
 
 	// Make the request
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to fetch metrics: %w", err)
+		return nil, fmt.Errorf("failed to fetch metrics: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, nil, fmt.Errorf("metrics endpoint returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("metrics endpoint returned status %d", resp.StatusCode)
 	}
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read metrics response: %w", err)
+		return nil, fmt.Errorf("failed to read metrics response: %w", err)
 	}
 
-	// Parse metrics
-	metrics, err := h.parser.ParseMetrics(string(body))
+	// Parse metrics using official Prometheus parser
+	parser := expfmt.TextParser{}
+	families, err := parser.TextToMetricFamilies(strings.NewReader(string(body)))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse metrics: %w", err)
+		return nil, fmt.Errorf("failed to parse metrics: %w", err)
 	}
 
-	// Add labels to each metric
-	labels := map[string]string{
-		"backend": runner.BackendName,
-		"model":   runner.ModelName,
-		"mode":    runner.Mode,
-	}
-
-	for i := range metrics {
-		metrics[i].AddLabels(labels)
-	}
-
-	// Extract help and type information
-	helpMap := make(map[string]string)
-	typeMap := make(map[string]string)
-	for _, metric := range metrics {
-		if metric.Help != "" {
-			helpMap[metric.Name] = metric.Help
-		}
-		if metric.Type != "" {
-			typeMap[metric.Name] = metric.Type
-		}
-	}
-
-	return metrics, helpMap, typeMap, nil
+	return families, nil
 }
 
-// writeAggregatedMetrics writes the aggregated metrics response
-func (h *AggregatedMetricsHandler) writeAggregatedMetrics(w http.ResponseWriter, metrics []PrometheusMetric, helpMap map[string]string, typeMap map[string]string) {
+// addLabelsAndMerge adds labels to metrics and merges them into the aggregated families
+func (h *AggregatedMetricsHandler) addLabelsAndMerge(families map[string]*dto.MetricFamily, labels map[string]string, allFamilies map[string]*dto.MetricFamily) {
+	for name, family := range families {
+		// Add labels to each metric in the family
+		for _, metric := range family.GetMetric() {
+			// Add our labels to the existing label pairs
+			for key, value := range labels {
+				metric.Label = append(metric.Label, &dto.LabelPair{
+					Name:  proto.String(key),
+					Value: proto.String(value),
+				})
+			}
+		}
+
+		// Merge into allFamilies
+		if existingFamily, exists := allFamilies[name]; exists {
+			// Append metrics to existing family
+			existingFamily.Metric = append(existingFamily.Metric, family.GetMetric()...)
+		} else {
+			// Create new family
+			allFamilies[name] = family
+		}
+	}
+}
+
+// writeAggregatedMetrics writes the aggregated metrics using Prometheus encoder
+func (h *AggregatedMetricsHandler) writeAggregatedMetrics(w http.ResponseWriter, families map[string]*dto.MetricFamily) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	// Group metrics by name for better organization
-	metricGroups := make(map[string][]PrometheusMetric)
-	for _, metric := range metrics {
-		metricGroups[metric.Name] = append(metricGroups[metric.Name], metric)
-	}
-
-	// Sort metric names for consistent output
-	var metricNames []string
-	for name := range metricGroups {
-		metricNames = append(metricNames, name)
-	}
-	sort.Strings(metricNames)
-
-	// Write metrics grouped by name
-	for _, name := range metricNames {
-		group := metricGroups[name]
-
-		// Write HELP comment if available
-		if help, exists := helpMap[name]; exists {
-			fmt.Fprintf(w, "# HELP %s %s\n", name, help)
+	// Use Prometheus encoder to write metrics
+	encoder := expfmt.NewEncoder(w, expfmt.NewFormat(expfmt.TypeTextPlain))
+	for _, family := range families {
+		if err := encoder.Encode(family); err != nil {
+			h.log.Errorf("Failed to encode metric family %s: %v", *family.Name, err)
+			continue
 		}
-
-		// Write TYPE comment if available
-		if metricType, exists := typeMap[name]; exists {
-			fmt.Fprintf(w, "# TYPE %s %s\n", name, metricType)
-		}
-
-		// Write all metrics with this name
-		for _, metric := range group {
-			fmt.Fprintf(w, "%s\n", metric.FormatMetric())
-		}
-
-		// Add blank line between metric groups for readability
-		fmt.Fprintf(w, "\n")
 	}
-
-	h.log.Debugf("Successfully served aggregated metrics for %d metric groups", len(metricGroups))
 }
