@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -19,6 +20,39 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+
+// mutexResponseRecorder wraps httptest.ResponseRecorder with a mutex for thread-safe access
+type mutexResponseRecorder struct {
+	*httptest.ResponseRecorder
+	mu sync.Mutex
+}
+
+func newMutexResponseRecorder() *mutexResponseRecorder {
+	return &mutexResponseRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+	}
+}
+
+// WriteHeader wraps the underlying WriteHeader with mutex protection
+func (m *mutexResponseRecorder) WriteHeader(code int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ResponseRecorder.WriteHeader(code)
+}
+
+// Write wraps the underlying Write with mutex protection
+func (m *mutexResponseRecorder) Write(b []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ResponseRecorder.Write(b)
+}
+
+// Header wraps the underlying Header with mutex protection
+func (m *mutexResponseRecorder) Header() http.Header {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ResponseRecorder.Header()
+}
 
 // getProjectRoot returns the absolute path to the project root directory
 func getProjectRoot(t *testing.T) string {
@@ -119,7 +153,7 @@ func TestPullModel(t *testing.T) {
 				r.Header.Set("Accept", tt.acceptHeader)
 			}
 
-			w := httptest.NewRecorder()
+			w := newMutexResponseRecorder()
 			err = m.PullModel(tag, r, w)
 			if err != nil {
 				t.Fatalf("Failed to pull model: %v", err)
@@ -229,7 +263,7 @@ func TestHandleGetModel(t *testing.T) {
 			// First pull the model if we're testing local access
 			if !tt.remote && !strings.Contains(tt.modelName, "nonexistent") {
 				r := httptest.NewRequest("POST", "/models/create", strings.NewReader(`{"from": "`+tt.modelName+`"}`))
-				w := httptest.NewRecorder()
+				w := newMutexResponseRecorder()
 				err = m.PullModel(tt.modelName, r, w)
 				if err != nil {
 					t.Fatalf("Failed to pull model: %v", err)
@@ -242,7 +276,7 @@ func TestHandleGetModel(t *testing.T) {
 				path += "?remote=true"
 			}
 			r := httptest.NewRequest("GET", path, nil)
-			w := httptest.NewRecorder()
+			w := newMutexResponseRecorder()
 
 			// Set the path value for {name} so r.PathValue("name") works
 			r.SetPathValue("name", tt.modelName)
