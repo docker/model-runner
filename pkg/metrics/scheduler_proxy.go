@@ -30,14 +30,6 @@ type ActiveRunner struct {
 	Socket      string
 }
 
-// NewSchedulerMetricsHandler creates a new scheduler-based metrics handler
-func NewSchedulerMetricsHandler(log logging.Logger, scheduler SchedulerInterface) *SchedulerMetricsHandler {
-	return &SchedulerMetricsHandler{
-		log:       log,
-		scheduler: scheduler,
-	}
-}
-
 // ServeHTTP implements http.Handler for metrics proxying via scheduler
 func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
