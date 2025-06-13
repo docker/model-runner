@@ -112,6 +112,18 @@ func main() {
 		router.Handle(route, scheduler)
 	}
 
+	// Add metrics endpoint if enabled
+	if os.Getenv("DISABLE_METRICS") != "1" {
+		metricsHandler := metrics.NewAggregatedMetricsHandler(
+			log.WithField("component", "metrics"),
+			scheduler,
+		)
+		router.Handle("/metrics", metricsHandler)
+		log.Info("Metrics endpoint enabled at /metrics")
+	} else {
+		log.Info("Metrics endpoint disabled")
+	}
+
 	server := &http.Server{Handler: router}
 	serverErrors := make(chan error, 1)
 

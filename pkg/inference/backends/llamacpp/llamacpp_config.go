@@ -15,7 +15,7 @@ type Config struct {
 
 // NewDefaultLlamaCppConfig creates a new LlamaCppConfig with default values.
 func NewDefaultLlamaCppConfig() *Config {
-	args := append([]string{"--jinja", "-ngl", "100"})
+	args := append([]string{"--jinja", "-ngl", "100", "--metrics"})
 
 	// Special case for Windows ARM64
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
