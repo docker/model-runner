@@ -352,6 +352,11 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 	runningBackends := s.getLoaderStatus(context.Background())
 	var activeRunners []metrics.ActiveRunner
 
+	if !s.loader.lock(context.Background()) {
+		return activeRunners
+	}
+	defer s.loader.unlock()
+
 	for _, backend := range runningBackends {
 		// Find the runner slot for this backend/model combination
 		key := runnerKey{
@@ -382,6 +387,11 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 // GetLlamaCppSocket returns the Unix socket path for an active llama.cpp runner
 func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 	runningBackends := s.getLoaderStatus(context.Background())
+
+	if !s.loader.lock(context.Background()) {
+		return "", fmt.Errorf("failed to acquire loader lock")
+	}
+	defer s.loader.unlock()
 
 	// Look for an active llama.cpp backend
 	for _, backend := range runningBackends {
