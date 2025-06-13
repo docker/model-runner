@@ -394,10 +394,10 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), configureRequest.Model, inference.BackendModeCompletion, runnerConfig); err != nil {
 		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), configureRequest.Model, err)
-		if err == errRunnerAlreadyActive {
-			w.WriteHeader(http.StatusConflict)
+		if errors.Is(err, errRunnerAlreadyActive) {
+			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
