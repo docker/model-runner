@@ -33,7 +33,7 @@ type ActiveRunner struct {
 // ServeHTTP implements http.Handler for metrics proxying via scheduler
 func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 

@@ -32,7 +32,7 @@ func NewAggregatedMetricsHandler(log logging.Logger, scheduler SchedulerInterfac
 // ServeHTTP implements http.Handler for aggregated metrics
 func (h *AggregatedMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 

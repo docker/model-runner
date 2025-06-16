@@ -447,7 +447,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 	runningBackends := s.getLoaderStatus(context.Background())
 
 	if !s.loader.lock(context.Background()) {
-		return "", fmt.Errorf("failed to acquire loader lock")
+		return "", errors.New("failed to acquire loader lock")
 	}
 	defer s.loader.unlock()
 
@@ -468,7 +468,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no active llama.cpp backend found")
+	return "", errors.New("no active llama.cpp backend found")
 }
 
 // parseBackendMode converts a string mode to BackendMode
