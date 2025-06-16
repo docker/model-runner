@@ -36,7 +36,7 @@ FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER
 FROM ${BASE_IMAGE} AS final
 
 # Create non-root user
-RUN groupadd --system modelrunner && useradd --system --gid modelrunner --create-home modelrunner
+RUN groupadd --system modelrunner && useradd --system --gid modelrunner --create-home --home-dir /home/modelrunner modelrunner
 
 # Install ca-certificates for HTTPS
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
