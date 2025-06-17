@@ -408,7 +408,11 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 			select {
 			case <-l.slots[existing].done:
 				l.log.Warnf("%s runner for %s is defunct. Waiting for it to be evicted.", backendName, model)
-				goto WaitForChange
+				if l.references[existing] == 0 {
+					l.evictRunner(backendName, model, mode)
+				} else {
+					goto WaitForChange
+				}
 			default:
 				l.references[existing] += 1
 				l.timestamps[existing] = time.Time{}
