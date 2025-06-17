@@ -161,7 +161,6 @@ func run(
 			}
 		} else {
 			w.WriteHeader(http.StatusBadGateway)
-
 		}
 	}
 
