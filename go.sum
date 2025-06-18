@@ -40,6 +40,8 @@ github.com/docker/docker-credential-helpers v0.8.2 h1:bX3YxiGzFP5sOXWc3bTPEXdEaZ
 github.com/docker/docker-credential-helpers v0.8.2/go.mod h1:P3ci7E3lwkZg6XiHdRKft1KckHiO9a2rNtyFbZ/ry9M=
 github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57 h1:ZqfKknb+0/uJid8XLFwSl/osjE+WuS6o6I3dh3ZqO4U=
 github.com/docker/model-distribution v0.0.0-20250512190053-b3792c042d57/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250618082521-fb5c8332c857 h1:2IvvpdPZvpNn06+RUh5DC5O64dnrKjdsBKCMrzR5QTk=
+github.com/docker/model-distribution v0.0.0-20250618082521-fb5c8332c857/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
