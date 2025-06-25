@@ -87,6 +87,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		latest = response.Digest
 	}
 	if latest == "" {
+		log.Warnf("could not fing the %s tag, hub response: %s", desiredTag, body)
 		return fmt.Errorf("could not find the %s tag", desiredTag)
 	}
 
