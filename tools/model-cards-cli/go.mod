@@ -3,14 +3,14 @@ module github.com/docker/model-cards/tools/build-tables
 go 1.24.2
 
 require (
-	github.com/google/go-containerregistry v0.20.4
-	github.com/gpustack/gguf-parser-go v0.14.1
+	github.com/google/go-containerregistry v0.20.6
+	github.com/gpustack/gguf-parser-go v0.19.1
 	github.com/sirupsen/logrus v1.9.3
 )
 
 require (
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
-	github.com/docker/cli v28.1.1+incompatible // indirect
+	github.com/docker/cli v28.2.2+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
@@ -27,9 +27,9 @@ require (
 	github.com/vbatts/tar-split v0.12.1 // indirect
 	golang.org/x/crypto v0.29.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
-	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.34.0 // indirect
 	gonum.org/v1/gonum v0.15.1 // indirect
 )

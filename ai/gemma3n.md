@@ -29,6 +29,20 @@ Gemma 3n models are designed for:
 | **Output modalities** | Text            |
 | **License**           | [Gemma Terms](https://ai.google.dev/gemma/terms) |
 
+## Available model variants
+
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/gemma3n:latest`<br><br>`ai/gemma3n:4B-Q4_K_M` | 6.9B | MOSTLY_Q4_K_M | 33K tokens | 3.49 GiB | 3.94 GB |
+| `ai/gemma3n:2B-Q4_K_M` | 4.5B | MOSTLY_Q4_K_M | 33K tokens | 2.28 GiB | 2.59 GB |
+| `ai/gemma3n:2B-F16` | 4.5B | MOSTLY_F16 | 33K tokens | 5.09 GiB | 8.30 GB |
+| `ai/gemma3n:4B-Q4_K_M` | 6.9B | MOSTLY_Q4_K_M | 33K tokens | 3.49 GiB | 3.94 GB |
+| `ai/gemma3n:4B-F16` | 6.9B | MOSTLY_F16 | 33K tokens | 8.81 GiB | 12.79 GB |
+
+¹: VRAM estimated based on model characteristics.
+
+> `latest` → `4B-Q4_K_M`
+
 ## Use this AI model with Docker Model Runner
 
 To run the model:
