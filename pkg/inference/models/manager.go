@@ -256,6 +256,24 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
+func (m *Manager) ResolveModelID(modelRef string) string {
+
+	model, err := m.GetModel(modelRef)
+	if err != nil {
+		m.log.Warnf("Failed to resolve model ref %s to ID: %v", modelRef, err)
+		return modelRef
+	}
+
+	modelID, err := model.ID()
+	if err != nil {
+		m.log.Warnf("Failed to get model ID for ref %s: %v", modelRef, err)
+		return modelRef
+	}
+
+	return modelID
+}
+
 func getLocalModel(m *Manager, name string) (*Model, error) {
 	if m.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
