@@ -42,8 +42,8 @@ var (
 type runnerKey struct {
 	// backend is the backend associated with the runner.
 	backend string
-	// model is the modelID associated with the runner.
-	model string
+	// modelID is the ID (digest) of the model associated with the runner.
+	modelID string
 	// mode is the operation mode associated with the runner.
 	mode inference.BackendMode
 }
@@ -207,7 +207,7 @@ func (l *loader) evict(idleOnly bool) int {
 		}
 		if unused && (!idleOnly || idle || defunct) {
 			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
-				r.backend, r.model, r.mode,
+				r.backend, r.modelID, r.mode,
 			)
 			l.slots[slot].terminate()
 			l.slots[slot] = nil
@@ -226,9 +226,9 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 	allBackends := backend == ""
 	for r, slot := range l.runners {
 		unused := l.references[slot] == 0
-		if unused && (allBackends || r.backend == backend) && r.model == model && r.mode == mode {
+		if unused && (allBackends || r.backend == backend) && r.modelID == model && r.mode == mode {
 			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
-				r.backend, r.model, r.mode,
+				r.backend, r.modelID, r.mode,
 			)
 			l.slots[slot].terminate()
 			l.slots[slot] = nil
@@ -379,10 +379,10 @@ func (l *loader) run(ctx context.Context) {
 	}
 }
 
-// load allocates a runner using the specified backend and model. If allocated,
+// load allocates a runner using the specified backend and modelID. If allocated,
 // it should be released by the caller using the release mechanism (once the
 // runner is no longer needed).
-func (l *loader) load(ctx context.Context, backendName, model string, mode inference.BackendMode) (*runner, error) {
+func (l *loader) load(ctx context.Context, backendName, modelID string, mode inference.BackendMode) (*runner, error) {
 	// Grab the backend.
 	backend, ok := l.backends[backendName]
 	if !ok {
@@ -427,13 +427,13 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 		}
 
 		// See if we can satisfy the request with an existing runner.
-		existing, ok := l.runners[runnerKey{backendName, model, mode}]
+		existing, ok := l.runners[runnerKey{backendName, modelID, mode}]
 		if ok {
 			select {
 			case <-l.slots[existing].done:
-				l.log.Warnf("%s runner for %s is defunct. Waiting for it to be evicted.", backendName, model)
+				l.log.Warnf("%s runner for %s is defunct. Waiting for it to be evicted.", backendName, modelID)
 				if l.references[existing] == 0 {
-					l.evictRunner(backendName, model, mode)
+					l.evictRunner(backendName, modelID, mode)
 				} else {
 					goto WaitForChange
 				}
@@ -463,15 +463,15 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 		// If we've identified a slot, then we're ready to start a runner.
 		if slot >= 0 {
 			var runnerConfig *inference.BackendConfiguration
-			if rc, ok := l.runnerConfigs[runnerKey{backendName, model, mode}]; ok {
+			if rc, ok := l.runnerConfigs[runnerKey{backendName, modelID, mode}]; ok {
 				runnerConfig = &rc
 			}
 			// Create the runner.
-			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, model, mode)
-			runner, err := run(l.log, backend, model, mode, slot, runnerConfig, l.openAIRecorder)
+			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
+			runner, err := run(l.log, backend, modelID, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
 				l.log.Warnf("Unable to start %s backend runner with model %s in %s mode: %v",
-					backendName, model, mode, err,
+					backendName, modelID, mode, err,
 				)
 				return nil, fmt.Errorf("unable to start runner: %w", err)
 			}
@@ -485,14 +485,14 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 			if err := runner.wait(ctx); err != nil {
 				runner.terminate()
 				l.log.Warnf("Initialization for %s backend runner with model %s in %s mode failed: %v",
-					backendName, model, mode, err,
+					backendName, modelID, mode, err,
 				)
 				return nil, fmt.Errorf("error waiting for runner to be ready: %w", err)
 			}
 
 			// Perform registration and return the runner.
 			l.availableMemory -= memory
-			l.runners[runnerKey{backendName, model, mode}] = slot
+			l.runners[runnerKey{backendName, modelID, mode}] = slot
 			l.slots[slot] = runner
 			l.references[slot] = 1
 			l.allocations[slot] = memory
@@ -546,22 +546,22 @@ func (l *loader) release(runner *runner) {
 	l.broadcast()
 }
 
-func (l *loader) setRunnerConfig(ctx context.Context, backendName, model string, mode inference.BackendMode, runnerConfig inference.BackendConfiguration) error {
+func (l *loader) setRunnerConfig(ctx context.Context, backendName, modelID string, mode inference.BackendMode, runnerConfig inference.BackendConfiguration) error {
 	l.lock(ctx)
 	defer l.unlock()
 
-	runnerId := runnerKey{backendName, model, mode}
+	runnerId := runnerKey{backendName, modelID, mode}
 
 	// If the configuration hasn't changed, then just return.
 	if existingConfig, ok := l.runnerConfigs[runnerId]; ok && reflect.DeepEqual(runnerConfig, existingConfig) {
-		l.log.Infof("Configuration for %s runner for model %s unchanged", backendName, model)
+		l.log.Infof("Configuration for %s runner for modelID %s unchanged", backendName, modelID)
 		return nil
 	}
 
 	// If there's an active runner whose configuration we want to override, then
 	// try evicting it (because it may not be in use).
 	if _, ok := l.runners[runnerId]; ok {
-		l.evictRunner(backendName, model, mode)
+		l.evictRunner(backendName, modelID, mode)
 	}
 
 	// If there's still then active runner, then we can't (or at least
@@ -570,7 +570,7 @@ func (l *loader) setRunnerConfig(ctx context.Context, backendName, model string,
 		return errRunnerAlreadyActive
 	}
 
-	l.log.Infof("Configuring %s runner for %s", backendName, model)
+	l.log.Infof("Configuring %s runner for %s", backendName, modelID)
 	l.runnerConfigs[runnerId] = runnerConfig
 	return nil
 }

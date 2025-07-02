@@ -301,7 +301,7 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 		if s.loader.slots[slot] != nil {
 			status := BackendStatus{
 				BackendName: key.backend,
-				ModelName:   key.model,
+				ModelName:   key.modelID,
 				Mode:        key.mode.String(),
 				LastUsed:    time.Time{},
 			}
@@ -440,7 +440,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 		// Find the runner slot for this backend/model combination
 		key := runnerKey{
 			backend: backend.BackendName,
-			model:   backend.ModelName,
+			modelID: backend.ModelName,
 			mode:    parseBackendMode(backend.Mode),
 		}
 
@@ -478,7 +478,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 			// Find the runner slot for this backend/model combination
 			key := runnerKey{
 				backend: backend.BackendName,
-				model:   backend.ModelName,
+				modelID: backend.ModelName,
 				mode:    parseBackendMode(backend.Mode),
 			}
 
