@@ -414,9 +414,7 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, inference.BackendModeCompletion, runnerConfig); err != nil {
-		sanitizedModelID := strings.ReplaceAll(modelID, "\n", "")
-		sanitizedModelID = strings.ReplaceAll(sanitizedModelID, "\r", "")
-		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), sanitizedModelID, err)
+		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
