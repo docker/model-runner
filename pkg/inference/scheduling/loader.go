@@ -42,7 +42,7 @@ var (
 type runnerKey struct {
 	// backend is the backend associated with the runner.
 	backend string
-	// model is the model associated with the runner.
+	// model is the modelID associated with the runner.
 	model string
 	// mode is the operation mode associated with the runner.
 	mode inference.BackendMode
@@ -254,11 +254,12 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 			return l.evict(false)
 		} else {
 			for _, model := range unload.Models {
+				modelID := l.modelManager.ResolveModelID(model)
 				delete(l.runnerConfigs, runnerKey{unload.Backend, model, inference.BackendModeCompletion})
 				// Evict both, completion and embedding models. We should consider
 				// accepting a mode parameter in unload requests.
-				l.evictRunner(unload.Backend, model, inference.BackendModeCompletion)
-				l.evictRunner(unload.Backend, model, inference.BackendModeEmbedding)
+				l.evictRunner(unload.Backend, modelID, inference.BackendModeCompletion)
+				l.evictRunner(unload.Backend, modelID, inference.BackendModeEmbedding)
 			}
 			return len(l.runners)
 		}

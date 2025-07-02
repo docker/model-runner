@@ -238,8 +238,10 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		s.tracker.TrackModel(model)
 	}
 
+	modelID := s.modelManager.ResolveModelID(request.Model)
+
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), request.Model, backendMode)
+	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
@@ -410,8 +412,9 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	runnerConfig.ContextSize = configureRequest.ContextSize
 	runnerConfig.RuntimeFlags = runtimeFlags
 
-	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), configureRequest.Model, inference.BackendModeCompletion, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), configureRequest.Model, err)
+	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
+	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, inference.BackendModeCompletion, runnerConfig); err != nil {
+		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
