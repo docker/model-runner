@@ -158,8 +158,12 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 				return
 			}
 		}
-		r.log.Errorf("Matching request (id=%s) not found for model %s - %d\n%s", id, modelID, statusCode, response)
+		sanitizedID := strings.ReplaceAll(id, "\n", "")
+		sanitizedID = strings.ReplaceAll(sanitizedID, "\r", "")
+		r.log.Errorf("Matching request (id=%s) not found for model %s - %d\n%s", sanitizedID, modelID, statusCode, response)
 	} else {
+		sanitizedID := strings.ReplaceAll(id, "\n", "")
+		sanitizedID = strings.ReplaceAll(sanitizedID, "\r", "")
 		r.log.Errorf("Model %s not found in records - %d\n%s", modelID, statusCode, response)
 	}
 }
