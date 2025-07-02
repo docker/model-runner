@@ -256,6 +256,27 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
+func (m *Manager) ResolveModelID(modelRef string) string {
+	// Sanitize modelRef to prevent log forgery
+	sanitizedModelRef := strings.ReplaceAll(modelRef, "\n", "")
+	sanitizedModelRef = strings.ReplaceAll(sanitizedModelRef, "\r", "")
+
+	model, err := m.GetModel(sanitizedModelRef)
+	if err != nil {
+		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	modelID, err := model.ID()
+	if err != nil {
+		m.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	return modelID
+}
+
 func getLocalModel(m *Manager, name string) (*Model, error) {
 	if m.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
