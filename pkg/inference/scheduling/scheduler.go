@@ -241,7 +241,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 	modelID := s.modelManager.ResolveModelID(request.Model)
 
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, backendMode)
+	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
@@ -297,17 +297,17 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 
 	result := make([]BackendStatus, 0, len(s.loader.runners))
 
-	for key, slot := range s.loader.runners {
-		if s.loader.slots[slot] != nil {
+	for key, runnerInfo := range s.loader.runners {
+		if s.loader.slots[runnerInfo.slot] != nil {
 			status := BackendStatus{
 				BackendName: key.backend,
-				ModelName:   key.modelID,
+				ModelName:   runnerInfo.modelRef,
 				Mode:        key.mode.String(),
 				LastUsed:    time.Time{},
 			}
 
-			if s.loader.references[slot] == 0 {
-				status.LastUsed = s.loader.timestamps[slot]
+			if s.loader.references[runnerInfo.slot] == 0 {
+				status.LastUsed = s.loader.timestamps[runnerInfo.slot]
 			}
 
 			result = append(result, status)
@@ -444,8 +444,8 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 			mode:    parseBackendMode(backend.Mode),
 		}
 
-		if slot, exists := s.loader.runners[key]; exists {
-			socket, err := RunnerSocketPath(slot)
+		if runnerInfo, exists := s.loader.runners[key]; exists {
+			socket, err := RunnerSocketPath(runnerInfo.slot)
 			if err != nil {
 				s.log.Warnf("Failed to get socket path for runner %s/%s: %v", backend.BackendName, backend.ModelName, err)
 				continue
@@ -482,9 +482,9 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 				mode:    parseBackendMode(backend.Mode),
 			}
 
-			if slot, exists := s.loader.runners[key]; exists {
+			if runnerInfo, exists := s.loader.runners[key]; exists {
 				// Use the RunnerSocketPath function to get the socket path
-				return RunnerSocketPath(slot)
+				return RunnerSocketPath(runnerInfo.slot)
 			}
 		}
 	}
