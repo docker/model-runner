@@ -333,7 +333,8 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := m.distributionClient.DeleteModel(r.PathValue("name"), force); err != nil {
+	out, err := m.distributionClient.DeleteModel(r.PathValue("name"), force)
+	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -345,6 +346,11 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		m.log.Warnln("Error while deleting model:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	if _, err := w.Write([]byte(out)); err != nil {
+		http.Error(w, fmt.Sprintf("error writing response: %v", err), http.StatusInternalServerError)
 	}
 }
 
