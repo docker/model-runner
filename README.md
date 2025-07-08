@@ -20,6 +20,19 @@ Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 
 ---
 
+### Deepcoder preview
+![DeepCoder Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/agentica-120x-hub@2x.svg)
+
+📌 **Description:**  
+DeepCoder-14B-Preview is a code reasoning LLM fine-tuned to scale up to long context lengths
+
+📂 **Model File:** [`ai/deepscoder-r1-distill-llama.md`](ai/deepscoder-r1-distill-llama.md)
+
+**URLs:**
+- https://huggingface.co/agentica-org/DeepCoder-14B-Preview
+
+---
+
 ### Gemma 3
 ![Gemma Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/gemma-120x-hub@2x.svg)
 
