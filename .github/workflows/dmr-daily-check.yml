@@ -92,17 +92,17 @@ jobs:
           echo "Testing API call..."
           RESPONSE=$(curl -s http://localhost:12434/engines/llama.cpp/v1/chat/completions \
             -H "Content-Type: application/json" \
-            -d '{
-                "model": "$MODEL",
-                "messages": [
+            -d "{
+                \"model\": \"$MODEL\",
+                \"messages\": [
                     {
-                        "role": "user",
-                        "content": "Say hello"
+                        \"role\": \"user\",
+                        \"content\": \"Say hello\"
                     }
                 ],
-                "top_k": 1,
-                "temperature": 0
-            }')
+                \"top_k\": 1,
+                \"temperature\": 0
+            }")
           
           if [ $? -eq 0 ]; then
             echo "✅ API call successful"
