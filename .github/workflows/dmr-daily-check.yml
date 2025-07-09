@@ -1,5 +1,8 @@
 name: Daily Docker Model Runner Health Check
 
+permissions:
+  contents: read
+
 on:
   schedule:
     # Run daily at 6 AM UTC
