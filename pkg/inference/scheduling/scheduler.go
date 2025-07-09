@@ -418,7 +418,7 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	}
 	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, inference.BackendModeCompletion, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), configureRequest.Model, err)
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
@@ -451,7 +451,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 		if runnerInfo, exists := s.loader.runners[key]; exists {
 			socket, err := RunnerSocketPath(runnerInfo.slot)
 			if err != nil {
-				s.log.Warnf("Failed to get socket path for runner %s/%s: %v", backend.BackendName, backend.ModelName, err)
+				s.log.Warnf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err)
 				continue
 			}
 

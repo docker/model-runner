@@ -214,8 +214,8 @@ func (l *loader) evict(idleOnly bool) int {
 		default:
 		}
 		if unused && (!idleOnly || idle || defunct) {
-			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
-				r.backend, r.modelID, r.mode,
+			l.log.Infof("Evicting %s backend runner with model %s (%s) in %s mode",
+				r.backend, r.modelID, runnerInfo.modelRef, r.mode,
 			)
 			l.slots[runnerInfo.slot].terminate()
 			l.slots[runnerInfo.slot] = nil
@@ -235,8 +235,8 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 	for r, runnerInfo := range l.runners {
 		unused := l.references[runnerInfo.slot] == 0
 		if unused && (allBackends || r.backend == backend) && r.modelID == model && r.mode == mode {
-			l.log.Infof("Evicting %s backend runner with model %s in %s mode",
-				r.backend, r.modelID, r.mode,
+			l.log.Infof("Evicting %s backend runner with model %s (%s) in %s mode",
+				r.backend, r.modelID, runnerInfo.modelRef, r.mode,
 			)
 			l.slots[runnerInfo.slot].terminate()
 			l.slots[runnerInfo.slot] = nil
