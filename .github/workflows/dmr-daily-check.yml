@@ -1,7 +1,6 @@
 name: Daily Docker Model Runner Health Check
 
 on:
-  push: # temporary, to test the wf
   schedule:
     # Run daily at 6 AM UTC
     - cron: '0 6 * * *'
