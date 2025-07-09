@@ -60,32 +60,38 @@ func NewTracker(httpClient *http.Client, log logging.Logger, userAgent string, d
 	}
 }
 
-func (t *Tracker) TrackModel(model types.Model) {
+func (t *Tracker) TrackModel(model types.Model, userAgent string) {
 	if t.doNotTrack {
 		return
 	}
 
-	go t.trackModel(model)
+	go t.trackModel(model, userAgent)
 }
 
-func (t *Tracker) trackModel(model types.Model) {
+func (t *Tracker) trackModel(model types.Model, userAgent string) {
 	tags := model.Tags()
 	t.log.Debugln("Tracking model:", tags)
 	if len(tags) == 0 {
 		return
 	}
-	ref, err := name.ParseReference(tags[0])
-	if err != nil {
-		t.log.Errorf("Error parsing reference: %v\n", err)
-		return
+	ua := t.userAgent
+	if userAgent != "" {
+		ua += " " + userAgent
 	}
-	if _, err = remote.Head(ref,
-		remote.WithAuthFromKeychain(authn.DefaultKeychain),
-		remote.WithTransport(t.transport),
-		remote.WithUserAgent(t.userAgent),
-	); err != nil {
-		t.log.Debugf("Manifest does not exist or error occurred: %v\n", err)
-		return
+	for _, tag := range tags {
+		ref, err := name.ParseReference(tag)
+		if err != nil {
+			t.log.Errorf("Error parsing reference: %v\n", err)
+			return
+		}
+		if _, err = remote.Head(ref,
+			remote.WithAuthFromKeychain(authn.DefaultKeychain),
+			remote.WithTransport(t.transport),
+			remote.WithUserAgent(ua),
+		); err != nil {
+			t.log.Debugf("Manifest does not exist or error occurred: %v\n", err)
+			continue
+		}
+		t.log.Debugln("Tracked", ref.Name(), ref.Identifier(), "with user agent:", ua)
 	}
-	t.log.Debugln("Tracked", ref.Name(), ref.Identifier())
 }
