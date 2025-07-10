@@ -59,7 +59,7 @@ jobs:
 
       - name: Test model pull and run
         run: |
-          MODEL="${{ github.event.inputs.test_model }}"
+          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
           echo "Testing with model: $MODEL"
           
           # Test model pull
@@ -87,7 +87,7 @@ jobs:
 
       - name: Test API endpoint
         run: |
-          MODEL="${{ github.event.inputs.test_model }}"
+          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
           echo "Testing API endpoint with model: $MODEL"
                   
           # Test API call with curl
@@ -125,7 +125,7 @@ jobs:
 
       - name: Test model cleanup
         run: |
-          MODEL="${{ github.event.inputs.test_model }}"
+          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
           
           echo "Cleaning up test model..."
           sudo docker model rm "$MODEL" || echo "Model removal failed or model not found"
