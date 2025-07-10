@@ -1,6 +1,7 @@
 package llamacpp
 
 import (
+	"errors"
 	"runtime"
 	"strconv"
 	"testing"
@@ -249,6 +250,10 @@ var _ types.Model = &fakeModel{}
 type fakeModel struct {
 	ggufPath string
 	config   types.Config
+}
+
+func (f *fakeModel) MMPROJPath() (string, error) {
+	return "", errors.New("not found")
 }
 
 func (f *fakeModel) ID() (string, error) {
