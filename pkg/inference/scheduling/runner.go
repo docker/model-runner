@@ -169,7 +169,9 @@ func run(
 		}
 	}
 
-	r.openAIRecorder.SetConfigForModel(model, runnerConfig)
+	if runnerConfig != nil {
+		r.openAIRecorder.SetConfigForModel(model, runnerConfig)
+	}
 
 	// Start the backend run loop.
 	go func() {
