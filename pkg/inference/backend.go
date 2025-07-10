@@ -9,9 +9,14 @@ import (
 type BackendMode uint8
 
 const (
+	// BackendModeUnknown indicates that the requested backend mode is unknown.
+	BackendModeUnknown BackendMode = iota
+	// BackendModePassthrough indicates that the backend is a passthrough and
+	// doesn't adhere to the concepts of mode.
+	BackendModePassthrough
 	// BackendModeCompletion indicates that the backend should run in chat
 	// completion mode.
-	BackendModeCompletion BackendMode = iota
+	BackendModeCompletion
 	// BackendModeEmbedding indicates that the backend should run in embedding
 	// mode.
 	BackendModeEmbedding
@@ -20,6 +25,8 @@ const (
 // String implements Stringer.String for BackendMode.
 func (m BackendMode) String() string {
 	switch m {
+	case BackendModePassthrough:
+		return "passthrough"
 	case BackendModeCompletion:
 		return "completion"
 	case BackendModeEmbedding:
@@ -45,10 +52,11 @@ type Backend interface {
 	// package providing the backend implementation should also expose a
 	// constant called Name which matches the value returned by this method.
 	Name() string
-	// UsesExternalModelManagement should return true if the backend uses an
-	// external model management system and false if the backend uses the shared
-	// model manager.
-	UsesExternalModelManagement() bool
+	// Passthrough should return true if the backend is a passthrough backend
+	// that acts as a proxy for inference infrastructure that's managed outside
+	// of the model runner. This also implies that the backend uses external
+	// model management.
+	Passthrough() bool
 	// Install ensures that the backend is installed. It should return a nil
 	// error if installation succeeds or if the backend is already installed.
 	// The provided HTTP client should be used for any HTTP operations.

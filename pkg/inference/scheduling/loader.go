@@ -255,8 +255,9 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 		} else {
 			for _, model := range unload.Models {
 				delete(l.runnerConfigs, runnerKey{unload.Backend, model, inference.BackendModeCompletion})
-				// Evict both, completion and embedding models. We should consider
+				// Evict matching runners in all modes. We should consider
 				// accepting a mode parameter in unload requests.
+				l.evictRunner(unload.Backend, model, inference.BackendModePassthrough)
 				l.evictRunner(unload.Backend, model, inference.BackendModeCompletion)
 				l.evictRunner(unload.Backend, model, inference.BackendModeEmbedding)
 			}
@@ -391,6 +392,9 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 	// Estimate the amount of memory that will be used by the model and check
 	// that we're even capable of loading it.
 	//
+	// For passthrough backends (i.e. those that proxy out to other backends),
+	// we set memory usage to zero since those models aren't loaded locally.
+	//
 	// TODO: For now, we treat the system as having memory size 1 and all models
 	// as having size 1 (and thus we'll only load a single model at a time).
 	// However, the loader is designed to use "real" values for each and to
@@ -398,6 +402,9 @@ func (l *loader) load(ctx context.Context, backendName, model string, mode infer
 	// here through estimation (using parameter count and quantization data type
 	// size).
 	memory := uint64(1)
+	if backend.Passthrough() {
+		memory = 0
+	}
 	if memory > l.totalMemory {
 		return nil, errModelTooBig
 	}

@@ -75,9 +75,8 @@ func (l *llamaCpp) Name() string {
 	return Name
 }
 
-// UsesExternalModelManagement implements
-// inference.Backend.UsesExternalModelManagement.
-func (l *llamaCpp) UsesExternalModelManagement() bool {
+// Passthrough implements inference.Backend.Passthrough.
+func (l *llamaCpp) Passthrough() bool {
 	return false
 }
 

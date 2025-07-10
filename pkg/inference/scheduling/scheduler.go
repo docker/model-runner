@@ -99,21 +99,71 @@ func (s *Scheduler) RebuildRoutes(allowedOrigins []string) {
 }
 
 func (s *Scheduler) routeHandlers(allowedOrigins []string) map[string]http.HandlerFunc {
-	openAIRoutes := []string{
+	// Register model routes. These will be forwarded to the model manager for
+	// local backends and upstream in the case of passthrough backends.
+	var m = map[string]http.HandlerFunc{
+		"GET " + inference.InferencePrefix + "/{backend}/v1/models":           http.HandlerFunc(s.handleOpenAIGetModels),
+		"GET " + inference.InferencePrefix + "/{backend}/v1/models/{name...}": http.HandlerFunc(s.handleOpenAIGetModel),
+		"GET " + inference.InferencePrefix + "/v1/models":                     http.HandlerFunc(s.handleOpenAIGetModels),
+		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           http.HandlerFunc(s.handleOpenAIGetModel),
+	}
+
+	// Register inference routes (with CORS support).
+	inferenceRoutes := []string{
+		// Basic modes supported by both local and passthrough backends.
 		"POST " + inference.InferencePrefix + "/{backend}/v1/chat/completions",
 		"POST " + inference.InferencePrefix + "/{backend}/v1/completions",
 		"POST " + inference.InferencePrefix + "/{backend}/v1/embeddings",
+
 		"POST " + inference.InferencePrefix + "/v1/chat/completions",
 		"POST " + inference.InferencePrefix + "/v1/completions",
 		"POST " + inference.InferencePrefix + "/v1/embeddings",
+
+		// Additional modes supported only by passthrough backends. Note that
+		// the default backend could be a passthrough backend, so we register
+		// these for the default backend too. These will be routed for built-in
+		// backends as well, but they'll be rejected with an invalid mode (at
+		// least until implemented and handled by backendModeForRequest).
+
+		// Chat completion endpoints (extended).
+		"GET " + inference.InferencePrefix + "/{backend}/v1/chat/completions/{completion_id}",
+		"GET " + inference.InferencePrefix + "/{backend}/v1/chat/completions/{completion_id}/messages",
+		"GET " + inference.InferencePrefix + "/{backend}/v1/chat/completions",
+		"POST " + inference.InferencePrefix + "/{backend}/v1/chat/completions/{completion_id}",
+		"DELETE " + inference.InferencePrefix + "/{backend}/v1/chat/completions/{completion_id}",
+
+		"GET " + inference.InferencePrefix + "/v1/chat/completions/{completion_id}",
+		"GET " + inference.InferencePrefix + "/v1/chat/completions/{completion_id}/messages",
+		"GET " + inference.InferencePrefix + "/v1/chat/completions",
+		"POST " + inference.InferencePrefix + "/v1/chat/completions/{completion_id}",
+		"DELETE " + inference.InferencePrefix + "/v1/chat/completions/{completion_id}",
+
+		// Responses endpoints.
+		"POST " + inference.InferencePrefix + "/{backend}/v1/responses",
+		"GET " + inference.InferencePrefix + "/{backend}/v1/responses/{response_id}",
+		"DELETE " + inference.InferencePrefix + "/{backend}/v1/responses/{response_id}",
+		"POST " + inference.InferencePrefix + "/{backend}/v1/responses/{response_id}/cancel",
+		"GET " + inference.InferencePrefix + "/{backend}/v1/responses/{response_id}/input_items",
+
+		"POST " + inference.InferencePrefix + "/v1/responses",
+		"GET " + inference.InferencePrefix + "/v1/responses/{response_id}",
+		"DELETE " + inference.InferencePrefix + "/v1/responses/{response_id}",
+		"POST " + inference.InferencePrefix + "/v1/responses/{response_id}/cancel",
+		"GET " + inference.InferencePrefix + "/v1/responses/{response_id}/input_items",
+
+		// TODO: Ideally we'd add other endpoints as well, but we need to adjust
+		// response recording before we can do that (e.g. we don't want to
+		// record synthesized audio or images - or at least not in memory).
+		// We'll align that update with multimodal support.
 	}
-	m := make(map[string]http.HandlerFunc)
-	for _, route := range openAIRoutes {
+	for _, route := range inferenceRoutes {
 		m[route] = inference.CorsMiddleware(allowedOrigins, http.HandlerFunc(s.handleOpenAIInference)).ServeHTTP
 		// Register OPTIONS for CORS preflight.
-		optionsRoute := "OPTIONS " + route[strings.Index(route, " "):]
+		optionsRoute := "OPTIONS" + route[strings.Index(route, " "):]
 		m[optionsRoute] = inference.CorsMiddleware(allowedOrigins, http.HandlerFunc(s.handleOpenAIInference)).ServeHTTP
 	}
+
+	// Register control routes.
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
@@ -155,6 +205,54 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	return workers.Wait()
 }
 
+// backendForRequest returns the backend associated with a request.
+func (s *Scheduler) backendForRequest(r *http.Request) inference.Backend {
+	if backend := r.PathValue("backend"); backend != "" {
+		return s.backends[backend]
+	}
+	return s.defaultBackend
+}
+
+// handleOpenAIGetModels handles GET <inference-prefix>/<backend>/v1/models and
+// GET /<inference-prefix>/v1/models requests.
+func (s *Scheduler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
+	// Determine the requested backend and ensure that it's valid.
+	backend := s.backendForRequest(r)
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	// If this is a passthrough backend, then hand the request off to inference
+	// handling, which will forward it upstream. Otherwise forward it to the
+	// model manager.
+	if backend.Passthrough() {
+		s.handleOpenAIInference(w, r)
+	} else {
+		s.modelManager.HandleOpenAIGetModels(w, r)
+	}
+}
+
+// handleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
+// and GET <inference-prefix>/v1/models/{name} requests.
+func (s *Scheduler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
+	// Determine the requested backend and ensure that it's valid.
+	backend := s.backendForRequest(r)
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	// If this is a passthrough backend, then hand the request off to inference
+	// handling, which will forward it upstream. Otherwise forward it to the
+	// model manager.
+	if backend.Passthrough() {
+		s.handleOpenAIInference(w, r)
+	} else {
+		s.modelManager.HandleOpenAIGetModel(w, r)
+	}
+}
+
 // handleOpenAIInference handles scheduling and responding to OpenAI inference
 // requests, including:
 // - POST <inference-prefix>/{backend}/v1/chat/completions
@@ -162,12 +260,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 // - POST <inference-prefix>/{backend}/v1/embeddings
 func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
-	var backend inference.Backend
-	if b := r.PathValue("backend"); b == "" {
-		backend = s.defaultBackend
-	} else {
-		backend = s.backends[b]
-	}
+	backend := s.backendForRequest(r)
 	if backend == nil {
 		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
 		return
@@ -205,26 +298,32 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Determine the backend operation mode.
-	backendMode, ok := backendModeForRequest(r.URL.Path)
-	if !ok {
+	// Determine the backend operation mode. For passthrough backends, we don't
+	// have a concept of mode - we're just forwarding requests (not spinning up
+	// inference engines), so we just have a single mode.
+	var backendMode inference.BackendMode
+	if backend.Passthrough() {
+		backendMode = inference.BackendModePassthrough
+	} else if backendMode = backendModeForRequest(r); backendMode == inference.BackendModeUnknown {
 		http.Error(w, "unknown request path", http.StatusInternalServerError)
 		return
 	}
 
-	// Decode the model specification portion of the request body.
+	// Attempt to decode the model specification portion of the request body.
+	// Not all requests that we proxy will have a model specification (most
+	// operating in passthrough mode will not), so we leave this unset if no
+	// model can be determined.
 	var request OpenAIInferenceRequest
-	if err := json.Unmarshal(body, &request); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-	if request.Model == "" {
-		http.Error(w, "model is required", http.StatusBadRequest)
-		return
-	}
+	_ = json.Unmarshal(body, &request)
 
-	// Check if the shared model manager has the requested model available.
-	if !backend.UsesExternalModelManagement() {
+	// If we're performing a completion or embedding request, then make sure the
+	// shared model manager has the requested model available. For passthrough
+	// backends, we assume they have external model management.
+	if backendMode == inference.BackendModeCompletion || backendMode == inference.BackendModeEmbedding {
+		if request.Model == "" {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
 		model, err := s.modelManager.GetModel(request.Model)
 		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
@@ -238,8 +337,17 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		s.tracker.TrackModel(model)
 	}
 
+	// Compute the model name that will be used to key the runner. For
+	// passthrough backends, we'll just use a dummy name (though we'll still
+	// record the real name below) so that we don't need to allocate multiple
+	// runners (one for each model used by a passthrough backend).
+	runnerModel := request.Model
+	if backendMode == inference.BackendModePassthrough {
+		runnerModel = "passthrough"
+	}
+
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), request.Model, backendMode)
+	runner, err := s.loader.load(r.Context(), backend.Name(), runnerModel, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
@@ -366,12 +474,7 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
-	var backend inference.Backend
-	if b := r.PathValue("backend"); b == "" {
-		backend = s.defaultBackend
-	} else {
-		backend = s.backends[b]
-	}
+	backend := s.backendForRequest(r)
 	if backend == nil {
 		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
 		return
@@ -492,6 +595,8 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 // parseBackendMode converts a string mode to BackendMode
 func parseBackendMode(mode string) inference.BackendMode {
 	switch mode {
+	case "passthrough":
+		return inference.BackendModePassthrough
 	case "completion":
 		return inference.BackendModeCompletion
 	case "embedding":

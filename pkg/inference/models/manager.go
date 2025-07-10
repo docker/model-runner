@@ -119,15 +119,11 @@ func (m *Manager) RebuildRoutes(allowedOrigins []string) {
 
 func (m *Manager) routeHandlers(allowedOrigins []string) map[string]http.HandlerFunc {
 	handlers := map[string]http.HandlerFunc{
-		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
-		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
-		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
-		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
-		"POST " + inference.ModelsPrefix + "/{nameAndAction...}":              m.handleModelAction,
-		"GET " + inference.InferencePrefix + "/{backend}/v1/models":           m.handleOpenAIGetModels,
-		"GET " + inference.InferencePrefix + "/{backend}/v1/models/{name...}": m.handleOpenAIGetModel,
-		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
-		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           m.handleOpenAIGetModel,
+		"POST " + inference.ModelsPrefix + "/create":             m.handleCreateModel,
+		"GET " + inference.ModelsPrefix:                          m.handleGetModels,
+		"GET " + inference.ModelsPrefix + "/{name...}":           m.handleGetModel,
+		"DELETE " + inference.ModelsPrefix + "/{name...}":        m.handleDeleteModel,
+		"POST " + inference.ModelsPrefix + "/{nameAndAction...}": m.handleModelAction,
 	}
 	for route, handler := range handlers {
 		if strings.HasPrefix(route, "GET ") {
@@ -348,9 +344,9 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleOpenAIGetModels handles GET <inference-prefix>/<backend>/v1/models and
+// HandleOpenAIGetModels handles GET <inference-prefix>/<backend>/v1/models and
 // GET /<inference-prefix>/v1/models requests.
-func (m *Manager) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
+func (m *Manager) HandleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
 	if m.distributionClient == nil {
 		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
 		return
@@ -376,9 +372,9 @@ func (m *Manager) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// handleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
+// HandleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
 // and GET <inference-prefix>/v1/models/{name} requests.
-func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
+func (m *Manager) HandleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 	if m.distributionClient == nil {
 		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
 		return

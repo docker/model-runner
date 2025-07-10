@@ -1,6 +1,7 @@
 package scheduling
 
 import (
+	"net/http"
 	"strings"
 	"time"
 
@@ -26,15 +27,18 @@ func trimRequestPathToOpenAIRoot(path string) string {
 }
 
 // backendModeForRequest determines the backend operation mode to handle an
-// OpenAI inference request. Its second parameter is true if and only if a valid
-// mode could be determined.
-func backendModeForRequest(path string) (inference.BackendMode, bool) {
-	if strings.HasSuffix(path, "/v1/chat/completions") || strings.HasSuffix(path, "/v1/completions") {
-		return inference.BackendModeCompletion, true
-	} else if strings.HasSuffix(path, "/v1/embeddings") {
-		return inference.BackendModeEmbedding, true
+// OpenAI inference request. It returns BackendModeUnknown if the correct
+// backend mode could not be determined.
+func backendModeForRequest(r *http.Request) inference.BackendMode {
+	path := r.URL.Path
+	if r.Method == http.MethodPost {
+		if strings.HasSuffix(path, "/v1/chat/completions") || strings.HasSuffix(path, "/v1/completions") {
+			return inference.BackendModeCompletion
+		} else if strings.HasSuffix(path, "/v1/embeddings") {
+			return inference.BackendModeEmbedding
+		}
 	}
-	return inference.BackendMode(0), false
+	return inference.BackendModeUnknown
 }
 
 // OpenAIInferenceRequest is used to extract the model specification from either
