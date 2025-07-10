@@ -5,7 +5,7 @@ go 1.23.7
 require (
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/containerd/platforms v1.0.0-rc.1
-	github.com/docker/model-distribution v0.0.0-20250627163720-aff34abcf3e0
+	github.com/docker/model-distribution v0.0.0-20250710064845-ad2903dc93f7
 	github.com/google/go-containerregistry v0.20.3
 	github.com/jaypipes/ghw v0.16.0
 	github.com/mattn/go-shellwords v1.0.12

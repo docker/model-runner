@@ -333,7 +333,7 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := m.distributionClient.DeleteModel(r.PathValue("name"), force); err != nil {
+	if _, err := m.distributionClient.DeleteModel(r.PathValue("name"), force); err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
