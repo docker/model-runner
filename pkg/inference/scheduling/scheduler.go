@@ -430,14 +430,17 @@ func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	// TODO: Get disk usage for each backend once the backends are implemented.
-	defaultBackendDiskUsage, err := s.defaultBackend.GetDiskUsage()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get disk usage for %s: %v", s.defaultBackend.Name(), err), http.StatusInternalServerError)
-		return
+	var totalBackendDiskUsage int64
+	for backendName, backend := range s.backends {
+		backendDiskUsage, err := backend.GetDiskUsage()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get disk usage for %s: %v", backendName, err), http.StatusInternalServerError)
+			return
+		}
+		totalBackendDiskUsage += backendDiskUsage
 	}
 
-	diskUsage := DiskUsage{modelsDiskUsage, defaultBackendDiskUsage}
+	diskUsage := DiskUsage{modelsDiskUsage, totalBackendDiskUsage}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(diskUsage); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
