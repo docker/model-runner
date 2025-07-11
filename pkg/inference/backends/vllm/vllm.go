@@ -62,3 +62,7 @@ func (v *vLLM) Status() string {
 func (v *vLLM) GetDiskUsage() (int64, error) {
 	return 0, nil
 }
+
+func (v *vLLM) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+	return nil, errors.New("not implemented")
+}

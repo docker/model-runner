@@ -34,6 +34,11 @@ type BackendConfiguration struct {
 	RuntimeFlags []string `json:"runtime-flags,omitempty"`
 }
 
+type RequiredMemory struct {
+	RAM  uint64
+	VRAM uint64 // TODO(p1-0tr): for now assume we are working with single GPU set-ups
+}
+
 // Backend is the interface implemented by inference engine backends. Backend
 // implementations need not be safe for concurrent invocation of the following
 // methods, though their underlying server implementations do need to support
@@ -76,4 +81,7 @@ type Backend interface {
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.
 	GetDiskUsage() (int64, error)
+	// GetRequiredMemoryForModel returns the required working memory for a given
+	// model.
+	GetRequiredMemoryForModel(model string, config *BackendConfiguration) (*RequiredMemory, error)
 }
