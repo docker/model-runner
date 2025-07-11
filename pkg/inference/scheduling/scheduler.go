@@ -321,7 +321,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 	// backends, we assume they have external model management.
 	if backendMode == inference.BackendModeCompletion || backendMode == inference.BackendModeEmbedding {
 		if request.Model == "" {
-			http.Error(w, "invalid request", http.StatusBadRequest)
+			http.Error(w, "invalid request, model is required", http.StatusBadRequest)
 			return
 		}
 		model, err := s.modelManager.GetModel(request.Model)
