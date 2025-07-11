@@ -134,7 +134,7 @@ func newLoader(
 	// Compute the amount of available memory.
 	vramSize, err := getVRAMSize() // FIXME(p1-0tr): only implemented on macOS for now
 	if err != nil {
-		return nil // FIXME(p1-0tr): should forward the error
+		log.Warnf("Could not read VRAM size: %s", err)
 	}
 	totalMemory := vramSize
 

@@ -27,7 +27,7 @@ COPY --link . .
 # Build the Go binary (static build)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o model-runner ./main.go
+    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner ./main.go
 
 # --- Get llama.cpp binary ---
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
