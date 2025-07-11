@@ -25,6 +25,9 @@ const (
 	// defaultRunnerIdleTimeout is the default maximum amount of time that a
 	// runner can sit idle (i.e. without any requests) before being terminated.
 	defaultRunnerIdleTimeout = 5 * time.Minute
+	// passthroughModelName is the model name used for runners associated with
+	// passthrough backends.
+	passthroughModelName = "passthrough"
 )
 
 var (
