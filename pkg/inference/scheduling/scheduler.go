@@ -56,7 +56,7 @@ func NewScheduler(
 	allowedOrigins []string,
 	tracker *metrics.Tracker,
 ) *Scheduler {
-	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"))
+	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
 
 	// Create the scheduler.
 	s := &Scheduler{
@@ -238,8 +238,10 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		s.tracker.TrackModel(model, r.UserAgent())
 	}
 
+	modelID := s.modelManager.ResolveModelID(request.Model)
+
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), request.Model, backendMode)
+	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
@@ -295,17 +297,17 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 
 	result := make([]BackendStatus, 0, len(s.loader.runners))
 
-	for key, slot := range s.loader.runners {
-		if s.loader.slots[slot] != nil {
+	for key, runnerInfo := range s.loader.runners {
+		if s.loader.slots[runnerInfo.slot] != nil {
 			status := BackendStatus{
 				BackendName: key.backend,
-				ModelName:   key.model,
+				ModelName:   runnerInfo.modelRef,
 				Mode:        key.mode.String(),
 				LastUsed:    time.Time{},
 			}
 
-			if s.loader.references[slot] == 0 {
-				status.LastUsed = s.loader.timestamps[slot]
+			if s.loader.references[runnerInfo.slot] == 0 {
+				status.LastUsed = s.loader.timestamps[runnerInfo.slot]
 			}
 
 			result = append(result, status)
@@ -414,9 +416,9 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		// Configure is called by compose for each model.
 		s.tracker.TrackModel(model, r.UserAgent())
 	}
-
-	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), configureRequest.Model, inference.BackendModeCompletion, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s: %s", backend.Name(), configureRequest.Model, err)
+	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
+	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, inference.BackendModeCompletion, runnerConfig); err != nil {
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
@@ -442,14 +444,14 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 		// Find the runner slot for this backend/model combination
 		key := runnerKey{
 			backend: backend.BackendName,
-			model:   backend.ModelName,
+			modelID: backend.ModelName,
 			mode:    parseBackendMode(backend.Mode),
 		}
 
-		if slot, exists := s.loader.runners[key]; exists {
-			socket, err := RunnerSocketPath(slot)
+		if runnerInfo, exists := s.loader.runners[key]; exists {
+			socket, err := RunnerSocketPath(runnerInfo.slot)
 			if err != nil {
-				s.log.Warnf("Failed to get socket path for runner %s/%s: %v", backend.BackendName, backend.ModelName, err)
+				s.log.Warnf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err)
 				continue
 			}
 
@@ -480,13 +482,13 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 			// Find the runner slot for this backend/model combination
 			key := runnerKey{
 				backend: backend.BackendName,
-				model:   backend.ModelName,
+				modelID: backend.ModelName,
 				mode:    parseBackendMode(backend.Mode),
 			}
 
-			if slot, exists := s.loader.runners[key]; exists {
+			if runnerInfo, exists := s.loader.runners[key]; exists {
 				// Use the RunnerSocketPath function to get the socket path
-				return RunnerSocketPath(slot)
+				return RunnerSocketPath(runnerInfo.slot)
 			}
 		}
 	}
