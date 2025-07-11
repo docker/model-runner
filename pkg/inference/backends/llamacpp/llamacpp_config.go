@@ -57,16 +57,10 @@ func (c *Config) GetArgs(model types.Model, socket string, mode inference.Backen
 		args = append(args, "--embeddings")
 	}
 
-	// Add arguments from model config
-	if modelCfg.ContextSize != nil {
-		args = append(args, "--ctx-size", strconv.FormatUint(*modelCfg.ContextSize, 10))
-	}
+	args = append(args, "--ctx-size", strconv.FormatUint(GetContextSize(&modelCfg, config), 10))
 
 	// Add arguments from backend config
 	if config != nil {
-		if config.ContextSize > 0 && !containsArg(args, "--ctx-size") {
-			args = append(args, "--ctx-size", strconv.FormatInt(config.ContextSize, 10))
-		}
 		args = append(args, config.RuntimeFlags...)
 	}
 
@@ -77,6 +71,19 @@ func (c *Config) GetArgs(model types.Model, socket string, mode inference.Backen
 	}
 
 	return args, nil
+}
+
+func GetContextSize(modelCfg *types.Config, backendCfg *inference.BackendConfiguration) uint64 {
+	// Model config takes precedence
+	if modelCfg != nil && modelCfg.ContextSize != nil {
+		return *modelCfg.ContextSize
+	}
+	// else use backend config
+	if backendCfg != nil && backendCfg.ContextSize > 0 {
+		return uint64(backendCfg.ContextSize)
+	}
+	// finally return default
+	return 4096 // llama.cpp default
 }
 
 // containsArg checks if the given argument is already in the args slice.

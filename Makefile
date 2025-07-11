@@ -17,7 +17,7 @@ LLAMA_ARGS ?=
 
 # Build the Go application
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(APP_NAME) ./main.go
+	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) ./main.go
 
 # Run the application locally
 run: build
