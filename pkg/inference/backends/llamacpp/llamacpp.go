@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 
+	parser "github.com/gpustack/gguf-parser-go"
+
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -212,4 +214,39 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 		return 0, fmt.Errorf("error while getting store size: %v", err)
 	}
 	return size, nil
+}
+
+func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+	mdl, err := l.modelManager.GetModel(model)
+	if err != nil {
+		return nil, err
+	}
+	mdlPath, err := mdl.GGUFPath()
+	if err != nil {
+		return nil, err
+	}
+	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
+	if err != nil {
+		return nil, err
+	}
+	mdlConfig, err := mdl.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	contextSize := GetContextSize(&mdlConfig, config)
+
+	// FIXME(p1-0tr): for now assume we are running on GPU (single one) - Devices[1];
+	// sum up weights + kv cache + context for an estimate of total GPU memory needed
+	// while running inference with the given model
+	estimate := mdlGguf.EstimateLLaMACppRun(parser.WithLLaMACppContextSize(int32(contextSize)),
+		// FIXME(p1-0tr): add logic for resolving other param values, instead of hardcoding them
+		parser.WithLLaMACppLogicalBatchSize(2048),
+		parser.WithLLaMACppOffloadLayers(100))
+	memory := uint64(estimate.Devices[1].Weight.Sum() + estimate.Devices[1].KVCache.Sum() + estimate.Devices[1].Computation.Sum())
+
+	return &inference.RequiredMemory{
+		RAM:  0,
+		VRAM: memory,
+	}, nil
 }

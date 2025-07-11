@@ -132,21 +132,11 @@ func newLoader(
 	}
 
 	// Compute the amount of available memory.
-	//
-	// TODO: For now, we treat the system as having memory size 1 and all models
-	// as having size 1 (and thus we'll only load a single model at a time).
-	// However, the loader is designed to use "real" values for each and to
-	// schedule appropriately. Thus, we should switch to polling the system
-	// VRAM size here (and potentially even reserving a portion of it) and
-	// computing model size through estimation (using parameter count and
-	// quantization data type size).
-	//
-	// HACK: On GPU-enabled cloud engines, we'll bump this to 2. We can remove
-	// this once we have VRAM estimation.
-	totalMemory := uint64(1)
-	if isGPUEnabledCloudEnvironment {
-		totalMemory = 2
+	vramSize, err := getVRAMSize() // FIXME(p1-0tr): only implemented on macOS for now
+	if err != nil {
+		return nil // FIXME(p1-0tr): should forward the error
 	}
+	totalMemory := vramSize
 
 	// Create the loader.
 	l := &loader{
@@ -399,14 +389,16 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 
 	// Estimate the amount of memory that will be used by the model and check
 	// that we're even capable of loading it.
-	//
-	// TODO: For now, we treat the system as having memory size 1 and all models
-	// as having size 1 (and thus we'll only load a single model at a time).
-	// However, the loader is designed to use "real" values for each and to
-	// schedule appropriately. Thus, we should switch to computing model size
-	// here through estimation (using parameter count and quantization data type
-	// size).
-	memory := uint64(1)
+	var runnerConfig *inference.BackendConfiguration
+	if rc, ok := l.runnerConfigs[runnerKey{backendName, model, mode}]; ok {
+		runnerConfig = &rc
+	}
+	reqMemory, err := backend.GetRequiredMemoryForModel(model, runnerConfig)
+	if err != nil {
+		return nil, err
+	}
+	memory := reqMemory.VRAM // FIXME(p1-0tr): extend loader to reason about RAM and VRAM (and multiple VRAM sets in the future)
+	l.log.Infof("Loading %s, which will require %dMB of working memory", model, memory/1024.0/1024.0)
 	if memory > l.totalMemory {
 		return nil, errModelTooBig
 	}
