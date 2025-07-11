@@ -19,7 +19,7 @@ import (
 const (
 	// Name is the backend name.
 	Name = "openai"
-	// openAIAPIBaseURL is the the base URL for the OpenAI API.
+	// openAIAPIBaseURL is the base URL for the OpenAI API.
 	openAIAPIBaseURL = "https://api.openai.com/v1/"
 )
 
