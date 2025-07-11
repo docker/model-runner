@@ -36,9 +36,8 @@ func (m *mlx) Name() string {
 	return Name
 }
 
-// UsesExternalModelManagement implements
-// inference.Backend.UsesExternalModelManagement.
-func (l *mlx) UsesExternalModelManagement() bool {
+// Passthrough implements inference.Backend.Passthrough.
+func (l *mlx) Passthrough() bool {
 	return false
 }
 

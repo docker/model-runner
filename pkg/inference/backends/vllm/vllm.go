@@ -36,9 +36,8 @@ func (v *vLLM) Name() string {
 	return Name
 }
 
-// UsesExternalModelManagement implements
-// inference.Backend.UsesExternalModelManagement.
-func (l *vLLM) UsesExternalModelManagement() bool {
+// Passthrough implements inference.Backend.Passthrough.
+func (l *vLLM) Passthrough() bool {
 	return false
 }
 
