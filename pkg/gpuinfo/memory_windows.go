@@ -6,12 +6,19 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
 
 // getVRAMSize returns total system GPU memory in bytes
 func getVRAMSize(ctx context.Context, modelRuntimeInstallPath string) (uint64, error) {
+	if runtime.GOARCH == "arm64" {
+		// TODO(p1-0tr): For now, on windows/arm64, stick to the old behaviour. This will
+		// require backend.GetRequiredMemoryForModel to return 1 as well.
+		return 1, nil
+	}
+
 	nvGPUInfoBin := filepath.Join(modelRuntimeInstallPath, "com.docker.nv-gpu-info.exe")
 
 	cmd := exec.CommandContext(ctx, nvGPUInfoBin)
