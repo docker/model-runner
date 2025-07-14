@@ -1,0 +1,62 @@
+name: Publish Model Card
+
+on:
+  workflow_dispatch:
+    inputs:
+      FILE:
+        description: 'Path to the markdown file containing the overview content'
+        required: true
+        type: string
+      REPO:
+        description: 'Repository to upload the overview to (format: namespace/repository)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-model-card:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Validate inputs
+        run: |
+          echo "Validating workflow inputs..."
+          if [ -z "${{ inputs.FILE }}" ]; then
+            echo "Error: FILE is required"
+            exit 1
+          fi
+          if [ -z "${{ inputs.REPO }}" ]; then
+            echo "Error: REPO is required"
+            exit 1
+          fi
+          echo "All required inputs provided ✓"
+          echo "FILE: ${{ inputs.FILE }}"
+          echo "REPO: ${{ inputs.REPO }}"
+
+      - name: Build model-cards-cli
+        run: |
+          echo "Building model-cards-cli..."
+          cd tools/model-cards-cli
+          make build
+
+      - name: Upload model card overview
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_OAT: ${{ secrets.DOCKERHUB_OAT }}
+        run: |
+          echo "Uploading model card overview..."
+          make -C tools/model-cards-cli upload-overview \
+            FILE="${{ inputs.FILE }}" \
+            REPO="${{ inputs.REPO }}" \
+            USERNAME="$DOCKERHUB_USERNAME" \
+            TOKEN="$DOCKERHUB_OAT"
+          echo "Model card overview uploaded successfully ✓"
