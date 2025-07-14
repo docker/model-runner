@@ -90,7 +90,7 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
 
-	gpuInfo := gpuinfo.New()
+	gpuInfo := gpuinfo.New(llamaServerPath)
 
 	scheduler := scheduling.NewScheduler(
 		log,
