@@ -50,8 +50,8 @@ jobs:
 
       - name: Upload model card overview
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_OAT: ${{ secrets.DOCKERHUB_OAT }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USER }}
+          DOCKERHUB_OAT: ${{ secrets.DOCKER_OAT }}
         run: |
           echo "Uploading model card overview..."
           make -C tools/model-cards-cli upload-overview \
