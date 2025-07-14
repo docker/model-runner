@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -89,6 +90,8 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
 
+	gpuInfo := gpuinfo.New()
+
 	scheduler := scheduling.NewScheduler(
 		log,
 		map[string]inference.Backend{llamacpp.Name: llamaCppBackend},
@@ -102,6 +105,7 @@ func main() {
 			"",
 			false,
 		),
+		gpuInfo,
 	)
 
 	router := routing.NewNormalizedServeMux()

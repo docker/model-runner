@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/environment"
+	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
@@ -103,6 +104,8 @@ type loader struct {
 	runnerConfigs map[runnerKey]inference.BackendConfiguration
 	// openAIRecorder is used to record OpenAI API inference requests and responses.
 	openAIRecorder *metrics.OpenAIRecorder
+	// gpuInfo is used to retrieve information about GPU(s) that are available to the loader.
+	gpuInfo *gpuinfo.GPUInfo
 }
 
 // newLoader creates a new loader.
@@ -111,6 +114,7 @@ func newLoader(
 	backends map[string]inference.Backend,
 	modelManager *models.Manager,
 	openAIRecorder *metrics.OpenAIRecorder,
+	gpuInfo *gpuinfo.GPUInfo,
 ) *loader {
 	// Compute the number of runner slots to allocate. Because of RAM and VRAM
 	// limitations, it's unlikely that we'll ever be able to fully populate
@@ -132,7 +136,7 @@ func newLoader(
 	}
 
 	// Compute the amount of available memory.
-	vramSize, err := getVRAMSize() // FIXME(p1-0tr): only implemented on macOS for now
+	vramSize, err := gpuInfo.GetVRAMSize() // FIXME(p1-0tr): only implemented on macOS for now
 	if err != nil {
 		log.Warnf("Could not read VRAM size: %s", err)
 	}
