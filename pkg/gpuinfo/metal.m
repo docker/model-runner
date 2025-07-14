@@ -7,7 +7,9 @@
 size_t getVRAMSize() {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     if (device) {
-        return [device recommendedMaxWorkingSetSize];
+        size_t vramsz = [device recommendedMaxWorkingSetSize];
+        [device release];
+        return vramsz;
     }
     return 0;
 }
