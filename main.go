@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/openai"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
@@ -72,6 +73,7 @@ func main() {
 	// Create llama.cpp configuration from environment variables
 	llamaCppConfig := createLlamaCppConfigFromEnv()
 
+	// Set up the llama.cpp backend.
 	llamaCppBackend, err := llamacpp.New(
 		log,
 		modelManager,
@@ -89,9 +91,21 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
 
+	// Set up the OpenAI passthrough backend.
+	openaiBackend, err := openai.New(
+		log,
+		log.WithFields(logrus.Fields{"component": "openai-proxy"}),
+	)
+	if err != nil {
+		log.Fatalf("unable to initialize %s backend: %v", openai.Name, err)
+	}
+
 	scheduler := scheduling.NewScheduler(
 		log,
-		map[string]inference.Backend{llamacpp.Name: llamaCppBackend},
+		map[string]inference.Backend{
+			llamacpp.Name: llamaCppBackend,
+			openai.Name:   openaiBackend,
+		},
 		llamaCppBackend,
 		modelManager,
 		http.DefaultClient,

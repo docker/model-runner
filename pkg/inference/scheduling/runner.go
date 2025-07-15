@@ -175,7 +175,9 @@ func run(
 		}
 	}
 
-	r.openAIRecorder.SetConfigForModel(model, runnerConfig)
+	if runnerConfig != nil {
+		r.openAIRecorder.SetConfigForModel(model, runnerConfig)
+	}
 
 	// Start the backend run loop.
 	go func() {
@@ -214,8 +216,12 @@ func (r *runner) wait(ctx context.Context) error {
 			response.Body.Close()
 		}
 
-		// If the request failed, then wait (if appropriate) and try again.
-		if err != nil || response.StatusCode != http.StatusOK {
+		// If the request failed, then wait (if appropriate) and try again. If
+		// we're talking to a passthrough backend, then we allow the status code
+		// to be something other than 200 (OK) because we may lack the API keys
+		// necessary to speak with it successfully, so all we care about is that
+		// we can speak HTTP to it at all.
+		if err != nil || (response.StatusCode != http.StatusOK && !r.backend.Passthrough()) {
 			if p < (maximumReadinessPings - 1) {
 				select {
 				case <-time.After(readinessRetryInterval):

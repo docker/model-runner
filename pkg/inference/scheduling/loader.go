@@ -25,6 +25,9 @@ const (
 	// defaultRunnerIdleTimeout is the default maximum amount of time that a
 	// runner can sit idle (i.e. without any requests) before being terminated.
 	defaultRunnerIdleTimeout = 5 * time.Minute
+	// passthroughModelName is the model name used for runners associated with
+	// passthrough backends.
+	passthroughModelName = "passthrough"
 )
 
 var (
@@ -262,10 +265,16 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 			return l.evict(false)
 		} else {
 			for _, model := range unload.Models {
-				modelID := l.modelManager.ResolveModelID(model)
+				var modelID string
+				if model == passthroughModelName {
+					modelID = passthroughModelName
+				} else {
+					modelID = l.modelManager.ResolveModelID(model)
+				}
 				delete(l.runnerConfigs, runnerKey{unload.Backend, model, inference.BackendModeCompletion})
-				// Evict both, completion and embedding models. We should consider
+				// Evict matching runners in all modes. We should consider
 				// accepting a mode parameter in unload requests.
+				l.evictRunner(unload.Backend, modelID, inference.BackendModePassthrough)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeCompletion)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeEmbedding)
 			}
@@ -400,6 +409,9 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	// Estimate the amount of memory that will be used by the model and check
 	// that we're even capable of loading it.
 	//
+	// For passthrough backends (i.e. those that proxy out to other backends),
+	// we set memory usage to zero since those models aren't loaded locally.
+	//
 	// TODO: For now, we treat the system as having memory size 1 and all models
 	// as having size 1 (and thus we'll only load a single model at a time).
 	// However, the loader is designed to use "real" values for each and to
@@ -407,6 +419,9 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	// here through estimation (using parameter count and quantization data type
 	// size).
 	memory := uint64(1)
+	if backend.Passthrough() {
+		memory = 0
+	}
 	if memory > l.totalMemory {
 		return nil, errModelTooBig
 	}
