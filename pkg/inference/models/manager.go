@@ -252,6 +252,27 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
+func (m *Manager) ResolveModelID(modelRef string) string {
+	// Sanitize modelRef to prevent log forgery
+	sanitizedModelRef := strings.ReplaceAll(modelRef, "\n", "")
+	sanitizedModelRef = strings.ReplaceAll(sanitizedModelRef, "\r", "")
+
+	model, err := m.GetModel(sanitizedModelRef)
+	if err != nil {
+		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	modelID, err := model.ID()
+	if err != nil {
+		m.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	return modelID
+}
+
 func getLocalModel(m *Manager, name string) (*Model, error) {
 	if m.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
@@ -329,7 +350,8 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := m.distributionClient.DeleteModel(r.PathValue("name"), force); err != nil {
+	resp, err := m.distributionClient.DeleteModel(r.PathValue("name"), force)
+	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -341,6 +363,11 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		m.log.Warnln("Error while deleting model:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("error writing response: %v", err), http.StatusInternalServerError)
 	}
 }
 

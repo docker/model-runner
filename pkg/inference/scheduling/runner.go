@@ -118,6 +118,12 @@ func run(
 		r.URL.Path = trimRequestPathToOpenAIRoot(r.URL.Path)
 		r.URL.RawPath = trimRequestPathToOpenAIRoot(r.URL.RawPath)
 	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// CORS headers are set by the CorsMiddleware from pkg/inference/cors.go,
+		// so we remove them here to avoid duplication and potential misconfiguration.
+		resp.Header.Del("Access-Control-Allow-Origin")
+		return nil
+	}
 	proxy.Transport = transport
 	proxyLog := log.Writer()
 	proxy.ErrorLog = logpkg.New(proxyLog, "", 0)

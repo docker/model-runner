@@ -70,6 +70,12 @@ func (c *Config) GetArgs(model types.Model, socket string, mode inference.Backen
 		args = append(args, config.RuntimeFlags...)
 	}
 
+	// Add arguments for Multimodal projector
+	path, err := model.MMPROJPath()
+	if path != "" && err == nil {
+		args = append(args, "--mmproj", path)
+	}
+
 	return args, nil
 }
 
