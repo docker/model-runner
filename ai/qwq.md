@@ -10,7 +10,7 @@ The model incorporates agent-like capabilities, allowing it to perform critical 
 
 QwQ-32B is designed for tasks requiring advanced reasoning and problem-solving abilities.
 
-- **Mathematical roblem solving**: Excels in complex mathematical computations and proofs.
+- **Mathematical problem solving**: Excels in complex mathematical computations and proofs.
 - **Code generation and debugging**: Assists in writing and troubleshooting code across various programming languages.
 - **General problem-solving**: Provides insightful solutions to diverse challenges requiring logical reasoning.
 
