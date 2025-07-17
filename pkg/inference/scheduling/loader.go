@@ -145,9 +145,12 @@ func newLoader(
 	}
 
 	// Compute the amount of available memory.
+	// TODO(p1-0tr): improve error handling
 	vramSize, err := gpuInfo.GetVRAMSize()
 	if err != nil {
 		log.Warnf("Could not read VRAM size: %s", err)
+	} else {
+		log.Infof("Running on system with %dMB VRAM", vramSize/1024.0/1024.0)
 	}
 	hostInfo, err := sysinfo.Host()
 	if err != nil {
@@ -156,6 +159,8 @@ func newLoader(
 	ramSize, err := hostInfo.Memory()
 	if err != nil {
 		log.Warnf("Could not read host RAM size: %s", err)
+	} else {
+		log.Infof("Running on system with %dMB RAM", ramSize.Total/1024.0/1024.0)
 	}
 
 	totalMemory := memory{

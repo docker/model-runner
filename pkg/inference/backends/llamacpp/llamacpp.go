@@ -226,19 +226,19 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
 	mdl, err := l.modelManager.GetModel(model)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting model(%s): %w", model, err)
 	}
 	mdlPath, err := mdl.GGUFPath()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting gguf path for model(%s): %w", model, err)
 	}
 	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing gguf(%s): %w", mdlPath, err)
 	}
 	mdlConfig, err := mdl.Config()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("accessing model(%s) config: %w", model, err)
 	}
 
 	contextSize := GetContextSize(&mdlConfig, config)
