@@ -91,6 +91,7 @@ func TestGetArgs(t *testing.T) {
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
+				"--ctx-size", "4096",
 			},
 		},
 		{
@@ -106,6 +107,7 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",
+				"--ctx-size", "4096",
 			},
 		},
 		{
@@ -165,6 +167,7 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",
+				"--ctx-size", "4096",
 				"--some", "flag", // model config takes precedence
 			},
 		},

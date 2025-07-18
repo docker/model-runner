@@ -1,6 +1,7 @@
 package llamacpp
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -10,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+
+	parser "github.com/gpustack/gguf-parser-go"
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
@@ -44,6 +48,8 @@ type llamaCpp struct {
 	status string
 	// config is the configuration for the llama.cpp backend.
 	config config.BackendConfig
+	// gpuSupported indicates whether the underlying llama-server is built with GPU support.
+	gpuSupported bool
 }
 
 // New creates a new llama.cpp-based backend.
@@ -115,6 +121,9 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	} else {
 		l.updatedLlamaCpp = true
 	}
+
+	l.gpuSupported = l.checkGPUSupport(ctx)
+	l.log.Infof("installed llama-server with gpuSupport=%t", l.gpuSupported)
 
 	return nil
 }
@@ -212,4 +221,89 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 		return 0, fmt.Errorf("error while getting store size: %v", err)
 	}
 	return size, nil
+}
+
+func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+	mdl, err := l.modelManager.GetModel(model)
+	if err != nil {
+		return nil, fmt.Errorf("getting model(%s): %w", model, err)
+	}
+	mdlPath, err := mdl.GGUFPath()
+	if err != nil {
+		return nil, fmt.Errorf("getting gguf path for model(%s): %w", model, err)
+	}
+	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
+	if err != nil {
+		return nil, fmt.Errorf("parsing gguf(%s): %w", mdlPath, err)
+	}
+	mdlConfig, err := mdl.Config()
+	if err != nil {
+		return nil, fmt.Errorf("accessing model(%s) config: %w", model, err)
+	}
+
+	contextSize := GetContextSize(&mdlConfig, config)
+
+	ngl := uint64(0)
+	if l.gpuSupported {
+		if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" && mdlConfig.Quantization != "Q4_0" {
+			ngl = 0 // only Q4_0 models can be accelerated on Adreno
+		}
+		ngl = 100
+	}
+
+	// TODO(p1-0tr): for now assume we are running on GPU (single one) - Devices[1];
+	// sum up weights + kv cache + context for an estimate of total GPU memory needed
+	// while running inference with the given model
+	estimate := mdlGguf.EstimateLLaMACppRun(parser.WithLLaMACppContextSize(int32(contextSize)),
+		// TODO(p1-0tr): add logic for resolving other param values, instead of hardcoding them
+		parser.WithLLaMACppLogicalBatchSize(2048),
+		parser.WithLLaMACppOffloadLayers(ngl))
+	ram := uint64(estimate.Devices[0].Weight.Sum() + estimate.Devices[0].KVCache.Sum() + estimate.Devices[0].Computation.Sum())
+	var vram uint64
+	if len(estimate.Devices) > 1 {
+		vram = uint64(estimate.Devices[1].Weight.Sum() + estimate.Devices[1].KVCache.Sum() + estimate.Devices[1].Computation.Sum())
+	}
+
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		if mdlConfig.Quantization == "Q4_0" {
+			// TODO(p1-0tr): For now on windows/arm64 stick to the old behaviour, of allowing
+			// one model at a time. This WA requires gpuinfo.GetVRAMSize to return 1.
+			vram = 1
+		}
+	}
+
+	return &inference.RequiredMemory{
+		RAM:  ram,
+		VRAM: vram,
+	}, nil
+}
+
+func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
+	binPath := l.vendoredServerStoragePath
+	if l.updatedLlamaCpp {
+		binPath = l.updatedServerStoragePath
+	}
+	out, err := exec.CommandContext(
+		ctx,
+		filepath.Join(binPath, "com.docker.llama-server"),
+		"--list-devices",
+	).CombinedOutput()
+	if err != nil {
+		l.log.Warnf("Failed to determine if llama-server is built with GPU support: %s", err)
+		return false
+	}
+	sc := bufio.NewScanner(strings.NewReader(string(out)))
+	expectDev := false
+	devRe := regexp.MustCompile(`\s{2}.*:\s`)
+	ndevs := 0
+	for sc.Scan() {
+		if expectDev {
+			if devRe.MatchString(sc.Text()) {
+				ndevs += 1
+			}
+		} else {
+			expectDev = strings.HasPrefix(sc.Text(), "Available devices:")
+		}
+	}
+	return ndevs > 0
 }
