@@ -120,6 +120,7 @@ func (m *Manager) RebuildRoutes(allowedOrigins []string) {
 func (m *Manager) routeHandlers(allowedOrigins []string) map[string]http.HandlerFunc {
 	handlers := map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
+		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
 		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
 		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
@@ -153,6 +154,15 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//if src := r.URL.Query().Get("fromSrc"); src != "" {
+	//	fmt.Println("IMPORTING")
+	//	if err := m.distributionClient.LoadModel(r.Context(), "emilycasey003/foo", r.Body, w); err != nil {
+	//		http.Error(w, err.Error(), http.StatusInternalServerError)
+	//		return
+	//	}
+	//	return
+	//}
+
 	// Decode the request.
 	var request ModelCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -181,6 +191,21 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleCreateModel handles POST <inference-prefix>/models/load requests.
+func (m *Manager) handleLoadModel(w http.ResponseWriter, r *http.Request) {
+	if m.distributionClient == nil {
+		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	fmt.Println("Loading model")
+	if err := m.distributionClient.LoadModel("", r.Body, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	return
 }
 
 // handleGetModels handles GET <inference-prefix>/models requests.

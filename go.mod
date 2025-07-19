@@ -2,6 +2,7 @@ module github.com/docker/model-runner
 
 go 1.23.7
 
+replace github.com/docker/model-distribution v0.0.0-20250627163720-aff34abcf3e0 => ../model-distribution
 require (
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/containerd/platforms v1.0.0-rc.1
