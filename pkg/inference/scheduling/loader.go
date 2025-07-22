@@ -141,7 +141,7 @@ func newLoader(
 		vramSize = 1
 		log.Warnf("Could not read VRAM size: %s", err)
 	} else {
-		log.Infof("Running on system with %dMB VRAM", vramSize/1022/1024)
+		log.Infof("Running on system with %dMB VRAM", vramSize/1024/1024)
 	}
 	ramSize := uint64(1)
 	hostInfo, err := sysinfo.Host()
