@@ -1,4 +1,4 @@
-// +build darwin
+//go:build darwin
 
 #include <Metal/Metal.h>
 
