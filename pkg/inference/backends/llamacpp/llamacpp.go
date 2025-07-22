@@ -265,11 +265,9 @@ func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.Bac
 	}
 
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		if mdlConfig.Quantization == "Q4_0" {
-			// TODO(p1-0tr): For now on windows/arm64 stick to the old behaviour, of allowing
-			// one model at a time. This WA requires gpuinfo.GetVRAMSize to return 1.
-			vram = 1
-		}
+		// TODO(p1-0tr): For now on windows/arm64 stick to the old behaviour, of allowing
+		// one model at a time. This WA requires gpuinfo.GetVRAMSize to return 1.
+		vram = 1
 	}
 
 	return &inference.RequiredMemory{
