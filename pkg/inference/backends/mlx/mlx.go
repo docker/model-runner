@@ -63,6 +63,6 @@ func (m *mlx) GetDiskUsage() (int64, error) {
 	return 0, nil
 }
 
-func (m *mlx) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+func (m *mlx) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
 	return nil, errors.New("not implemented")
 }

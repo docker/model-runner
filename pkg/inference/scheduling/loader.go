@@ -420,7 +420,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	if rc, ok := l.runnerConfigs[runnerKey{backendName, modelID, mode}]; ok {
 		runnerConfig = &rc
 	}
-	memory, err := backend.GetRequiredMemoryForModel(modelID, runnerConfig)
+	memory, err := backend.GetRequiredMemoryForModel(ctx, modelID, runnerConfig)
 	if err != nil {
 		return nil, err
 	}
