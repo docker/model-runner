@@ -88,5 +88,5 @@ type Backend interface {
 	GetDiskUsage() (int64, error)
 	// GetRequiredMemoryForModel returns the required working memory for a given
 	// model.
-	GetRequiredMemoryForModel(model string, config *BackendConfiguration) (*RequiredMemory, error)
+	GetRequiredMemoryForModel(ctx context.Context, model string, config *BackendConfiguration) (*RequiredMemory, error)
 }

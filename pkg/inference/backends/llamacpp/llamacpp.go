@@ -15,8 +15,10 @@ import (
 	"runtime"
 	"strings"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	parser "github.com/gpustack/gguf-parser-go"
 
+	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -223,23 +225,23 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 	return size, nil
 }
 
-func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
-	mdl, err := l.modelManager.GetModel(model)
+func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+	var mdlGguf *parser.GGUFFile
+	var mdlConfig types.Config
+	inStore, err := l.modelManager.IsModelInStore(model)
 	if err != nil {
-		return nil, fmt.Errorf("getting model(%s): %w", model, err)
+		return nil, fmt.Errorf("checking if model is in local store: %w", err)
 	}
-	mdlPath, err := mdl.GGUFPath()
-	if err != nil {
-		return nil, fmt.Errorf("getting gguf path for model(%s): %w", model, err)
-	}
-	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
-	if err != nil {
-		l.log.Warnf("Failed to parse gguf(%s): %s", mdlPath, err)
-		return nil, inference.ErrGGUFParse
-	}
-	mdlConfig, err := mdl.Config()
-	if err != nil {
-		return nil, fmt.Errorf("accessing model(%s) config: %w", model, err)
+	if inStore {
+		mdlGguf, mdlConfig, err = l.parseLocalModel(model)
+		if err != nil {
+			return nil, fmt.Errorf("parsing local gguf: %w", err)
+		}
+	} else {
+		mdlGguf, mdlConfig, err = l.parseRemoteModel(ctx, model)
+		if err != nil {
+			return nil, fmt.Errorf("parsing remote model: %w", err)
+		}
 	}
 
 	contextSize := GetContextSize(&mdlConfig, config)
@@ -275,6 +277,71 @@ func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.Bac
 		RAM:  ram,
 		VRAM: vram,
 	}, nil
+}
+
+func (l *llamaCpp) parseLocalModel(model string) (*parser.GGUFFile, types.Config, error) {
+	mdl, err := l.modelManager.GetModel(model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting model(%s): %w", model, err)
+	}
+	mdlPath, err := mdl.GGUFPath()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting gguf path for model(%s): %w", model, err)
+	}
+	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("parsing gguf(%s): %w", mdlPath, err)
+	}
+	mdlConfig, err := mdl.Config()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("accessing model(%s) config: %w", model, err)
+	}
+	return mdlGguf, mdlConfig, nil
+}
+
+func (l *llamaCpp) parseRemoteModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
+	mdl, err := l.modelManager.GetRemoteModel(ctx, model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting remote model(%s): %w", model, err)
+	}
+	layers, err := mdl.Layers()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting layers of model(%s): %w", model, err)
+	}
+	var ggufDigest v1.Hash
+	for _, layer := range layers {
+		mt, err := layer.MediaType()
+		if err != nil {
+			return nil, types.Config{}, fmt.Errorf("getting media type of model(%s) layer: %w", model, err)
+		}
+		if mt == types.MediaTypeGGUF {
+			ggufDigest, err = layer.Digest()
+			if err != nil {
+				return nil, types.Config{}, fmt.Errorf("getting digest of GGUF layer for model(%s): %w", model, err)
+			}
+			break
+		}
+	}
+	if ggufDigest.String() == "" {
+		return nil, types.Config{}, fmt.Errorf("model(%s) has no GGUF layer", model)
+	}
+	blobURL, err := l.modelManager.GetRemoteModelBlobURL(model, ggufDigest)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting GGUF blob URL for model(%s): %w", model, err)
+	}
+	tok, err := l.modelManager.BearerTokenForModel(ctx, model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting bearer token for model(%s): %w", model, err)
+	}
+	mdlGguf, err := parser.ParseGGUFFileRemote(ctx, blobURL, parser.UseBearerAuth(tok))
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("parsing GGUF for model(%s): %w", model, err)
+	}
+	config, err := mdl.Config()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting config for model(%s): %w", model, err)
+	}
+	return mdlGguf, config, nil
 }
 
 func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
