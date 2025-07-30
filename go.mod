@@ -5,7 +5,7 @@ go 1.23.7
 require (
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/containerd/platforms v1.0.0-rc.1
-	github.com/docker/model-distribution v0.0.0-20250724114133-a11d745e582c
+	github.com/docker/model-distribution v0.0.0-20250811072316-8ae9665e6889
 	github.com/elastic/go-sysinfo v1.15.3
 	github.com/google/go-containerregistry v0.20.3
 	github.com/gpustack/gguf-parser-go v0.14.1

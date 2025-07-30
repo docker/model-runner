@@ -40,6 +40,10 @@ github.com/docker/docker-credential-helpers v0.8.2 h1:bX3YxiGzFP5sOXWc3bTPEXdEaZ
 github.com/docker/docker-credential-helpers v0.8.2/go.mod h1:P3ci7E3lwkZg6XiHdRKft1KckHiO9a2rNtyFbZ/ry9M=
 github.com/docker/model-distribution v0.0.0-20250724114133-a11d745e582c h1:w9MekYamXmWLe9ZWXWgNXJ7BLDDemXwB8WcF7wzHF5Q=
 github.com/docker/model-distribution v0.0.0-20250724114133-a11d745e582c/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250730100137-5df88ad2f885 h1:0DSMXzWt3yCjSOVILau11/vrdtQnsHb/OMqNYVU39H0=
+github.com/docker/model-distribution v0.0.0-20250730100137-5df88ad2f885/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
+github.com/docker/model-distribution v0.0.0-20250811072316-8ae9665e6889 h1:O1m0yG1N2t6qV8MWT/pe9Z9ukaV0+BX27gg8fsFXDKk=
+github.com/docker/model-distribution v0.0.0-20250811072316-8ae9665e6889/go.mod h1:dThpO9JoG5Px3i+rTluAeZcqLGw8C0qepuEL4gL2o/c=
 github.com/elastic/go-sysinfo v1.15.3 h1:W+RnmhKFkqPTCRoFq2VCTmsT4p/fwpo+3gKNQsn1XU0=
 github.com/elastic/go-sysinfo v1.15.3/go.mod h1:K/cNrqYTDrSoMh2oDkYEMS2+a72GRxMvNP+GC+vRIlo=
 github.com/elastic/go-windows v1.0.2 h1:yoLLsAsV5cfg9FLhZ9EXZ2n2sQFKeDYrHenkcivY4vI=
