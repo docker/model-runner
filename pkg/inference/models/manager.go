@@ -17,6 +17,7 @@ import (
 	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
@@ -43,6 +44,8 @@ type Manager struct {
 	registryClient *registry.Client
 	// lock is used to synchronize access to the models manager's router.
 	lock sync.RWMutex
+	// memoryEstimator is used to calculate runtime memory requirements for models.
+	memoryEstimator memory.MemoryEstimator
 }
 
 type ClientConfig struct {
@@ -57,7 +60,7 @@ type ClientConfig struct {
 }
 
 // NewManager creates a new model's manager.
-func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string) *Manager {
+func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Manager {
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
@@ -84,6 +87,7 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string) *Ma
 		router:             http.NewServeMux(),
 		distributionClient: distributionClient,
 		registryClient:     registryClient,
+		memoryEstimator:    memoryEstimator,
 	}
 
 	// Register routes.
@@ -164,6 +168,17 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
+	proceed, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
+	if err != nil {
+		m.log.Warnf("Failed to calculate memory required for model %q: %s", request.From, err)
+		// Prefer staying functional in case of unexpected estimation errors.
+		proceed = true
+	}
+	if !proceed {
+		m.log.Warnf("Runtime memory requirement for model %q exceeds total system memory", request.From)
+		http.Error(w, "Runtime memory requirement for model exceeds total system memory", http.StatusInsufficientStorage)
+		return
+	}
 	if err := m.PullModel(request.From, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)

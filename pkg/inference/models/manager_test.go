@@ -16,9 +16,22 @@ import (
 	"github.com/docker/model-distribution/builder"
 	reg "github.com/docker/model-distribution/registry"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/memory"
 
 	"github.com/sirupsen/logrus"
 )
+
+type mockMemoryEstimator struct{}
+
+func (me *mockMemoryEstimator) SetDefaultBackend(_ memory.MemoryEstimatorBackend) {}
+
+func (me *mockMemoryEstimator) GetRequiredMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+	return &inference.RequiredMemory{RAM: 0, VRAM: 0}, nil
+}
+
+func (me *mockMemoryEstimator) HaveSufficientMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (bool, error) {
+	return true, nil
+}
 
 // getProjectRoot returns the absolute path to the project root directory
 func getProjectRoot(t *testing.T) string {
@@ -109,10 +122,11 @@ func TestPullModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
+			memEstimator := &mockMemoryEstimator{}
 			m := NewManager(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			}, nil)
+			}, nil, memEstimator)
 
 			r := httptest.NewRequest("POST", "/models/create", strings.NewReader(`{"from": "`+tag+`"}`))
 			if tt.acceptHeader != "" {
@@ -219,12 +233,13 @@ func TestHandleGetModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
+			memEstimator := &mockMemoryEstimator{}
 			m := NewManager(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 				Transport:     http.DefaultTransport,
 				UserAgent:     "test-agent",
-			}, nil)
+			}, nil, memEstimator)
 
 			// First pull the model if we're testing local access
 			if !tt.remote && !strings.Contains(tt.modelName, "nonexistent") {

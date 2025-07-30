@@ -14,6 +14,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/config"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
@@ -54,6 +55,20 @@ func main() {
 		llamacpp.SetDesiredServerVersion(desiredSeverVersion)
 	}
 
+	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
+	if llamaServerPath == "" {
+		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
+	}
+
+	gpuInfo := gpuinfo.New(llamaServerPath)
+
+	sysMemInfo, err := memory.NewSystemMemoryInfo(log, gpuInfo)
+	if err != nil {
+		log.Fatalf("unable to initialize system memory info: %v", err)
+	}
+
+	memEstimator := memory.NewEstimator(sysMemInfo)
+
 	modelManager := models.NewManager(
 		log,
 		models.ClientConfig{
@@ -61,12 +76,8 @@ func main() {
 			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 		},
 		nil,
+		memEstimator,
 	)
-
-	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
-	if llamaServerPath == "" {
-		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
-	}
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
@@ -90,7 +101,7 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
 
-	gpuInfo := gpuinfo.New(llamaServerPath)
+	memEstimator.SetDefaultBackend(llamaCppBackend)
 
 	scheduler := scheduling.NewScheduler(
 		log,
