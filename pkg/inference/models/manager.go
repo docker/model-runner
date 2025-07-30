@@ -17,7 +17,9 @@ import (
 	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,6 +44,8 @@ type Manager struct {
 	registryClient *registry.Client
 	// lock is used to synchronize access to the models manager's router.
 	lock sync.RWMutex
+	// memoryEstimator is used to calculate runtime memory requirements for models.
+	memoryEstimator memory.MemoryEstimator
 }
 
 type ClientConfig struct {
@@ -56,7 +60,7 @@ type ClientConfig struct {
 }
 
 // NewManager creates a new model's manager.
-func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string) *Manager {
+func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Manager {
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
@@ -83,6 +87,7 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string) *Ma
 		router:             http.NewServeMux(),
 		distributionClient: distributionClient,
 		registryClient:     registryClient,
+		memoryEstimator:    memoryEstimator,
 	}
 
 	// Register routes.
@@ -163,6 +168,17 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
+	haveMem, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
+	if err != nil {
+		m.log.Warnf("Failed to calculate memory required for model %q: %s", request.From, err)
+		http.Error(w, "Could not calculate runtime memory requirement for model", http.StatusInternalServerError)
+		return
+	}
+	if !haveMem {
+		m.log.Warnf("Runtime memory requirement for model %q exceeds total system memory", request.From)
+		http.Error(w, "Runtime memory requirement for model exceeds total system memory", http.StatusInsufficientStorage)
+		return
+	}
 	if err := m.PullModel(request.From, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)
@@ -562,6 +578,11 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.router.ServeHTTP(w, r)
 }
 
+// IsModelInStore checks if a given model is in the local store.
+func (m *Manager) IsModelInStore(ref string) bool {
+	return m.distributionClient.IsModelInStore(ref)
+}
+
 // GetModel returns a single model.
 func (m *Manager) GetModel(ref string) (types.Model, error) {
 	model, err := m.distributionClient.GetModel(ref)
@@ -569,6 +590,33 @@ func (m *Manager) GetModel(ref string) (types.Model, error) {
 		return nil, fmt.Errorf("error while getting model: %w", err)
 	}
 	return model, err
+}
+
+// GetRemoteModel returns a single remote model.
+func (m *Manager) GetRemoteModel(ctx context.Context, ref string) (types.ModelArtifact, error) {
+	model, err := m.registryClient.Model(ctx, ref)
+	if err != nil {
+		return nil, fmt.Errorf("error while getting remote model: %w", err)
+	}
+	return model, nil
+}
+
+// GetRemoteModelBlobURL returns the URL of a given model blob.
+func (m *Manager) GetRemoteModelBlobURL(ref string, digest v1.Hash) (string, error) {
+	blobURL, err := m.registryClient.BlobURL(ref, digest)
+	if err != nil {
+		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
+	}
+	return blobURL, nil
+}
+
+// BearerTokenForModel returns the bearer token needed to pull a given model.
+func (m *Manager) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
+	tok, err := m.registryClient.BearerToken(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("error while getting bearer token for model: %w", err)
+	}
+	return tok, nil
 }
 
 // GetModelPath returns the path to a model's files.
