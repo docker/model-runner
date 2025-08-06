@@ -2,6 +2,7 @@ package inference
 
 import (
 	"context"
+	"errors"
 	"net/http"
 )
 
@@ -15,6 +16,10 @@ const (
 	// BackendModeEmbedding indicates that the backend should run in embedding
 	// mode.
 	BackendModeEmbedding
+)
+
+var (
+	ErrGGUFParse = errors.New("failed to parse GGUF file")
 )
 
 // String implements Stringer.String for BackendMode.

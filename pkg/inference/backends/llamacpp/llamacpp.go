@@ -234,7 +234,8 @@ func (l *llamaCpp) GetRequiredMemoryForModel(model string, config *inference.Bac
 	}
 	mdlGguf, err := parser.ParseGGUFFile(mdlPath)
 	if err != nil {
-		return nil, fmt.Errorf("parsing gguf(%s): %w", mdlPath, err)
+		l.log.Warnf("Failed to parse gguf(%s): %s", mdlPath, err)
+		return nil, inference.ErrGGUFParse
 	}
 	mdlConfig, err := mdl.Config()
 	if err != nil {

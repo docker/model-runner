@@ -421,7 +421,16 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		runnerConfig = &rc
 	}
 	memory, err := backend.GetRequiredMemoryForModel(modelID, runnerConfig)
-	if err != nil {
+	if errors.Is(err, inference.ErrGGUFParse) {
+		// TODO(p1-0tr): For now override memory checks in case model can't be parsed
+		// e.g. model is too new for gguf-parser-go to know. We should provide a cleaner
+		// way to bypass these checks.
+		l.log.Warnf("Could not parse model(%s), memory checks will be ignored for it.", modelID)
+		memory = &inference.RequiredMemory{
+			RAM:  0,
+			VRAM: 0,
+		}
+	} else if err != nil {
 		return nil, err
 	}
 	l.log.Infof("Loading %s, which will require %dMB RAM and %dMB VRAM", modelID, memory.RAM/1024/1024, memory.VRAM/1024/1024)
