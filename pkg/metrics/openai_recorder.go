@@ -46,7 +46,8 @@ type RequestResponsePair struct {
 	Method     string    `json:"method"`
 	URL        string    `json:"url"`
 	Request    string    `json:"request"`
-	Response   string    `json:"response"`
+	Response   string    `json:"response,omitempty"`
+	Error      string    `json:"error,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
 	StatusCode int       `json:"status_code"`
 	UserAgent  string    `json:"user_agent,omitempty"`
@@ -168,8 +169,15 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 	if modelData, exists := r.records[modelID]; exists {
 		for _, record := range modelData.Records {
 			if record.ID == id {
-				record.Response = response
 				record.StatusCode = statusCode
+				// Populate either Response or Error field based on status code
+				if statusCode >= 400 {
+					record.Error = response
+					record.Response = "" // Ensure Response is empty for errors
+				} else {
+					record.Response = response
+					record.Error = "" // Ensure Error is empty for successful responses
+				}
 				return
 			}
 		}
