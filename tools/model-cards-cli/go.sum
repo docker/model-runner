@@ -16,6 +16,8 @@ github.com/google/go-containerregistry v0.20.6/go.mod h1:T0x8MuoAoKX/873bkeSfLD2
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
 github.com/gpustack/gguf-parser-go v0.19.1 h1:b3bWI+wbxmT23vVzlFT2zMszKhmQ5Nk10G2zb3rgTzw=
 github.com/gpustack/gguf-parser-go v0.19.1/go.mod h1:GvHh1Kvvq5ojCOsJ5UpwiJJmIjFw3Qk5cW7R+CZ3IJo=
+github.com/gpustack/gguf-parser-go v0.22.0 h1:Skh9bG/giQflmHi29R4IzqJJbL05qr3Gk8LPLfT5Y7U=
+github.com/gpustack/gguf-parser-go v0.22.0/go.mod h1:y4TwTtDqFWTK+xvprOjRUh+dowgU2TKCX37vRKvGiZ0=
 github.com/henvic/httpretty v0.1.4 h1:Jo7uwIRWVFxkqOnErcoYfH90o3ddQyVrSANeS4cxYmU=
 github.com/henvic/httpretty v0.1.4/go.mod h1:Dn60sQTZfbt2dYsdUSNsCljyF4AfdqnuJFDLJA1I4AM=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
