@@ -1,5 +1,7 @@
 # Granite Embedding Multilingual
 
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/ibm-280x184-overview.svg)
+
 Granite Embedding Multilingual is a 278 million parameter, encoder‑only XLM‑RoBERTa‑style dense biencoder model created by IBM, engineered to produce high‑quality multilingual text embeddings (768‑dimensional). It’s optimized for semantic similarity, retrieval, and search in 12 major languages, released under the Apache 2.0 license.
 
 ## Intended uses

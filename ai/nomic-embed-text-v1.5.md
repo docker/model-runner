@@ -1,5 +1,7 @@
 # Nomic Embed Text
 
+![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/nomic-280x184-overview.svg)
+
 Nomic Embed Text v1 is an open‑source, fully auditable text embedding model with an 8192‑token context window. 
 It outperforms OpenAI Ada‑002 and text‑embedding‑3‑small on various embedding benchmarks while providing open weights, training code, and data under an Apache‑2 license.
 
