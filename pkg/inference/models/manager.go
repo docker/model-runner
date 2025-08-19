@@ -168,16 +168,19 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
-	proceed, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
-	if err != nil {
-		m.log.Warnf("Failed to calculate memory required for model %q: %s", request.From, err)
-		// Prefer staying functional in case of unexpected estimation errors.
-		proceed = true
-	}
-	if !proceed {
-		m.log.Warnf("Runtime memory requirement for model %q exceeds total system memory", request.From)
-		http.Error(w, "Runtime memory requirement for model exceeds total system memory", http.StatusInsufficientStorage)
-		return
+	if !request.IgnoreRuntimeMemoryCheck {
+		m.log.Infof("Will estimate memory required for %q", request.From)
+		proceed, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
+		if err != nil {
+			m.log.Warnf("Failed to calculate memory required for model %q: %s", request.From, err)
+			// Prefer staying functional in case of unexpected estimation errors.
+			proceed = true
+		}
+		if !proceed {
+			m.log.Warnf("Runtime memory requirement for model %q exceeds total system memory", request.From)
+			http.Error(w, "Runtime memory requirement for model exceeds total system memory", http.StatusInsufficientStorage)
+			return
+		}
 	}
 	if err := m.PullModel(request.From, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
