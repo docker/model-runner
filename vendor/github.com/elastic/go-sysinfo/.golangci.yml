@@ -1,0 +1,16 @@
+---
+
+run:
+  issues-exit-code: 1
+  modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  fast: false
+  enable:
+    - goimports
+    - revive
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/elastic/go-sysinfo

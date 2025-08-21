@@ -24,7 +24,7 @@ func NewSystemMemoryInfo(log logging.Logger, gpuInfo *gpuinfo.GPUInfo) (SystemMe
 		vramSize = 1
 		log.Warnf("Could not read VRAM size: %s", err)
 	} else {
-		log.Infof("Running on system with %dMB VRAM", vramSize/1024/1024)
+		log.Infof("Running on system with %d MB VRAM", vramSize/1024/1024)
 	}
 	ramSize := uint64(1)
 	hostInfo, err := sysinfo.Host()
@@ -36,12 +36,13 @@ func NewSystemMemoryInfo(log logging.Logger, gpuInfo *gpuinfo.GPUInfo) (SystemMe
 			log.Warnf("Could not read host RAM size: %s", err)
 		} else {
 			ramSize = ram.Total
-			log.Infof("Running on system with %dMB RAM", ramSize/1024/1024)
+			log.Infof("Running on system with %d MB RAM", ramSize/1024/1024)
 		}
 	}
 	return &systemMemoryInfo{
 		log:         log,
-		totalMemory: inference.RequiredMemory{RAM: ramSize, VRAM: vramSize}}, nil
+		totalMemory: inference.RequiredMemory{RAM: ramSize, VRAM: vramSize},
+	}, nil
 }
 
 func (s *systemMemoryInfo) HaveSufficientMemory(req inference.RequiredMemory) bool {
