@@ -13,6 +13,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify vendor/ is not present
+        run: stat vendor && exit 1 || exit 0
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

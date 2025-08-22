@@ -5,3 +5,4 @@ model-runner.sock
 models-store/
 # Directory where we store the updated llama.cpp
 updated-inference/
+vendor/
