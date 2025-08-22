@@ -235,12 +235,12 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 	if inStore {
 		mdlGguf, mdlConfig, err = l.parseLocalModel(model)
 		if err != nil {
-			return nil, fmt.Errorf("parsing local gguf: %w", err)
+			return nil, &inference.ErrGGUFParse{Err: err}
 		}
 	} else {
 		mdlGguf, mdlConfig, err = l.parseRemoteModel(ctx, model)
 		if err != nil {
-			return nil, fmt.Errorf("parsing remote model: %w", err)
+			return nil, &inference.ErrGGUFParse{Err: err}
 		}
 	}
 
