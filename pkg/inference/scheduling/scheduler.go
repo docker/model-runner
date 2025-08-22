@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/docker/model-distribution/distribution"
-	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
@@ -56,7 +56,7 @@ func NewScheduler(
 	httpClient *http.Client,
 	allowedOrigins []string,
 	tracker *metrics.Tracker,
-	gpuInfo *gpuinfo.GPUInfo,
+	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
 	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
 
@@ -67,7 +67,7 @@ func NewScheduler(
 		defaultBackend: defaultBackend,
 		modelManager:   modelManager,
 		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager, openAIRecorder, gpuInfo),
+		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),
 		router:         http.NewServeMux(),
 		tracker:        tracker,
 		openAIRecorder: openAIRecorder,

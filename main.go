@@ -116,7 +116,7 @@ func main() {
 			"",
 			false,
 		),
-		gpuInfo,
+		sysMemInfo,
 	)
 
 	router := routing.NewNormalizedServeMux()

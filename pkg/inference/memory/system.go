@@ -9,6 +9,7 @@ import (
 
 type SystemMemoryInfo interface {
 	HaveSufficientMemory(inference.RequiredMemory) bool
+	GetTotalMemory() inference.RequiredMemory
 }
 
 type systemMemoryInfo struct {
@@ -47,4 +48,8 @@ func NewSystemMemoryInfo(log logging.Logger, gpuInfo *gpuinfo.GPUInfo) (SystemMe
 
 func (s *systemMemoryInfo) HaveSufficientMemory(req inference.RequiredMemory) bool {
 	return req.RAM <= s.totalMemory.RAM && req.VRAM <= s.totalMemory.VRAM
+}
+
+func (s *systemMemoryInfo) GetTotalMemory() inference.RequiredMemory {
+	return s.totalMemory
 }
