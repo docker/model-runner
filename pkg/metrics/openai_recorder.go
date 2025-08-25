@@ -190,6 +190,7 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) string {
 	lines := strings.Split(streamingBody, "\n")
 	var contentBuilder strings.Builder
+	var reasoningContentBuilder strings.Builder
 	var lastChunk map[string]interface{}
 
 	for _, line := range lines {
@@ -212,6 +213,9 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) string {
 						if content, ok := delta["content"].(string); ok {
 							contentBuilder.WriteString(content)
 						}
+						if content, ok := delta["reasoning_content"].(string); ok {
+							reasoningContentBuilder.WriteString(content)
+						}
 					}
 				}
 			}
@@ -230,10 +234,14 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) string {
 
 	if choices, ok := finalResponse["choices"].([]interface{}); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]interface{}); ok {
-			choice["message"] = map[string]interface{}{
+			message := map[string]interface{}{
 				"role":    "assistant",
 				"content": contentBuilder.String(),
 			}
+			if reasoningContentBuilder.Len() > 0 {
+				message["reasoning_content"] = reasoningContentBuilder.String()
+			}
+			choice["message"] = message
 			delete(choice, "delta")
 
 			if _, ok := choice["finish_reason"]; !ok {
