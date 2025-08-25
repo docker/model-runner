@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/docker/model-runner/pkg/middleware"
 	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
@@ -39,6 +39,9 @@ type Scheduler struct {
 	loader *loader
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// httpHandler is the HTTP request handler, which wraps router with
+	// the server-level middleware.
+	httpHandler http.Handler
 	// tracker is the metrics tracker.
 	tracker *metrics.Tracker
 	// openAIRecorder is used to record OpenAI API inference requests and responses.
@@ -78,9 +81,11 @@ func NewScheduler(
 		http.Error(w, "not found", http.StatusNotFound)
 	})
 
-	for route, handler := range s.routeHandlers(allowedOrigins) {
+	for route, handler := range s.routeHandlers() {
 		s.router.HandleFunc(route, handler)
 	}
+
+	s.RebuildRoutes(allowedOrigins)
 
 	// Scheduler successfully initialized.
 	return s
@@ -89,18 +94,11 @@ func NewScheduler(
 func (s *Scheduler) RebuildRoutes(allowedOrigins []string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	// Clear existing routes and re-register them.
-	s.router = http.NewServeMux()
-	// Register routes.
-	s.router.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	})
-	for route, handler := range s.routeHandlers(allowedOrigins) {
-		s.router.HandleFunc(route, handler)
-	}
+	// Update handlers that depend on the allowed origins.
+	s.httpHandler = middleware.CorsMiddleware(allowedOrigins, s.router)
 }
 
-func (s *Scheduler) routeHandlers(allowedOrigins []string) map[string]http.HandlerFunc {
+func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	openAIRoutes := []string{
 		"POST " + inference.InferencePrefix + "/{backend}/v1/chat/completions",
 		"POST " + inference.InferencePrefix + "/{backend}/v1/completions",
@@ -111,10 +109,7 @@ func (s *Scheduler) routeHandlers(allowedOrigins []string) map[string]http.Handl
 	}
 	m := make(map[string]http.HandlerFunc)
 	for _, route := range openAIRoutes {
-		m[route] = inference.CorsMiddleware(allowedOrigins, http.HandlerFunc(s.handleOpenAIInference)).ServeHTTP
-		// Register OPTIONS for CORS preflight.
-		optionsRoute := "OPTIONS " + route[strings.Index(route, " "):]
-		m[optionsRoute] = inference.CorsMiddleware(allowedOrigins, http.HandlerFunc(s.handleOpenAIInference)).ServeHTTP
+		m[route] = s.handleOpenAIInference
 	}
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
@@ -127,7 +122,7 @@ func (s *Scheduler) routeHandlers(allowedOrigins []string) map[string]http.Handl
 }
 
 func (s *Scheduler) GetRoutes() []string {
-	routeHandlers := s.routeHandlers(nil)
+	routeHandlers := s.routeHandlers()
 	routes := make([]string, 0, len(routeHandlers))
 	for route := range routeHandlers {
 		routes = append(routes, route)
@@ -514,5 +509,5 @@ func parseBackendMode(mode string) inference.BackendMode {
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.router.ServeHTTP(w, r)
+	s.httpHandler.ServeHTTP(w, r)
 }

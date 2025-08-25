@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -288,6 +289,44 @@ func TestHandleGetModel(t *testing.T) {
 			}
 			if err := os.MkdirAll(tempDir, 0755); err != nil {
 				t.Fatalf("Failed to recreate temp directory: %v", err)
+			}
+		})
+	}
+}
+
+func TestCors(t *testing.T) {
+	// Verify that preflight requests work against non-existing handlers or
+	// method-specific handlers that do not support OPTIONS
+	t.Parallel()
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "root",
+			path: "/",
+		},
+		{
+			name: "list models",
+			path: "/models/list",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
+			memEstimator := &mockMemoryEstimator{}
+			discard := logrus.New()
+			discard.SetOutput(io.Discard)
+			log := logrus.NewEntry(discard)
+			m := NewManager(log, ClientConfig{}, []string{"*"}, memEstimator)
+			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, nil)
+			req.Header.Set("Origin", "docker.com")
+			w := httptest.NewRecorder()
+			m.ServeHTTP(w, req)
+
+			if w.Code != http.StatusNoContent {
+				t.Errorf("Expected status code 204 for OPTIONS request, got %d", w.Code)
 			}
 		})
 	}
