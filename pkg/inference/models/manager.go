@@ -19,6 +19,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/middleware"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
 )
@@ -38,6 +39,9 @@ type Manager struct {
 	pullTokens chan struct{}
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// httpHandler is the HTTP request handler, which wraps router with
+	// the server-level middleware.
+	httpHandler http.Handler
 	// distributionClient is the client for model distribution.
 	distributionClient *distribution.Client
 	// registryClient is the client for model registry.
@@ -95,9 +99,11 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 		http.Error(w, "not found", http.StatusNotFound)
 	})
 
-	for route, handler := range m.routeHandlers(allowedOrigins) {
+	for route, handler := range m.routeHandlers() {
 		m.router.HandleFunc(route, handler)
 	}
+
+	m.RebuildRoutes(allowedOrigins)
 
 	// Populate the pull concurrency semaphore.
 	for i := 0; i < maximumConcurrentModelPulls; i++ {
@@ -111,19 +117,12 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 func (m *Manager) RebuildRoutes(allowedOrigins []string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	// Clear existing routes and re-register them.
-	m.router = http.NewServeMux()
-	// Register routes.
-	m.router.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	})
-	for route, handler := range m.routeHandlers(allowedOrigins) {
-		m.router.HandleFunc(route, handler)
-	}
+	// Update handlers that depend on the allowed origins.
+	m.httpHandler = middleware.CorsMiddleware(allowedOrigins, m.router)
 }
 
-func (m *Manager) routeHandlers(allowedOrigins []string) map[string]http.HandlerFunc {
-	handlers := map[string]http.HandlerFunc{
+func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
+	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
 		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
 		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
@@ -135,16 +134,10 @@ func (m *Manager) routeHandlers(allowedOrigins []string) map[string]http.Handler
 		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
 		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           m.handleOpenAIGetModel,
 	}
-	for route, handler := range handlers {
-		if strings.HasPrefix(route, "GET ") {
-			handlers[route] = inference.CorsMiddleware(allowedOrigins, handler).ServeHTTP
-		}
-	}
-	return handlers
 }
 
 func (m *Manager) GetRoutes() []string {
-	routeHandlers := m.routeHandlers(nil)
+	routeHandlers := m.routeHandlers()
 	routes := make([]string, 0, len(routeHandlers))
 	for route := range routeHandlers {
 		routes = append(routes, route)
@@ -578,7 +571,7 @@ func (m *Manager) GetDiskUsage() (int64, error, int) {
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	m.router.ServeHTTP(w, r)
+	m.httpHandler.ServeHTTP(w, r)
 }
 
 // IsModelInStore checks if a given model is in the local store.
