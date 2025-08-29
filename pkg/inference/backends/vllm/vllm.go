@@ -63,6 +63,6 @@ func (v *vLLM) GetDiskUsage() (int64, error) {
 	return 0, nil
 }
 
-func (v *vLLM) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
-	return nil, errors.New("not implemented")
+func (v *vLLM) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (inference.RequiredMemory, error) {
+	return inference.RequiredMemory{}, errors.New("not implemented")
 }

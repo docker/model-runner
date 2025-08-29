@@ -26,12 +26,12 @@ type mockMemoryEstimator struct{}
 
 func (me *mockMemoryEstimator) SetDefaultBackend(_ memory.MemoryEstimatorBackend) {}
 
-func (me *mockMemoryEstimator) GetRequiredMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
-	return &inference.RequiredMemory{RAM: 0, VRAM: 0}, nil
+func (me *mockMemoryEstimator) GetRequiredMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (inference.RequiredMemory, error) {
+	return inference.RequiredMemory{RAM: 0, VRAM: 0}, nil
 }
 
-func (me *mockMemoryEstimator) HaveSufficientMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (bool, error) {
-	return true, nil
+func (me *mockMemoryEstimator) HaveSufficientMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (bool, inference.RequiredMemory, inference.RequiredMemory, error) {
+	return true, inference.RequiredMemory{}, inference.RequiredMemory{}, nil
 }
 
 // getProjectRoot returns the absolute path to the project root directory

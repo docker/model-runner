@@ -401,7 +401,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		// e.g. model is too new for gguf-parser-go to know. We should provide a cleaner
 		// way to bypass these checks.
 		l.log.Warnf("Could not parse model(%s), memory checks will be ignored for it. Error: %s", modelID, parseErr)
-		memory = &inference.RequiredMemory{
+		memory = inference.RequiredMemory{
 			RAM:  0,
 			VRAM: 0,
 		}

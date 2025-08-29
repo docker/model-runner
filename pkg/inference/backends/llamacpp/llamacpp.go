@@ -230,22 +230,22 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 	return size, nil
 }
 
-func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (*inference.RequiredMemory, error) {
+func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (inference.RequiredMemory, error) {
 	var mdlGguf *parser.GGUFFile
 	var mdlConfig types.Config
 	inStore, err := l.modelManager.IsModelInStore(model)
 	if err != nil {
-		return nil, fmt.Errorf("checking if model is in local store: %w", err)
+		return inference.RequiredMemory{}, fmt.Errorf("checking if model is in local store: %w", err)
 	}
 	if inStore {
 		mdlGguf, mdlConfig, err = l.parseLocalModel(model)
 		if err != nil {
-			return nil, &inference.ErrGGUFParse{Err: err}
+			return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
 		}
 	} else {
 		mdlGguf, mdlConfig, err = l.parseRemoteModel(ctx, model)
 		if err != nil {
-			return nil, &inference.ErrGGUFParse{Err: err}
+			return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
 		}
 	}
 
@@ -278,7 +278,7 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 		vram = 1
 	}
 
-	return &inference.RequiredMemory{
+	return inference.RequiredMemory{
 		RAM:  ram,
 		VRAM: vram,
 	}, nil
