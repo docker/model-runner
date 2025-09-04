@@ -32,8 +32,8 @@ func TestNewDefaultLlamaCppConfig(t *testing.T) {
 	if nglIndex+1 >= len(config.Args) {
 		t.Error("No value found after -ngl argument")
 	}
-	if config.Args[nglIndex+1] != "100" {
-		t.Errorf("Expected -ngl value to be 100, got %s", config.Args[nglIndex+1])
+	if config.Args[nglIndex+1] != "999" {
+		t.Errorf("Expected -ngl value to be 999, got %s", config.Args[nglIndex+1])
 	}
 
 	// Test Windows ARM64 specific case
@@ -87,7 +87,7 @@ func TestGetArgs(t *testing.T) {
 			},
 			expected: []string{
 				"--jinja",
-				"-ngl", "100",
+				"-ngl", "999",
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
@@ -102,7 +102,7 @@ func TestGetArgs(t *testing.T) {
 			},
 			expected: []string{
 				"--jinja",
-				"-ngl", "100",
+				"-ngl", "999",
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
@@ -121,7 +121,7 @@ func TestGetArgs(t *testing.T) {
 			},
 			expected: []string{
 				"--jinja",
-				"-ngl", "100",
+				"-ngl", "999",
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
@@ -143,7 +143,7 @@ func TestGetArgs(t *testing.T) {
 			},
 			expected: []string{
 				"--jinja",
-				"-ngl", "100",
+				"-ngl", "999",
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,
@@ -162,7 +162,7 @@ func TestGetArgs(t *testing.T) {
 			},
 			expected: []string{
 				"--jinja",
-				"-ngl", "100",
+				"-ngl", "999",
 				"--metrics",
 				"--model", modelPath,
 				"--host", socket,

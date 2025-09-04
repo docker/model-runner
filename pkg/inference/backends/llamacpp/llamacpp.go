@@ -256,7 +256,7 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 		if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" && mdlConfig.Quantization != "Q4_0" {
 			ngl = 0 // only Q4_0 models can be accelerated on Adreno
 		}
-		ngl = 100
+		ngl = 999
 	}
 
 	// TODO(p1-0tr): for now assume we are running on GPU (single one) - Devices[1];
