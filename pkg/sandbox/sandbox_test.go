@@ -10,9 +10,9 @@ func TestSandbox(t *testing.T) {
 	var sandbox Sandbox
 	var err error
 	if runtime.GOOS == "windows" {
-		sandbox, err = Create(t.Context(), ConfigurationLlamaCpp, nil, "go", "version")
+		sandbox, err = Create(t.Context(), ConfigurationLlamaCpp, nil, "/some/path/bin", "go", "version")
 	} else {
-		sandbox, err = Create(t.Context(), ConfigurationLlamaCpp, nil, "date")
+		sandbox, err = Create(t.Context(), ConfigurationLlamaCpp, nil, "/some/path/bin", "date")
 	}
 	if err != nil {
 		t.Fatal("unable to create sandboxed process:", err)

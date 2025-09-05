@@ -36,7 +36,7 @@ func (s *sandbox) Close() error {
 // configuration, for which a pre-defined value should be used. The modifier
 // function allows for an optional callback (which may be nil) to configure the
 // command before it is started.
-func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd), name string, arg ...string) (Sandbox, error) {
+func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd), updatedBinPath, name string, arg ...string) (Sandbox, error) {
 	// Create a subcontext we can use to regulate the process lifetime.
 	ctx, cancel := context.WithCancel(ctx)
 

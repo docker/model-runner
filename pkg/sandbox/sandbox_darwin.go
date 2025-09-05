@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 )
 
@@ -78,8 +79,8 @@ const ConfigurationLlamaCpp = `(version 1)
     (subpath "/usr")
     (subpath "/System")
     (regex #"Docker\.app/Contents/Resources/model-runner")
-    (subpath "[HOMEDIR]/.docker/bin/inference")
-    (subpath "[HOMEDIR]/.docker/bin/lib"))
+    (subpath "[UPDATEDBINPATH]")
+    (subpath "[UPDATEDLIBPATH]"))
 (allow file-write*
     (literal "/dev/null")
     (subpath "/private/var")
@@ -116,7 +117,7 @@ func (s *sandbox) Close() error {
 // configuration, for which a pre-defined value should be used. The modifier
 // function allows for an optional callback (which may be nil) to configure the
 // command before it is started.
-func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd), name string, arg ...string) (Sandbox, error) {
+func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd), updatedBinPath, name string, arg ...string) (Sandbox, error) {
 	// Look up the user's home directory.
 	currentUser, err := user.Current()
 	if err != nil {
@@ -133,6 +134,8 @@ func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd),
 	// text/template if this gets any more complex.
 	profile := strings.ReplaceAll(configuration, "[HOMEDIR]", currentUser.HomeDir)
 	profile = strings.ReplaceAll(profile, "[WORKDIR]", currentDirectory)
+	profile = strings.ReplaceAll(profile, "[UPDATEDBINPATH]", updatedBinPath)
+	profile = strings.ReplaceAll(profile, "[UPDATEDLIBPATH]", filepath.Join(filepath.Dir(updatedBinPath), "lib"))
 
 	// Create a subcontext we can use to regulate the process lifetime.
 	ctx, cancel := context.WithCancel(ctx)
