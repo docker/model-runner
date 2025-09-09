@@ -35,14 +35,6 @@ Description
 
 ## Use this AI model with Docker Model Runner
 
-First, pull the model:
-
-```bash
-docker model pull {model_name}
-```
-
-Then run the model:
-
 ```bash
 docker model run {model_name}
 ```
