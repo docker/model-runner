@@ -8,12 +8,12 @@ Gemma is a versatile AI model family designed for tasks like question answering,
 
 Gemma 3 4B model can be used for:
 
-- **Text generation:** Create poems, scripts, code, marketing copy, and email drafts.  
-- **Chatbots and conversational AI:** Enable virtual assistants and customer service bots.  
-- **Text summarization:** Produce concise summaries of reports and research papers.  
-- **Image data extraction:** Interpret and summarize visual data for text-based communication.  
-- **Language learning tools:** Aid in grammar correction and interactive writing practice.  
-- **Knowledge exploration:** Assist researchers by generating summaries and answering questions.  
+- **Text generation:** Create poems, scripts, code, marketing copy, and email drafts.
+- **Chatbots and conversational AI:** Enable virtual assistants and customer service bots.
+- **Text summarization:** Produce concise summaries of reports and research papers.
+- **Image data extraction:** Interpret and summarize visual data for text-based communication.
+- **Language learning tools:** Aid in grammar correction and interactive writing practice.
+- **Knowledge exploration:** Assist researchers by generating summaries and answering questions.
 
 ## Characteristics
 
@@ -32,12 +32,13 @@ Gemma 3 4B model can be used for:
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/gemma3:latest`<br><br>`ai/gemma3:4B-Q4_K_M` | 4B | IQ2_XXS/Q4_K_M | 131K tokens | 3.43 GiB | 2.31 GB |
-| `ai/gemma3:1B-Q4_K_M` | 1B | IQ2_XXS/Q4_K_M | 33K tokens | 1.40 GiB | 762.49 MB |
-| `ai/gemma3:1B-F16` | 1B | F16 | 33K tokens | 2.51 GiB | 1.86 GB |
-| `ai/gemma3:4B-Q4_0` | 4B | Q4_0 | 131K tokens | 3.32 GiB | 2.19 GB |
-| `ai/gemma3:4B-Q4_K_M` | 4B | IQ2_XXS/Q4_K_M | 131K tokens | 3.43 GiB | 2.31 GB |
-| `ai/gemma3:4B-F16` | 4B | F16 | 131K tokens | 8.35 GiB | 7.23 GB |
+| `ai/gemma3:latest`<br><br>`ai/gemma3:4B-Q4_K_M` | 4B | MOSTLY_Q4_K_M | 131K tokens | 3.83 GiB | 2.31 GB |
+| `ai/gemma3:270M-F16` | 270M | MOSTLY_F16 | 33K tokens | 1.59 GiB | 511.46 MB |
+| `ai/gemma3:1B-Q4_K_M` | 1B | MOSTLY_Q4_K_M | 33K tokens | 1.87 GiB | 762.49 MB |
+| `ai/gemma3:1B-F16` | 1B | MOSTLY_F16 | 33K tokens | 2.99 GiB | 1.86 GB |
+| `ai/gemma3:4B-Q4_0` | 4B | MOSTLY_Q4_0 | 131K tokens | 3.72 GiB | 2.19 GB |
+| `ai/gemma3:4B-Q4_K_M` | 4B | MOSTLY_Q4_K_M | 131K tokens | 3.83 GiB | 2.31 GB |
+| `ai/gemma3:4B-F16` | 4B | MOSTLY_F16 | 131K tokens | 8.75 GiB | 7.23 GB |
 
 ¹: VRAM estimated based on model characteristics.
 
