@@ -53,14 +53,14 @@ var sizes = map[string]struct {
 		// See "Best Practices".
 		//
 		// On Metal, this takes 11236.79 MiB of VRAM for tensor layers plus
-		// 9384.00 MiB of VRAM for the KV cache (for a context length of
-		// 100000 tokens), for a total of 20620.79 MiB of VRAM.
+		// 6096.00 MiB of VRAM for the KV cache (for a context length of 65000
+		// tokens), for a total of 17332.79 MiB of VRAM.
 		//
 		// An Apple M2 Max chip with 32 GB of unified memory offers a
 		// recommended Metal working set size (VRAM size) of 22906.50 MB
 		// (21845.34 MiB) by default.
 		"hf.co/unsloth/qwen3-coder-30b-a3b-instruct-gguf:q2_k_xl",
-		100000,
+		65000,
 		"Qwen3-Coder",
 		"--temp 0.7 --top-p 0.8 --top-k 20 --repeat_penalty 1.05",
 
@@ -78,8 +78,8 @@ var sizes = map[string]struct {
 		// See "Best Practices".
 		//
 		// On Metal, this takes 17691.35 MiB of VRAM for tensor layers plus
-		// 18768.00 MiB of VRAM for the KV cache (for a context length of
-		// 200000 tokens), for a total of 36459.35 MiB of VRAM.
+		// 18768.00 MiB of VRAM for the KV cache (for a context length of 200000
+		// tokens), for a total of 36459.35 MiB of VRAM.
 		"hf.co/unsloth/qwen3-coder-30b-a3b-instruct-gguf:q4_k_m",
 		200000,
 		"Qwen3-Coder",
