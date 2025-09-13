@@ -1,5 +1,5 @@
-# Start from the Ubuntu-based opencode DMR image.
-FROM opencode-dmr:latest
+# Start from the minimal Ubuntu-based opencode DMR image.
+FROM opencode-dmr:core
 
 # Install and configure the toolchains we need.
 RUN <<EOF

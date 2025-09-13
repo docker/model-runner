@@ -1,13 +1,19 @@
 # opencode Toolchain Example using Docker Model Runner
 
-This example uses `tools/opencode` to demonstrate using opencode backed by
-Docker Model Runner with a Go toolchain.
+This example uses `tools/opencode` to demonstrate using
+[opencode](https://opencode.ai/) backed by
+[Docker Model Runner](https://docs.docker.com/ai/model-runner/) with a Go
+toolchain. In this example, we use the base `opencode-dmr:core` image to build a
+custom variant with the tools we need.
 
 
 ## Usage
 
-First ensure that `opencode-dmr:latest` is available by running `./build.sh`
-in the `tools/opencode` directory.
+First ensure that `opencode-dmr:core` is available by running `./build.sh` in
+the `tools/opencode` directory. Note that this script will also create an
+`opencode-dmr:extended` image that already contains common tools, which might
+meet your needs without the need for a custom variant (or might serve as a
+better baseline image).
 
 Then, to start the opencode environment, run `./run.sh`.
 

@@ -10,7 +10,7 @@ RUN ["go", "build", "-o", "/root/entrypoint", "/root/entrypoint.go"]
 
 
 # Use a recent Ubuntu base image.
-FROM ubuntu:25.04
+FROM ubuntu:25.04 AS core
 
 # Install the Docker CLI with the Docker Model Runner plugin.
 RUN <<EOF
@@ -46,3 +46,12 @@ COPY --from=epbuilder --chown=root:root --chmod=0700 ["/root/entrypoint", "/root
 
 # Set the entrypoint.
 ENTRYPOINT ["/root/entrypoint"]
+
+# Create an extended build stage with additional tools.
+FROM core AS extended
+
+# Install additional development tools.
+RUN <<EOF
+apt-get -y install git build-essential gdb cmake golang delve rust-all jq
+npm install -g corepack
+EOF
