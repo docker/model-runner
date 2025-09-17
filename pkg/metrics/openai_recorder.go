@@ -296,6 +296,10 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 	}
 }
 
+// convertStreamingResponse converts a streaming response body into a standard JSON response.
+// It handles both successful streaming completions and streaming errors.
+// If a streaming error is detected, it returns the original streaming body and the error.
+// If successful, it reconstructs the final response in standard JSON format.
 func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string, error) {
 	lines := strings.Split(streamingBody, "\n")
 	var contentBuilder strings.Builder
