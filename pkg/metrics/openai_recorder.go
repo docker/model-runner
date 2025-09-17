@@ -189,8 +189,8 @@ func (r *OpenAIRecorder) NewResponseRecorder(w http.ResponseWriter) http.Respons
 }
 
 // normalizeErrorToJSON ensures the error content is always valid JSON.
-// If the content is already valid JSON, it returns it unchanged.
-// If not, it wraps it in a JSON object with an "error" field.
+// If the error content is already valid JSON, it is returned as-is.
+// If not, it is wrapped in a JSON object with an "error" field.
 func (r *OpenAIRecorder) normalizeErrorToJSON(errorContent string) string {
 	if errorContent == "" {
 		return `{"error": "unknown error"}`
