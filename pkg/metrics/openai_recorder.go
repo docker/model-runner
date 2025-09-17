@@ -19,6 +19,9 @@ import (
 // per model.
 const maximumRecordsPerModel = 10
 
+// subscriberChannelBuffer is the buffer size for subscriber channels.
+const subscriberChannelBuffer = 100
+
 // StreamingError represents an error that occurred during streaming response processing.
 // It contains the HTTP status code and additional context about the error.
 type StreamingError struct {
@@ -92,6 +95,10 @@ type OpenAIRecorder struct {
 	records      map[string]*ModelData // key is model ID
 	modelManager *models.Manager       // for resolving model tags to IDs
 	m            sync.RWMutex
+
+	// streaming
+	subscribers map[string]chan []ModelRecordsResponse
+	subMutex    sync.RWMutex
 }
 
 func NewOpenAIRecorder(log logging.Logger, modelManager *models.Manager) *OpenAIRecorder {
@@ -99,6 +106,7 @@ func NewOpenAIRecorder(log logging.Logger, modelManager *models.Manager) *OpenAI
 		log:          log,
 		modelManager: modelManager,
 		records:      make(map[string]*ModelData),
+		subscribers:  make(map[string]chan []ModelRecordsResponse),
 	}
 }
 
@@ -253,6 +261,18 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 					record.Response = response
 					record.Error = "" // Ensure Error is empty for successful responses
 				}
+				// Create ModelRecordsResponse with this single updated record to match
+				// what the non-streaming endpoint returns - []ModelRecordsResponse.
+				// See getAllRecords and getRecordsByModel.
+				modelResponse := []ModelRecordsResponse{{
+					Count: 1,
+					Model: model,
+					ModelData: ModelData{
+						Config:  modelData.Config,
+						Records: []*RequestResponsePair{record},
+					},
+				}}
+				go r.broadcastToSubscribers(modelResponse)
 				return
 			}
 		}
@@ -379,36 +399,124 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string,
 
 func (r *OpenAIRecorder) GetRecordsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		acceptHeader := req.Header.Get("Accept")
 
-		model := req.URL.Query().Get("model")
+		// Check if client wants Server-Sent Events
+		if acceptHeader == "text/event-stream" {
+			r.handleStreamingRequests(w, req)
+			return
+		}
 
-		if model == "" {
-			// Retrieve all records for all models.
-			allRecords := r.getAllRecords()
-			if allRecords == nil {
-				// No records found.
-				http.Error(w, "No records found", http.StatusNotFound)
+		// Default to JSON response
+		r.handleJSONRequests(w, req)
+	}
+}
+
+func (r *OpenAIRecorder) handleJSONRequests(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	model := req.URL.Query().Get("model")
+
+	if model == "" {
+		// Retrieve all records for all models.
+		allRecords := r.getAllRecords()
+		if allRecords == nil {
+			allRecords = []ModelRecordsResponse{}
+		}
+		if err := json.NewEncoder(w).Encode(allRecords); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode all records: %v", err),
+				http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Retrieve records for the specified model.
+		records := r.getRecordsByModel(model)
+		if records == nil {
+			records = []ModelRecordsResponse{}
+		}
+		if err := json.NewEncoder(w).Encode(records); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode records for model '%s': %v", model, err),
+				http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func (r *OpenAIRecorder) handleStreamingRequests(w http.ResponseWriter, req *http.Request) {
+	// Set SSE headers.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Create subscriber channel.
+	subscriberID := fmt.Sprintf("sub_%d", time.Now().UnixNano())
+	ch := make(chan []ModelRecordsResponse, subscriberChannelBuffer)
+
+	// Register subscriber.
+	r.subMutex.Lock()
+	r.subscribers[subscriberID] = ch
+	r.subMutex.Unlock()
+
+	// Clean up on disconnect.
+	defer func() {
+		r.subMutex.Lock()
+		delete(r.subscribers, subscriberID)
+		close(ch)
+		r.subMutex.Unlock()
+	}()
+
+	// Optional: Send existing records first.
+	model := req.URL.Query().Get("model")
+	if includeExisting := req.URL.Query().Get("include_existing"); includeExisting == "true" {
+		r.sendExistingRecords(w, model)
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send heartbeat to establish connection.
+	if _, err := fmt.Fprintf(w, "event: connected\ndata: {\"status\": \"connected\"}\n\n"); err != nil {
+		r.log.Errorf("Failed to write connected event to response: %v", err)
+	}
+	flusher.Flush()
+
+	for {
+		select {
+		case modelRecords, ok := <-ch:
+			if !ok {
 				return
 			}
-			if err := json.NewEncoder(w).Encode(allRecords); err != nil {
-				http.Error(w, fmt.Sprintf("Failed to encode all records: %v", err),
-					http.StatusInternalServerError)
-				return
+
+			// Filter by model if specified.
+			// modelRecords is assumed to have size 1 because that's how we call broadcastToSubscribers.
+			// We do this so we don't need to query a 2nd time for the model config.
+			if model != "" && len(modelRecords) > 0 && modelRecords[0].Model != model {
+				continue
 			}
-		} else {
-			// Retrieve records for the specified model.
-			records := r.getRecordsByModel(model)
-			if records == nil {
-				// No records found for the specified model.
-				http.Error(w, fmt.Sprintf("No records found for model '%s'", model), http.StatusNotFound)
-				return
+
+			// Send as SSE event.
+			jsonData, err := json.Marshal(modelRecords)
+			if err != nil {
+				r.log.Errorf("Failed to marshal record for streaming: %v", err)
+				errorMsg := fmt.Sprintf(`{"error": "Failed to marshal record: %v"}`, err)
+				if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorMsg); writeErr != nil {
+					r.log.Errorf("Failed to write error event to response: %v", writeErr)
+				}
+				flusher.Flush()
+				continue
 			}
-			if err := json.NewEncoder(w).Encode(records); err != nil {
-				http.Error(w, fmt.Sprintf("Failed to encode records for model '%s': %v", model, err),
-					http.StatusInternalServerError)
-				return
+
+			if _, err := fmt.Fprintf(w, "event: new_request\ndata: %s\n\n", jsonData); err != nil {
+				r.log.Errorf("Failed to write new_request event to response: %v", err)
 			}
+			flusher.Flush()
+
+		case <-req.Context().Done():
+			// Client disconnected.
+			return
 		}
 	}
 }
@@ -455,6 +563,60 @@ func (r *OpenAIRecorder) getRecordsByModel(model string) []ModelRecordsResponse 
 	}
 
 	return nil
+}
+
+func (r *OpenAIRecorder) broadcastToSubscribers(modelResponses []ModelRecordsResponse) {
+	r.subMutex.RLock()
+	defer r.subMutex.RUnlock()
+
+	for _, ch := range r.subscribers {
+		select {
+		case ch <- modelResponses:
+		default:
+			// The channel is full, skip this subscriber.
+		}
+	}
+}
+
+func (r *OpenAIRecorder) sendExistingRecords(w http.ResponseWriter, model string) {
+	var records []ModelRecordsResponse
+
+	if model == "" {
+		records = r.getAllRecords()
+	} else {
+		records = r.getRecordsByModel(model)
+	}
+
+	if records != nil {
+		// Send each individual request-response pair as a separate event.
+		for _, modelRecord := range records {
+			for _, requestRecord := range modelRecord.Records {
+				// Create a ModelRecordsResponse with a single record to match
+				// what the non-streaming endpoint returns - []ModelRecordsResponse.
+				// See getAllRecords and getRecordsByModel.
+				singleRecord := []ModelRecordsResponse{{
+					Count: 1,
+					Model: modelRecord.Model,
+					ModelData: ModelData{
+						Config:  modelRecord.Config,
+						Records: []*RequestResponsePair{requestRecord},
+					},
+				}}
+				jsonData, err := json.Marshal(singleRecord)
+				if err != nil {
+					r.log.Errorf("Failed to marshal existing record for streaming: %v", err)
+					errorMsg := fmt.Sprintf(`{"error": "Failed to marshal existing record: %v"}`, err)
+					if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorMsg); writeErr != nil {
+						r.log.Errorf("Failed to write error event to response: %v", writeErr)
+					}
+				} else {
+					if _, writeErr := fmt.Fprintf(w, "event: existing_request\ndata: %s\n\n", jsonData); writeErr != nil {
+						r.log.Errorf("Failed to write existing_request event to response: %v", writeErr)
+					}
+				}
+			}
+		}
+	}
 }
 
 func (r *OpenAIRecorder) RemoveModel(model string) {
