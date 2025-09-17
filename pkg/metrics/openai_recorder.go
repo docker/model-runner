@@ -22,6 +22,9 @@ const maximumRecordsPerModel = 10
 // subscriberChannelBuffer is the buffer size for subscriber channels.
 const subscriberChannelBuffer = 100
 
+// defaultStreamingErrorCode is the default code for streaming errors.
+const defaultStreamingErrorCode = 400
+
 // StreamingError represents an error that occurred during streaming response processing.
 // It contains the HTTP status code and additional context about the error.
 type StreamingError struct {
@@ -296,7 +299,7 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string,
 			if err := json.Unmarshal([]byte(errorData), &errorObj); err == nil {
 				// Create a StreamingError with extracted information
 				streamingErr := &StreamingError{
-					StatusCode: 400, // Default status code
+					StatusCode: defaultStreamingErrorCode,
 					Message:    "streaming error",
 				}
 
@@ -323,7 +326,7 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string,
 			}
 			// If we can't parse the error JSON, create a generic error
 			return streamingBody, &StreamingError{
-				StatusCode: 400,
+				StatusCode: defaultStreamingErrorCode,
 				Message:    "unparseable streaming error",
 				Details:    errorData,
 			}
