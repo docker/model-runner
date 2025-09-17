@@ -2,15 +2,8 @@
 
 ![logo](logo)
 
-Description
-
-## Intended uses
-
+## Description
 {small description}
-
-- **{case name }**: {description}
-- **{case name }**: {description}
-- **{case name }**: {description}
 
 ## Characteristics
 
