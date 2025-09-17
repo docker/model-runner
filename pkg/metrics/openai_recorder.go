@@ -214,6 +214,39 @@ func (r *OpenAIRecorder) normalizeErrorToJSON(errorContent string) string {
 	return fmt.Sprintf(`{"error": %s}`, string(escapedContent))
 }
 
+// handleErrorRecording handles the logic for recording errors and responses based on
+// streaming errors and HTTP status codes.
+func (r *OpenAIRecorder) handleErrorRecording(record *RequestResponsePair, streamingErr error, response string, statusCode int) {
+	if streamingErr != nil {
+		record.Error = r.serializeStreamingError(streamingErr)
+		record.Response = ""
+		return
+	}
+
+	if statusCode >= 400 {
+		record.Error = r.normalizeErrorToJSON(response)
+		record.Response = ""
+		return
+	}
+
+	// Success case
+	record.Response = response
+	record.Error = ""
+}
+
+// serializeStreamingError handles the serialization of streaming errors.
+// It attempts to serialize StreamingError types directly to JSON for rich error structure,
+// falling back to normalized JSON for other error types.
+func (r *OpenAIRecorder) serializeStreamingError(err error) string {
+	var streamingError *StreamingError
+	if errors.As(err, &streamingError) {
+		if errorJSON, marshalErr := json.Marshal(streamingError); marshalErr == nil {
+			return string(errorJSON)
+		}
+	}
+	return r.normalizeErrorToJSON(err.Error())
+}
+
 func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter) {
 	rr := rw.(*responseRecorder)
 
@@ -241,29 +274,7 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 		for _, record := range modelData.Records {
 			if record.ID == id {
 				record.StatusCode = statusCode
-				if streamingErr != nil {
-					// Check if it's a StreamingError and serialize it directly to JSON
-					var streamingError *StreamingError
-					if errors.As(streamingErr, &streamingError) {
-						// Serialize StreamingError directly to JSON for a rich error structure
-						if errorJSON, err := json.Marshal(streamingError); err == nil {
-							record.Error = string(errorJSON)
-						} else {
-							// Fallback to normalized JSON if marshaling fails
-							record.Error = r.normalizeErrorToJSON(streamingErr.Error())
-						}
-					} else {
-						// For non-StreamingError types, use the normalized approach
-						record.Error = r.normalizeErrorToJSON(streamingErr.Error())
-					}
-					record.Response = "" // Ensure Response is empty for errors
-				} else if statusCode >= 400 {
-					record.Error = r.normalizeErrorToJSON(response)
-					record.Response = "" // Ensure Response is empty for errors
-				} else {
-					record.Response = response
-					record.Error = "" // Ensure Error is empty for successful responses
-				}
+				r.handleErrorRecording(record, streamingErr, response, statusCode)
 				// Create ModelRecordsResponse with this single updated record to match
 				// what the non-streaming endpoint returns - []ModelRecordsResponse.
 				// See getAllRecords and getRecordsByModel.
