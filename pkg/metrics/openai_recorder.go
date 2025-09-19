@@ -23,7 +23,7 @@ const maximumRecordsPerModel = 10
 const subscriberChannelBuffer = 100
 
 // defaultStreamingErrorCode is the default code for streaming errors.
-const defaultStreamingErrorCode = 400
+const defaultStreamingErrorCode = http.StatusBadRequest
 
 // StreamingError represents an error that occurred during streaming response processing.
 // It contains the HTTP status code and additional context about the error.
