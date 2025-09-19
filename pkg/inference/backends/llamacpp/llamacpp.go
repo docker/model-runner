@@ -171,6 +171,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 			command.Stdout = serverLogStream
 			command.Stderr = out
 		},
+		l.updatedServerStoragePath,
 		filepath.Join(binPath, "com.docker.llama-server"),
 		args...,
 	)
