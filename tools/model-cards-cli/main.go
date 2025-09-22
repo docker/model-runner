@@ -25,15 +25,17 @@ type Application struct {
 	updater   markdown.Updater
 	modelDir  string
 	modelFile string
+	namespace string
 }
 
 // NewApplication creates a new application instance
-func NewApplication(client registry.Client, updater markdown.Updater, modelDir string, modelFile string) *Application {
+func NewApplication(client registry.Client, updater markdown.Updater, modelDir string, modelFile string, namespace string) *Application {
 	return &Application{
 		client:    client,
 		updater:   updater,
 		modelDir:  modelDir,
 		modelFile: modelFile,
+		namespace: namespace,
 	}
 }
 
@@ -110,7 +112,13 @@ func (a *Application) Run() error {
 // processModelFile processes a single model markdown file
 func (a *Application) processModelFile(filePath string) error {
 	// Extract the repository name from the file path
-	repoName := utils.GetRepositoryName(filePath, filepath.Dir(a.modelDir))
+	var repoName string
+	if a.namespace != "" {
+		name := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+		repoName = fmt.Sprintf("%s/%s", a.namespace, name)
+	} else {
+		repoName = utils.GetRepositoryName(filePath, filepath.Dir(a.modelDir))
+	}
 
 	logger.WithField("file", filePath).Info("📄 Using readme file")
 
@@ -407,6 +415,7 @@ func main() {
 	updateLogLevel := updateCmd.String("log-level", "info", "Log level (debug, info, warn, error)")
 	updateModelDir := updateCmd.String("model-dir", "../../ai", "Directory containing model markdown files")
 	updateModelFile := updateCmd.String("model-file", "", "Specific model markdown file to update (without path)")
+	updateNamespace := updateCmd.String("namespace", "", "Namespace to use for repositories (overrides deriving from file path)")
 
 	// Inspect command flags
 	inspectLogLevel := inspectCmd.String("log-level", "info", "Log level (debug, info, warn, error)")
@@ -472,7 +481,7 @@ func main() {
 	// Execute the appropriate command
 	if updateCmd.Parsed() {
 		logger.Info("Starting model-cards updater")
-		app := NewApplication(client, markdown.Updater{}, *updateModelDir, *updateModelFile)
+		app := NewApplication(client, markdown.Updater{}, *updateModelDir, *updateModelFile, *updateNamespace)
 		if err := app.Run(); err != nil {
 			logger.WithError(err).Errorf("Application failed: %v", err)
 			os.Exit(1)

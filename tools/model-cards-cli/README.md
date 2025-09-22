@@ -55,10 +55,19 @@ Or you can run the binary directly if it's already built:
 
 By default, the tool will scan all markdown files in the `ai/` directory and update their "Available model variants" tables. If you specify a model file with the `--model-file` flag or the `MODEL` parameter, it will only update that specific file.
 
+To override the source namespace used to build the repository name, pass the `--namespace` flag (or `NAMESPACE` when using Make):
+
+Examples:
+- `make run NAMESPACE=myorg`
+- `./bin/model-cards-cli update --namespace=myorg`
+- `make run-single MODEL=llama3.1.md NAMESPACE=myorg`
+- `./bin/model-cards-cli update --model-file=llama3.1.md --namespace=myorg`
+
 #### Update Command Options
 
 - `--model-dir`: Directory containing model markdown files (default: "../../ai")
 - `--model-file`: Specific model markdown file to update (without path)
+- `--namespace`: Namespace to use for repositories (overrides deriving from file path; e.g., "--namespace=myorg" makes repo "myorg/file-basename")
 - `--log-level`: Log level (debug, info, warn, error) (default: "info")
 
 ### Inspect Model Command

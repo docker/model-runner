@@ -126,10 +126,14 @@ func (c *Client) GetModelVariant(ctx context.Context, repoName, tag string) (dom
 		return variant, fmt.Errorf("no GGUF layer found")
 	}
 
+	authnFromKC, err := authn.DefaultKeychain.Resolve(ref.Context().Registry)
+	if err != nil {
+		return variant, fmt.Errorf("failed to resolve auth for registry: %w", err)
+	}
 	tr, err := transport.NewWithContext(
 		ctx,
 		ref.Context().Registry,
-		authn.Anonymous, // You can use authn.DefaultKeychain if you want support for config-based login
+		authnFromKC,
 		http.DefaultTransport,
 		[]string{ref.Scope(transport.PullScope)},
 	)
