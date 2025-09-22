@@ -27,11 +27,13 @@ Lightweight yet powerful coding assistant for repository‑scale tasks:
 
 ## Available model variants
 
-| Model variant                                 | Parameters | Quantization     | Context window    | VRAM¹   | Size       |
-|----------------------------------------------|------------|------------------|-------------------|---------|------------|
-| `ai/qwen3-coder:30B-A3B-UD-Q4_K_XL`          | 30 B-A3B   | MOSTLY_Q4_K_M    | 262K tokens       | ~17.2GiB| ~16.45GB   |
+| Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
+|---------------|------------|--------------|----------------|------|-------|
+| `ai/qwen3-coder:30B-A3B-UD-Q4_K_XL`<br><br>`ai/qwen3-coder:latest` | 30B-A3B | MOSTLY_Q4_K_M | 262K tokens | 17.52 GiB | 16.45 GB |
 
-¹VRAM estimated for quantized model type.
+¹: VRAM estimated based on model characteristics.
+
+> `latest` → `30B-A3B-UD-Q4_K_XL`
 
 ## Use this AI model with Docker Model Runner
 

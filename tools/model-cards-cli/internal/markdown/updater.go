@@ -3,6 +3,7 @@ package markdown
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -155,6 +156,12 @@ func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVaria
 	sortedVariants := u.sortVariants(variants)
 
 	// Generate the new table
+
+	// Compute display repository using default namespace "ai" and file basename
+	base := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+	displayRepo := fmt.Sprintf("ai/%s", base)
+
+	var latestVariant *domain.ModelVariant
 	var latestTag string
 	var tableBuilder strings.Builder
 	tableBuilder.WriteString("\n")
@@ -162,19 +169,34 @@ func (u *Updater) UpdateModelTable(filePath string, variants []domain.ModelVaria
 	tableBuilder.WriteString("|---------------|------------|--------------|----------------|------|-------|\n")
 
 	// First, find and add the latest variant if it exists
-	for _, variant := range variants {
+	for i, variant := range variants {
 		if variant.IsLatest() {
-			latestTag = variant.GetLatestTag()
-			modelVariant := fmt.Sprintf("`%s:latest`<br><br>`%s:%s`", variant.RepoName, variant.RepoName, latestTag)
-			row := u.getRow(variant, modelVariant)
+			latestVariant = &variants[i]
+			// Build the model variant string with ALL tags
+			var modelVariantStr string
+			for j, tag := range variant.Tags {
+				if j == 0 {
+					modelVariantStr = fmt.Sprintf("`%s:%s`", displayRepo, tag)
+				} else {
+					modelVariantStr += fmt.Sprintf("<br><br>`%s:%s`", displayRepo, tag)
+				}
+			}
+			row := u.getRow(variant, modelVariantStr)
 			tableBuilder.WriteString(row)
+
+			// Get the first non-latest tag for the mapping note
+			latestTag = variant.GetLatestTag()
 			break
 		}
 	}
 
-	// Then add the rest of the variants in sorted order
+	// Then add the rest of the variants in sorted order (excluding the entire latest variant)
 	for _, variant := range sortedVariants {
-		modelVariant := fmt.Sprintf("`%s:%s`", variant.RepoName, variant.Tags[0])
+		// Skip if this is the same variant as the latest one (compare all properties)
+		if latestVariant != nil && variant.IsLatest() {
+			continue
+		}
+		modelVariant := fmt.Sprintf("`%s:%s`", displayRepo, variant.Tags[0])
 		row := u.getRow(variant, modelVariant)
 		tableBuilder.WriteString(row)
 	}

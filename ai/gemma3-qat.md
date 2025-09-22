@@ -38,15 +38,16 @@ Gemma 3 4B model can be used for:
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/gemma3-qat:latest`<br><br>`ai/gemma3-qat:4B-Q4_K_M` | 3.88 B | Q4_0 | 131K tokens | 4.05 GiB | 2.93 GB |
-| `ai/gemma3-qat:1B-Q4_K_M` | 999.89 M | Q4_0 | 33K tokens | 1.58 GiB | 950.82 MB |
-| `ai/gemma3-qat:4B-Q4_K_M` | 3.88 B | Q4_0 | 131K tokens | 4.05 GiB | 2.93 GB |
-| `ai/gemma3-qat:12B-Q4_K_M` | 11.77 B | Q4_0 | 131K tokens | 9.68 GiB | 7.51 GB |
-| `ai/gemma3-qat:27B-Q4_K_M` | 27.01 B | Q4_0 | 131K tokens | 18.78 GiB | 16.04 GB |
+| `ai/gemma3-qat:4B`<br><br>`ai/gemma3-qat:4B-UD-Q4_K_XL`<br><br>`ai/gemma3-qat:latest` | 4B | MOSTLY_Q4_K_M | 131K tokens | 3.88 GiB | 2.36 GB |
+| `ai/gemma3-qat:270M-F16` | 270M | MOSTLY_F16 | 33K tokens | 1.59 GiB | 511.46 MB |
+| `ai/gemma3-qat:27B-UD-Q4_K_XL` | 27B | MOSTLY_Q4_K_M | 131K tokens | 18.52 GiB | 15.66 GB |
+| `ai/gemma3-qat:4B-BF16` | 4B | MOSTLY_BF16 | 131K tokens | 8.75 GiB | 7.23 GB |
+| `ai/gemma3-qat:12B-Q4_K_M` | 12B | MOSTLY_Q4_K_M | 131K tokens | 9.28 GiB | 6.92 GB |
+| `ai/gemma3-qat:270M-UD-Q4_K_XL` | 270M | MOSTLY_Q4_K_M | 33K tokens | 1.33 GiB | 236.27 MB |
 
 ¹: VRAM estimated based on model characteristics.
 
-> `latest` → `4B-Q4_K_M`
+> `latest` → `4B`
 
 ## Use this AI model with Docker Model Runner
 
