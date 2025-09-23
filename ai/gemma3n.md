@@ -18,15 +18,15 @@ Gemma 3n models are designed for:
 
 ## Characteristics
 
-| Attribute             | Details         |
-|---------------------- |---------------- |
-| **Provider**          | Google DeepMind |
-| **Architecture**      | Gemma 3n        |
-| **Cutoff date**       | June 2024       |
-| **Languages**         | 140+            |
-| **Tool calling**      | ✅              |
-| **Input modalities**  | Text, Image, Audio, Video |
-| **Output modalities** | Text            |
+| Attribute             | Details                                          |
+|-----------------------|--------------------------------------------------|
+| **Provider**          | Google DeepMind                                  |
+| **Architecture**      | Gemma 3n                                         |
+| **Cutoff date**       | June 2024                                        |
+| **Languages**         | 140+                                             |
+| **Tool calling**      | ❌                                                |
+| **Input modalities**  | Text                                             |
+| **Output modalities** | Text                                             |
 | **License**           | [Gemma Terms](https://ai.google.dev/gemma/terms) |
 
 ## Available model variants

@@ -17,15 +17,15 @@ Gemma 3 4B model can be used for:
 
 ## Characteristics
 
-| Attribute             | Details         |
-|---------------------- |---------------- |
-| **Provider**          | Google DeepMind |
-| **Architecture**      | Gemma3          |
-| **Cutoff date**       | -               |
-| **Languages**         | 140 languages   |
-| **Tool calling**      | ✅              |
-| **Input modalities**  | Text, Image     |
-| **Output modalities** | Text, Code      |
+| Attribute             | Details                                          |
+|-----------------------|--------------------------------------------------|
+| **Provider**          | Google DeepMind                                  |
+| **Architecture**      | Gemma3                                           |
+| **Cutoff date**       | -                                                |
+| **Languages**         | 140 languages                                    |
+| **Tool calling**      | ❌                                                |
+| **Input modalities**  | Text, Image                                      |
+| **Output modalities** | Text, Code                                       |
 | **License**           | [Gemma Terms](https://ai.google.dev/gemma/terms) |
 
 ## Available model variants
