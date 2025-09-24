@@ -50,18 +50,7 @@ docker-run: docker-build
 	@echo "Service will be available at: http://localhost:$(PORT)"
 	@echo "Example usage: curl http://localhost:$(PORT)/models"
 	@echo ""
-	mkdir -p $(MODELS_PATH)
-	docker run --rm \
-		-p $(PORT):$(PORT) \
-		-v "$(MODELS_PATH):/models" \
-		-e MODEL_RUNNER_PORT=$(PORT) \
-		-e LLAMA_SERVER_PATH=/app/bin \
-		-e MODELS_PATH=/models \
-		-e LLAMA_ARGS="$(LLAMA_ARGS)" \
-		-e DMR_ORIGINS="$(DMR_ORIGINS)" \
-		-e DO_NOT_TRACK=${DO_NOT_TRACK} \
-		-e DEBUG=${DEBUG} \
-		$(DOCKER_IMAGE)
+	scripts/docker-run.sh
 
 # Show help
 help:

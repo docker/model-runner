@@ -3,10 +3,11 @@
 ARG GO_VERSION=1.24.2
 ARG LLAMA_SERVER_VERSION=latest
 ARG LLAMA_SERVER_VARIANT=cpu
+ARG TARGETARCH=${BUILDARCH}
 ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
 ARG BASE_IMAGE=ubuntu:24.04
 
-FROM golang:${GO_VERSION}-bookworm AS builder
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS builder
 
 # Install git for go mod download if needed
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
@@ -33,7 +34,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
 
 # --- Final image ---
-FROM ${BASE_IMAGE} AS final
+FROM docker.io/${BASE_IMAGE} AS final
 
 ARG LLAMA_SERVER_VARIANT
 
