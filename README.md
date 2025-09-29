@@ -298,6 +298,15 @@ SmolLM3 is a 3.1B model for efficient on-device use, with strong performance in 
 
 ---
 
+### Devstral Small 1.1
+![Mistral Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-120x-hub@2x.svg)
+
+📌 **Description:**  
+Devstral Small 1.1 is an agentic coding LLM (24B) fine-tuned from Mistral-Small-3.1 with a 128K context window.
+
+📂 **Model File:** [`ai/devstral-small.md`](ai/devstral-small.md)  
+🐳 **Docker Hub:** [`docker.io/ai/devstral-small`](https://hub.docker.com/r/ai/devstral-small)
+
 ## 🛠️ Tools
 
 ### Model Cards CLI
