@@ -40,10 +40,10 @@ docker model run ai/devstral-small
 
 ## Benchmark performance
 
-| Category      | Metric                                  | {model_name} |
-|---------------|-----------------------------------------|--------------|
-| **SWE-Bench** |                                         |              |
-|               | SWE-Bench Verified (OpenHands scaffold) | 53.6%        |
+| Category      | Metric                                  | Devstral Small 1.1 |
+|---------------|-----------------------------------------|--------------------|
+| **SWE-Bench** |                                         |                    |
+|               | SWE-Bench Verified (OpenHands scaffold) | 53.6%              |
 
 ## Links
 - https://mistral.ai/news/devstral-2507
