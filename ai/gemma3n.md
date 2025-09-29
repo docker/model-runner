@@ -10,8 +10,7 @@ Gemma 3n is a compact, multimodal AI model from Google DeepMind, designed for ef
 Gemma 3n models are designed for:
 
 - **Text generation:** Compose poems, code, scripts, summaries, and more.  
-- **Conversational AI:** Power virtual agents and customer service assistants.  
-- **Multimodal data extraction:** Understand and summarize image, audio, and video content.  
+- **Conversational AI:** Power virtual agents and customer service assistants.   
 - **Text summarization:** Generate concise overviews of articles, papers, or transcripts.  
 - **Language learning:** Provide grammar suggestions and writing feedback.  
 - **Educational research:** Assist with data analysis, question answering, and exploration of multilingual resources.  
