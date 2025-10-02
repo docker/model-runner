@@ -463,11 +463,6 @@ func TestClientPullModel(t *testing.T) {
 
 		// Try to pull the safetensors model - should fail with ErrUnsupportedFormat
 		err = testClient.PullModel(context.Background(), tag, nil)
-		if err == nil {
-			t.Fatal("Expected error when pulling safetensors model, got nil")
-		}
-
-		// Verify the error is ErrUnsupportedFormat
 		if !errors.Is(err, ErrUnsupportedFormat) {
 			t.Fatalf("Expected ErrUnsupportedFormat, got: %v", err)
 		}
