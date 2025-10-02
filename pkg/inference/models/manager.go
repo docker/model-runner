@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
@@ -194,6 +194,11 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, registry.ErrModelNotFound) {
 			m.log.Warnf("Failed to pull model %q: %v", request.From, err)
 			http.Error(w, "Model not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, distribution.ErrUnsupportedFormat) {
+			m.log.Warnf("Unsupported model format for %q: %v", request.From, err)
+			http.Error(w, distribution.ErrUnsupportedFormat.Error(), http.StatusBadRequest)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
