@@ -16,7 +16,8 @@ var (
 		"client supports only models of type %q and older - try upgrading",
 		types.MediaTypeModelConfigV01,
 	))
-	ErrConflict = errors.New("resource conflict")
+	ErrUnsupportedFormat = errors.New("safetensors models are not currently supported - this runner only supports GGUF format models")
+	ErrConflict          = errors.New("resource conflict")
 )
 
 // ReferenceError represents an error related to an invalid model reference

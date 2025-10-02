@@ -24,6 +24,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
+	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 )
 
@@ -414,6 +415,61 @@ func TestClientPullModel(t *testing.T) {
 		}
 		if err := client.PullModel(context.Background(), tag, nil); err == nil || !errors.Is(err, ErrUnsupportedMediaType) {
 			t.Fatalf("Expected artifact version error, got %v", err)
+		}
+	})
+
+	t.Run("pull safetensors model returns error", func(t *testing.T) {
+		// Create temp directory for the safetensors file
+		tempDir, err := os.MkdirTemp("", "safetensors-test-*")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		// Create a minimal safetensors file (just needs to exist for this test)
+		safetensorsPath := filepath.Join(tempDir, "model.safetensors")
+		safetensorsContent := []byte("fake safetensors content for testing")
+		if err := os.WriteFile(safetensorsPath, safetensorsContent, 0644); err != nil {
+			t.Fatalf("Failed to create safetensors file: %v", err)
+		}
+
+		// Create a safetensors model
+		safetensorsModel, err := safetensors.NewModel([]string{safetensorsPath})
+		if err != nil {
+			t.Fatalf("Failed to create safetensors model: %v", err)
+		}
+
+		// Push to registry
+		tag := registry + "/safetensors-test/model:v1.0.0"
+		ref, err := name.ParseReference(tag)
+		if err != nil {
+			t.Fatalf("Failed to parse reference: %v", err)
+		}
+		if err := remote.Write(ref, safetensorsModel); err != nil {
+			t.Fatalf("Failed to push safetensors model to registry: %v", err)
+		}
+
+		// Create a new client with a separate temp store
+		clientTempDir, err := os.MkdirTemp("", "client-safetensors-test-*")
+		if err != nil {
+			t.Fatalf("Failed to create client temp directory: %v", err)
+		}
+		defer os.RemoveAll(clientTempDir)
+
+		testClient, err := NewClient(WithStoreRootPath(clientTempDir))
+		if err != nil {
+			t.Fatalf("Failed to create test client: %v", err)
+		}
+
+		// Try to pull the safetensors model - should fail with ErrUnsupportedFormat
+		err = testClient.PullModel(context.Background(), tag, nil)
+		if err == nil {
+			t.Fatal("Expected error when pulling safetensors model, got nil")
+		}
+
+		// Verify the error is ErrUnsupportedFormat
+		if !errors.Is(err, ErrUnsupportedFormat) {
+			t.Fatalf("Expected ErrUnsupportedFormat, got: %v", err)
 		}
 	})
 
