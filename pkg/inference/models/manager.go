@@ -198,7 +198,7 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, distribution.ErrUnsupportedFormat) {
 			m.log.Warnf("Unsupported model format for %q: %v", request.From, err)
-			http.Error(w, distribution.ErrUnsupportedFormat.Error(), http.StatusBadRequest)
+			http.Error(w, distribution.ErrUnsupportedFormat.Error(), http.StatusUnsupportedMediaType)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
