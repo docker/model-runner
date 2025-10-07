@@ -1,4 +1,5 @@
 # Qwen3‑Coder‑30B‑A3B‑Instruct
+*GGUF version by Unsloth*
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/qwen-280x184-overview@2x.svg)
 
@@ -54,3 +55,4 @@ For more information on Docker Model Runner, [explore the documentation](https:/
 ## Links
 
 - [Hugging Face](https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF)
+- [Unsloth Dynamic 2.0 GGUF](https://docs.unsloth.ai/basics/unsloth-dynamic-2.0-ggufs)

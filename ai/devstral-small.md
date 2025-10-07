@@ -1,4 +1,5 @@
 # Devstral Small 1.1
+*GGUF version by Unsloth*
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-280x184-overview@2x.svg)
 
@@ -46,5 +47,6 @@ docker model run ai/devstral-small
 |               | SWE-Bench Verified (OpenHands scaffold) | 53.6%              |
 
 ## Links
-- https://mistral.ai/news/devstral-2507
-- https://huggingface.co/unsloth/Devstral-Small-2507-GGUF
+- [Mistral AI Announcement](https://mistral.ai/news/devstral-2507)
+- [Hugging Face GGUF](https://huggingface.co/unsloth/Devstral-Small-2507-GGUF)
+- [Unsloth Dynamic 2.0 GGUF](https://docs.unsloth.ai/basics/unsloth-dynamic-2.0-ggufs)

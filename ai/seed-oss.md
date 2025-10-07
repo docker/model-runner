@@ -1,4 +1,5 @@
 # Seed-OSS
+*GGUF version by Unsloth*
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/byte-seed-280x184.svg)
 
@@ -40,5 +41,6 @@ docker model run ai/seed-oss
 ```
 
 ## Links
-- https://seed.bytedance.com/en/
-- https://huggingface.co/unsloth/Seed-OSS-36B-Instruct-GGUF
+- [Seed-OSS Homepage](https://seed.bytedance.com/en/)
+- [Hugging Face (Unsloth GGUF)](https://huggingface.co/unsloth/Seed-OSS-36B-Instruct-GGUF)
+- [Unsloth Dynamic 2.0 GGUF](https://docs.unsloth.ai/basics/unsloth-dynamic-2.0-ggufs)

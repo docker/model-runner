@@ -1,4 +1,5 @@
 # Gemma 3 QAT (Quantization Aware Trained) - Instruct
+*GGUF version by Unsloth*
 
 ![logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/gemma-280x184-overview@2x.svg)
 
@@ -88,3 +89,4 @@ For more information on Docker Model Runner, [explore the documentation](https:/
 ## Links
 - [Gemma 3 Model Overview](https://ai.google.dev/gemma/docs/core)
 - [Gemma 3 Technical Report](https://storage.googleapis.com/deepmind-media/gemma/Gemma3Report.pdf)
+- [Unsloth Dynamic 2.0 GGUF](https://docs.unsloth.ai/basics/unsloth-dynamic-2.0-ggufs)
