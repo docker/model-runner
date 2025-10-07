@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -84,6 +85,14 @@ func NewScheduler(
 
 	for route, handler := range s.routeHandlers() {
 		s.router.HandleFunc(route, handler)
+		// Also register OPTIONS for CORS preflight.
+		for _, method := range []string{"GET ", "POST ", "DELETE "} {
+			if strings.HasPrefix(route, method) {
+				optionsRoute := "OPTIONS " + strings.TrimPrefix(route, method)
+				s.router.HandleFunc(optionsRoute, func(w http.ResponseWriter, r *http.Request) {})
+				break
+			}
+		}
 	}
 
 	s.RebuildRoutes(allowedOrigins)

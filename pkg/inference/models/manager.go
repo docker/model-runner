@@ -101,6 +101,14 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 
 	for route, handler := range m.routeHandlers() {
 		m.router.HandleFunc(route, handler)
+		// Also register OPTIONS for CORS preflight.
+		for _, method := range []string{"GET ", "POST ", "DELETE "} {
+			if strings.HasPrefix(route, method) {
+				optionsRoute := "OPTIONS " + strings.TrimPrefix(route, method)
+				m.router.HandleFunc(optionsRoute, func(w http.ResponseWriter, r *http.Request) {})
+				break
+			}
+		}
 	}
 
 	m.RebuildRoutes(allowedOrigins)
