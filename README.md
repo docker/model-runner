@@ -35,6 +35,17 @@ Distilled LLaMA by DeepSeek, fast and optimized for real-world tasks.
 
 ---
 
+### Devstral Small 1.1
+![Mistral Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-120x-hub@2x.svg)
+
+📌 **Description:**  
+Devstral Small 1.1 is an agentic coding LLM (24B) fine-tuned from Mistral-Small-3.1 with a 128K context window.
+
+📂 **Model File:** [`ai/devstral-small.md`](ai/devstral-small.md)  
+🐳 **Docker Hub:** [`docker.io/ai/devstral-small`](https://hub.docker.com/r/ai/devstral-small)
+
+---
+
 ### Gemma 3
 ![Gemma Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/gemma-120x-hub@2x.svg)
 
@@ -92,6 +103,44 @@ Granite Embedding Multilingual is a 278 million parameter, encoder‑only XLM‑
 🐳 **Docker Hub:** [`docker.io/ai/granite-embedding-multilingual`](https://hub.docker.com/r/ai/granite-embedding-multilingual)
 
 ---
+
+### Granite 4.0 Micro
+![IBM Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/ibm-120x-hub.svg)
+📌 **Description:**
+3B long-context instruct model with RL alignment, IF, tool use, and enterprise optimization.
+
+📂 **Model File:** [`ai/granite-4.0-micro.md`](ai/granite-4.0-micro.md)
+🐳 **Docker Hub:** [`docker.io/ai/granite-4.0-micro`](https://hub.docker.com/r/ai/granite-4.0-micro)
+
+---
+
+### Granite 4.0 H Micro
+![IBM Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/ibm-120x-hub.svg)
+📌 **Description:**
+3B long-context instruct model with RL alignment, IF, tool calling, and enterprise readiness.
+
+📂 **Model File:** [`ai/granite-4.0-h-micro.md`](ai/granite-4.0-h-micro.md)
+🐳 **Docker Hub:** [`docker.io/ai/granite-4.0-h-micro`](https://hub.docker.com/r/ai/granite-4.0-h-micro)
+
+---
+
+### Granite 4.0 H Tiny
+![IBM Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/ibm-120x-hub.svg)
+📌 **Description:**
+7B long-context instruct model with RL alignment, IF, tool use, and enterprise optimization.
+
+📂 **Model File:** [`ai/granite-4.0-h-tiny.md`](ai/granite-4.0-h-tiny.md)
+🐳 **Docker Hub:** [`docker.io/ai/granite-4.0-h-tiny`](https://hub.docker.com/r/ai/granite-4.0-h-tiny)
+
+---
+
+### Granite 4.0 H Small
+![IBM Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/ibm-120x-hub.svg)
+📌 **Description:**
+32B long-context instruct model with RL alignment, IF, tool use, and enterprise optimization.
+
+📂 **Model File:** [`ai/granite-4.0-h-small.md`](ai/granite-4.0-h-small.md)
+🐳 **Docker Hub:** [`docker.io/ai/granite-4.0-h-small`](https://hub.docker.com/r/ai/granite-4.0-h-small)
 
 ### Llama 3.1
 ![Meta Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/meta-120x-hub@2x.svg)
@@ -296,16 +345,6 @@ SmolLM3 is a 3.1B model for efficient on-device use, with strong performance in 
 📂 **Model File:** [`ai/smollm3.md`](ai/smollm3.md)  
 🐳 **Docker Hub:** [`docker.io/ai/smollm3`](https://hub.docker.com/r/ai/smollm3)
 
----
-
-### Devstral Small 1.1
-![Mistral Logo](https://github.com/docker/model-cards/raw/refs/heads/main/logos/mistral-120x-hub@2x.svg)
-
-📌 **Description:**  
-Devstral Small 1.1 is an agentic coding LLM (24B) fine-tuned from Mistral-Small-3.1 with a 128K context window.
-
-📂 **Model File:** [`ai/devstral-small.md`](ai/devstral-small.md)  
-🐳 **Docker Hub:** [`docker.io/ai/devstral-small`](https://hub.docker.com/r/ai/devstral-small)
 
 ## 🛠️ Tools
 
