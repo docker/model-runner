@@ -14,7 +14,6 @@
             padding: 20px;
             background-color: #f0f0f0;
         }
-
         .controls, .io-areas {
             display: flex;
             gap: 10px;
@@ -22,14 +21,12 @@
             background-color: #fff;
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-
         .io-areas {
             flex-direction: column;
             align-items: stretch;
         }
-
         textarea {
             width: 300px;
             height: 80px;
@@ -38,7 +35,6 @@
             border-radius: 4px;
             font-size: 14px;
         }
-
         #videoFeed {
             width: 480px;
             height: 360px;
@@ -46,7 +42,6 @@
             background-color: #000;
             border-radius: 8px;
         }
-
         #startButton {
             padding: 10px 20px;
             font-size: 16px;
@@ -55,25 +50,20 @@
             border-radius: 4px;
             color: white;
         }
-
         #startButton.start {
             background-color: #28a745; /* Green */
         }
-
         #startButton.stop {
             background-color: #dc3545; /* Red */
         }
-
         label {
             font-weight: bold;
         }
-
         select {
             padding: 8px;
             border-radius: 4px;
             border: 1px solid #ccc;
         }
-
         .hidden {
             display: none;
         }
@@ -92,19 +82,12 @@
         <input id="baseURL" name="Instruction" value="http://127.0.0.1:12434/engines/llama.cpp">
     </div>
     <div>
-        <label for="modelSelect">Model:</label><br>
-        <select id="modelSelect" name="Model" style="width: 40em; padding: 8px;">
-            <option value="">Loading models...</option>
-        </select>
-    </div>
-    <div>
         <label for="instructionText">Instruction:</label><br>
         <textarea id="instructionText" style="height: 2em; width: 40em" name="Instruction"></textarea>
     </div>
     <div>
         <label for="responseText">Response:</label><br>
-        <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly
-                  placeholder="Server response will appear here..."></textarea>
+        <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly placeholder="Server response will appear here..."></textarea>
     </div>
 </div>
 
@@ -124,7 +107,6 @@
     const video = document.getElementById('videoFeed');
     const canvas = document.getElementById('canvas');
     const baseURL = document.getElementById('baseURL');
-    const modelSelect = document.getElementById('modelSelect');
     const instructionText = document.getElementById('instructionText');
     const responseText = document.getElementById('responseText');
     const intervalSelect = document.getElementById('intervalSelect');
@@ -136,74 +118,15 @@
     let intervalId;
     let isProcessing = false;
 
-    // Fetch available models from the API
-    async function fetchModels() {
-        try {
-            const base = new URL(baseURL.value);
-            const response = await fetch(`${base.protocol}//${base.host}/models`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-            
-            // Clear the loading option
-            modelSelect.innerHTML = '';
-            
-            if (data && data.length > 0) {
-                let totalTags = 0;
-                // Populate dropdown with available models using their tags
-                data.forEach(model => {
-                    if (model.tags && model.tags.length > 0) {
-                        model.tags.forEach(tag => {
-                            const option = document.createElement('option');
-                            option.value = tag;
-                            option.textContent = tag;
-                            modelSelect.appendChild(option);
-                            totalTags++;
-                        });
-                    }
-                });
-                
-                if (totalTags > 0) {
-                    // Try to select smolvlm model by default, or use the first option
-                    const options = Array.from(modelSelect.options);
-                    const smolvlmOption = options.find(opt => opt.value.toLowerCase().includes('smolvlm'));
-                    if (smolvlmOption) {
-                        modelSelect.value = smolvlmOption.value;
-                    } else {
-                        modelSelect.value = options[0].value;
-                    }
-                    
-                    responseText.value = `Found ${totalTags} model(s). Ready to start.`;
-                } else {
-                    modelSelect.innerHTML = '<option value="">No tagged models available</option>';
-                    responseText.value = "No tagged models found. Please pull a model first.";
-                }
-            } else {
-                modelSelect.innerHTML = '<option value="">No models available</option>';
-                responseText.value = "No models found. Please pull a model first.";
-            }
-        } catch (error) {
-            console.error('Error fetching models:', error);
-            modelSelect.innerHTML = '<option value="ai/smolvlm:500M-Q8_0">ai/smolvlm:500M-Q8_0 (fallback)</option>';
-            responseText.value = `Could not fetch models: ${error.message}. Using fallback model.`;
-        }
-    }
-
     // Returns response text (string)
     async function sendChatCompletionRequest(instruction, imageBase64URL) {
-        const selectedModel = modelSelect.value;
-        if (!selectedModel) {
-            return "Error: No model selected";
-        }
-        
         const response = await fetch(`${baseURL.value}/v1/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: selectedModel,
+                model: 'ai/smolvlm:500M-Q8_0',
                 max_tokens: 100,
                 messages: [
                     { role: 'user', content: [
@@ -216,31 +139,19 @@
             })
         });
         if (!response.ok) {
-            const errorText = await response.text();
-            try {
-                const errorData = JSON.parse(errorText);
-                // Check if error message indicates no multimodal support
-                if (errorData.error && errorData.error.message && 
-                    errorData.error.message.includes('image input is not supported')) {
-                    return "Error: The selected model does not support image input. Please select a vision model (e.g., SmolVLM).";
-                }
-                return `Server error: ${response.status} - ${errorData.error?.message || errorText}`;
-            } catch (e) {
-                // If JSON parse fails, use the raw text
-                return `Server error: ${response.status} - ${errorText}`;
-            }
+            const errorData = await response.text();
+            return `Server error: ${response.status} - ${errorData}`;
         }
         const data = await response.json();
         return data.choices[0].message.content;
     }
 
-    // 1. Ask for camera permission and fetch models on load
+    // 1. Ask for camera permission on load
     async function initCamera() {
         try {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             video.srcObject = stream;
-            responseText.value = "Camera access granted. Loading models...";
-            await fetchModels();
+            responseText.value = "Camera access granted. Ready to start.";
         } catch (err) {
             console.error("Error accessing camera:", err);
             responseText.value = `Error accessing camera: ${err.name} - ${err.message}. Please ensure permissions are granted and you are on HTTPS or localhost.`;
@@ -300,7 +211,6 @@
 
         instructionText.disabled = true;
         intervalSelect.disabled = true;
-        modelSelect.disabled = true;
 
         responseText.value = "Processing started...";
 
@@ -325,7 +235,6 @@
 
         instructionText.disabled = false;
         intervalSelect.disabled = false;
-        modelSelect.disabled = false;
         if (responseText.value.startsWith("Processing started...")) {
             responseText.value = "Processing stopped.";
         }
