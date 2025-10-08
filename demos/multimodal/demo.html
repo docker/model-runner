@@ -187,7 +187,7 @@
     }
 
     async function sendData() {
-        if (isProcessing) return; // Ensure we don't have overlapping requests if processing takes longer than interval
+        if (!isProcessing) return; // Ensure we don't have overlapping requests if processing takes longer than interval
 
         const instruction = instructionText.value;
         const imageBase64URL = captureImage();
