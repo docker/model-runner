@@ -14,9 +14,9 @@ import (
 func TestNewDefaultLlamaCppConfig(t *testing.T) {
 	config := NewDefaultLlamaCppConfig()
 
-	// Test default arguments
-	if !containsArg(config.Args, "--jinja") {
-		t.Error("Expected --jinja argument to be present")
+	// Test that --jinja is NOT in default args (it will be added conditionally in GetArgs)
+	if containsArg(config.Args, "--jinja") {
+		t.Error("Did not expect --jinja argument in default config (it should be added conditionally)")
 	}
 
 	// Test -ngl argument and its value
@@ -74,7 +74,7 @@ func TestGetArgs(t *testing.T) {
 	socket := "unix:///tmp/socket"
 
 	// Build base expected args based on architecture
-	baseArgs := []string{"--jinja", "-ngl", "999", "--metrics"}
+	baseArgs := []string{"-ngl", "999", "--metrics"}
 	if runtime.GOARCH == "arm64" {
 		nThreads := max(2, runtime.NumCPU()/2)
 		baseArgs = append(baseArgs, "--threads", strconv.Itoa(nThreads))
@@ -97,6 +97,7 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--ctx-size", "4096",
+				"--jinja",
 			),
 		},
 		{
@@ -110,6 +111,7 @@ func TestGetArgs(t *testing.T) {
 				"--host", socket,
 				"--embeddings",
 				"--ctx-size", "4096",
+				"--jinja",
 			),
 		},
 		{
@@ -125,7 +127,8 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",
-				"--ctx-size", "1234", // should add this flag
+				"--ctx-size", "1234",
+				"--jinja",
 			),
 		},
 		{
@@ -145,6 +148,7 @@ func TestGetArgs(t *testing.T) {
 				"--host", socket,
 				"--embeddings",
 				"--ctx-size", "2096", // model config takes precedence
+				"--jinja",
 			),
 		},
 		{
@@ -159,6 +163,7 @@ func TestGetArgs(t *testing.T) {
 				"--host", socket,
 				"--chat-template-file", "/path/to/bundle/template.jinja",
 				"--ctx-size", "4096",
+				"--jinja",
 			),
 		},
 		{
@@ -175,7 +180,22 @@ func TestGetArgs(t *testing.T) {
 				"--host", socket,
 				"--embeddings",
 				"--ctx-size", "4096",
-				"--some", "flag", // model config takes precedence
+				"--some", "flag",
+				"--jinja",
+			),
+		},
+		{
+			name: "multimodal projector removes jinja",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath:   modelPath,
+				mmprojPath: "/path/to/model.mmproj",
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--ctx-size", "4096",
+				"--mmproj", "/path/to/model.mmproj",
 			),
 		},
 	}
@@ -261,6 +281,7 @@ type fakeBundle struct {
 	ggufPath     string
 	config       types.Config
 	templatePath string
+	mmprojPath   string
 }
 
 func (f *fakeBundle) ChatTemplatePath() string {
@@ -276,7 +297,7 @@ func (f *fakeBundle) GGUFPath() string {
 }
 
 func (f *fakeBundle) MMPROJPath() string {
-	return ""
+	return f.mmprojPath
 }
 
 func (f *fakeBundle) SafetensorsPath() string {

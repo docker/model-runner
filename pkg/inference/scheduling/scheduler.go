@@ -122,15 +122,6 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	return m
 }
 
-func (s *Scheduler) GetRoutes() []string {
-	routeHandlers := s.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
-}
-
 // Run is the scheduler's main run loop. By the time it returns, all inference
 // backends will have been unloaded from memory.
 func (s *Scheduler) Run(ctx context.Context) error {

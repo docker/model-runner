@@ -4,7 +4,7 @@ A library and CLI tool for distributing models using container registries.
 
 ## Overview
 
-Model Distribution is a Go library and CLI tool that allows you to package, push, pull, and manage models using container registries. It provides a simple API and command-line interface for working with models in GGUF format.
+Model Distribution is a Go library and CLI tool that allows you to package, push, pull, and manage models using container registries. It provides a simple API and command-line interface for working with models in GGUF and Safetensors format.
 
 ## Features
 
@@ -14,7 +14,7 @@ Model Distribution is a Go library and CLI tool that allows you to package, push
 - Model metadata management
 - Command-line interface for all operations
 - GitHub workflows for automated model packaging
-- Support for both GGUF and safetensors model formats
+- Support for both GGUF and Safetensors model formats
 
 ## Usage
 

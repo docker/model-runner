@@ -11,7 +11,7 @@ The backend library for the
 
 This package supports the Docker Model Runner in Docker Desktop (in conjunction
 with [Model Distribution](./pkg/distribution) and the
-[Model CLI](https://github.com/docker/model-cli)). It includes a `main.go` that
+[Model CLI](./cmd/cli)). It includes a `main.go` that
 mimics its integration with Docker Desktop and allows the package to be run in a
 standalone mode.
 
@@ -61,12 +61,11 @@ make test
 
 The `model-runner` binary will be created in the current directory. This is the backend server that manages models.
 
-#### Step 2: Clone and Build model-cli (Client)
+#### Step 2: Build model-cli (Client)
 
 ```bash
-# In a new terminal/directory
-git clone https://github.com/docker/model-cli.git
-cd model-cli
+# From the root directory, navigate to the model-cli directory
+cd cmd/cli
 
 # Build the CLI binary
 make build
@@ -91,12 +90,12 @@ MODEL_RUNNER_PORT=13434 ./model-runner
 
 2. **Use model-cli in another terminal:**
 ```bash
-cd model-cli
+cd cmd/cli
 # List available models (connecting to port 13434)
-MODEL_RUNNER_PORT=13434 ./model-cli list
+MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 # Pull and run a model
-MODEL_RUNNER_PORT=13434 ./model-cli run ai/smollm2 "Hello, how are you?" 
+MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run ai/smollm2 "Hello, how are you?" 
 ```
 
 #### Option 2: Using Docker
@@ -110,29 +109,14 @@ make docker-run PORT=13434 MODELS_PATH=/path/to/models
 
 2. **Connect with model-cli:**
 ```bash
-cd model-cli
-MODEL_RUNNER_PORT=13434 ./model-cli list
+cd cmd/cli
+MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 ```
-
-### Development Workflow
-
-When making changes to either component:
-
-1. **For model-runner changes:**
-   - Edit code in the model-runner repository
-   - Run `make build` to rebuild
-   - Run `make test` to verify changes
-   - Restart the model-runner process
-
-2. **For model-cli changes:**
-   - Edit code in the model-cli repository  
-   - Run `make build` to rebuild
-   - Test against your running model-runner instance
 
 ### Additional Resources
 
 - [Model Runner Documentation](https://docs.docker.com/desktop/features/model-runner/)
-- [Model CLI README](https://github.com/docker/model-runner/cmd/cli/blob/main/README.md)
+- [Model CLI README](./cmd/cli/README.md)
 - [Model Specification](https://github.com/docker/model-spec/blob/main/spec.md)
 - [Community Slack Channel](https://app.slack.com/client/T0JK1PCN6/C09H9P5E57B)
 
@@ -278,4 +262,4 @@ discussion on the issue tracker.
 
 For general questions and discussion, please use [Docker Model Runner's Slack channel](https://app.slack.com/client/T0JK1PCN6/C09H9P5E57B).
 
-For discussions around issues/bugs and features, you can use GitHub Issues and Pull requests.
+For discussions about issues/bugs and features, you can use GitHub Issues and Pull requests.

@@ -136,15 +136,6 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 	}
 }
 
-func (m *Manager) GetRoutes() []string {
-	routeHandlers := m.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
-}
-
 // handleCreateModel handles POST <inference-prefix>/models/create requests.
 func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	if m.distributionClient == nil {
