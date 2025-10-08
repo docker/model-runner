@@ -1,7 +1,5 @@
 # {model name}
 
-![logo](logo)
-
 ## Description
 {small description}
 
