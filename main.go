@@ -122,12 +122,13 @@ func main() {
 	)
 
 	router := routing.NewNormalizedServeMux()
-	for _, route := range modelManager.GetRoutes() {
-		router.Handle(route, modelManager)
-	}
-	for _, route := range scheduler.GetRoutes() {
-		router.Handle(route, scheduler)
-	}
+
+	// Register path prefixes to forward all HTTP methods (including OPTIONS) to components
+	// Components handle method routing internally
+	// Register both with and without trailing slash to avoid redirects
+	router.Handle(inference.ModelsPrefix, modelManager)
+	router.Handle(inference.ModelsPrefix+"/", modelManager)
+	router.Handle(inference.InferencePrefix+"/", scheduler)
 
 	// Add metrics endpoint if enabled
 	if os.Getenv("DISABLE_METRICS") != "1" {

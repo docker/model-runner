@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -85,14 +84,6 @@ func NewScheduler(
 
 	for route, handler := range s.routeHandlers() {
 		s.router.HandleFunc(route, handler)
-		// Also register OPTIONS for CORS preflight.
-		for _, method := range []string{"GET ", "POST ", "DELETE "} {
-			if strings.HasPrefix(route, method) {
-				optionsRoute := "OPTIONS " + strings.TrimPrefix(route, method)
-				s.router.HandleFunc(optionsRoute, func(w http.ResponseWriter, r *http.Request) {})
-				break
-			}
-		}
 	}
 
 	s.RebuildRoutes(allowedOrigins)
@@ -129,15 +120,6 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
 	m["GET "+inference.InferencePrefix+"/requests"] = s.openAIRecorder.GetRecordsHandler()
 	return m
-}
-
-func (s *Scheduler) GetRoutes() []string {
-	routeHandlers := s.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
 }
 
 // Run is the scheduler's main run loop. By the time it returns, all inference

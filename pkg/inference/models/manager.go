@@ -101,14 +101,6 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 
 	for route, handler := range m.routeHandlers() {
 		m.router.HandleFunc(route, handler)
-		// Also register OPTIONS for CORS preflight.
-		for _, method := range []string{"GET ", "POST ", "DELETE "} {
-			if strings.HasPrefix(route, method) {
-				optionsRoute := "OPTIONS " + strings.TrimPrefix(route, method)
-				m.router.HandleFunc(optionsRoute, func(w http.ResponseWriter, r *http.Request) {})
-				break
-			}
-		}
 	}
 
 	m.RebuildRoutes(allowedOrigins)
@@ -142,15 +134,6 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
 		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           m.handleOpenAIGetModel,
 	}
-}
-
-func (m *Manager) GetRoutes() []string {
-	routeHandlers := m.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
 }
 
 // handleCreateModel handles POST <inference-prefix>/models/create requests.
