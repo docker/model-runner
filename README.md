@@ -64,7 +64,7 @@ The `model-runner` binary will be created in the current directory. This is the 
 #### Step 2: Build model-cli (Client)
 
 ```bash
-# In a new terminal/directory
+# From the root directory, navigate to the model-cli directory
 cd cmd/cli
 
 # Build the CLI binary
