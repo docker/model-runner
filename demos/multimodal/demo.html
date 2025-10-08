@@ -188,13 +188,9 @@
             return;
         }
 
-        const payload = {
-            instruction: instruction,
-            imageBase64URL: imageBase64URL
-        };
 
         try {
-            const response = await sendChatCompletionRequest(payload.instruction, payload.imageBase64URL);
+            const response = await sendChatCompletionRequest(instruction, imageBase64URL);
             responseText.value = response;
         } catch (error) {
             console.error('Error sending data:', error);
