@@ -139,7 +139,8 @@
     // Fetch available models from the API
     async function fetchModels() {
         try {
-            const response = await fetch(`${baseURL.value}/v1/models`);
+            const base = new URL(baseURL.value);
+            const response = await fetch(`${base.protocol}//${base.host}/models`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
