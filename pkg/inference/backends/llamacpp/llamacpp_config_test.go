@@ -191,20 +191,12 @@ func TestGetArgs(t *testing.T) {
 				ggufPath:   modelPath,
 				mmprojPath: "/path/to/model.mmproj",
 			},
-			expected: func() []string {
-				// Build expected args without --jinja since --mmproj is present
-				args := []string{"-ngl", "999", "--metrics"}
-				if runtime.GOARCH == "arm64" {
-					nThreads := max(2, runtime.NumCPU()/2)
-					args = append(args, "--threads", strconv.Itoa(nThreads))
-				}
-				return append(args,
-					"--model", modelPath,
-					"--host", socket,
-					"--ctx-size", "4096",
-					"--mmproj", "/path/to/model.mmproj",
-				)
-			}(),
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--ctx-size", "4096",
+				"--mmproj", "/path/to/model.mmproj",
+			),
 		},
 	}
 
