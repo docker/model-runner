@@ -18,7 +18,7 @@ type Config struct {
 
 // NewDefaultLlamaCppConfig creates a new LlamaCppConfig with default values.
 func NewDefaultLlamaCppConfig() *Config {
-	args := append([]string{"--jinja", "-ngl", "999", "--metrics"})
+	args := append([]string{"-ngl", "999", "--metrics"})
 
 	// Special case for ARM64
 	if runtime.GOARCH == "arm64" {
@@ -69,9 +69,11 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, config.RuntimeFlags...)
 	}
 
-	// Add arguments for Multimodal projector
+	// Add arguments for Multimodal projector or jinja (they are mutually exclusive)
 	if path := bundle.MMPROJPath(); path != "" {
 		args = append(args, "--mmproj", path)
+	} else {
+		args = append(args, "--jinja")
 	}
 
 	return args, nil
