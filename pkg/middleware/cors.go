@@ -8,8 +8,8 @@ import (
 
 // CorsMiddleware handles CORS and OPTIONS preflight requests with optional allowedOrigins.
 // If allowedOrigins is nil or empty, it falls back to getAllowedOrigins().
-// This middleware intercepts ALL OPTIONS requests globally, preventing them from reaching
-// the router and avoiding 405 Method Not Allowed errors.
+// This middleware intercepts OPTIONS requests only if the Origin header is present and valid,
+// otherwise passing the request to the router (allowing 405/404 responses as appropriate).
 func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = getAllowedOrigins()
