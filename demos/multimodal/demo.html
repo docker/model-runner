@@ -117,9 +117,11 @@
     let stream;
     let intervalId;
     let isProcessing = false;
+    let isWaitingForResponse = false;
 
     // Returns response text (string)
     async function sendChatCompletionRequest(instruction, imageBase64URL) {
+        isWaitingForResponse = true;
         const response = await fetch(`${baseURL.value}/v1/chat/completions`, {
             method: 'POST',
             headers: {
@@ -138,6 +140,7 @@
                 ]
             })
         });
+        isWaitingForResponse = false;
         if (!response.ok) {
             const errorData = await response.text();
             return `Server error: ${response.status} - ${errorData}`;
@@ -173,6 +176,7 @@
 
     async function sendData() {
         if (!isProcessing) return; // Ensure we don't have overlapping requests if processing takes longer than interval
+        if (isWaitingForResponse) return; // Skip if waiting for previous response
 
         const instruction = instructionText.value;
         const imageBase64URL = captureImage();
