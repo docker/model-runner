@@ -49,9 +49,17 @@ func TestCorsMiddleware(t *testing.T) {
 			wantStatus:     http.StatusNoContent,
 			wantHeaders: map[string]string{
 				"Access-Control-Allow-Credentials": "true",
-				"Access-Control-Allow-Methods":     "GET, POST",
+				"Access-Control-Allow-Methods":     "GET, POST, DELETE",
 				"Access-Control-Allow-Headers":     "*",
 			},
+		},
+		{
+			name:           "DeleteRequest",
+			allowedOrigins: []string{"http://foo.com"},
+			method:         "DELETE",
+			origin:         "http://foo.com",
+			wantStatus:     http.StatusOK,
+			wantHeaders:    map[string]string{"Access-Control-Allow-Origin": "http://foo.com"},
 		},
 		{
 			name:           "NoOriginHeader",
