@@ -71,6 +71,10 @@ If you prefer not to use Docker Desktop, you can run Docker Model Runner directl
 3. **Configure the Demo**
    - **Base API**: By default set to `http://localhost:12434/engines/llama.cpp`
      - Change the port if you configured Docker Model Runner on a different port
+   - **Model**: Select from available models pulled to your Docker Model Runner
+     - The demo automatically fetches and displays all available models
+     - SmolVLM models will be auto-selected if available
+     - If model fetching fails, it falls back to `ai/smolvlm:500M-Q8_0`
    - **Instruction**: Enter what you want the model to analyze (default: "What do you see?")
      - Examples: "Describe the scene", "What objects can you see?", "What is the person doing?"
    - **Interval**: Choose how often to send requests to the model (default: 500ms)
