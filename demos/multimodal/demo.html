@@ -67,6 +67,40 @@
         .hidden {
             display: none;
         }
+        #modelWarning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            display: none;
+        }
+        #modelWarning.show {
+            display: block;
+        }
+        #modelWarning a {
+            color: #856404;
+            text-decoration: underline;
+        }
+        #modelInfo {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #modelInfo a {
+            color: #0c5460;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -79,7 +113,15 @@
 <div class="io-areas">
     <div>
         <label for="baseURL">Base API:</label><br>
-        <input id="baseURL" name="baseURL" value="http://127.0.0.1:12434/engines/llama.cpp">
+        <input id="baseURL" name="baseURL" value="http://127.0.0.1:12434/engines/llama.cpp" style="width: 20em;">
+    </div>
+    <div>
+        <label for="modelSelect">Model:</label><br>
+        <select id="modelSelect" name="Model" style="width: 40em; padding: 8px;">
+            <option value="">Loading models...</option>
+        </select>
+        <div id="modelWarning"></div>
+        <div id="modelInfo"></div>
     </div>
     <div>
         <label for="instructionText">Instruction:</label><br>
@@ -107,6 +149,9 @@
     const video = document.getElementById('videoFeed');
     const canvas = document.getElementById('canvas');
     const baseURL = document.getElementById('baseURL');
+    const modelSelect = document.getElementById('modelSelect');
+    const modelWarning = document.getElementById('modelWarning');
+    const modelInfo = document.getElementById('modelInfo');
     const instructionText = document.getElementById('instructionText');
     const responseText = document.getElementById('responseText');
     const intervalSelect = document.getElementById('intervalSelect');
@@ -119,6 +164,62 @@
     let isProcessing = false;
     let isWaitingForResponse = false;
 
+    const RECOMMENDED_MODEL = 'ai/smolvlm:500M-Q8_0';
+
+    // Fetch available models from the API
+    async function fetchModels() {
+        // Base info message - always shown in modelInfo
+        modelInfo.innerHTML = `ℹ️ To pull a model, run: <code>docker model pull &lt;model-name&gt;</code><br>Find more models at: <a href="https://hub.docker.com/r/ai" target="_blank">https://hub.docker.com/r/ai</a>`;
+        
+        try {
+            const response = await fetch(`${baseURL.value}/v1/models`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            const models = data.data.map(model => model.id);
+            
+            // Clear and populate the model selector
+            modelSelect.innerHTML = '';
+            
+            if (models.length === 0) {
+                modelSelect.innerHTML = '<option value="">No models available</option>';
+                modelWarning.innerHTML = `⚠️ No models found. Please ensure the model runner is active and models are loaded.`;
+                modelWarning.classList.add('show');
+                return;
+            }
+            
+            // Add all models to the selector
+            models.forEach(modelId => {
+                const option = document.createElement('option');
+                option.value = modelId;
+                option.textContent = modelId;
+                modelSelect.appendChild(option);
+            });
+            
+            // Check if the recommended model exists
+            const recommendedModelExists = models.includes(RECOMMENDED_MODEL);
+            
+            if (recommendedModelExists) {
+                modelSelect.value = RECOMMENDED_MODEL;
+                // Hide warning - everything is good
+                modelWarning.classList.remove('show');
+            } else {
+                // Select the first model
+                modelSelect.value = models[0];
+                // Show suggestion about recommended model
+                modelWarning.innerHTML = `💡 We recommend to run this demo with <code>${RECOMMENDED_MODEL}</code>`;
+                modelWarning.classList.add('show');
+            }
+            
+        } catch (error) {
+            console.error('Error fetching models:', error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+            modelWarning.innerHTML = `⚠️ Error loading models: ${error.message}<br>Please check that the API is accessible at ${baseURL.value}/v1/models`;
+            modelWarning.classList.add('show');
+        }
+    }
+
     // Returns response text (string)
     async function sendChatCompletionRequest(instruction, imageBase64URL) {
         isWaitingForResponse = true;
@@ -128,7 +229,7 @@
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: 'ai/smolvlm:500M-Q8_0',
+                model: modelSelect.value,
                 max_tokens: 100,
                 messages: [
                     { role: 'user', content: [
@@ -143,6 +244,15 @@
         isWaitingForResponse = false;
         if (!response.ok) {
             const errorData = await response.text();
+            try {
+                const errorJson = JSON.parse(errorData);
+                if (errorJson.error && errorJson.error.message && 
+                    errorJson.error.message.includes('image input is not supported')) {
+                    return `⚠️ This model doesn't support vision. Please select a vision-capable model like '${RECOMMENDED_MODEL}'.`;
+                }
+            } catch (e) {
+                // If parsing fails, fall through to generic error
+            }
             return `Server error: ${response.status} - ${errorData}`;
         }
         const data = await response.json();
@@ -248,8 +358,11 @@
         }
     });
 
-    // Initialize camera when the page loads
-    window.addEventListener('DOMContentLoaded', initCamera);
+    // Initialize camera and fetch models when the page loads
+    window.addEventListener('DOMContentLoaded', () => {
+        initCamera();
+        fetchModels();
+    });
 
     // Optional: Stop stream when page is closed/navigated away to release camera
     window.addEventListener('beforeunload', () => {
