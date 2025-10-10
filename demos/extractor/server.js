@@ -61,6 +61,9 @@ app.post('/api/extract', upload.single('pdf'), async (req, res) => {
       return res.status(400).json({ error: 'No PDF file provided' });
     }
 
+    // Store file path for cleanup in finally block
+    pdfPath = req.file.path;
+
     const { schema, baseUrl, model, apiKey, temperature, maxTokens } = req.body;
 
     if (!schema) {
@@ -92,9 +95,6 @@ app.post('/api/extract', upload.single('pdf'), async (req, res) => {
       model: model,
       baseUrl: baseUrl
     });
-
-    // Extract data from uploaded PDF
-    pdfPath = req.file.path;
     
     const extractOptions = {
       pdfPath: pdfPath,
@@ -112,10 +112,6 @@ app.post('/api/extract', upload.single('pdf'), async (req, res) => {
     console.log(`Extracting data from PDF using model: ${model}`);
     const result = await extractor.extract(extractOptions);
 
-    // Clean up uploaded file
-    await fs.unlink(pdfPath);
-    pdfPath = null;
-
     // Return results
     res.json({
       success: true,
@@ -126,21 +122,22 @@ app.post('/api/extract', upload.single('pdf'), async (req, res) => {
 
   } catch (error) {
     console.error('Error extracting data:', error);
-    
-    // Clean up file if it exists
-    if (pdfPath) {
-      try {
-        await fs.unlink(pdfPath);
-      } catch (cleanupError) {
-        console.error('Error cleaning up file:', cleanupError);
-      }
-    }
 
     res.status(500).json({ 
       success: false,
       error: 'Failed to extract data from PDF',
       message: error.message 
     });
+  } finally {
+    // Always clean up uploaded file
+    if (pdfPath) {
+      try {
+        await fs.unlink(pdfPath);
+        console.log(`Cleaned up uploaded file: ${pdfPath}`);
+      } catch (cleanupError) {
+        console.error('Error cleaning up file:', cleanupError);
+      }
+    }
   }
 });
 
