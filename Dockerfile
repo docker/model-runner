@@ -38,7 +38,8 @@ FROM docker.io/${BASE_IMAGE} AS final
 ARG LLAMA_SERVER_VARIANT
 
 # Create non-root user
-RUN groupadd --system modelrunner && useradd --system --gid modelrunner --create-home --home-dir /home/modelrunner modelrunner
+RUN groupadd --system modelrunner && useradd --system --gid modelrunner -G video --create-home --home-dir /home/modelrunner modelrunner
+# TODO: if the render group ever gets a fixed GID add modelrunner to it
 
 COPY scripts/apt-install.sh apt-install.sh
 
