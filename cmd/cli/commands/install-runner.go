@@ -127,12 +127,15 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 
 	// Create the model runner container.
 	port := uint16(standalone.DefaultControllerPortMoby)
+	// For auto-installation, always bind to localhost for security.
+	// Users can run install-runner explicitly with --host to change this.
+	host := "127.0.0.1"
 	environment := "moby"
 	if engineKind == types.ModelRunnerEngineKindCloud {
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, environment, false, gpu, modelStorageVolume, printer, engineKind); err != nil {
+	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, modelStorageVolume, printer, engineKind); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -159,6 +162,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 
 func newInstallRunner() *cobra.Command {
 	var port uint16
+	var host string
 	var gpuMode string
 	var doNotTrack bool
 	c := &cobra.Command{
@@ -245,7 +249,7 @@ func newInstallRunner() *cobra.Command {
 				return fmt.Errorf("unable to initialize standalone model storage: %w", err)
 			}
 			// Create the model runner container.
-			if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, environment, doNotTrack, gpu, modelStorageVolume, cmd, engineKind); err != nil {
+			if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, host, environment, doNotTrack, gpu, modelStorageVolume, cmd, engineKind); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 			}
 
@@ -256,6 +260,7 @@ func newInstallRunner() *cobra.Command {
 	}
 	c.Flags().Uint16Var(&port, "port", 0,
 		"Docker container port for Docker Model Runner (default: 12434 for Docker CE, 12435 for Cloud mode)")
+	c.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
 	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda)")
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c

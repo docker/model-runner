@@ -218,7 +218,7 @@ func ensureContainerStarted(ctx context.Context, dockerClient client.ContainerAP
 }
 
 // CreateControllerContainer creates and starts a controller container.
-func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
+func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
 	// Determine the target image.
 	var imageName string
 	switch gpu {
@@ -260,11 +260,14 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			Name: "always",
 		},
 	}
-	portBindings := []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: portStr}}
+	portBindings := []nat.PortBinding{{HostIP: host, HostPort: portStr}}
 	if os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") != "1" {
 		// Don't bind the bridge gateway IP if we're treating Docker Desktop as Moby.
-		if bridgeGatewayIP, err := determineBridgeGatewayIP(ctx, dockerClient); err == nil && bridgeGatewayIP != "" {
-			portBindings = append(portBindings, nat.PortBinding{HostIP: bridgeGatewayIP, HostPort: portStr})
+		// Only add bridge gateway IP binding if host is 127.0.0.1
+		if host == "127.0.0.1" {
+			if bridgeGatewayIP, err := determineBridgeGatewayIP(ctx, dockerClient); err == nil && bridgeGatewayIP != "" {
+				portBindings = append(portBindings, nat.PortBinding{HostIP: bridgeGatewayIP, HostPort: portStr})
+			}
 		}
 	}
 	hostConfig.PortBindings = nat.PortMap{
