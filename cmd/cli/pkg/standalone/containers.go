@@ -219,14 +219,7 @@ func ensureContainerStarted(ctx context.Context, dockerClient client.ContainerAP
 
 // CreateControllerContainer creates and starts a controller container.
 func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
-	// Determine the target image.
-	var imageName string
-	switch gpu {
-	case gpupkg.GPUSupportCUDA:
-		imageName = ControllerImage + ":" + controllerImageTagCUDA()
-	default:
-		imageName = ControllerImage + ":" + controllerImageTagCPU()
-	}
+	imageName := controllerImageName(gpu)
 
 	// Set up the container configuration.
 	portStr := strconv.Itoa(int(port))
