@@ -7,6 +7,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const UPLOADS_DIR = 'uploads/';
 
 // Middleware
 app.use(cors());
@@ -14,7 +15,7 @@ app.use(express.json());
 
 // Configure multer for file upload
 const upload = multer({ 
-  dest: 'uploads/',
+  dest: UPLOADS_DIR,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
@@ -141,12 +142,21 @@ app.post('/api/extract', upload.single('pdf'), async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`PDF Data Extractor Demo Server running on http://localhost:${PORT}`);
-  console.log(`Upload endpoint: http://localhost:${PORT}/api/extract`);
-});
+// Initialize server
+(async () => {
+  try {
+    // Create uploads directory before starting server
+    const uploadsDir = path.join(__dirname, UPLOADS_DIR);
+    await fs.mkdir(uploadsDir, { recursive: true });
+    console.log(`Uploads directory ready: ${uploadsDir}`);
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-fs.mkdir(uploadsDir, { recursive: true }).catch(console.error);
+    // Start server only after uploads directory is ready
+    app.listen(PORT, () => {
+      console.log(`PDF Data Extractor Demo Server running on http://localhost:${PORT}`);
+      console.log(`Upload endpoint: http://localhost:${PORT}/api/extract`);
+    });
+  } catch (error) {
+    console.error('Failed to initialize server:', error);
+    process.exit(1);
+  }
+})();
