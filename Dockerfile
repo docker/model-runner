@@ -4,7 +4,9 @@ ARG GO_VERSION=1.24
 ARG LLAMA_SERVER_VERSION=latest
 ARG LLAMA_SERVER_VARIANT=cpu
 ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
-ARG BASE_IMAGE=ubuntu:24.04
+
+# only 25.10 for cpu variant for max hardware support with vulkan
+ARG BASE_IMAGE=ubuntu:25.10
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS builder
 
@@ -38,7 +40,8 @@ FROM docker.io/${BASE_IMAGE} AS final
 ARG LLAMA_SERVER_VARIANT
 
 # Create non-root user
-RUN groupadd --system modelrunner && useradd --system --gid modelrunner --create-home --home-dir /home/modelrunner modelrunner
+RUN groupadd --system modelrunner && useradd --system --gid modelrunner -G video --create-home --home-dir /home/modelrunner modelrunner
+# TODO: if the render group ever gets a fixed GID add modelrunner to it
 
 COPY scripts/apt-install.sh apt-install.sh
 
@@ -69,13 +72,6 @@ ENV LLAMA_SERVER_PATH=/app/bin
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
 ENV LD_LIBRARY_PATH=/app/lib
-
-# Set environment variables for vulkan
-ENV VULKAN_SDK=/opt/vulkan
-ENV PATH=$VULKAN_SDK/bin:$PATH
-ENV LD_LIBRARY_PATH=$VULKAN_SDK/lib:$LD_LIBRARY_PATH
-ENV CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH
-ENV PKG_CONFIG_PATH=$VULKAN_SDK/lib/pkgconfig:$PKG_CONFIG_PATH
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"

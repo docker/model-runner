@@ -7,6 +7,7 @@ add_accelerators() {
       args+=("--device" "$i")
     fi
   done
+  args+=("--group-add" "$(getent group render | cut -d: -f3)")
 }
 
 add_optional_args() {
