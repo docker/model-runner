@@ -71,13 +71,6 @@ ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
 ENV LD_LIBRARY_PATH=/app/lib
 
-# Set environment variables for vulkan
-ENV VULKAN_SDK=/opt/vulkan
-ENV PATH=$VULKAN_SDK/bin:$PATH
-ENV LD_LIBRARY_PATH=$VULKAN_SDK/lib:$LD_LIBRARY_PATH
-ENV CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH
-ENV PKG_CONFIG_PATH=$VULKAN_SDK/lib/pkgconfig:$PKG_CONFIG_PATH
-
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
 
