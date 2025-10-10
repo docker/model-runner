@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -299,6 +301,19 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 				CgroupPermissions: "rwm",
 			})
 		}
+	}
+
+	if runtime.GOOS == "linux" {
+		out, err := exec.CommandContext(ctx, "getent", "group", "render").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to retrieve the GID of 'render': %w", err)
+		}
+		tokens := strings.Split(string(out), ":")
+		gid, err := strconv.Atoi(tokens[2])
+		if err != nil {
+			return fmt.Errorf("failed to parse the GID of 'render': %w", err)
+		}
+		hostConfig.GroupAdd = append(hostConfig.GroupAdd, strconv.Itoa(gid))
 	}
 
 	// Create the container. If we detect that a concurrent installation is in
