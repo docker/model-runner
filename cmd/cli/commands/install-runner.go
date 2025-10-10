@@ -127,6 +127,8 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 
 	// Create the model runner container.
 	port := uint16(standalone.DefaultControllerPortMoby)
+	// For auto-installation, always bind to localhost for security.
+	// Users can run install-runner explicitly with --host to change this.
 	host := "127.0.0.1"
 	environment := "moby"
 	if engineKind == types.ModelRunnerEngineKindCloud {
