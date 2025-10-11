@@ -347,6 +347,57 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	return nil
 }
 
+// StartControllerContainer starts the model runner controller container.
+func StartControllerContainer(ctx context.Context, dockerClient client.ContainerAPIClient, printer StatusPrinter) error {
+	// Find the controller container.
+	containerID, containerName, _, err := FindControllerContainer(ctx, dockerClient)
+	if err != nil {
+		return fmt.Errorf("unable to find model runner container: %w", err)
+	}
+	if containerID == "" {
+		return errors.New("model runner container not found")
+	}
+
+	// Start the container.
+	if containerName != "" {
+		printer.Printf("Starting model runner container %s (%s)...\n", containerName, containerID[:12])
+	} else {
+		printer.Printf("Starting model runner container %s...\n", containerID[:12])
+	}
+	if err := ensureContainerStarted(ctx, dockerClient, containerID); err != nil {
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+
+	printer.Printf("Model runner container started successfully\n")
+	return nil
+}
+
+// StopControllerContainer stops the model runner controller container.
+func StopControllerContainer(ctx context.Context, dockerClient client.ContainerAPIClient, printer StatusPrinter) error {
+	// Find the controller container.
+	containerID, containerName, _, err := FindControllerContainer(ctx, dockerClient)
+	if err != nil {
+		return fmt.Errorf("unable to find model runner container: %w", err)
+	}
+	if containerID == "" {
+		return errors.New("model runner container not found")
+	}
+
+	// Stop the container.
+	if containerName != "" {
+		printer.Printf("Stopping model runner container %s (%s)...\n", containerName, containerID[:12])
+	} else {
+		printer.Printf("Stopping model runner container %s...\n", containerID[:12])
+	}
+	stopTimeout := 10 // seconds
+	if err := dockerClient.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &stopTimeout}); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
+	}
+
+	printer.Printf("Model runner container stopped successfully\n")
+	return nil
+}
+
 // PruneControllerContainers stops and removes any model runner controller
 // containers.
 func PruneControllerContainers(ctx context.Context, dockerClient client.ContainerAPIClient, skipRunning bool, printer StatusPrinter) error {
