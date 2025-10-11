@@ -1,0 +1,13 @@
+command: docker model start
+short: Start Docker Model Runner container
+long: |
+    Start the Docker Model Runner container. This command starts a previously stopped container without pulling images or recreating it.
+usage: docker model start
+pname: docker model
+plink: docker_model.yaml
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
