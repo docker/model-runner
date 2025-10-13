@@ -19,6 +19,11 @@ on:
         required: false
         type: string
         default: "latest"
+      buildCuda:
+        description: 'Build CUDA variant'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   test:
@@ -93,6 +98,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
+        if: ${{ inputs.buildCuda }}
         uses: docker/build-push-action@v5
         with:
           file: Dockerfile
