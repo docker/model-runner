@@ -77,3 +77,21 @@ ENV LD_LIBRARY_PATH=/app/lib
 LABEL com.docker.desktop.service="model-runner"
 
 ENTRYPOINT ["/app/model-runner"]
+
+# --- vLLM variant ---
+FROM final AS vllm
+
+ARG VLLM_VERSION
+
+USER root
+
+RUN apt update && apt install -y python3 curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
+
+USER modelrunner
+
+# Install uv and vLLM as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
+ && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"
