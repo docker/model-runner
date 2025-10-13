@@ -62,5 +62,4 @@ jobs:
         uses: docker/bake-action@v6
         with:
           files: ./cmd/cli/docker-bake.hcl
-          workdir: ./cmd/cli
           targets: ${{ matrix.target }}
