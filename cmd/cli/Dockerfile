@@ -39,7 +39,7 @@ RUN --mount=target=/context \
   git add -A
   rm -rf cmd/cli/docs/reference/*
   cp -rf /out/* ./cmd/cli/docs/reference/
-  if [ -n "$(git status --porcelain -- docs/reference)" ]; then
+  if [ -n "$(git status --porcelain -- cmd/cli/docs/reference)" ]; then
     echo >&2 'ERROR: Docs result differs. Please update with "make docs"'
     git status --porcelain -- cmd/cli/docs/reference
     exit 1
