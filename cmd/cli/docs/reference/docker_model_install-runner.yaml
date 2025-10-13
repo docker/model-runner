@@ -26,6 +26,16 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: host
+      value_type: string
+      default_value: 127.0.0.1
+      description: Host address to bind Docker Model Runner
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: port
       value_type: uint16
       default_value: "0"
