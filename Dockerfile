@@ -85,7 +85,7 @@ ARG VLLM_VERSION
 
 USER root
 
-RUN apt update && apt install -y python3 curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y python3 curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
 
