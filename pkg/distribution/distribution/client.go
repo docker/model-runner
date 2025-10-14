@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"slices"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/utils"
 	"github.com/sirupsen/logrus"
@@ -400,6 +402,13 @@ func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
 	return c.store.BundleForModel(ref)
 }
 
+func GetSupportedFormats() []types.Format {
+	if runtime.GOOS == "linux" {
+		return []types.Format{types.FormatGGUF, types.FormatSafetensors}
+	}
+	return []types.Format{types.FormatGGUF}
+}
+
 func checkCompat(image types.ModelArtifact) error {
 	manifest, err := image.Manifest()
 	if err != nil {
@@ -407,6 +416,16 @@ func checkCompat(image types.ModelArtifact) error {
 	}
 	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 {
 		return fmt.Errorf("config type %q is unsupported: %w", manifest.Config.MediaType, ErrUnsupportedMediaType)
+	}
+
+	// Check if the model format is supported
+	config, err := image.Config()
+	if err != nil {
+		return fmt.Errorf("reading model config: %w", err)
+	}
+
+	if !slices.Contains(GetSupportedFormats(), config.Format) {
+		return ErrUnsupportedFormat
 	}
 
 	return nil
