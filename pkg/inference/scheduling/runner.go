@@ -74,7 +74,8 @@ type runner struct {
 func run(
 	log logging.Logger,
 	backend inference.Backend,
-	model string,
+	modelID string,
+	modelRef string,
 	mode inference.BackendMode,
 	slot int,
 	runnerConfig *inference.BackendConfiguration,
@@ -136,7 +137,7 @@ func run(
 	r := &runner{
 		log:            log,
 		backend:        backend,
-		model:          model,
+		model:          modelID,
 		mode:           mode,
 		cancel:         runCancel,
 		done:           runDone,
@@ -175,13 +176,13 @@ func run(
 		}
 	}
 
-	r.openAIRecorder.SetConfigForModel(model, runnerConfig)
+	r.openAIRecorder.SetConfigForModel(modelID, runnerConfig)
 
 	// Start the backend run loop.
 	go func() {
-		if err := backend.Run(runCtx, socket, model, mode, runnerConfig); err != nil {
-			log.Warnf("Backend %s running model %s exited with error: %v",
-				backend.Name(), model, err,
+		if err := backend.Run(runCtx, socket, modelID, modelRef, mode, runnerConfig); err != nil {
+			log.Warnf("Backend %s running modelID %s exited with error: %v",
+				backend.Name(), modelID, err,
 			)
 			r.err = err
 		}

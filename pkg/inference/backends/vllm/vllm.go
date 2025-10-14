@@ -68,7 +68,7 @@ func (v *vLLM) Install(ctx context.Context, httpClient *http.Client) error {
 	return nil
 }
 
-func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
+func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
 	bundle, err := v.modelManager.GetBundle(model)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
@@ -84,6 +84,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.Bac
 		"serve",
 		filepath.Dir(bundle.SafetensorsPath()),
 		"--uds", socket,
+		"--served-model-name", modelRef,
 	}
 
 	v.log.Infof("vLLM args: %v", args)
@@ -156,12 +157,12 @@ func (v *vLLM) Status() string {
 }
 
 func (v *vLLM) GetDiskUsage() (int64, error) {
-	//TODO implement me
+	// TODO implement me
 	return 0, nil
 }
 
 func (v *vLLM) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (inference.RequiredMemory, error) {
-	//TODO implement me
+	// TODO implement me
 	return inference.RequiredMemory{
 		RAM:  1,
 		VRAM: 1,
