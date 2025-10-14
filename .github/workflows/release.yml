@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           file: Dockerfile
-          target: final
+          target: final-llamacpp
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
@@ -102,7 +102,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           file: Dockerfile
-          target: final
+          target: final-llamacpp
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
@@ -117,7 +117,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           file: Dockerfile
-          target: vllm
+          target: final-vllm
           platforms: linux/amd64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
