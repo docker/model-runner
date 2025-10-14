@@ -82,7 +82,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, mode inference.Bac
 	binPath := "/opt/vllm-env/bin"
 	args := []string{
 		"serve",
-		bundle.SafetensorsPath(),
+		filepath.Dir(bundle.SafetensorsPath()),
 		"--uds", socket,
 	}
 
