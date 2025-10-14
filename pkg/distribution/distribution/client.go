@@ -409,15 +409,5 @@ func checkCompat(image types.ModelArtifact) error {
 		return fmt.Errorf("config type %q is unsupported: %w", manifest.Config.MediaType, ErrUnsupportedMediaType)
 	}
 
-	// Check if the model format is supported
-	config, err := image.Config()
-	if err != nil {
-		return fmt.Errorf("reading model config: %w", err)
-	}
-
-	if config.Format == types.FormatSafetensors {
-		return ErrUnsupportedFormat
-	}
-
 	return nil
 }
