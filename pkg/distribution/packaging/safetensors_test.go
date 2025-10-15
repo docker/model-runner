@@ -171,7 +171,7 @@ func TestPackageFromDirectory_NoSafetensorsFiles(t *testing.T) {
 	}
 
 	expectedError := "no safetensors files found"
-	if err.Error() == "" || !strings.Contains(err.Error(), expectedError) {
+	if !strings.Contains(err.Error(), expectedError) {
 		t.Errorf("Expected error containing %q, got: %v", expectedError, err)
 	}
 }
