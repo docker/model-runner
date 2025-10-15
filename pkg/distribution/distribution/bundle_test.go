@@ -93,31 +93,31 @@ func TestBundle(t *testing.T) {
 			ref:         singleGGUFID,
 			description: "single file GGUF by ID",
 			expectedFiles: map[string]string{
-				"model.gguf": filepath.Join("..", "assets", "dummy.gguf"),
+				"model/model.gguf": filepath.Join("..", "assets", "dummy.gguf"),
 			},
 		},
 		{
 			ref:         shardedGGUFID,
 			description: "sharded GGUF by ID",
 			expectedFiles: map[string]string{
-				"model-00001-of-00002.gguf": filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"),
-				"model-00002-of-00002.gguf": filepath.Join("..", "assets", "dummy-00002-of-00002.gguf"),
+				"model/model-00001-of-00002.gguf": filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"),
+				"model/model-00002-of-00002.gguf": filepath.Join("..", "assets", "dummy-00002-of-00002.gguf"),
 			},
 		},
 		{
 			ref:         mmprojMdlID,
-			description: "sharded GGUF by ID",
+			description: "model with mmproj file",
 			expectedFiles: map[string]string{
-				"model.gguf":   filepath.Join("..", "assets", "dummy.gguf"),
-				"model.mmproj": filepath.Join("..", "assets", "dummy.mmproj"),
+				"model/model.gguf":   filepath.Join("..", "assets", "dummy.gguf"),
+				"model/model.mmproj": filepath.Join("..", "assets", "dummy.mmproj"),
 			},
 		},
 		{
 			ref:         templateMdlID,
 			description: "model with template file",
 			expectedFiles: map[string]string{
-				"model.gguf":     filepath.Join("..", "assets", "dummy.gguf"),
-				"template.jinja": filepath.Join("..", "assets", "template.jinja"),
+				"model/model.gguf":     filepath.Join("..", "assets", "dummy.gguf"),
+				"model/template.jinja": filepath.Join("..", "assets", "template.jinja"),
 			},
 		},
 	}

@@ -14,18 +14,28 @@ func Parse(rootDir string) (*Bundle, error) {
 	if fi, err := os.Stat(rootDir); err != nil || !fi.IsDir() {
 		return nil, fmt.Errorf("inspect bundle root dir: %w", err)
 	}
-	ggufPath, err := findGGUFFile(rootDir)
+
+	// Model files are now located in the model/ subdirectory
+	modelDir := filepath.Join(rootDir, ModelSubdir)
+
+	ggufPath, err := findGGUFFile(modelDir)
 	if err != nil {
 		return nil, err
 	}
-	mmprojPath, err := findMultiModalProjectorFile(rootDir)
+	safetensorsPath, err := findSafetensorsFile(modelDir)
 	if err != nil {
 		return nil, err
 	}
-	templatePath, err := findChatTemplateFile(rootDir)
+	mmprojPath, err := findMultiModalProjectorFile(modelDir)
 	if err != nil {
 		return nil, err
 	}
+	templatePath, err := findChatTemplateFile(modelDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Runtime config stays at bundle root
 	cfg, err := parseRuntimeConfig(rootDir)
 	if err != nil {
 		return nil, err
@@ -34,6 +44,7 @@ func Parse(rootDir string) (*Bundle, error) {
 		dir:              rootDir,
 		mmprojPath:       mmprojPath,
 		ggufFile:         ggufPath,
+		safetensorsFile:  safetensorsPath,
 		runtimeConfig:    cfg,
 		chatTemplatePath: templatePath,
 	}, nil
@@ -52,19 +63,32 @@ func parseRuntimeConfig(rootDir string) (types.Config, error) {
 	return cfg, nil
 }
 
-func findGGUFFile(rootDir string) (string, error) {
-	ggufs, err := filepath.Glob(filepath.Join(rootDir, "[^.]*.gguf"))
+func findGGUFFile(modelDir string) (string, error) {
+	ggufs, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.gguf"))
 	if err != nil {
 		return "", fmt.Errorf("find gguf files: %w", err)
 	}
 	if len(ggufs) == 0 {
-		return "", fmt.Errorf("no GGUF files found in bundle directory")
+		// GGUF files are optional - safetensors models won't have them
+		return "", nil
 	}
 	return filepath.Base(ggufs[0]), nil
 }
 
-func findMultiModalProjectorFile(rootDir string) (string, error) {
-	mmprojPaths, err := filepath.Glob(filepath.Join(rootDir, "[^.]*.mmproj"))
+func findSafetensorsFile(modelDir string) (string, error) {
+	safetensors, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.safetensors"))
+	if err != nil {
+		return "", fmt.Errorf("find safetensors files: %w", err)
+	}
+	if len(safetensors) == 0 {
+		// Safetensors files are optional - GGUF models won't have them
+		return "", nil
+	}
+	return filepath.Base(safetensors[0]), nil
+}
+
+func findMultiModalProjectorFile(modelDir string) (string, error) {
+	mmprojPaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.mmproj"))
 	if err != nil {
 		return "", err
 	}
@@ -77,8 +101,8 @@ func findMultiModalProjectorFile(rootDir string) (string, error) {
 	return filepath.Base(mmprojPaths[0]), nil
 }
 
-func findChatTemplateFile(rootDir string) (string, error) {
-	templatePaths, err := filepath.Glob(filepath.Join(rootDir, "[^.]*.jinja"))
+func findChatTemplateFile(modelDir string) (string, error) {
+	templatePaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.jinja"))
 	if err != nil {
 		return "", err
 	}
