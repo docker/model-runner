@@ -47,6 +47,13 @@ Run `./model --help` to see all commands and options.
 - `model pull MODEL` — Pull a model
 - `model push MODEL` — Push a model
 - `model rm MODEL` — Remove a model
+- `model k8s` — Deploy vLLM on Kubernetes (via llm-d)
+
+### Kubernetes Deployment Commands
+
+- `model k8s list-configs` — List available deployment configurations
+- `model k8s deploy --config <name>` — Deploy vLLM with a specific configuration
+- `model k8s guide` — Display detailed deployment guides
 
 ## Example: Interactive Chat
 ```bash

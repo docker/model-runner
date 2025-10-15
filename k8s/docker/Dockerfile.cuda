@@ -1,0 +1,486 @@
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=9
+ARG CUDA_PATCH=1
+
+# ============================================================================
+# BUILD STAGE - Install build dependencies and create wheels
+# ============================================================================
+FROM nvcr.io/nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-devel-ubi9 AS builder
+
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=9
+ARG CUDA_PATCH=1
+ARG PYTHON_VERSION
+
+ARG USE_SCCACHE=true
+
+RUN cat > /usr/local/bin/setup-sccache <<'EOF'
+#!/bin/bash
+if [ "${USE_SCCACHE}" = "true" ]; then
+    # Set up AWS credentials if secrets are available
+    if [ -f "/run/secrets/aws_access_key_id" ] && [ -f "/run/secrets/aws_secret_access_key" ]; then
+        export AWS_ACCESS_KEY_ID="$(cat /run/secrets/aws_access_key_id)"
+        export AWS_SECRET_ACCESS_KEY="$(cat /run/secrets/aws_secret_access_key)"
+        export AWS_DEFAULT_REGION="us-west-2"
+    fi
+
+    export CMAKE_C_COMPILER_LAUNCHER=sccache
+    export CMAKE_CXX_COMPILER_LAUNCHER=sccache
+    export CMAKE_CUDA_COMPILER_LAUNCHER=sccache
+
+    # Configure sccache via environment variables
+    export SCCACHE_BUCKET="vllm-nightly-sccache"
+    export SCCACHE_REGION="us-west-2"
+    export SCCACHE_S3_KEY_PREFIX="llm-d-cache/"
+    export SCCACHE_IDLE_TIMEOUT=0
+
+    if ! /usr/local/bin/sccache --start-server; then
+        echo "Warning: sccache failed to start, continuing without cache" >&2
+        unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CMAKE_CUDA_COMPILER_LAUNCHER
+        return 1
+    fi
+
+    if ! /usr/local/bin/sccache --show-stats >/dev/null 2>&1; then
+        echo "Warning: sccache not responding properly, disabling cache" >&2
+        /usr/local/bin/sccache --stop-server 2>/dev/null || true
+        unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CMAKE_CUDA_COMPILER_LAUNCHER
+        return 1
+    fi
+
+    echo "sccache successfully configured with cache prefix: ${SCCACHE_S3_KEY_PREFIX}"
+fi
+EOF
+RUN chmod +x /usr/local/bin/setup-sccache
+
+RUN --mount=type=secret,id=aws_access_key_id \
+    --mount=type=secret,id=aws_secret_access_key \
+    if [ "${USE_SCCACHE}" = "true" ]; then \
+        set -Eeuo pipefail && \
+        dnf install -y openssl-devel && \
+        mkdir -p /tmp/sccache && \
+        cd /tmp/sccache && \
+        curl -sLO https://github.com/mozilla/sccache/releases/download/v0.10.0/sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
+        tar -xf sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
+        mv sccache-v0.10.0-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache && \
+        cd /tmp && \
+        rm -rf /tmp/sccache && \
+        source /usr/local/bin/setup-sccache && \
+        echo "int main() { return 0; }" | sccache gcc -x c - -o /dev/null && \
+        echo "sccache installation and S3 connectivity verified"; \
+    fi
+
+WORKDIR /workspace
+
+# Create UV constraint files
+RUN cat > /tmp/build-constraints.txt <<'EOF'
+torch==2.8.0
+EOF
+
+RUN cat > /tmp/constraints.txt <<'EOF'
+torch==2.8.0
+EOF
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    UV_LINK_MODE=copy \
+    TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX" \
+    PYTHON_VERSION=${PYTHON_VERSION:-3.12} \
+    UV_TORCH_BACKEND=${UV_TORCH_BACKEND:-cu${CUDA_MAJOR}${CUDA_MINOR}} \
+    UV_BUILD_CONSTRAINT=/tmp/build-constraints.txt \
+    UV_CONSTRAINT=/tmp/constraints.txt \
+    VIRTUAL_ENV=/opt/vllm 
+
+# Update base packages
+RUN dnf -q update -y && dnf clean all
+
+# Install base packages and EPEL in single layer
+RUN dnf -q install -y dnf-plugins-core && \
+    dnf -q install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf config-manager --set-enabled epel && \
+    DOWNLOAD_ARCH=""; \
+    if [ "$(uname -m)" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
+        DOWNLOAD_ARCH="x86_64"; \
+    fi; \
+    dnf config-manager --add-repo "https://developer.download.nvidia.com/compute/cuda/repos/rhel9/${DOWNLOAD_ARCH}/cuda-rhel9.repo" && \
+    dnf -q install -y --allowerasing \
+        python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-wheel \
+        python${PYTHON_VERSION}-devel \
+        python3.9-devel \
+        which procps findutils tar \
+        gcc gcc-c++ \
+        make cmake \
+        autoconf automake libtool \
+        git \
+        curl wget \
+        gzip \
+        zlib-devel \
+        openssl-devel \
+        pkg-config \
+        libuuid-devel \
+        glibc-devel \
+        rdma-core-devel \
+        libibverbs \
+        libibverbs-devel \
+        numactl-libs \
+        subunit \
+        pciutils \
+        pciutils-libs \
+        ninja-build \
+        xz \
+        rsync \
+    && dnf clean all
+
+# Setup Python virtual environment
+RUN python${PYTHON_VERSION} -m venv /opt/vllm && \
+    ${VIRTUAL_ENV}/bin/pip install --progress-bar off --no-cache -U pip wheel uv meson-python ninja pybind11 build
+
+ENV LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib64" \
+    CPATH="/usr/include:/usr/local/include:/usr/local/cuda/include" \
+    PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"
+
+ARG NVSHMEM_VERSION=3.3.20
+
+# Set NVSHMEM paths for CMake discovery
+ENV NVSHMEM_DIR="/opt/nvshmem-${NVSHMEM_VERSION}" \
+    PATH="/opt/nvshmem-${NVSHMEM_VERSION}/bin:${PATH}" \
+    CPATH="/opt/nvshmem-${NVSHMEM_VERSION}/include:${CPATH}" \
+    LIBRARY_PATH="/opt/nvshmem-${NVSHMEM_VERSION}/lib:${LIBRARY_PATH}"
+
+# Build and install gdrcopy
+# TODO: CUSTOM LOGGING
+RUN --mount=type=cache,target=/var/cache/git \
+    --mount=type=secret,id=aws_access_key_id \
+    --mount=type=secret,id=aws_secret_access_key \
+    source /usr/local/bin/setup-sccache && \
+    git clone https://github.com/NVIDIA/gdrcopy.git && \
+    cd gdrcopy && \
+    CC="sccache gcc" CXX="sccache g++" PREFIX=/usr/local DESTLIB=/usr/local/lib make lib_install && \
+    cp src/libgdrapi.so.2.* /usr/lib64/ && \
+    ldconfig && \
+    cd .. && rm -rf gdrcopy && \
+    if [ "${USE_SCCACHE}" = "true" ]; then \
+        echo "=== gdrcopy build complete - sccache stats ===" && \
+        sccache --show-stats; \
+    fi
+
+ENV CPPFLAGS="-I$NVSHMEM_DIR/include ${CPPFLAGS}" \
+    LDFLAGS="-L$NVSHMEM_DIR/lib ${LDFLAGS}"
+
+# Create wheels directory
+RUN mkdir -p /wheels
+
+# Copy patches before build
+COPY patches/ /tmp/patches/
+
+# Build and install NVSHMEM from source with coreweave patch
+RUN --mount=type=secret,id=aws_access_key_id \
+    --mount=type=secret,id=aws_secret_access_key \
+    cd /tmp && \
+    source /usr/local/bin/setup-sccache && \
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz -O nvshmem_src_cuda${CUDA_MAJOR}.tar.gz && \
+    tar -xf nvshmem_src_cuda${CUDA_MAJOR}.tar.gz && \
+    cd nvshmem_src && \
+    git apply /tmp/patches/cks_nvshmem${NVSHMEM_VERSION}.patch && \
+    mkdir build && \
+        cd build && \
+        cmake \
+        -G Ninja \
+        -DNVSHMEM_PREFIX=${NVSHMEM_DIR} \
+        -DCMAKE_CUDA_ARCHITECTURES="90a;100" \
+        -DNVSHMEM_PMIX_SUPPORT=0 \
+        -DNVSHMEM_LIBFABRIC_SUPPORT=0 \
+        -DNVSHMEM_IBRC_SUPPORT=1 \
+        -DNVSHMEM_IBGDA_SUPPORT=1 \
+        -DNVSHMEM_IBDEVX_SUPPORT=1 \
+        -DNVSHMEM_SHMEM_SUPPORT=0 \
+        -DNVSHMEM_USE_GDRCOPY=1 \
+        -DNVSHMEM_MPI_SUPPORT=0 \
+        -DNVSHMEM_USE_NCCL=0 \
+        -DNVSHMEM_BUILD_TESTS=0 \
+        -DNVSHMEM_BUILD_EXAMPLES=0 \
+        -DGDRCOPY_HOME=/usr/local \
+        -DNVSHMEM_DISABLE_CUDA_VMM=1 \
+        .. && \
+        ninja -j$(nproc) && \
+        ninja install &&  \
+        cp ${NVSHMEM_DIR}/lib/python/dist/nvshmem4py_cu${CUDA_MAJOR}-*-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}-manylinux_*.whl /wheels/ && \
+        cd /tmp && rm -rf nvshmem_src* && \
+        if [ "${USE_SCCACHE}" = "true" ]; then \
+            echo "=== NVSHMEM build complete - sccache stats ===" && \
+            sccache --show-stats; \
+        fi
+
+# Pin torch, so all deps are built against the same version 
+# as vllm itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+  source ${VIRTUAL_ENV}/bin/activate && \
+  uv pip install \
+    # global
+    numpy torch \
+    pyyaml \
+    types-PyYAML \
+    pytest \ 
+    patchelf>=0.11.0
+
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf && \
+    echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf && \
+    ldconfig
+
+WORKDIR /workspace
+
+# Define commit SHAs as build args to avoid layer invalidation
+ARG LMCACHE_REPO=https://github.com/neuralmagic/LMCache.git
+ARG LMCACHE_COMMIT_SHA="0db8ae4746a207a72483d716b5f82545a2ead24b"
+ARG VLLM_COMMIT_SHA="f71952c1c49fb86686b0b300b727b26282362bf4"
+
+# Define if lmcache should be built 
+# Clone repositories with cache mounts
+RUN --mount=type=cache,target=/var/cache/git \
+    git clone "${LMCACHE_REPO}" LMCache && \
+    cd LMCache && \
+    git checkout -q "${LMCACHE_COMMIT_SHA}" && \
+    cd .. && \
+    # Build LMCache wheel
+    cd LMCache && \
+    source ${VIRTUAL_ENV}/bin/activate && \
+    uv build --wheel --no-build-isolation --out-dir /wheels  && \
+    cd ..
+
+# Use existing virtual environment at /opt/vllm
+WORKDIR /workspace/vllm
+
+# set kernel library dependencies
+# note: these libraries don't yet push sdist releases to pypi
+# so down below we do a git clone
+ARG DEEPEP_REPO="https://github.com/deepseek-ai/DeepEP"
+ARG DEEPEP_VERSION="v1.2.1"
+ARG DEEPGEMM_REPO="https://github.com/deepseek-ai/DeepGEMM"
+ARG DEEPGEMM_VERSION="v2.1.0"
+ARG PPLX_KERNELS_REPO="https://github.com/perplexityai/pplx-kernels"
+ARG PPLX_KERNELS_SHA="12cecfda252e4e646417ac263d96e994d476ee5d"
+
+ARG FLASHINFER_VERSION="v0.3.1"
+
+# Build compiled packages as wheels (only ones that need build tools)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=secret,id=aws_access_key_id \
+    --mount=type=secret,id=aws_secret_access_key \
+    source ${VIRTUAL_ENV}/bin/activate && \
+    source /usr/local/bin/setup-sccache && \
+    \
+    # Install build tools
+    uv pip install build cuda-python numpy setuptools-scm ninja && \
+    uv pip install /wheels/nvshmem4py_cu${CUDA_MAJOR}-*.whl && \
+    \
+    # Build FlashInfer wheel
+    cd /tmp && \
+    # Remove if already installed to prevent versioning issues
+    uv pip uninstall flashinfer-python || true && \
+    git clone https://github.com/flashinfer-ai/flashinfer.git && \
+    cd flashinfer && \
+    git checkout -q "${FLASHINFER_VERSION}" && \
+    uv build --wheel --no-build-isolation --out-dir /wheels && \
+    cd .. && rm -rf flashinfer && \
+    \
+    # Build DeepEP wheel
+    git clone "${DEEPEP_REPO}" deepep && \
+    cd deepep && \
+    git checkout -q "${DEEPEP_VERSION}" && \
+    uv build --wheel --no-build-isolation --out-dir /wheels && \
+    cd .. && rm -rf deepep && \
+    \
+    # Build DeepGEMM wheel
+    git clone "${DEEPGEMM_REPO}" deepgemm && \
+    cd deepgemm && \
+    git checkout -q "${DEEPGEMM_VERSION}" && \
+    git submodule update --init --recursive && \
+    uv build --wheel --no-build-isolation --out-dir /wheels && \
+    cd .. && rm -rf deepgemm && \
+    \
+    # Build pplx-kernels wheel
+    git clone ${PPLX_KERNELS_REPO} pplx-kernels && \
+    cd pplx-kernels && \
+    git checkout ${PPLX_KERNELS_SHA} && \
+    NVSHMEM_PREFIX=${NVSHMEM_DIR} uv build --wheel --out-dir /wheels && \
+    cd .. && rm -rf pplx-kernels && \
+    if [ "${USE_SCCACHE}" = "true" ]; then \
+        echo "=== Compiled wheels build complete - sccache stats ===" && \
+        sccache --show-stats; \
+    fi
+
+# ============================================================================
+# RUNTIME STAGE - Minimal runtime image
+# ============================================================================
+FROM nvcr.io/nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-devel-ubi9 AS runtime
+
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=9
+ARG CUDA_PATCH=1
+ARG PYTHON_VERSION
+ARG NVSHMEM_VERSION=3.3.20
+
+RUN cat > /tmp/constraints.txt <<'EOF'
+torch==2.8.0
+EOF
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHON_VERSION=${PYTHON_VERSION:-3.12} \
+    UV_TORCH_BACKEND=${UV_TORCH_BACKEND:-cu${CUDA_MAJOR}${CUDA_MINOR}} \
+    UV_CONSTRAINT=/tmp/constraints.txt \
+    VIRTUAL_ENV=/opt/vllm \
+    NVSHMEM_DIR="/opt/nvshmem-${NVSHMEM_VERSION}" \
+    # LD_LIBRARY_PATH needs the torch path to apply proper linkers so as not to produce torch ABI missmatch
+    LD_LIBRARY_PATH="/opt/vllm/lib64/python${PYTHON_VERSION}/site-packages/torch/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib64:/opt/nvshmem-${NVSHMEM_VERSION}/lib:${LD_LIBRARY_PATH}" \
+    PATH="/opt/nvshmem-${NVSHMEM_VERSION}/bin:${PATH}" \
+    CPATH="/opt/nvshmem-${NVSHMEM_VERSION}/include:${CPATH}" \
+    TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX"
+
+# Update base packages
+RUN dnf update -y && dnf clean all
+
+# Install only runtime dependencies
+RUN dnf install -y --allowerasing \
+        python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-devel \
+        rdma-core-devel \
+        numactl-libs \
+        pciutils \
+        procps-ng \
+        git \
+        curl \
+        jq \
+        gcc && dnf clean all
+
+# Copy gdrcopy libraries from builder
+COPY --from=builder /usr/lib64/libgdrapi.so.2.* /usr/lib64/
+COPY --from=builder /usr/local/lib/libgdrapi.so* /usr/local/lib/
+
+# Copy compiled NVSHMEM libraries from builder
+COPY --from=builder /opt/nvshmem-${NVSHMEM_VERSION}/ /opt/nvshmem-${NVSHMEM_VERSION}/
+
+# Setup ldconfig and library paths
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf && \
+    echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf && \
+    echo "/opt/nvshmem-${NVSHMEM_VERSION}/lib" >> /etc/ld.so.conf.d/local.conf && \
+    ldconfig
+
+# Setup Python virtual environment
+RUN python${PYTHON_VERSION} -m venv /opt/vllm && \
+    ${VIRTUAL_ENV}/bin/pip install --no-cache -U pip wheel uv
+
+# Copy compiled wheels
+COPY --from=builder /wheels/*.whl /tmp/wheels/
+
+# Create the vllm user
+RUN useradd --uid 2000 --gid 0 vllm && \
+    touch /home/vllm/.bashrc 
+
+# Create the vllm workspace with permissions to swap commits and remotes
+RUN mkdir -p /opt/vllm-source && \
+    chown -R 2000:0 /opt/vllm-source && \
+    chmod -R g+rwX /opt/vllm-source && \
+    find /opt/vllm-source -type d -exec chmod g+s {} \; && \
+    setfacl -R -m g:0:rwX -m d:g:0:rwX /opt/vllm-source || true
+
+# Define commit SHAs as build args to avoid layer invalidation
+ARG LMCACHE_COMMIT_SHA="0db8ae4746a207a72483d716b5f82545a2ead24b"
+ARG VLLM_REPO="https://github.com/vllm-project/vllm.git"
+ARG VLLM_COMMIT_SHA="f71952c1c49fb86686b0b300b727b26282362bf4"
+
+# Dictates if we should pull a production wheel for the vllm commit sha
+ARG VLLM_PREBUILT=0
+# Dictates if we should pull precompiled binaries when installing vllm editably. These commits must be on main in vLLM.
+ARG VLLM_USE_PRECOMPILED=1
+
+ADD scripts/warn-vllm-precompiled.sh /opt/
+
+# Install cuda-python, nvshmem python bindings, xet
+# Install all compiled wheels (DeepEP, DeepGEMM, pplx-kernels, LMCache, nixl)
+# Installs vllm source. Supports three install modes:
+    # 1) install vllm from source totally editably - dev option, supports fork and commit swapping
+    # 3) install vllm from source with pulling precomiled binaries (shared libraries) from the vllm wheels index - less flexible dev option, may or may not work swapping shas but faster than full editable
+    # 2) install vllm from a wheel on the vllm wheels index - prod option, no flexbility
+RUN --mount=type=cache,target=/var/cache/git \
+    source /opt/vllm/bin/activate && \
+    uv pip install nixl cuda-python 'huggingface_hub[hf_xet]' && \
+    uv pip install /tmp/wheels/*.whl && \
+    git clone "${VLLM_REPO}" /opt/vllm-source && \
+    git -C /opt/vllm-source config --system --add safe.directory /opt/vllm-source && \
+    git -C /opt/vllm-source fetch --depth=1 origin "${VLLM_COMMIT_SHA}" || true && \
+    git -C /opt/vllm-source checkout -q "${VLLM_COMMIT_SHA}" && \
+    export WHEEL_URL=$(pip install \
+        --no-cache-dir \
+        --no-index \
+        --no-deps \
+        --find-links "https://wheels.vllm.ai/${VLLM_COMMIT_SHA}/vllm/" \
+        --only-binary=:all: \
+        --pre vllm \
+        --dry-run \
+        --disable-pip-version-check \
+        -qqq \
+        --report - \
+        2>/dev/null | jq -r '.install[0].download_info.url'); \
+    if [ "${VLLM_PREBUILT}" = "1" ]; then \
+        if [ -z "${WHEEL_URL}" ]; then \
+            echo "VLLM_PREBUILT set but no platform compatible wheel exists for: https://wheels.vllm.ai/${VLLM_COMMIT_SHA}/vllm/"; \
+            exit 1; \
+        fi; \
+        uv pip install "${WHEEL_URL}"; \
+        rm /opt/warn-vllm-precompiled.sh; \
+    else \
+        if [ "${VLLM_USE_PRECOMPILED}" = "1" ] && [ -n "${WHEEL_URL}" ]; then \
+            echo "Using precompiled binaries and shared libraries for commit: ${VLLM_COMMIT_SHA}."; \
+            export VLLM_USE_PRECOMPILED=1; \
+            export VLLM_PRECOMPILED_WHEEL_LOCATION="${WHEEL_URL}"; \
+            uv pip install -e /opt/vllm-source; \
+            /opt/warn-vllm-precompiled.sh; \
+            rm /opt/warn-vllm-precompiled.sh; \
+        else \
+            echo "Compiling fully from source. Either precompile disabled or wheel not found in index from main."; \
+            unset VLLM_USE_PRECOMPILED VLLM_PRECOMPILED_WHEEL_LOCATION || true; \
+            uv pip install -e /opt/vllm-source; \
+            rm /opt/warn-vllm-precompiled.sh; \
+        fi; \
+    fi; \
+    uv pip install "nvidia-nccl-cu12>=2.26.2.post1" && \
+    rm -rf /tmp/wheels
+
+RUN dnf autoremove -y && dnf clean all
+
+# setup non-root user for OpenShift
+RUN umask 002 && \
+    rm -rf /home/vllm && \
+    mkdir -p /home/vllm && \
+    chown vllm:root /home/vllm && \
+    chmod g+rwx /home/vllm
+
+# default openionated env var for HF_HOME, over-writeable
+ENV LLM_D_MODELS_DIR=/var/lib/llm-d/models \
+    HF_HOME=/var/lib/llm-d/.hf
+
+# creates default models directory and makes path writeable for both root and default user, with symlink for convenience
+# find command keeps group=0 on all new subdirs created later
+RUN mkdir -p "$LLM_D_MODELS_DIR" "$HF_HOME" && \
+    chown -R root:0 /var/lib/llm-d && \
+    chmod -R g+rwX /var/lib/llm-d && \
+    find /var/lib/llm-d -type d -exec chmod g+s {} \; && \
+    ln -snf /var/lib/llm-d/models /models
+
+ENV PATH="${VIRTUAL_ENV}/bin:/usr/local/nvidia/bin:${PATH}" \
+    HOME=/home/vllm \
+    VLLM_USAGE_SOURCE=production-docker-image \
+    VLLM_WORKER_MULTIPROC_METHOD=fork \
+    OUTLINES_CACHE_DIR=/tmp/outlines \
+    NUMBA_CACHE_DIR=/tmp/numba \
+    TRITON_CACHE_DIR=/tmp/triton \
+    TRITON_LIBCUDA_PATH=/usr/lib64 \
+    TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=15 \
+    TORCH_NCCL_DUMP_ON_TIMEOUT=0 \
+    VLLM_SKIP_P2P_CHECK=1 \
+    VLLM_CACHE_ROOT=/tmp/vllm \
+    UCX_MEM_MMAP_HOOK_MODE=none
+
+USER 2000
+WORKDIR /home/vllm
+
+ENTRYPOINT ["python", "-m", "vllm.entrypoints.openai.api_server"]

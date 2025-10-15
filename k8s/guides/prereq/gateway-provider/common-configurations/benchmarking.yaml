@@ -1,0 +1,42 @@
+# Infra values
+gateway:
+  gatewayParameters:
+    accessLogging: false
+    logLevel: error
+    resources:
+      limits:
+        cpu: "4"
+        memory: 4Gi
+      requests:
+        cpu: "1"
+        memory: 1Gi
+
+# MS values
+routing:
+  proxy:
+    debugLevel: 1
+  # IF epp is created through ms, set its debugLevel
+  epp:
+    debugLevel: 1
+
+# GAIE values
+inferenceExtension:
+  flags:
+    - name: v
+      value: 1
+  # include pool group, whole flags get overwritten
+    - name: "pool-group"
+      value: "inference.networking.x-k8s.io"
+istio:
+  destinationRule:
+    trafficPolicy:
+      connectionPool:
+        http:
+          http1MaxPendingRequests: 256000
+          maxRequestsPerConnection: 256000
+          http2MaxRequests: 256000
+          idleTimeout: "900s"
+        tcp:
+          maxConnections: 256000
+          maxConnectionDuration: "1800s"
+          connectTimeout: "900s"
