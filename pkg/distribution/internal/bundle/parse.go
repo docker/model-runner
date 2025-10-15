@@ -30,6 +30,12 @@ func Parse(rootDir string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Ensure at least one model weight format is present
+	if ggufPath == "" && safetensorsPath == "" {
+		return nil, fmt.Errorf("no supported model weights found (neither GGUF nor safetensors)")
+	}
+
 	mmprojPath, err := findMultiModalProjectorFile(modelDir)
 	if err != nil {
 		return nil, err
