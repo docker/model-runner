@@ -36,8 +36,8 @@ func PackageFromDirectory(dirPath string) (safetensorsPaths []string, tempConfig
 			safetensorsPaths = append(safetensorsPaths, fullPath)
 		}
 
-		// Collect config files: *.json, merges.txt
-		if strings.HasSuffix(strings.ToLower(name), ".json") || strings.EqualFold(name, "merges.txt") {
+		// Collect config files: *.json, merges.txt and tokenizer.model
+		if strings.HasSuffix(strings.ToLower(name), ".json") || strings.EqualFold(name, "merges.txt") || strings.EqualFold(name, "tokenizer.model") {
 			configFiles = append(configFiles, fullPath)
 		}
 	}
