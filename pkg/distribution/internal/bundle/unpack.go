@@ -18,6 +18,12 @@ func Unpack(dir string, model types.Model) (*Bundle, error) {
 		dir: dir,
 	}
 
+	// Create model subdirectory upfront - all unpack operations will use it
+	modelDir := filepath.Join(bundle.dir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		return nil, fmt.Errorf("create model directory: %w", err)
+	}
+
 	// Inspect layers to determine what to unpack
 	modelFormat := detectModelFormat(model)
 
@@ -102,11 +108,6 @@ func unpackRuntimeConfig(bundle *Bundle, mdl types.Model) error {
 	if err != nil {
 		return err
 	}
-	// Create model subdirectory if it doesn't exist
-	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	// Runtime config stays at bundle root
 	f, err := os.Create(filepath.Join(bundle.dir, "config.json"))
@@ -127,11 +128,7 @@ func unpackGGUFs(bundle *Bundle, mdl types.Model) error {
 		return fmt.Errorf("get GGUF files for model: %w", err)
 	}
 
-	// Ensure model directory exists
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	if len(ggufPaths) == 1 {
 		if err := unpackFile(filepath.Join(modelDir, "model.gguf"), ggufPaths[0]); err != nil {
@@ -158,11 +155,7 @@ func unpackMultiModalProjector(bundle *Bundle, mdl types.Model) error {
 		return nil // no such file
 	}
 
-	// Ensure model directory exists
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	if err = unpackFile(filepath.Join(modelDir, "model.mmproj"), path); err != nil {
 		return err
@@ -177,11 +170,7 @@ func unpackTemplate(bundle *Bundle, mdl types.Model) error {
 		return nil // no such file
 	}
 
-	// Ensure model directory exists
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	if err = unpackFile(filepath.Join(modelDir, "template.jinja"), path); err != nil {
 		return err
@@ -200,11 +189,7 @@ func unpackSafetensors(bundle *Bundle, mdl types.Model) error {
 		return fmt.Errorf("no safetensors files found")
 	}
 
-	// Ensure model directory exists
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	if len(safetensorsPaths) == 1 {
 		if err := unpackFile(filepath.Join(modelDir, "model.safetensors"), safetensorsPaths[0]); err != nil {
@@ -234,11 +219,7 @@ func unpackConfigArchive(bundle *Bundle, mdl types.Model) error {
 		return fmt.Errorf("get config archive path: %w", err)
 	}
 
-	// Ensure model directory exists
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("create model directory: %w", err)
-	}
 
 	// Extract the tar archive into the model subdirectory
 	// This prevents config.json conflicts with the runtime config at bundle root
