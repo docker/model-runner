@@ -386,6 +386,14 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	return nil
 }
 
+// WriteLightweightModel writes a model to the store without transferring layer data.
+// This is used for config-only modifications where the layer data hasn't changed.
+// The layers must already exist in the store.
+func (c *Client) WriteLightweightModel(mdl types.ModelArtifact, tags []string) error {
+	c.log.Infoln("Writing lightweight model variant")
+	return c.store.WriteLightweight(mdl, tags)
+}
+
 func (c *Client) ResetStore() error {
 	c.log.Infoln("Resetting store")
 	if err := c.store.Reset(); err != nil {
