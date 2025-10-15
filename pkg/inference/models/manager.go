@@ -152,7 +152,7 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
-	if !request.IgnoreRuntimeMemoryCheck {
+	if memory.RuntimeMemoryCheckEnabled() && !request.IgnoreRuntimeMemoryCheck {
 		m.log.Infof("Will estimate memory required for %q", request.From)
 		proceed, req, totalMem, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
 		if err != nil {

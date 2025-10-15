@@ -103,6 +103,10 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
 
+	if os.Getenv("MODEL_RUNNER_RUNTIME_MEMORY_CHECK") == "1" {
+		memory.SetRuntimeMemoryCheck(true)
+	}
+
 	memEstimator.SetDefaultBackend(llamaCppBackend)
 
 	scheduler := scheduling.NewScheduler(
