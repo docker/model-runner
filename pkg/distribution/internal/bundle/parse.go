@@ -15,8 +15,12 @@ func Parse(rootDir string) (*Bundle, error) {
 		return nil, fmt.Errorf("inspect bundle root dir: %w", err)
 	}
 
-	// Model files are now located in the model/ subdirectory
+	// Check if model subdirectory exists - required for new bundle format
+	// If it doesn't exist, this is an old bundle format that needs to be recreated
 	modelDir := filepath.Join(rootDir, ModelSubdir)
+	if _, err := os.Stat(modelDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("bundle uses old format (missing %s subdirectory), will be recreated", ModelSubdir)
+	}
 
 	ggufPath, err := findGGUFFile(modelDir)
 	if err != nil {
