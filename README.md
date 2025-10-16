@@ -247,6 +247,92 @@ curl http://localhost:8080/metrics
 
 Check [METRICS.md](./METRICS.md) for more details.
 
+## ollama Integration
+
+Docker Model Runner supports running ollama as an alternative runner. This allows you to use ollama's model format and API alongside Docker Model Runner.
+
+### Installing ollama Runner
+
+To install the ollama runner instead of the default Docker Model Runner:
+
+```bash
+docker model install-runner --ollama
+```
+
+This will:
+- Start an ollama container on port 11434 (the standard ollama port)
+- Create an `ollama` volume for model storage (instead of `docker-model-runner-models`)
+- Use the `ollama/ollama:latest` image
+
+### GPU Support for ollama
+
+ollama supports both NVIDIA CUDA and AMD ROCm GPUs:
+
+```bash
+# For AMD GPUs with ROCm
+docker model install-runner --ollama --gpu rocm
+
+# For NVIDIA GPUs (auto-detected)
+docker model install-runner --ollama --gpu auto
+```
+
+The `--gpu rocm` flag will use the `ollama/ollama:rocm` image which includes ROCm support.
+
+### Managing ollama Runner
+
+All standard runner commands support the `--ollama` flag:
+
+```bash
+# Start ollama runner
+docker model start-runner --ollama
+
+# Stop ollama runner
+docker model stop-runner --ollama
+
+# Restart ollama runner
+docker model restart-runner --ollama
+
+# Reinstall ollama runner
+docker model reinstall-runner --ollama
+
+# Uninstall ollama runner (optionally remove images)
+docker model uninstall-runner --ollama --images
+```
+
+### Using ollama Models
+
+Models from `ollama.com` are automatically detected:
+
+```bash
+# Pull an ollama model (will auto-start ollama runner)
+docker model pull ollama.com/library/smollm:135m
+
+# Run an ollama model
+docker model run ollama.com/library/smollm:135m
+```
+
+**Note:** Direct ollama API integration is currently in development. For now, you can interact with ollama models using:
+
+```bash
+# Pull a model
+docker exec docker-ollama-runner ollama pull smollm:135m
+
+# Run a model interactively
+docker exec -it docker-ollama-runner ollama run smollm:135m
+
+# List ollama models
+docker exec docker-ollama-runner ollama list
+```
+
+### ollama vs Docker Model Runner
+
+Key differences:
+
+- **Port**: ollama uses port 11434, Docker Model Runner uses 12434 (Docker Engine) or 12435 (Cloud)
+- **Volume**: ollama uses the `ollama` volume, Docker Model Runner uses `docker-model-runner-models`
+- **Image**: ollama uses `ollama/ollama:latest` or `ollama/ollama:rocm`
+- **Platform support**: ollama controller containers are used on all platforms (including Docker Desktop)
+
 ##  Kubernetes
 
 Experimental support for running in Kubernetes is available

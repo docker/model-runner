@@ -15,6 +15,8 @@ const (
 	GPUSupportNone GPUSupport = iota
 	// GPUSupportCUDA indicates CUDA GPU support.
 	GPUSupportCUDA
+	// GPUSupportROCm indicates ROCm GPU support (AMD).
+	GPUSupportROCm
 )
 
 // ProbeGPUSupport determines whether or not the Docker engine has GPU support.

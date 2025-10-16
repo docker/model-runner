@@ -27,10 +27,21 @@ func newPullCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			model := args[0]
+			// Check if this is an ollama model
+			if isOllamaModel(model) {
+				// For ollama models, ensure the ollama runner is available
+				if _, err := ensureOllamaRunnerAvailable(cmd.Context(), cmd); err != nil {
+					return fmt.Errorf("unable to initialize ollama runner: %w", err)
+				}
+				// TODO: Implement ollama-specific pull logic that communicates
+				// with the ollama daemon on port 11434
+				return fmt.Errorf("ollama model pull not yet implemented - please use 'docker exec docker-ollama-runner ollama pull %s'", model)
+			}
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), cmd); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
-			return pullModel(cmd, desktopClient, args[0], ignoreRuntimeMemoryCheck)
+			return pullModel(cmd, desktopClient, model, ignoreRuntimeMemoryCheck)
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}

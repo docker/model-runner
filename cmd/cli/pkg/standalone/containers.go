@@ -29,6 +29,9 @@ import (
 // controllerContainerName is the name to use for the controller container.
 const controllerContainerName = "docker-model-runner"
 
+// ollamaControllerContainerName is the name to use for the ollama controller container.
+const ollamaControllerContainerName = "docker-ollama-runner"
+
 // copyDockerConfigToContainer copies the Docker config file from the host to the container
 // and sets up proper ownership and permissions for the modelrunner user.
 // It does nothing for Desktop and Cloud engine kinds.
@@ -134,8 +137,20 @@ func execInContainer(ctx context.Context, dockerClient *client.Client, container
 // returns the ID of the container (if found), the container name (if any), the
 // full container summary (if found), or any error that occurred.
 func FindControllerContainer(ctx context.Context, dockerClient client.ContainerAPIClient) (string, string, container.Summary, error) {
+	return FindControllerContainerByType(ctx, dockerClient, runnerTypeModelRunner)
+}
+
+// FindOllamaControllerContainer searches for a running ollama controller container.
+func FindOllamaControllerContainer(ctx context.Context, dockerClient client.ContainerAPIClient) (string, string, container.Summary, error) {
+	return FindControllerContainerByType(ctx, dockerClient, runnerTypeOllama)
+}
+
+// FindControllerContainerByType searches for a running controller container of a specific type.
+// It returns the ID of the container (if found), the container name (if any), the
+// full container summary (if found), or any error that occurred.
+func FindControllerContainerByType(ctx context.Context, dockerClient client.ContainerAPIClient, runnerType string) (string, string, container.Summary, error) {
 	// Before listing, prune any stopped controller containers.
-	if err := PruneControllerContainers(ctx, dockerClient, true, NoopPrinter()); err != nil {
+	if err := PruneControllerContainersByType(ctx, dockerClient, true, NoopPrinter(), runnerType); err != nil {
 		return "", "", container.Summary{}, fmt.Errorf("unable to prune stopped model runner containers: %w", err)
 	}
 
@@ -146,6 +161,7 @@ func FindControllerContainer(ctx context.Context, dockerClient client.ContainerA
 			// middleware only shows these containers if no value is queried.
 			filters.Arg("label", labelDesktopService),
 			filters.Arg("label", labelRole+"="+roleController),
+			filters.Arg("label", labelRunnerType+"="+runnerType),
 		),
 	})
 	if err != nil {
@@ -219,7 +235,22 @@ func ensureContainerStarted(ctx context.Context, dockerClient client.ContainerAP
 
 // CreateControllerContainer creates and starts a controller container.
 func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
-	imageName := controllerImageName(gpu)
+	return createControllerContainerInternal(ctx, dockerClient, port, host, environment, doNotTrack, gpu, "", modelStorageVolume, printer, engineKind, runnerTypeModelRunner, controllerContainerName, "/models")
+}
+
+// CreateOllamaControllerContainer creates and starts an ollama controller container.
+func CreateOllamaControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, gpuVariant string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
+	return createControllerContainerInternal(ctx, dockerClient, port, host, environment, doNotTrack, gpu, gpuVariant, modelStorageVolume, printer, engineKind, runnerTypeOllama, ollamaControllerContainerName, "/root/.ollama")
+}
+
+// createControllerContainerInternal creates and starts a controller container of a specific type.
+func createControllerContainerInternal(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, gpuVariant string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, runnerType string, containerName string, mountTarget string) error {
+	var imageName string
+	if runnerType == runnerTypeOllama {
+		imageName = ollamaImageName(gpu, gpuVariant)
+	} else {
+		imageName = controllerImageName(gpu)
+	}
 
 	// Set up the container configuration.
 	portStr := strconv.Itoa(int(port))
@@ -239,6 +270,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		Labels: map[string]string{
 			labelDesktopService: serviceModelRunner,
 			labelRole:           roleController,
+			labelRunnerType:     runnerType,
 		},
 	}
 	hostConfig := &container.HostConfig{
@@ -246,7 +278,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			{
 				Type:   mount.TypeVolume,
 				Source: modelStorageVolume,
-				Target: "/models",
+				Target: mountTarget,
 			},
 		},
 		RestartPolicy: container.RestartPolicy{
@@ -318,19 +350,19 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	// pass silently and simply work in conjunction with any concurrent
 	// installers to start the container.
 	// TODO: Remove strings.Contains check once we ensure it's not necessary.
-	resp, err := dockerClient.ContainerCreate(ctx, config, hostConfig, nil, nil, controllerContainerName)
+	resp, err := dockerClient.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil && !(errdefs.IsConflict(err) || strings.Contains(err.Error(), "is already in use by container")) {
-		return fmt.Errorf("failed to create container %s: %w", controllerContainerName, err)
+		return fmt.Errorf("failed to create container %s: %w", containerName, err)
 	}
 	created := err == nil
 
 	// Start the container.
-	printer.Printf("Starting model runner container %s...\n", controllerContainerName)
-	if err := ensureContainerStarted(ctx, dockerClient, controllerContainerName); err != nil {
+	printer.Printf("Starting model runner container %s...\n", containerName)
+	if err := ensureContainerStarted(ctx, dockerClient, containerName); err != nil {
 		if created {
 			_ = dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		}
-		return fmt.Errorf("failed to start container %s: %w", controllerContainerName, err)
+		return fmt.Errorf("failed to start container %s: %w", containerName, err)
 	}
 
 	// Copy Docker config file if it exists and we're the container creator.
@@ -346,6 +378,16 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 // PruneControllerContainers stops and removes any model runner controller
 // containers.
 func PruneControllerContainers(ctx context.Context, dockerClient client.ContainerAPIClient, skipRunning bool, printer StatusPrinter) error {
+	return PruneControllerContainersByType(ctx, dockerClient, skipRunning, printer, runnerTypeModelRunner)
+}
+
+// PruneOllamaControllerContainers stops and removes any ollama controller containers.
+func PruneOllamaControllerContainers(ctx context.Context, dockerClient client.ContainerAPIClient, skipRunning bool, printer StatusPrinter) error {
+	return PruneControllerContainersByType(ctx, dockerClient, skipRunning, printer, runnerTypeOllama)
+}
+
+// PruneControllerContainersByType stops and removes controller containers of a specific type.
+func PruneControllerContainersByType(ctx context.Context, dockerClient client.ContainerAPIClient, skipRunning bool, printer StatusPrinter, runnerType string) error {
 	// Identify all controller containers.
 	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
 		All: true,
@@ -354,6 +396,7 @@ func PruneControllerContainers(ctx context.Context, dockerClient client.Containe
 			// middleware only shows these containers if no value is queried.
 			filters.Arg("label", labelDesktopService),
 			filters.Arg("label", labelRole+"="+roleController),
+			filters.Arg("label", labelRunnerType+"="+runnerType),
 		),
 	})
 	if err != nil {

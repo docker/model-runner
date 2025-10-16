@@ -15,7 +15,17 @@ import (
 // EnsureControllerImage ensures that the controller container image is pulled.
 func EnsureControllerImage(ctx context.Context, dockerClient client.ImageAPIClient, gpu gpupkg.GPUSupport, printer StatusPrinter) error {
 	imageName := controllerImageName(gpu)
+	return ensureImage(ctx, dockerClient, imageName, printer)
+}
 
+// EnsureOllamaImage ensures that the ollama container image is pulled.
+func EnsureOllamaImage(ctx context.Context, dockerClient client.ImageAPIClient, gpu gpupkg.GPUSupport, gpuVariant string, printer StatusPrinter) error {
+	imageName := ollamaImageName(gpu, gpuVariant)
+	return ensureImage(ctx, dockerClient, imageName, printer)
+}
+
+// ensureImage pulls a container image if needed.
+func ensureImage(ctx context.Context, dockerClient client.ImageAPIClient, imageName string, printer StatusPrinter) error {
 	// Perform the pull.
 	out, err := dockerClient.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
@@ -56,6 +66,22 @@ func PruneControllerImages(ctx context.Context, dockerClient client.ImageAPIClie
 	imageNameCUDA := fmtControllerImageName(ControllerImage, controllerImageVersion(), "cuda")
 	if _, err := dockerClient.ImageRemove(ctx, imageNameCUDA, image.RemoveOptions{}); err == nil {
 		printer.Println("Removed image", imageNameCUDA)
+	}
+	return nil
+}
+
+// PruneOllamaImages removes any unused ollama container images.
+func PruneOllamaImages(ctx context.Context, dockerClient client.ImageAPIClient, printer StatusPrinter) error {
+	// Remove the standard ollama image, if present.
+	imageNameBase := fmtControllerImageName(OllamaImage, ollamaImageVersion(), "")
+	if _, err := dockerClient.ImageRemove(ctx, imageNameBase, image.RemoveOptions{}); err == nil {
+		printer.Println("Removed image", imageNameBase)
+	}
+
+	// Remove the ROCm ollama image, if present.
+	imageNameROCm := fmtControllerImageName(OllamaImage, ollamaImageVersion(), "rocm")
+	if _, err := dockerClient.ImageRemove(ctx, imageNameROCm, image.RemoveOptions{}); err == nil {
+		printer.Println("Removed image", imageNameROCm)
 	}
 	return nil
 }

@@ -17,6 +17,11 @@ const (
 
 var notRunningErr = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")
 
+// isOllamaModel checks if a model name is from ollama.com
+func isOllamaModel(model string) bool {
+	return strings.HasPrefix(model, "ollama.com/")
+}
+
 func handleClientError(err error, message string) error {
 	if errors.Is(err, desktop.ErrServiceUnavailable) {
 		return notRunningErr

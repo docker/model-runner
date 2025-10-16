@@ -26,4 +26,14 @@ const (
 	// roleModelStorage is the role label value used to identify the model
 	// runner model storage volume.
 	roleModelStorage = "model-storage"
+
+	// labelRunnerType is the label used to identify the type of runner
+	// (e.g., "model-runner" or "ollama").
+	labelRunnerType = "com.docker.model-runner.type"
+
+	// runnerTypeModelRunner is the runner type label value for model-runner.
+	runnerTypeModelRunner = "model-runner"
+
+	// runnerTypeOllama is the runner type label value for ollama.
+	runnerTypeOllama = "ollama"
 )

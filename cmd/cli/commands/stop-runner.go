@@ -6,7 +6,7 @@ import (
 )
 
 func newStopRunner() *cobra.Command {
-	var models bool
+	var models, ollama bool
 	c := &cobra.Command{
 		Use:   "stop-runner",
 		Short: "Stop Docker Model Runner (Docker Engine only)",
@@ -14,10 +14,12 @@ func newStopRunner() *cobra.Command {
 			return runUninstallOrStop(cmd, cleanupOptions{
 				models:       models,
 				removeImages: false,
+				ollama:       ollama,
 			})
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 	c.Flags().BoolVar(&models, "models", false, "Remove model storage volume")
+	c.Flags().BoolVar(&ollama, "ollama", false, "Stop ollama runner instead of Docker Model Runner")
 	return c
 }

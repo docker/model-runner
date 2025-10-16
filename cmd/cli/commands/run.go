@@ -593,6 +593,17 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			// Check if this is an ollama model
+			if isOllamaModel(model) {
+				// For ollama models, ensure the ollama runner is available
+				if _, err := ensureOllamaRunnerAvailable(cmd.Context(), cmd); err != nil {
+					return fmt.Errorf("unable to initialize ollama runner: %w", err)
+				}
+				// TODO: Implement ollama-specific run logic that communicates
+				// with the ollama daemon on port 11434
+				return fmt.Errorf("ollama model run not yet implemented - please use 'docker exec -it docker-ollama-runner ollama run %s'", model)
+			}
+
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), cmd); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}

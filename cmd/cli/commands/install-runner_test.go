@@ -59,11 +59,71 @@ func TestInstallRunnerCommandFlags(t *testing.T) {
 	cmd := newInstallRunner()
 
 	// Verify all expected flags exist
-	expectedFlags := []string{"port", "host", "gpu", "do-not-track"}
+	expectedFlags := []string{"port", "host", "gpu", "do-not-track", "ollama"}
 	for _, flagName := range expectedFlags {
 		if cmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("Expected flag '--%s' not found", flagName)
 		}
+	}
+}
+
+func TestInstallRunnerOllamaFlag(t *testing.T) {
+	cmd := newInstallRunner()
+
+	// Verify the --ollama flag exists
+	ollamaFlag := cmd.Flags().Lookup("ollama")
+	if ollamaFlag == nil {
+		t.Fatal("--ollama flag not found")
+	}
+
+	// Verify the default value
+	if ollamaFlag.DefValue != "false" {
+		t.Errorf("Expected default ollama value to be 'false', got '%s'", ollamaFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if ollamaFlag.Value.Type() != "bool" {
+		t.Errorf("Expected ollama flag type to be 'bool', got '%s'", ollamaFlag.Value.Type())
+	}
+
+	// Test setting the flag value
+	err := cmd.Flags().Set("ollama", "true")
+	if err != nil {
+		t.Errorf("Failed to set ollama flag: %v", err)
+	}
+
+	// Verify the value was set
+	ollamaValue, err := cmd.Flags().GetBool("ollama")
+	if err != nil {
+		t.Errorf("Failed to get ollama flag value: %v", err)
+	}
+	if !ollamaValue {
+		t.Error("Expected ollama value to be true")
+	}
+}
+
+func TestInstallRunnerGPUFlag(t *testing.T) {
+	cmd := newInstallRunner()
+
+	// Verify the --gpu flag exists
+	gpuFlag := cmd.Flags().Lookup("gpu")
+	if gpuFlag == nil {
+		t.Fatal("--gpu flag not found")
+	}
+
+	// Test setting gpu to rocm
+	err := cmd.Flags().Set("gpu", "rocm")
+	if err != nil {
+		t.Errorf("Failed to set gpu flag to 'rocm': %v", err)
+	}
+
+	// Verify the value was set
+	gpuValue, err := cmd.Flags().GetString("gpu")
+	if err != nil {
+		t.Errorf("Failed to get gpu flag value: %v", err)
+	}
+	if gpuValue != "rocm" {
+		t.Errorf("Expected gpu value to be 'rocm', got '%s'", gpuValue)
 	}
 }
 

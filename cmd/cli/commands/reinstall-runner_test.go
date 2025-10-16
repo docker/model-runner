@@ -39,11 +39,36 @@ func TestReinstallRunnerCommandFlags(t *testing.T) {
 	cmd := newReinstallRunner()
 
 	// Verify all expected flags exist
-	expectedFlags := []string{"port", "host", "gpu", "do-not-track"}
+	expectedFlags := []string{"port", "host", "gpu", "do-not-track", "ollama"}
 	for _, flagName := range expectedFlags {
 		if cmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("Expected flag '--%s' not found", flagName)
 		}
+	}
+}
+
+func TestReinstallRunnerOllamaFlag(t *testing.T) {
+	cmd := newReinstallRunner()
+
+	// Verify the --ollama flag exists and can be set
+	ollamaFlag := cmd.Flags().Lookup("ollama")
+	if ollamaFlag == nil {
+		t.Fatal("--ollama flag not found")
+	}
+
+	// Test setting the flag value
+	err := cmd.Flags().Set("ollama", "true")
+	if err != nil {
+		t.Errorf("Failed to set ollama flag: %v", err)
+	}
+
+	// Verify the value was set
+	ollamaValue, err := cmd.Flags().GetBool("ollama")
+	if err != nil {
+		t.Errorf("Failed to get ollama flag value: %v", err)
+	}
+	if !ollamaValue {
+		t.Error("Expected ollama value to be true")
 	}
 }
 

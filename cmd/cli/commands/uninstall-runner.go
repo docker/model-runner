@@ -14,6 +14,7 @@ import (
 type cleanupOptions struct {
 	models       bool
 	removeImages bool
+	ollama       bool
 }
 
 // runUninstallOrStop is shared logic for uninstall-runner and stop-runner commands
@@ -38,14 +39,26 @@ func runUninstallOrStop(cmd *cobra.Command, opts cleanupOptions) error {
 	}
 
 	// Remove any model runner containers.
-	if err := standalone.PruneControllerContainers(cmd.Context(), dockerClient, false, cmd); err != nil {
-		return fmt.Errorf("unable to remove model runner container(s): %w", err)
+	if opts.ollama {
+		if err := standalone.PruneOllamaControllerContainers(cmd.Context(), dockerClient, false, cmd); err != nil {
+			return fmt.Errorf("unable to remove ollama runner container(s): %w", err)
+		}
+	} else {
+		if err := standalone.PruneControllerContainers(cmd.Context(), dockerClient, false, cmd); err != nil {
+			return fmt.Errorf("unable to remove model runner container(s): %w", err)
+		}
 	}
 
 	// Remove model runner images, if requested.
 	if opts.removeImages {
-		if err := standalone.PruneControllerImages(cmd.Context(), dockerClient, cmd); err != nil {
-			return fmt.Errorf("unable to remove model runner image(s): %w", err)
+		if opts.ollama {
+			if err := standalone.PruneOllamaImages(cmd.Context(), dockerClient, cmd); err != nil {
+				return fmt.Errorf("unable to remove ollama image(s): %w", err)
+			}
+		} else {
+			if err := standalone.PruneControllerImages(cmd.Context(), dockerClient, cmd); err != nil {
+				return fmt.Errorf("unable to remove model runner image(s): %w", err)
+			}
 		}
 	}
 
@@ -60,7 +73,7 @@ func runUninstallOrStop(cmd *cobra.Command, opts cleanupOptions) error {
 }
 
 func newUninstallRunner() *cobra.Command {
-	var models, images bool
+	var models, images, ollama bool
 	c := &cobra.Command{
 		Use:   "uninstall-runner",
 		Short: "Uninstall Docker Model Runner (Docker Engine only)",
@@ -68,11 +81,13 @@ func newUninstallRunner() *cobra.Command {
 			return runUninstallOrStop(cmd, cleanupOptions{
 				models:       models,
 				removeImages: images,
+				ollama:       ollama,
 			})
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 	c.Flags().BoolVar(&models, "models", false, "Remove model storage volume")
-	c.Flags().BoolVar(&images, "images", false, "Remove "+standalone.ControllerImage+" images")
+	c.Flags().BoolVar(&images, "images", false, "Remove runner images")
+	c.Flags().BoolVar(&ollama, "ollama", false, "Uninstall ollama runner instead of Docker Model Runner")
 	return c
 }

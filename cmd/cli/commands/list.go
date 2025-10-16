@@ -82,6 +82,9 @@ func listModels(openai bool, backend string, desktopClient *desktop.Client, quie
 		}
 		return formatter.ToStandardJSON(models)
 	}
+	// TODO: Add support for listing ollama models from the ollama volume
+	// This would require querying both the model-runner and ollama daemons
+	// and merging the results
 	models, err := desktopClient.List()
 	if err != nil {
 		err = handleClientError(err, "Failed to list models")
