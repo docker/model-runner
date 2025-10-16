@@ -25,7 +25,7 @@ import (
 const (
 	// Name is the backend name.
 	Name    = "vllm"
-	vllmDir = "/opt/vllm-env/bin/"
+	vllmDir = "/opt/vllm-env/bin"
 )
 
 // vLLM is the vLLM-based backend implementation.
@@ -80,8 +80,15 @@ func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 		return fmt.Errorf("failed to check vLLM binary: %w", err)
 	}
 
-	// TODO: Find a way to get vllm's version. Running `vllm --version` is too slow.
-	v.status = "running"
+	// Read vLLM version from file (created in Dockerfile via `print(vllm.__version__)`).
+	versionPath := filepath.Join(filepath.Dir(vllmDir), "version")
+	versionBytes, err := os.ReadFile(versionPath)
+	if err != nil {
+		v.log.Warnf("could not get vllm version: %v", err)
+		v.status = "running vllm version: unknown"
+	} else {
+		v.status = fmt.Sprintf("running vllm version: %s", strings.TrimSpace(string(versionBytes)))
+	}
 
 	return nil
 }

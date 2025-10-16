@@ -93,6 +93,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
  && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
  && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"
 
+RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
+
 FROM llamacpp AS final-llamacpp
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
