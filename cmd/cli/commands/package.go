@@ -251,10 +251,6 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 			cmd.PrintErrf("Creating tar archive for directory %q\n", relDirPath)
 			tempTarPath, err := packaging.CreateDirectoryTarArchive(fullDirPath)
 			if err != nil {
-				// Clean up any temp files created so far
-				for _, tempFile := range tempDirTarFiles {
-					os.Remove(tempFile)
-				}
 				return fmt.Errorf("create tar archive for directory %q: %w", relDirPath, err)
 			}
 			tempDirTarFiles = append(tempDirTarFiles, tempTarPath)
@@ -262,10 +258,6 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 			cmd.PrintErrf("Adding directory tar archive from %q\n", relDirPath)
 			pkg, err = pkg.WithDirTar(tempTarPath)
 			if err != nil {
-				// Clean up temp files
-				for _, tempFile := range tempDirTarFiles {
-					os.Remove(tempFile)
-				}
 				return fmt.Errorf("add directory tar: %w", err)
 			}
 		}
