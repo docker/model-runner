@@ -255,7 +255,7 @@ func unpackDirTarArchives(bundle *Bundle, mdl types.Model) error {
 	for _, layer := range layers {
 		mediaType, err := layer.MediaType()
 		if err != nil {
-			log.Printf("error getting media type for layer: %v", err)
+			fmt.Printf("Warning: failed to get media type for layer: %v", err)
 			continue
 		}
 
