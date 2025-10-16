@@ -41,6 +41,11 @@ func CreateDirectoryTarArchive(dirPath string) (string, error) {
 
 	// Walk the directory tree
 	err = filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		// Skip symlinks - they're not needed for model distribution and are
+		// skipped during extraction for security reasons
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
