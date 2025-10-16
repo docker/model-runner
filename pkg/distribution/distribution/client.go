@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
 	"slices"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/utils"
 	"github.com/sirupsen/logrus"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/internal/utils"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/inference/platform"
 )
 
 // Client provides model distribution functionality
@@ -403,7 +403,7 @@ func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
 }
 
 func GetSupportedFormats() []types.Format {
-	if runtime.GOOS == "linux" {
+	if platform.SupportsVLLM() {
 		return []types.Format{types.FormatGGUF, types.FormatSafetensors}
 	}
 	return []types.Format{types.FormatGGUF}

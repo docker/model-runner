@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -27,6 +26,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
+	"github.com/docker/model-runner/pkg/inference/platform"
 )
 
 var (
@@ -464,7 +464,7 @@ func TestClientPullModel(t *testing.T) {
 
 		// Try to pull the safetensors model
 		err = testClient.PullModel(context.Background(), tag, nil)
-		if runtime.GOOS == "linux" {
+		if platform.SupportsVLLM() {
 			// On Linux, safetensors should be supported
 			if err != nil {
 				t.Fatalf("Expected no error on Linux, got: %v", err)
