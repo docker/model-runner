@@ -102,6 +102,18 @@ func (b *Builder) WithConfigArchive(path string) (*Builder, error) {
 	}, nil
 }
 
+// WithDirTar adds a directory tar archive to the artifact.
+// Multiple directory tar archives can be added by calling this method multiple times.
+func (b *Builder) WithDirTar(path string) (*Builder, error) {
+	dirTarLayer, err := partial.NewLayer(path, types.MediaTypeDirTar)
+	if err != nil {
+		return nil, fmt.Errorf("dir tar layer from %q: %w", path, err)
+	}
+	return &Builder{
+		model: mutate.AppendLayers(b.model, dirTarLayer),
+	}, nil
+}
+
 // Target represents a build target
 type Target interface {
 	Write(context.Context, types.ModelArtifact, io.Writer) error

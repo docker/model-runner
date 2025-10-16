@@ -23,6 +23,9 @@ const (
 	// MediaTypeVLLMConfigArchive indicates a tar archive containing vLLM-specific config files.
 	MediaTypeVLLMConfigArchive = types.MediaType("application/vnd.docker.ai.vllm.config.tar")
 
+	// MediaTypeDirTar indicates a tar archive containing a directory with its structure preserved.
+	MediaTypeDirTar = types.MediaType("application/vnd.docker.ai.dir.tar")
+
 	// MediaTypeLicense indicates a plain text file containing a license
 	MediaTypeLicense = types.MediaType("application/vnd.docker.ai.license")
 
