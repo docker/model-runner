@@ -123,6 +123,7 @@ func newPackagedCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.safetensorsDir, "safetensors-dir", "", "absolute path to directory containing safetensors files and config")
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
+	c.Flags().StringArrayVar(&opts.dirTarPaths, "dir-tar", nil, "relative path to directory to package as tar (can be specified multiple times)")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
 	return c
@@ -134,6 +135,7 @@ type packageOptions struct {
 	ggufPath         string
 	safetensorsDir   string
 	licensePaths     []string
+	dirTarPaths      []string
 	push             bool
 	tag              string
 }
@@ -211,6 +213,62 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		if pkg, err = pkg.WithChatTemplateFile(opts.chatTemplatePath); err != nil {
 			return fmt.Errorf("add chat template file from path %q: %w", opts.chatTemplatePath, err)
 		}
+	}
+
+	// Process directory tar archives
+	var tempDirTarFiles []string
+	if len(opts.dirTarPaths) > 0 {
+		// Determine base directory for resolving relative paths
+		var baseDir string
+		if opts.safetensorsDir != "" {
+			baseDir = opts.safetensorsDir
+		} else {
+			// For GGUF, use the directory containing the GGUF file
+			baseDir = filepath.Dir(opts.ggufPath)
+		}
+
+		for _, relDirPath := range opts.dirTarPaths {
+			// Resolve the full directory path
+			fullDirPath := filepath.Join(baseDir, relDirPath)
+			fullDirPath = filepath.Clean(fullDirPath)
+
+			// Verify the directory exists
+			info, err := os.Stat(fullDirPath)
+			if err != nil {
+				return fmt.Errorf("cannot access directory %q (resolved from %q): %w", fullDirPath, relDirPath, err)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("path %q is not a directory", fullDirPath)
+			}
+
+			cmd.PrintErrf("Creating tar archive for directory %q\n", relDirPath)
+			tempTarPath, err := packaging.CreateDirectoryTarArchive(fullDirPath)
+			if err != nil {
+				// Clean up any temp files created so far
+				for _, tempFile := range tempDirTarFiles {
+					os.Remove(tempFile)
+				}
+				return fmt.Errorf("create tar archive for directory %q: %w", relDirPath, err)
+			}
+			tempDirTarFiles = append(tempDirTarFiles, tempTarPath)
+
+			cmd.PrintErrf("Adding directory tar archive from %q\n", relDirPath)
+			pkg, err = pkg.WithDirTar(tempTarPath)
+			if err != nil {
+				// Clean up temp files
+				for _, tempFile := range tempDirTarFiles {
+					os.Remove(tempFile)
+				}
+				return fmt.Errorf("add directory tar: %w", err)
+			}
+		}
+
+		// Schedule cleanup of temp tar files after build completes
+		defer func() {
+			for _, tempFile := range tempDirTarFiles {
+				os.Remove(tempFile)
+			}
+		}()
 	}
 
 	if opts.push {
