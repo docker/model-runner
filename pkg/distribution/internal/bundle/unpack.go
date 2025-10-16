@@ -60,6 +60,11 @@ func Unpack(dir string, model types.Model) (*Bundle, error) {
 		}
 	}
 
+	// Unpack directory tar archives (can be multiple)
+	if err := unpackDirTarArchives(bundle, model); err != nil {
+		return nil, fmt.Errorf("unpack directory tar archives: %w", err)
+	}
+
 	// Always create the runtime config
 	if err := unpackRuntimeConfig(bundle, model); err != nil {
 		return nil, fmt.Errorf("add config.json to runtime bundle: %w", err)
@@ -225,6 +230,70 @@ func unpackConfigArchive(bundle *Bundle, mdl types.Model) error {
 	// This prevents config.json conflicts with the runtime config at bundle root
 	if err := extractTarArchive(archivePath, modelDir); err != nil {
 		return fmt.Errorf("extract config archive: %w", err)
+	}
+
+	return nil
+}
+
+func unpackDirTarArchives(bundle *Bundle, mdl types.Model) error {
+	// Cast to ModelArtifact to access Layers() method
+	artifact, ok := mdl.(types.ModelArtifact)
+	if !ok {
+		// If it's not a ModelArtifact, there are no layers to extract
+		return nil
+	}
+
+	// Get all layers from the model
+	layers, err := artifact.Layers()
+	if err != nil {
+		return fmt.Errorf("get model layers: %w", err)
+	}
+
+	modelDir := filepath.Join(bundle.dir, ModelSubdir)
+
+	// Iterate through layers and extract directory tar archives
+	for _, layer := range layers {
+		mediaType, err := layer.MediaType()
+		if err != nil {
+			continue
+		}
+
+		// Check if this is a directory tar layer
+		if mediaType != types.MediaTypeDirTar {
+			continue
+		}
+
+		// Get the layer as a compressed blob
+		compressed, err := layer.Compressed()
+		if err != nil {
+			return fmt.Errorf("get compressed layer: %w", err)
+		}
+
+		// Create a temp file to store the layer
+		tempFile, err := os.CreateTemp("", "dir-tar-*.tar")
+		if err != nil {
+			compressed.Close()
+			return fmt.Errorf("create temp file: %w", err)
+		}
+		tempPath := tempFile.Name()
+
+		// Copy the layer to the temp file
+		if _, err := io.Copy(tempFile, compressed); err != nil {
+			tempFile.Close()
+			compressed.Close()
+			return fmt.Errorf("copy layer to temp file: %w", err)
+		}
+		tempFile.Close()
+		compressed.Close()
+
+		// Extract the tar archive into the model subdirectory
+		if err := extractTarArchive(tempPath, modelDir); err != nil {
+			os.Remove(tempPath)
+			return fmt.Errorf("extract directory tar archive: %w", err)
+		}
+
+		// Clean up temp file immediately after extraction
+		os.Remove(tempPath)
 	}
 
 	return nil
