@@ -79,11 +79,15 @@ func CreateDirectoryTarArchive(dirPath string) (string, error) {
 			if err != nil {
 				return fmt.Errorf("open file %s: %w", path, err)
 			}
-			defer file.Close()
+
 
 			// Copy file contents
 			if _, err := io.Copy(tw, file); err != nil {
+				file.Close()
 				return fmt.Errorf("write tar content for %s: %w", path, err)
+			}
+			if err := file.Close(); err != nil {
+				return fmt.Errorf("close file %s: %w", path, err)
 			}
 		}
 
