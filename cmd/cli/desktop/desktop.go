@@ -234,10 +234,18 @@ func (c *Client) List() ([]dmrm.Model, error) {
 }
 
 func (c *Client) ListOpenAI(backend, apiKey string) (dmrm.OpenAIModelList, error) {
-	if backend == "" {
-		backend = DefaultBackend
+	var modelsRoute string
+	
+	// For external OpenAI endpoints, use the direct path
+	if c.modelRunner.IsExternalOpenAI() {
+		modelsRoute = "/models"
+	} else {
+		// For model-runner proxy, use the inference prefix
+		if backend == "" {
+			backend = DefaultBackend
+		}
+		modelsRoute = fmt.Sprintf("%s/%s/v1/models", inference.InferencePrefix, backend)
 	}
-	modelsRoute := fmt.Sprintf("%s/%s/v1/models", inference.InferencePrefix, backend)
 
 	// Use doRequestWithAuth to support API key authentication
 	resp, err := c.doRequestWithAuth(http.MethodGet, modelsRoute, nil, "openai", apiKey)
@@ -388,10 +396,16 @@ func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, ap
 	}
 
 	var completionsPath string
-	if backend != "" {
-		completionsPath = inference.InferencePrefix + "/" + backend + "/v1/chat/completions"
+	// For external OpenAI endpoints, use the direct path
+	if c.modelRunner.IsExternalOpenAI() {
+		completionsPath = "/chat/completions"
 	} else {
-		completionsPath = inference.InferencePrefix + "/v1/chat/completions"
+		// For model-runner proxy, use the inference prefix
+		if backend != "" {
+			completionsPath = inference.InferencePrefix + "/" + backend + "/v1/chat/completions"
+		} else {
+			completionsPath = inference.InferencePrefix + "/v1/chat/completions"
+		}
 	}
 
 	resp, err := c.doRequestWithAuthContext(

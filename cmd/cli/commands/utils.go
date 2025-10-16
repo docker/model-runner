@@ -59,3 +59,40 @@ func stripDefaultsFromModelName(model string) string {
 	// For other cases (ai/ with custom tag, custom org with :latest, etc.), keep as-is
 	return model
 }
+
+// overrideModelRunnerContext updates the model runner context with custom host/port
+func overrideModelRunnerContext(host string, port int) error {
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == 0 {
+		port = 12434
+	}
+
+	// Create a new model runner context with the custom host and port
+	newContext, err := desktop.NewContextWithHostPort(dockerCLI, host, port)
+	if err != nil {
+		return fmt.Errorf("unable to create model runner context with host %s and port %d: %w", host, port, err)
+	}
+
+	// Update global variables
+	modelRunner = newContext
+	desktopClient = desktop.New(newContext)
+
+	return nil
+}
+
+// overrideModelRunnerContextFromURL updates the model runner context with a custom URL
+func overrideModelRunnerContextFromURL(url string, external bool) error {
+	// Create a new model runner context with the custom URL
+	newContext, err := desktop.NewContextWithURLExternal(dockerCLI, url, external)
+	if err != nil {
+		return fmt.Errorf("unable to create model runner context with URL %s: %w", url, err)
+	}
+
+	// Update global variables
+	modelRunner = newContext
+	desktopClient = desktop.New(newContext)
+
+	return nil
+}

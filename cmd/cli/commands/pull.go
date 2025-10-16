@@ -13,6 +13,8 @@ import (
 
 func newPullCmd() *cobra.Command {
 	var ignoreRuntimeMemoryCheck bool
+	var host string
+	var port int
 
 	c := &cobra.Command{
 		Use:   "pull MODEL",
@@ -28,6 +30,13 @@ func newPullCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Override model runner context if host/port is specified
+			if host != "" || port != 0 {
+				if err := overrideModelRunnerContext(host, port); err != nil {
+					return err
+				}
+			}
+
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), cmd); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
@@ -37,6 +46,8 @@ func newPullCmd() *cobra.Command {
 	}
 
 	c.Flags().BoolVar(&ignoreRuntimeMemoryCheck, "ignore-runtime-memory-check", false, "Do not block pull if estimated runtime memory for model exceeds system resources.")
+	c.Flags().StringVar(&host, "host", "", "Host address to bind Docker Model Runner (default \"127.0.0.1\")")
+	c.Flags().IntVar(&port, "port", 0, "Docker container port for Docker Model Runner (default: 12434)")
 
 	return c
 }

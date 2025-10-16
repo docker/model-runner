@@ -89,6 +89,8 @@ type ModelRunnerContext struct {
 	urlPrefix *url.URL
 	// client is the model runner client.
 	client DockerHttpClient
+	// externalOpenAI indicates if this context points to an external OpenAI-compatible endpoint
+	externalOpenAI bool
 }
 
 // NewContextForMock is a ModelRunnerContext constructor exposed only for the
@@ -165,6 +167,70 @@ func DetectContext(ctx context.Context, cli *command.DockerCli) (*ModelRunnerCon
 		urlPrefix: urlPrefix,
 		client:    client,
 	}, nil
+}
+
+// NewContextWithHostPort creates a new ModelRunnerContext with a custom host and port.
+func NewContextWithHostPort(cli *command.DockerCli, host string, port int) (*ModelRunnerContext, error) {
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == 0 {
+		port = 12434
+	}
+
+	// Create URL prefix with custom host and port
+	rawURLPrefix := fmt.Sprintf("http://%s:%d", host, port)
+	urlPrefix, err := url.Parse(rawURLPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("invalid model runner URL (%s): %w", rawURLPrefix, err)
+	}
+
+	// Use HTTP default client for custom host/port
+	client := http.DefaultClient
+
+	if userAgent := os.Getenv("USER_AGENT"); userAgent != "" {
+		setUserAgent(client, userAgent)
+	}
+
+	return &ModelRunnerContext{
+		kind:      types.ModelRunnerEngineKindMobyManual,
+		urlPrefix: urlPrefix,
+		client:    client,
+	}, nil
+}
+
+// NewContextWithURL creates a new ModelRunnerContext with a custom URL.
+// If external is true, this is an external OpenAI-compatible endpoint.
+func NewContextWithURL(cli *command.DockerCli, rawURL string) (*ModelRunnerContext, error) {
+	return NewContextWithURLExternal(cli, rawURL, false)
+}
+
+// NewContextWithURLExternal creates a new ModelRunnerContext with a custom URL.
+// The external parameter indicates if this is an external OpenAI-compatible endpoint.
+func NewContextWithURLExternal(cli *command.DockerCli, rawURL string, external bool) (*ModelRunnerContext, error) {
+	urlPrefix, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid model runner URL (%s): %w", rawURL, err)
+	}
+
+	// Use HTTP default client for custom URL
+	client := http.DefaultClient
+
+	if userAgent := os.Getenv("USER_AGENT"); userAgent != "" {
+		setUserAgent(client, userAgent)
+	}
+
+	return &ModelRunnerContext{
+		kind:           types.ModelRunnerEngineKindMobyManual,
+		urlPrefix:      urlPrefix,
+		client:         client,
+		externalOpenAI: external,
+	}, nil
+}
+
+// IsExternalOpenAI returns true if this context points to an external OpenAI-compatible endpoint.
+func (c *ModelRunnerContext) IsExternalOpenAI() bool {
+	return c.externalOpenAI
 }
 
 // EngineKind returns the Docker engine kind associated with the model runner.
