@@ -263,37 +263,18 @@ func unpackDirTarArchives(bundle *Bundle, mdl types.Model) error {
 			continue
 		}
 
-		// Get the layer as a compressed blob
-		compressed, err := layer.Compressed()
+		// Get the layer as an uncompressed stream (decompression handled automatically)
+		uncompressed, err := layer.Uncompressed()
 		if err != nil {
-			return fmt.Errorf("get compressed layer: %w", err)
+			return fmt.Errorf("get uncompressed layer: %w", err)
 		}
 
-		// Create a temp file to store the layer
-		tempFile, err := os.CreateTemp("", "dir-tar-*.tar")
-		if err != nil {
-			compressed.Close()
-			return fmt.Errorf("create temp file: %w", err)
-		}
-		tempPath := tempFile.Name()
-
-		// Copy the layer to the temp file
-		if _, err := io.Copy(tempFile, compressed); err != nil {
-			tempFile.Close()
-			compressed.Close()
-			return fmt.Errorf("copy layer to temp file: %w", err)
-		}
-		tempFile.Close()
-		compressed.Close()
-
-		// Extract the tar archive into the model subdirectory
-		if err := extractTarArchive(tempPath, modelDir); err != nil {
-			os.Remove(tempPath)
+		// Stream directly to tar extraction - no temp file needed
+		if err := extractTarArchiveFromReader(uncompressed, modelDir); err != nil {
+			uncompressed.Close()
 			return fmt.Errorf("extract directory tar archive: %w", err)
 		}
-
-		// Clean up temp file immediately after extraction
-		os.Remove(tempPath)
+		uncompressed.Close()
 	}
 
 	return nil
@@ -333,14 +314,7 @@ func validatePathWithinDirectory(baseDir, targetPath string) error {
 	return nil
 }
 
-func extractTarArchive(archivePath, destDir string) error {
-	// Open the tar file
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("open tar archive: %w", err)
-	}
-	defer file.Close()
-
+func extractTarArchiveFromReader(r io.Reader, destDir string) error {
 	// Get absolute path of destination directory for security checks
 	absDestDir, err := filepath.Abs(destDir)
 	if err != nil {
@@ -348,7 +322,7 @@ func extractTarArchive(archivePath, destDir string) error {
 	}
 
 	// Create tar reader
-	tr := tar.NewReader(file)
+	tr := tar.NewReader(r)
 
 	// Extract files
 	for {
@@ -395,6 +369,18 @@ func extractTarArchive(archivePath, destDir string) error {
 	}
 
 	return nil
+}
+
+func extractTarArchive(archivePath, destDir string) error {
+	// Open the tar file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open tar archive: %w", err)
+	}
+	defer file.Close()
+
+	// Delegate to the streaming version
+	return extractTarArchiveFromReader(file, destDir)
 }
 
 // extractFile extracts a single file from the tar reader
