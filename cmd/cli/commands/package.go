@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
@@ -26,11 +27,12 @@ func newPackagedCmd() *cobra.Command {
 	var opts packageOptions
 
 	c := &cobra.Command{
-		Use:   "package (--gguf <path> | --safetensors-dir <path>) [--license <path>...] [--context-size <tokens>] [--push] MODEL",
-		Short: "Package a GGUF file or Safetensors directory into a Docker model OCI artifact.",
-		Long: "Package a GGUF file or Safetensors directory into a Docker model OCI artifact, with optional licenses. The package is sent to the model-runner, unless --push is specified.\n" +
+		Use:   "package (--gguf <path> | --safetensors-dir <path> | --from <model>) [--license <path>...] [--context-size <tokens>] [--push] MODEL",
+		Short: "Package a GGUF file, Safetensors directory, or existing model into a Docker model OCI artifact.",
+		Long: "Package a GGUF file, Safetensors directory, or existing model into a Docker model OCI artifact, with optional licenses. The package is sent to the model-runner, unless --push is specified.\n" +
 			"When packaging a sharded GGUF model, --gguf should point to the first shard. All shard files should be siblings and should include the index in the file name (e.g. model-00001-of-00015.gguf).\n" +
-			"When packaging a Safetensors model, --safetensors-dir should point to a directory containing .safetensors files and config files (*.json, merges.txt). All files will be auto-discovered and config files will be packaged into a tar archive.",
+			"When packaging a Safetensors model, --safetensors-dir should point to a directory containing .safetensors files and config files (*.json, merges.txt). All files will be auto-discovered and config files will be packaged into a tar archive.\n" +
+			"When packaging from an existing model using --from, you can modify properties like context size to create a variant of the original model.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return fmt.Errorf(
@@ -41,16 +43,27 @@ func newPackagedCmd() *cobra.Command {
 				)
 			}
 
-			// Validate that either --gguf or --safetensors-dir is provided (mutually exclusive)
-			if opts.ggufPath == "" && opts.safetensorsDir == "" {
+			// Validate that exactly one of --gguf, --safetensors-dir, or --from is provided (mutually exclusive)
+			sourcesProvided := 0
+			if opts.ggufPath != "" {
+				sourcesProvided++
+			}
+			if opts.safetensorsDir != "" {
+				sourcesProvided++
+			}
+			if opts.fromModel != "" {
+				sourcesProvided++
+			}
+
+			if sourcesProvided == 0 {
 				return fmt.Errorf(
-					"Either --gguf or --safetensors-dir path is required.\n\n" +
+					"One of --gguf, --safetensors-dir, or --from is required.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
-			if opts.ggufPath != "" && opts.safetensorsDir != "" {
+			if sourcesProvided > 1 {
 				return fmt.Errorf(
-					"Cannot specify both --gguf and --safetensors-dir. Please use only one format.\n\n" +
+					"Cannot specify more than one of --gguf, --safetensors-dir, or --from. Please use only one source.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
@@ -121,6 +134,7 @@ func newPackagedCmd() *cobra.Command {
 
 	c.Flags().StringVar(&opts.ggufPath, "gguf", "", "absolute path to gguf file")
 	c.Flags().StringVar(&opts.safetensorsDir, "safetensors-dir", "", "absolute path to directory containing safetensors files and config")
+	c.Flags().StringVar(&opts.fromModel, "from", "", "reference to an existing model to repackage")
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
@@ -133,6 +147,7 @@ type packageOptions struct {
 	contextSize      uint64
 	ggufPath         string
 	safetensorsDir   string
+	fromModel        string
 	licensePaths     []string
 	push             bool
 	tag              string
@@ -154,9 +169,43 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		return err
 	}
 
+	// Get the model store path
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get user home directory: %w", err)
+	}
+	modelStorePath := filepath.Join(userHomeDir, ".docker", "models")
+	if envPath := os.Getenv("MODELS_PATH"); envPath != "" {
+		modelStorePath = envPath
+	}
+
+	// Create a distribution client to access the model store
+	distClient, err := distribution.NewClient(distribution.WithStoreRootPath(modelStorePath))
+	if err != nil {
+		return fmt.Errorf("create distribution client: %w", err)
+	}
+
 	// Create package builder based on model format
 	var pkg *builder.Builder
-	if opts.ggufPath != "" {
+	if opts.fromModel != "" {
+		// Package from existing model
+		cmd.PrintErrf("Reading model from store: %q\n", opts.fromModel)
+
+		// Get the model from the local store
+		mdl, err := distClient.GetModel(opts.fromModel)
+		if err != nil {
+			return fmt.Errorf("get model from store: %w", err)
+		}
+
+		// Type assert to ModelArtifact - the Model from store implements both interfaces
+		modelArtifact, ok := mdl.(types.ModelArtifact)
+		if !ok {
+			return fmt.Errorf("model does not implement ModelArtifact interface")
+		}
+
+		cmd.PrintErrf("Creating builder from existing model\n")
+		pkg = builder.FromModel(modelArtifact)
+	} else if opts.ggufPath != "" {
 		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
 		pkg, err = builder.FromGGUF(opts.ggufPath)
 		if err != nil {
@@ -213,51 +262,69 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		}
 	}
 
-	if opts.push {
-		cmd.PrintErrln("Pushing model to registry...")
+	// Check if we can use lightweight repackaging (config-only changes from existing model)
+	useLightweight := opts.fromModel != "" && !opts.push && isConfigOnlyModification(opts)
+
+	if useLightweight {
+		cmd.PrintErrln("Creating lightweight model variant...")
+
+		// Get the model artifact with new config
+		builtModel := pkg.Model()
+
+		// Write using lightweight method
+		if err := distClient.WriteLightweightModel(builtModel, []string{opts.tag}); err != nil {
+			return fmt.Errorf("failed to create lightweight model: %w", err)
+		}
+
+		cmd.PrintErrln("Model variant created successfully")
 	} else {
-		cmd.PrintErrln("Loading model to Model Runner...")
-	}
-	pr, pw := io.Pipe()
-	done := make(chan error, 1)
-	go func() {
-		defer pw.Close()
-		done <- pkg.Build(cmd.Context(), target, pw)
-	}()
-
-	scanner := bufio.NewScanner(pr)
-	for scanner.Scan() {
-		progressLine := scanner.Text()
-		if progressLine == "" {
-			continue
-		}
-
-		// Parse the progress message
-		var progressMsg desktop.ProgressMessage
-		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
-			cmd.PrintErrln("Error displaying progress:", err)
-		}
-
-		// Print progress messages
-		TUIProgress(progressMsg.Message)
-	}
-	cmd.PrintErrln("") // newline after progress
-
-	if err := scanner.Err(); err != nil {
-		cmd.PrintErrln("Error streaming progress:", err)
-	}
-	if err := <-done; err != nil {
 		if opts.push {
-			return fmt.Errorf("failed to save packaged model: %w", err)
+			cmd.PrintErrln("Pushing model to registry...")
+		} else {
+			cmd.PrintErrln("Loading model to Model Runner...")
 		}
-		return fmt.Errorf("failed to load packaged model: %w", err)
+		pr, pw := io.Pipe()
+		done := make(chan error, 1)
+		go func() {
+			defer pw.Close()
+			done <- pkg.Build(cmd.Context(), target, pw)
+		}()
+
+		scanner := bufio.NewScanner(pr)
+		for scanner.Scan() {
+			progressLine := scanner.Text()
+			if progressLine == "" {
+				continue
+			}
+
+			// Parse the progress message
+			var progressMsg desktop.ProgressMessage
+			if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
+				cmd.PrintErrln("Error displaying progress:", err)
+			}
+
+			// Print progress messages
+			TUIProgress(progressMsg.Message)
+		}
+		cmd.PrintErrln("") // newline after progress
+
+		if err := scanner.Err(); err != nil {
+			cmd.PrintErrln("Error streaming progress:", err)
+		}
+		if err := <-done; err != nil {
+			if opts.push {
+				return fmt.Errorf("failed to save packaged model: %w", err)
+			}
+			return fmt.Errorf("failed to load packaged model: %w", err)
+		}
+
+		if opts.push {
+			cmd.PrintErrln("Model pushed successfully")
+		} else {
+			cmd.PrintErrln("Model loaded successfully")
+		}
 	}
 
-	if opts.push {
-		cmd.PrintErrln("Model pushed successfully")
-	} else {
-		cmd.PrintErrln("Model loaded successfully")
-	}
 	return nil
 }
 
@@ -313,4 +380,14 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 		}
 	}
 	return nil
+}
+
+// isConfigOnlyModification determines if the packaging operation only modifies config
+// without adding new files (licenses, chat templates, etc.)
+func isConfigOnlyModification(opts packageOptions) bool {
+	// Only config modifications are allowed for lightweight repackaging
+	hasConfigChanges := opts.contextSize > 0
+	hasFileAdditions := len(opts.licensePaths) > 0 || opts.chatTemplatePath != ""
+
+	return hasConfigChanges && !hasFileAdditions
 }

@@ -259,6 +259,52 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 	return err
 }
 
+// WriteLightweight writes only the manifest and config for a model, assuming layers already exist in the store.
+// This is used for config-only modifications where the layer data hasn't changed.
+func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
+	// Verify that all layers already exist in the store
+	layers, err := mdl.Layers()
+	if err != nil {
+		return fmt.Errorf("getting layers: %w", err)
+	}
+
+	for _, layer := range layers {
+		diffID, err := layer.DiffID()
+		if err != nil {
+			return fmt.Errorf("getting layer diffID: %w", err)
+		}
+		hasBlob, err := s.hasBlob(diffID)
+		if err != nil {
+			return fmt.Errorf("checking if layer %s exists: %w", diffID, err)
+		}
+		if !hasBlob {
+			return fmt.Errorf("layer %s not found in store, cannot use lightweight write", diffID)
+		}
+	}
+
+	// Write the config JSON file
+	if err := s.writeConfigFile(mdl); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+
+	// Write the manifest
+	digest, err := mdl.Digest()
+	if err != nil {
+		return fmt.Errorf("get digest: %w", err)
+	}
+	rm, err := mdl.RawManifest()
+	if err != nil {
+		return fmt.Errorf("get raw manifest: %w", err)
+	}
+	if err := s.WriteManifest(digest, rm); err != nil {
+		return fmt.Errorf("write manifest: %w", err)
+	}
+	if err := s.AddTags(digest.String(), tags); err != nil {
+		return fmt.Errorf("adding tags: %w", err)
+	}
+	return nil
+}
+
 // Read reads a model from the store by reference (either tag or ID)
 func (s *LocalStore) Read(reference string) (*Model, error) {
 	models, err := s.List()

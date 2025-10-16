@@ -39,6 +39,13 @@ func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
 	}, nil
 }
 
+// FromModel returns a *Builder that builds model artifacts from an existing model artifact
+func FromModel(mdl types.ModelArtifact) *Builder {
+	return &Builder{
+		model: mdl,
+	}
+}
+
 // WithLicense adds a license file to the artifact
 func (b *Builder) WithLicense(path string) (*Builder, error) {
 	licenseLayer, err := partial.NewLayer(path, types.MediaTypeLicense)
@@ -105,6 +112,11 @@ func (b *Builder) WithConfigArchive(path string) (*Builder, error) {
 // Target represents a build target
 type Target interface {
 	Write(context.Context, types.ModelArtifact, io.Writer) error
+}
+
+// Model returns the underlying model artifact
+func (b *Builder) Model() types.ModelArtifact {
+	return b.model
 }
 
 // Build finalizes the artifact and writes it to the given target, reporting progress to the given writer
