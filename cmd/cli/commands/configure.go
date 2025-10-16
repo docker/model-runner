@@ -13,8 +13,9 @@ func newConfigureCmd() *cobra.Command {
 	var opts scheduling.ConfigureRequest
 
 	c := &cobra.Command{
-		Use:   "configure [--context-size=<n>] MODEL [-- <runtime-flags...>]",
-		Short: "Configure runtime options for a model",
+		Use:    "configure [--context-size=<n>] MODEL [-- <runtime-flags...>]",
+		Short:  "Configure runtime options for a model",
+		Hidden: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			argsBeforeDash := cmd.ArgsLenAtDash()
 			if argsBeforeDash == -1 {

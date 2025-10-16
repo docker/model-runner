@@ -7,7 +7,6 @@ Docker Model Runner
 
 | Name                                            | Description                                                                    |
 |:------------------------------------------------|:-------------------------------------------------------------------------------|
-| [`configure`](model_configure.md)               | Configure runtime options for a model                                          |
 | [`df`](model_df.md)                             | Show Docker Model Runner disk usage                                            |
 | [`inspect`](model_inspect.md)                   | Display detailed information on one model                                      |
 | [`install-runner`](model_install-runner.md)     | Install Docker Model Runner (Docker Engine only)                               |
