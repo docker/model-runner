@@ -218,6 +218,13 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	// Process directory tar archives
 	var tempDirTarFiles []string
 	if len(opts.dirTarPaths) > 0 {
+		// Schedule cleanup of temp tar files
+		defer func() {
+			for _, tempFile := range tempDirTarFiles {
+				os.Remove(tempFile)
+			}
+		}()
+
 		// Determine base directory for resolving relative paths
 		var baseDir string
 		if opts.safetensorsDir != "" {
@@ -262,13 +269,6 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 				return fmt.Errorf("add directory tar: %w", err)
 			}
 		}
-
-		// Schedule cleanup of temp tar files after build completes
-		defer func() {
-			for _, tempFile := range tempDirTarFiles {
-				os.Remove(tempFile)
-			}
-		}()
 	}
 
 	if opts.push {
