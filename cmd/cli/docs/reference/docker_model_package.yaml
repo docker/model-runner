@@ -28,6 +28,17 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: dir-tar
+      value_type: stringArray
+      default_value: '[]'
+      description: |
+        relative path to directory to package as tar (can be specified multiple times)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: gguf
       value_type: string
       description: absolute path to gguf file

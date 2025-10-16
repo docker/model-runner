@@ -11,6 +11,7 @@ When packaging a Safetensors model, --safetensors-dir should point to a director
 |:--------------------|:--------------|:--------|:---------------------------------------------------------------------------------------|
 | `--chat-template`   | `string`      |         | absolute path to chat template file (must be Jinja format)                             |
 | `--context-size`    | `uint64`      | `0`     | context size in tokens                                                                 |
+| `--dir-tar`         | `stringArray` |         | relative path to directory to package as tar (can be specified multiple times)         |
 | `--gguf`            | `string`      |         | absolute path to gguf file                                                             |
 | `-l`, `--license`   | `stringArray` |         | absolute path to a license file                                                        |
 | `--push`            | `bool`        |         | push to registry (if not set, the model is loaded into the Model Runner content store) |
