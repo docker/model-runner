@@ -13,6 +13,7 @@ import (
 var ValidBackends = map[string]bool{
 	"llama.cpp": true,
 	"openai":    true,
+	"vllm":      true,
 }
 
 // validateBackend checks if the provided backend is valid

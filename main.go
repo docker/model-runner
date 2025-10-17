@@ -14,6 +14,7 @@ import (
 	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -109,9 +110,19 @@ func main() {
 
 	memEstimator.SetDefaultBackend(llamaCppBackend)
 
+	vllmBackend, err := vllm.New(
+		log,
+		modelManager,
+		log.WithFields(logrus.Fields{"component": "vllm"}),
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("unable to initialize %s backend: %v", vllm.Name, err)
+	}
+
 	scheduler := scheduling.NewScheduler(
 		log,
-		map[string]inference.Backend{llamacpp.Name: llamaCppBackend},
+		map[string]inference.Backend{llamacpp.Name: llamaCppBackend, vllm.Name: vllmBackend},
 		llamaCppBackend,
 		modelManager,
 		http.DefaultClient,

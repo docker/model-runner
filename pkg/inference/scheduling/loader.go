@@ -469,7 +469,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 				return l.slots[existing.slot], nil
 			}
 		}
-		
+
 		if runtime.GOOS == "windows" {
 			// On Windows, we can use up to half of the total system RAM as shared GPU memory,
 			// limited by the currently available RAM.
@@ -504,7 +504,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			}
 			// Create the runner.
 			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
-			runner, err := run(l.log, backend, modelID, mode, slot, runnerConfig, l.openAIRecorder)
+			runner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
 				l.log.Warnf("Unable to start %s backend runner with model %s in %s mode: %v",
 					backendName, modelID, mode, err,

@@ -26,6 +26,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
+	"github.com/docker/model-runner/pkg/inference/platform"
 )
 
 var (
@@ -418,7 +419,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 	})
 
-	t.Run("pull safetensors model returns error", func(t *testing.T) {
+	t.Run("pull safetensors model returns error on unsupported platforms", func(t *testing.T) {
 		// Create temp directory for the safetensors file
 		tempDir, err := os.MkdirTemp("", "safetensors-test-*")
 		if err != nil {
@@ -461,10 +462,18 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to create test client: %v", err)
 		}
 
-		// Try to pull the safetensors model - should fail with ErrUnsupportedFormat
+		// Try to pull the safetensors model
 		err = testClient.PullModel(context.Background(), tag, nil)
-		if !errors.Is(err, ErrUnsupportedFormat) {
-			t.Fatalf("Expected ErrUnsupportedFormat, got: %v", err)
+		if platform.SupportsVLLM() {
+			// On Linux, safetensors should be supported
+			if err != nil {
+				t.Fatalf("Expected no error on Linux, got: %v", err)
+			}
+		} else {
+			// On non-Linux, should fail with ErrUnsupportedFormat
+			if !errors.Is(err, ErrUnsupportedFormat) {
+				t.Fatalf("Expected ErrUnsupportedFormat on non-Linux platforms, got: %v", err)
+			}
 		}
 	})
 

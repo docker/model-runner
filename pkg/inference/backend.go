@@ -84,7 +84,7 @@ type Backend interface {
 	// to be loaded. Backends should not load multiple models at once and should
 	// instead load only the specified model. Backends should still respond to
 	// OpenAI API requests for other models with a 421 error code.
-	Run(ctx context.Context, socket, model string, mode BackendMode, config *BackendConfiguration) error
+	Run(ctx context.Context, socket, model string, modelRef string, mode BackendMode, config *BackendConfiguration) error
 	// Status returns a description of the backend's state.
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.

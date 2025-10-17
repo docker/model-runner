@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
 
 # --- Final image ---
-FROM docker.io/${BASE_IMAGE} AS final
+FROM docker.io/${BASE_IMAGE} AS llamacpp
 
 ARG LLAMA_SERVER_VARIANT
 
@@ -54,9 +54,6 @@ WORKDIR /app
 RUN mkdir -p /var/run/model-runner /app/bin /models && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
-
-# Copy the built binary from builder
-COPY --from=builder /app/model-runner /app/model-runner
 
 # Copy the llama.cpp binary from the llama-server stage
 ARG LLAMA_BINARY_PATH
@@ -77,3 +74,31 @@ ENV LD_LIBRARY_PATH=/app/lib
 LABEL com.docker.desktop.service="model-runner"
 
 ENTRYPOINT ["/app/model-runner"]
+
+# --- vLLM variant ---
+FROM llamacpp AS vllm
+
+ARG VLLM_VERSION
+
+USER root
+
+RUN apt update && apt install -y python3 python3-venv python3-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
+
+USER modelrunner
+
+# Install uv and vLLM as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
+ && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"
+
+RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
+
+FROM llamacpp AS final-llamacpp
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner
+
+FROM vllm AS final-vllm
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner
