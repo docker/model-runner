@@ -144,6 +144,13 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 		return nil, nil, fmt.Errorf("resolve base directory: %w", err)
 	}
 
+	// Return cleanup function
+	cleanup := func() {
+		for _, tempFile := range p.tempFiles {
+			os.Remove(tempFile)
+		}
+	}
+
 	for _, relDirPath := range p.dirTarPaths {
 		// Reject absolute paths
 		if filepath.IsAbs(relDirPath) {
@@ -196,13 +203,6 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 		}
 		p.tempFiles = append(p.tempFiles, tempTarPath)
 		tarPaths = append(tarPaths, tempTarPath)
-	}
-
-	// Return cleanup function
-	cleanup := func() {
-		for _, tempFile := range p.tempFiles {
-			os.Remove(tempFile)
-		}
 	}
 
 	return tarPaths, cleanup, nil
