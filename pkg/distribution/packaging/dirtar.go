@@ -9,7 +9,8 @@ import (
 )
 
 // CreateDirectoryTarArchive creates a temporary tar archive containing the specified directory
-// with its structure preserved. It returns the path to the temporary tar file and any error encountered.
+// with its structure preserved. Symlinks encountered in the directory are skipped and will not be included
+// in the archive. It returns the path to the temporary tar file and any error encountered.
 // The caller is responsible for removing the temporary file when done.
 func CreateDirectoryTarArchive(dirPath string) (string, error) {
 	// Verify directory exists
