@@ -186,15 +186,16 @@ func TestDirTarProcessor_DirectoryTraversal_DoubleDot(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test various directory traversal attempts
+	// Test various directory traversal attempts using OS-specific path separator
+	sep := string(os.PathSeparator)
 	traversalAttempts := []string{
 		"..",
-		"../",
-		"../../etc",
-		"../../../etc",
-		"foo/../../../etc",
-		"subdir/../../..",
-		"./../../etc",
+		".." + sep,                      // "../" on Unix, "..\\" on Windows
+		".." + sep + ".." + sep + "etc", // "../../etc" or "..\\..\\etc"
+		".." + sep + ".." + sep + ".." + sep + "etc", // "../../../etc" or "..\\..\\..\\etc"
+		"foo" + sep + ".." + sep + ".." + sep + ".." + sep + "etc",
+		"subdir" + sep + ".." + sep + ".." + sep + "..",
+		"." + sep + ".." + sep + ".." + sep + "etc",
 	}
 
 	for _, attempt := range traversalAttempts {
