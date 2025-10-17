@@ -150,8 +150,7 @@ func addFileToTar(tw *tar.Writer, filePath string) error {
 }
 
 // isConfigFile checks if a file should be included as a config file based on its name.
-// It checks for common config file extensions (.md, .txt, .json, .vocab, .jinja)
-// and the special case of tokenizer.model file.
+// It checks for extensions listed in configExtensions and the special case of the tokenizer.model file.
 func isConfigFile(name string) bool {
 	lower := strings.ToLower(name)
 	for _, ext := range configExtensions {
