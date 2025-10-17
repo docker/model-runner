@@ -3,10 +3,13 @@ package commands
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +39,52 @@ func isNIMImage(model string) bool {
 	return strings.HasPrefix(model, nimPrefix)
 }
 
+// getDockerAuth retrieves authentication for a registry from Docker config
+func getDockerAuth(registry string) (string, error) {
+	// Get Docker config directory
+	configDir := os.Getenv("DOCKER_CONFIG")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = filepath.Join(homeDir, ".docker")
+	}
+
+	configFile := filepath.Join(configDir, "config.json")
+	
+	// Read Docker config file
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		// If config file doesn't exist, return empty auth
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to read Docker config: %w", err)
+	}
+
+	// Parse config JSON
+	var config struct {
+		Auths map[string]struct {
+			Auth string `json:"auth"`
+		} `json:"auths"`
+		CredHelpers map[string]string `json:"credHelpers"`
+	}
+
+	if err := json.Unmarshal(data, &config); err != nil {
+		return "", fmt.Errorf("failed to parse Docker config: %w", err)
+	}
+
+	// Look for auth for the specific registry
+	if auth, exists := config.Auths[registry]; exists && auth.Auth != "" {
+		return auth.Auth, nil
+	}
+
+	// Also check for credential helpers (though this is more complex to implement)
+	// For now, we'll just return empty if no direct auth is found
+	return "", nil
+}
+
 // nimContainerName generates a container name for a NIM image
 func nimContainerName(model string) string {
 	// Extract the model name from the reference (e.g., nvcr.io/nim/google/gemma-3-1b-it:latest -> google-gemma-3-1b-it)
@@ -55,8 +104,80 @@ func nimContainerName(model string) string {
 func pullNIMImage(ctx context.Context, dockerClient *client.Client, model string, cmd *cobra.Command) error {
 	cmd.Printf("Pulling NIM image %s...\n", model)
 
-	reader, err := dockerClient.ImagePull(ctx, model, image.PullOptions{})
+	// Debug: Show what we're looking for
+	cmd.Printf("Looking for authentication for registry: nvcr.io\n")
+
+	// Get authentication for nvcr.io
+	authStr, err := getDockerAuth("nvcr.io")
 	if err != nil {
+		cmd.Printf("Warning: Failed to get Docker authentication: %v\n", err)
+	}
+
+	// Debug: Check what's in the Docker config (without showing credentials)
+	if authStr == "" {
+		cmd.Printf("Debug: No stored credentials found for nvcr.io. Checking Docker config...\n")
+		configDir := os.Getenv("DOCKER_CONFIG")
+		if configDir == "" {
+			homeDir, _ := os.UserHomeDir()
+			configDir = filepath.Join(homeDir, ".docker")
+		}
+		configFile := filepath.Join(configDir, "config.json")
+		
+		if data, err := os.ReadFile(configFile); err == nil {
+			var config struct {
+				Auths map[string]interface{} `json:"auths"`
+			}
+			if json.Unmarshal(data, &config) == nil {
+				cmd.Printf("Debug: Found auth entries for: ")
+				for registry := range config.Auths {
+					cmd.Printf("%s ", registry)
+				}
+				cmd.Printf("\n")
+			}
+		}
+	}
+
+	pullOptions := image.PullOptions{}
+	
+	// Set authentication if available
+	if authStr != "" {
+		// Decode the base64 auth string from Docker config
+		decoded, err := base64.StdEncoding.DecodeString(authStr)
+		if err != nil {
+			cmd.Printf("Warning: Failed to decode Docker auth string: %v\n", err)
+		} else {
+			parts := strings.SplitN(string(decoded), ":", 2)
+			username, password := "", ""
+			if len(parts) == 2 {
+				username = parts[0]
+				password = parts[1]
+			}
+			authJSON, _ := json.Marshal(map[string]string{
+				"username": username,
+				"password": password,
+			})
+			pullOptions.RegistryAuth = base64.StdEncoding.EncodeToString(authJSON)
+			cmd.Println("Using stored Docker credentials for nvcr.io")
+		}
+	} else {
+		// Try to use NGC_API_KEY as fallback authentication
+		ngcAPIKey := os.Getenv("NGC_API_KEY")
+		if ngcAPIKey != "" {
+			// Create basic auth with NGC API key
+			// For nvcr.io, username is "$oauthtoken" and password is the NGC API key
+			auth := base64.StdEncoding.EncodeToString([]byte("$oauthtoken:" + ngcAPIKey))
+			pullOptions.RegistryAuth = auth
+			cmd.Println("Using NGC_API_KEY for authentication")
+		} else {
+			cmd.Println("Warning: No authentication found. You may need to run 'docker login nvcr.io' or set NGC_API_KEY environment variable")
+		}
+	}
+
+	reader, err := dockerClient.ImagePull(ctx, model, pullOptions)
+	if err != nil {
+		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
+			return fmt.Errorf("authentication failed when pulling NIM image. Please ensure you have logged in with 'docker login nvcr.io' or set NGC_API_KEY environment variable: %w", err)
+		}
 		return fmt.Errorf("failed to pull NIM image: %w", err)
 	}
 	defer reader.Close()
