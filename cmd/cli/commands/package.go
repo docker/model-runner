@@ -106,6 +106,18 @@ func newPackagedCmd() *cobra.Command {
 				}
 				opts.licensePaths[i] = filepath.Clean(l)
 			}
+
+			// Validate dir-tar paths are relative (not absolute)
+			for _, dirPath := range opts.dirTarPaths {
+				if filepath.IsAbs(dirPath) {
+					return fmt.Errorf(
+						"dir-tar path must be relative, got absolute path: %s\n\n"+
+							"See 'docker model package --help' for more information",
+						dirPath,
+					)
+				}
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -235,9 +247,24 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		}
 
 		for _, relDirPath := range opts.dirTarPaths {
+			// Reject absolute paths
+			if filepath.IsAbs(relDirPath) {
+				return fmt.Errorf("dir-tar path must be relative: %s", relDirPath)
+			}
+
 			// Resolve the full directory path
 			fullDirPath := filepath.Join(baseDir, relDirPath)
 			fullDirPath = filepath.Clean(fullDirPath)
+
+			// Verify the resolved path is within baseDir to prevent directory traversal
+			relPath, err := filepath.Rel(baseDir, fullDirPath)
+			if err != nil {
+				return fmt.Errorf("dir-tar path %q could not be validated: %w", relDirPath, err)
+			}
+			// Check if the relative path tries to escape the base directory
+			if relPath == ".." || len(relPath) >= 3 && relPath[:3] == ".."+string(filepath.Separator) {
+				return fmt.Errorf("dir-tar path %q escapes base directory", relDirPath)
+			}
 
 			// Verify the directory exists
 			info, err := os.Stat(fullDirPath)
