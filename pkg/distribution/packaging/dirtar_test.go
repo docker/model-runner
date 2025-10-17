@@ -366,8 +366,8 @@ func TestDirTarProcessor_DoubleDotPrefixedDirectories(t *testing.T) {
 	// Verify tar files exist and are not empty
 	for i, tarPath := range tarPaths {
 		info, err := os.Stat(tarPath)
-		if os.IsNotExist(err) {
-			t.Errorf("Tar file does not exist for %s: %s", doubleDotDirs[i], tarPath)
+		if err != nil {
+			t.Errorf("Failed to stat test file %q: %v", tarPath, err)
 		}
 		if info.Size() == 0 {
 			t.Errorf("Tar file is empty for %s", doubleDotDirs[i])
