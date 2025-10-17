@@ -228,6 +228,80 @@ The response will contain the model's reply:
 }
 ```
 
+## NVIDIA NIM Support
+
+Docker Model Runner supports running NVIDIA NIM (NVIDIA Inference Microservices) containers directly. This provides a simplified workflow for deploying NVIDIA's optimized inference containers.
+
+### Prerequisites
+
+- Docker with NVIDIA GPU support (nvidia-docker2 or Docker with NVIDIA Container Runtime)
+- NGC API Key (optional, but required for some NIM models)
+- Docker login to nvcr.io registry
+
+### Quick Start
+
+1. **Login to NVIDIA Container Registry:**
+
+```bash
+docker login nvcr.io
+Username: $oauthtoken
+Password: <PASTE_API_KEY_HERE>
+```
+
+2. **Set NGC API Key (if required by the model):**
+
+```bash
+export NGC_API_KEY=<PASTE_API_KEY_HERE>
+```
+
+3. **Run a NIM model:**
+
+```bash
+docker model run nvcr.io/nim/google/gemma-3-1b-it:latest
+```
+
+That's it! The Docker Model Runner will:
+- Automatically detect that this is a NIM image
+- Pull the NIM container image
+- Configure it with proper GPU support, shared memory (16GB), and NGC credentials
+- Start the container and wait for it to be ready
+- Provide an interactive chat interface
+
+### Features
+
+- **Automatic GPU Detection**: Automatically configures NVIDIA GPU support if available
+- **Persistent Caching**: Models are cached in `~/.cache/nim` (or `$LOCAL_NIM_CACHE` if set)
+- **Interactive Chat**: Supports both single prompt and interactive chat modes
+- **Container Reuse**: Existing NIM containers are reused across runs
+
+### Example Usage
+
+**Single prompt:**
+```bash
+docker model run nvcr.io/nim/google/gemma-3-1b-it:latest "Explain quantum computing"
+```
+
+**Interactive chat:**
+```bash
+docker model run nvcr.io/nim/google/gemma-3-1b-it:latest
+> Tell me a joke
+...
+> /bye
+```
+
+### Configuration
+
+- **NGC_API_KEY**: Set this environment variable to authenticate with NVIDIA's services
+- **LOCAL_NIM_CACHE**: Override the default cache location (default: `~/.cache/nim`)
+
+### Technical Details
+
+NIM containers:
+- Run on port 8000 (localhost only)
+- Use 16GB shared memory by default
+- Mount `~/.cache/nim` for model caching
+- Support NVIDIA GPU acceleration when available
+
 ## Metrics
 
 The Model Runner exposes [the metrics endpoint](https://github.com/ggml-org/llama.cpp/tree/master/tools/server#get-metrics-prometheus-compatible-metrics-exporter) of llama.cpp server at the `/metrics` endpoint. This allows you to monitor model performance, request statistics, and resource usage.

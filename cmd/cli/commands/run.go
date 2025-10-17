@@ -595,6 +595,63 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			// Check if this is an NVIDIA NIM image
+			if isNIMImage(model) {
+				// NIM images are handled differently - they run as Docker containers
+				// Create a Docker client
+				dockerCLI := getDockerCLI()
+				dockerClient, err := desktop.DockerClientForContext(dockerCLI, dockerCLI.CurrentContext())
+				if err != nil {
+					return fmt.Errorf("failed to create Docker client: %w", err)
+				}
+				
+				// Run the NIM model
+				if err := runNIMModel(cmd.Context(), dockerClient, model, cmd); err != nil {
+					return fmt.Errorf("failed to run NIM model: %w", err)
+				}
+				
+				// If no prompt provided, enter interactive mode
+				if prompt == "" {
+					scanner := bufio.NewScanner(os.Stdin)
+					cmd.Println("Interactive chat mode started. Type '/bye' to exit.")
+					
+					for {
+						userInput, err := readMultilineInput(cmd, scanner)
+						if err != nil {
+							if err.Error() == "EOF" {
+								cmd.Println("\nChat session ended.")
+								break
+							}
+							return fmt.Errorf("Error reading input: %v", err)
+						}
+						
+						if strings.ToLower(strings.TrimSpace(userInput)) == "/bye" {
+							cmd.Println("Chat session ended.")
+							break
+						}
+						
+						if strings.TrimSpace(userInput) == "" {
+							continue
+						}
+						
+						if err := chatWithNIM(cmd, model, userInput); err != nil {
+							cmd.PrintErr(fmt.Errorf("failed to chat with NIM: %w", err))
+							continue
+						}
+						
+						cmd.Println()
+					}
+					return nil
+				}
+				
+				// Single prompt mode
+				if err := chatWithNIM(cmd, model, prompt); err != nil {
+					return fmt.Errorf("failed to chat with NIM: %w", err)
+				}
+				cmd.Println()
+				return nil
+			}
+
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), cmd); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
