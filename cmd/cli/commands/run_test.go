@@ -156,3 +156,131 @@ func TestRunCmdDetachFlag(t *testing.T) {
 		t.Errorf("Expected detach flag value to be true, got false")
 	}
 }
+
+func TestRunCmdServerConnectionFlags(t *testing.T) {
+	// Create the run command
+	cmd := newRunCmd()
+
+	// Test --host flag
+	hostFlag := cmd.Flags().Lookup("host")
+	if hostFlag == nil {
+		t.Fatal("--host flag not found")
+	}
+	if hostFlag.Value.Type() != "string" {
+		t.Errorf("Expected host flag type to be 'string', got '%s'", hostFlag.Value.Type())
+	}
+
+	// Test --port flag
+	portFlag := cmd.Flags().Lookup("port")
+	if portFlag == nil {
+		t.Fatal("--port flag not found")
+	}
+	if portFlag.Value.Type() != "int" {
+		t.Errorf("Expected port flag type to be 'int', got '%s'", portFlag.Value.Type())
+	}
+
+	// Test --url flag
+	urlFlag := cmd.Flags().Lookup("url")
+	if urlFlag == nil {
+		t.Fatal("--url flag not found")
+	}
+	if urlFlag.Value.Type() != "string" {
+		t.Errorf("Expected url flag type to be 'string', got '%s'", urlFlag.Value.Type())
+	}
+
+	// Test --url-alias flag
+	urlAliasFlag := cmd.Flags().Lookup("url-alias")
+	if urlAliasFlag == nil {
+		t.Fatal("--url-alias flag not found")
+	}
+	if urlAliasFlag.Value.Type() != "string" {
+		t.Errorf("Expected url-alias flag type to be 'string', got '%s'", urlAliasFlag.Value.Type())
+	}
+}
+
+func TestListCmdServerConnectionFlags(t *testing.T) {
+	// Create the list command
+	cmd := newListCmd()
+
+	// Test --host flag
+	hostFlag := cmd.Flags().Lookup("host")
+	if hostFlag == nil {
+		t.Fatal("--host flag not found")
+	}
+	if hostFlag.Value.Type() != "string" {
+		t.Errorf("Expected host flag type to be 'string', got '%s'", hostFlag.Value.Type())
+	}
+
+	// Test --port flag
+	portFlag := cmd.Flags().Lookup("port")
+	if portFlag == nil {
+		t.Fatal("--port flag not found")
+	}
+	if portFlag.Value.Type() != "int" {
+		t.Errorf("Expected port flag type to be 'int', got '%s'", portFlag.Value.Type())
+	}
+
+	// Test --url flag
+	urlFlag := cmd.Flags().Lookup("url")
+	if urlFlag == nil {
+		t.Fatal("--url flag not found")
+	}
+	if urlFlag.Value.Type() != "string" {
+		t.Errorf("Expected url flag type to be 'string', got '%s'", urlFlag.Value.Type())
+	}
+
+	// Test --url-alias flag
+	urlAliasFlag := cmd.Flags().Lookup("url-alias")
+	if urlAliasFlag == nil {
+		t.Fatal("--url-alias flag not found")
+	}
+	if urlAliasFlag.Value.Type() != "string" {
+		t.Errorf("Expected url-alias flag type to be 'string', got '%s'", urlAliasFlag.Value.Type())
+	}
+}
+
+func TestPullCmdServerConnectionFlags(t *testing.T) {
+	// Create the pull command
+	cmd := newPullCmd()
+
+	// Test --host flag
+	hostFlag := cmd.Flags().Lookup("host")
+	if hostFlag == nil {
+		t.Fatal("--host flag not found")
+	}
+	if hostFlag.Value.Type() != "string" {
+		t.Errorf("Expected host flag type to be 'string', got '%s'", hostFlag.Value.Type())
+	}
+
+	// Test --port flag
+	portFlag := cmd.Flags().Lookup("port")
+	if portFlag == nil {
+		t.Fatal("--port flag not found")
+	}
+	if portFlag.Value.Type() != "int" {
+		t.Errorf("Expected port flag type to be 'int', got '%s'", portFlag.Value.Type())
+	}
+}
+
+func TestPushCmdServerConnectionFlags(t *testing.T) {
+	// Create the push command
+	cmd := newPushCmd()
+
+	// Test --host flag
+	hostFlag := cmd.Flags().Lookup("host")
+	if hostFlag == nil {
+		t.Fatal("--host flag not found")
+	}
+	if hostFlag.Value.Type() != "string" {
+		t.Errorf("Expected host flag type to be 'string', got '%s'", hostFlag.Value.Type())
+	}
+
+	// Test --port flag
+	portFlag := cmd.Flags().Lookup("port")
+	if portFlag == nil {
+		t.Fatal("--port flag not found")
+	}
+	if portFlag.Value.Type() != "int" {
+		t.Errorf("Expected port flag type to be 'int', got '%s'", portFlag.Value.Type())
+	}
+}
