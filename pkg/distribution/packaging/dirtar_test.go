@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -120,5 +121,205 @@ func TestCreateDirTarArchive_NotADirectory(t *testing.T) {
 	_, err = CreateDirectoryTarArchive(tempFile.Name())
 	if err == nil {
 		t.Error("Expected error for file path instead of directory, got nil")
+	}
+}
+
+func TestDirTarProcessor_ValidRelativePaths(t *testing.T) {
+	// Create a temporary base directory with subdirectories
+	tempDir, err := os.MkdirTemp("", "dirtar-processor-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create test subdirectories
+	subDir1 := filepath.Join(tempDir, "config")
+	subDir2 := filepath.Join(tempDir, "templates")
+	if err := os.MkdirAll(subDir1, 0755); err != nil {
+		t.Fatalf("Failed to create subdir1: %v", err)
+	}
+	if err := os.MkdirAll(subDir2, 0755); err != nil {
+		t.Fatalf("Failed to create subdir2: %v", err)
+	}
+
+	// Create test files
+	if err := os.WriteFile(filepath.Join(subDir1, "config.json"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir2, "template.txt"), []byte("template"), 0644); err != nil {
+		t.Fatalf("Failed to write template file: %v", err)
+	}
+
+	// Test processing valid relative paths
+	processor := NewDirTarProcessor([]string{"config", "templates"}, tempDir)
+	tarPaths, cleanup, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	defer cleanup()
+
+	// Verify we got 2 tar files
+	if len(tarPaths) != 2 {
+		t.Errorf("Expected 2 tar files, got %d", len(tarPaths))
+	}
+
+	// Verify tar files exist
+	for _, tarPath := range tarPaths {
+		if _, err := os.Stat(tarPath); os.IsNotExist(err) {
+			t.Errorf("Tar file does not exist: %s", tarPath)
+		}
+	}
+
+	// Test cleanup
+	cleanup()
+	for _, tarPath := range tarPaths {
+		if _, err := os.Stat(tarPath); !os.IsNotExist(err) {
+			t.Errorf("Tar file was not cleaned up: %s", tarPath)
+		}
+	}
+}
+
+func TestDirTarProcessor_DirectoryTraversal_DoubleDot(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-security-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test various directory traversal attempts
+	traversalAttempts := []string{
+		"..",
+		"../",
+		"..\\",
+		"../../etc",
+		"../../../etc",
+		"foo/../../../etc",
+		"subdir/../../..",
+		"./../../etc",
+	}
+
+	for _, attempt := range traversalAttempts {
+		t.Run(attempt, func(t *testing.T) {
+			processor := NewDirTarProcessor([]string{attempt}, tempDir)
+			_, _, err := processor.Process()
+			if err == nil {
+				t.Errorf("Expected error for traversal attempt %q, got nil", attempt)
+			}
+			if err != nil && !strings.Contains(err.Error(), "escapes base directory") {
+				t.Errorf("Expected 'escapes base directory' error for %q, got: %v", attempt, err)
+			}
+		})
+	}
+}
+
+func TestDirTarProcessor_AbsolutePathRejection(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-absolute-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test absolute path rejection
+	absolutePaths := []string{
+		"/etc/passwd",
+		"/usr/bin",
+		filepath.Join(tempDir, "subdir"), // Absolute even though within tempDir
+	}
+
+	for _, absPath := range absolutePaths {
+		t.Run(absPath, func(t *testing.T) {
+			processor := NewDirTarProcessor([]string{absPath}, tempDir)
+			_, _, err := processor.Process()
+			if err == nil {
+				t.Errorf("Expected error for absolute path %q, got nil", absPath)
+			}
+			if err != nil && !strings.Contains(err.Error(), "must be relative") {
+				t.Errorf("Expected 'must be relative' error for %q, got: %v", absPath, err)
+			}
+		})
+	}
+}
+
+func TestDirTarProcessor_NonExistentDirectory(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-nonexistent-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	processor := NewDirTarProcessor([]string{"nonexistent"}, tempDir)
+	_, _, err = processor.Process()
+	if err == nil {
+		t.Error("Expected error for non-existent directory, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "cannot access directory") {
+		t.Errorf("Expected 'cannot access directory' error, got: %v", err)
+	}
+}
+
+func TestDirTarProcessor_FileInsteadOfDirectory(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-file-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a file instead of directory
+	filePath := filepath.Join(tempDir, "not-a-dir.txt")
+	if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	processor := NewDirTarProcessor([]string{"not-a-dir.txt"}, tempDir)
+	_, _, err = processor.Process()
+	if err == nil {
+		t.Error("Expected error for file instead of directory, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("Expected 'not a directory' error, got: %v", err)
+	}
+}
+
+func TestDirTarProcessor_BaseDirItself(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-basedir-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a file in the base directory
+	if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Test with "." which should reference the base directory itself
+	processor := NewDirTarProcessor([]string{"."}, tempDir)
+	tarPaths, cleanup, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed for base directory: %v", err)
+	}
+	defer cleanup()
+
+	if len(tarPaths) != 1 {
+		t.Errorf("Expected 1 tar file, got %d", len(tarPaths))
+	}
+}
+
+func TestDirTarProcessor_EmptyList(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-empty-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	processor := NewDirTarProcessor([]string{}, tempDir)
+	tarPaths, cleanup, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed for empty list: %v", err)
+	}
+	defer cleanup()
+
+	if len(tarPaths) != 0 {
+		t.Errorf("Expected 0 tar files for empty list, got %d", len(tarPaths))
 	}
 }
