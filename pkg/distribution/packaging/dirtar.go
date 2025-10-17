@@ -168,7 +168,7 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 
 		// If the relative path starts with "..", it means absFull is outside absBase
 		// This catches ALL directory traversal attempts reliably
-		if strings.HasPrefix(relPathCheck, "..") {
+		if relPathCheck == ".." || strings.HasPrefix(relPathCheck, ".."+string(os.PathSeparator)) {
 			return nil, nil, fmt.Errorf("dir-tar path %q escapes base directory", relDirPath)
 		}
 
