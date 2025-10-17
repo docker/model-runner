@@ -166,18 +166,27 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 			return nil, nil, fmt.Errorf("dir-tar path %q could not be validated: %w", relDirPath, err)
 		}
 
-		// If the relative path starts with "..", it means absFull is outside absBase
-		// This catches ALL directory traversal attempts reliably
+		// If the relative path starts with ".." as a path component (not just as prefix),
+		// it means absFull is outside absBase. We check for ".." followed by separator
+		// or as the entire path to avoid false positives with directories like "..data"
 		if relPathCheck == ".." || strings.HasPrefix(relPathCheck, ".."+string(os.PathSeparator)) {
 			return nil, nil, fmt.Errorf("dir-tar path %q escapes base directory", relDirPath)
 		}
 
-		// Verify the directory exists
-		info, err := os.Stat(fullDirPath)
+		// Use Lstat (not Stat) to check if the path itself is a symlink
+		// Stat would follow the symlink, but we want to detect symlinks themselves
+		linfo, err := os.Lstat(fullDirPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot access directory %q (resolved from %q): %w", fullDirPath, relDirPath, err)
 		}
-		if !info.IsDir() {
+
+		// Reject symlinks to prevent empty tar archives (CreateDirectoryTarArchive skips symlinks)
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return nil, nil, fmt.Errorf("path %q is a symlink; symlinked directories are not supported", relDirPath)
+		}
+
+		// Verify it's a directory
+		if !linfo.IsDir() {
 			return nil, nil, fmt.Errorf("path %q is not a directory", fullDirPath)
 		}
 

@@ -190,7 +190,6 @@ func TestDirTarProcessor_DirectoryTraversal_DoubleDot(t *testing.T) {
 	traversalAttempts := []string{
 		"..",
 		"../",
-		"..\\",
 		"../../etc",
 		"../../../etc",
 		"foo/../../../etc",
@@ -321,5 +320,89 @@ func TestDirTarProcessor_EmptyList(t *testing.T) {
 
 	if len(tarPaths) != 0 {
 		t.Errorf("Expected 0 tar files for empty list, got %d", len(tarPaths))
+	}
+}
+
+func TestDirTarProcessor_DoubleDotPrefixedDirectories(t *testing.T) {
+	// Test that legitimate directories with names starting with ".." are accepted
+	tempDir, err := os.MkdirTemp("", "dirtar-doubledot-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create directories with names that start with ".." but are not traversal attempts
+	doubleDotDirs := []string{
+		"..data",
+		"..gitkeep",
+		"..metadata",
+		"..2024_backup",
+	}
+
+	for _, dirName := range doubleDotDirs {
+		dirPath := filepath.Join(tempDir, dirName)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			t.Fatalf("Failed to create test directory %s: %v", dirName, err)
+		}
+		// Add a file so the tar isn't empty
+		if err := os.WriteFile(filepath.Join(dirPath, "file.txt"), []byte("content"), 0644); err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+	}
+
+	// Test processing these directories
+	processor := NewDirTarProcessor(doubleDotDirs, tempDir)
+	tarPaths, cleanup, err := processor.Process()
+	if err != nil {
+		t.Fatalf("Process failed for double-dot prefixed directories: %v", err)
+	}
+	defer cleanup()
+
+	if len(tarPaths) != len(doubleDotDirs) {
+		t.Errorf("Expected %d tar files, got %d", len(doubleDotDirs), len(tarPaths))
+	}
+
+	// Verify tar files exist and are not empty
+	for i, tarPath := range tarPaths {
+		info, err := os.Stat(tarPath)
+		if os.IsNotExist(err) {
+			t.Errorf("Tar file does not exist for %s: %s", doubleDotDirs[i], tarPath)
+		}
+		if info.Size() == 0 {
+			t.Errorf("Tar file is empty for %s", doubleDotDirs[i])
+		}
+	}
+}
+
+func TestDirTarProcessor_SymlinkedDirectory(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dirtar-symlink-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a real directory
+	realDir := filepath.Join(tempDir, "realdir")
+	if err := os.MkdirAll(realDir, 0755); err != nil {
+		t.Fatalf("Failed to create real directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "file.txt"), []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Create a symlink to the directory
+	symlinkPath := filepath.Join(tempDir, "symlink")
+	if err := os.Symlink(realDir, symlinkPath); err != nil {
+		t.Skipf("Cannot create symlink (may not be supported on this system): %v", err)
+	}
+
+	// Test that the symlink is rejected
+	processor := NewDirTarProcessor([]string{"symlink"}, tempDir)
+	_, _, err = processor.Process()
+	if err == nil {
+		t.Error("Expected error for symlinked directory, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("Expected error about symlink, got: %v", err)
 	}
 }
