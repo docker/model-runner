@@ -15,4 +15,3 @@ vendor/
 # model-distribution
 pkg/distribution/bin/
 /parallelget
-/cli

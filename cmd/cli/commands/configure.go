@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
-	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +34,7 @@ func newConfigureCmd() *cobra.Command {
 						argsBeforeDash)
 				}
 			}
-			opts.Model = models.NormalizeModelName(args[0])
+			opts.Model = args[0]
 			opts.RuntimeFlags = args[1:]
 			return nil
 		},

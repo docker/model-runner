@@ -28,8 +28,6 @@ const (
 	// maximumConcurrentModelPulls is the maximum number of concurrent model
 	// pulls that a model manager will allow.
 	maximumConcurrentModelPulls = 2
-	defaultOrg                  = "ai"
-	defaultTag                  = "latest"
 )
 
 // Manager manages inference model pulls and storage.
@@ -123,52 +121,6 @@ func (m *Manager) RebuildRoutes(allowedOrigins []string) {
 	m.httpHandler = middleware.CorsMiddleware(allowedOrigins, m.router)
 }
 
-// NormalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
-// It also converts Hugging Face model names to lowercase.
-// Examples:
-//   - "gemma3" -> "ai/gemma3:latest"
-//   - "gemma3:v1" -> "ai/gemma3:v1"
-//   - "myorg/gemma3" -> "myorg/gemma3:latest"
-//   - "ai/gemma3:latest" -> "ai/gemma3:latest" (unchanged)
-//   - "hf.co/model" -> "hf.co/model:latest" (unchanged - has registry)
-//   - "hf.co/Model" -> "hf.co/model:latest" (converted to lowercase)
-func NormalizeModelName(model string) string {
-	// If the model is empty, return as-is
-	if model == "" {
-		return model
-	}
-
-	// Normalize HuggingFace model names (lowercase)
-	if strings.HasPrefix(model, "hf.co/") {
-		model = strings.ToLower(model)
-	}
-
-	// Check if model contains a registry (domain with dot before first slash)
-	firstSlash := strings.Index(model, "/")
-	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
-		// Has a registry, just ensure tag
-		if !strings.Contains(model, ":") {
-			return model + ":" + defaultTag
-		}
-		return model
-	}
-
-	// Split by colon to check for tag
-	parts := strings.SplitN(model, ":", 2)
-	nameWithOrg := parts[0]
-	tag := defaultTag
-	if len(parts) == 2 {
-		tag = parts[1]
-	}
-
-	// If name doesn't contain a slash, add the default org
-	if !strings.Contains(nameWithOrg, "/") {
-		nameWithOrg = defaultOrg + "/" + nameWithOrg
-	}
-
-	return nameWithOrg + ":" + tag
-}
-
 func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
@@ -197,9 +149,6 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-
-	// Normalize the model name to add defaults
-	request.From = NormalizeModelName(request.From)
 
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
@@ -294,9 +243,6 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
-
 	// Parse remote query parameter
 	remote := false
 	if r.URL.Query().Has("remote") {
@@ -316,9 +262,9 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if remote {
-		apiModel, err = getRemoteModel(r.Context(), m, modelName)
+		apiModel, err = getRemoteModel(r.Context(), m, r.PathValue("name"))
 	} else {
-		apiModel, err = getLocalModel(m, modelName)
+		apiModel, err = getLocalModel(m, r.PathValue("name"))
 	}
 
 	if err != nil {
@@ -427,9 +373,6 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// the runner process exits (though this won't work for Windows, where we
 	// might need some separate cleanup process).
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
-
 	var force bool
 	if r.URL.Query().Has("force") {
 		if val, err := strconv.ParseBool(r.URL.Query().Get("force")); err != nil {
@@ -439,7 +382,7 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := m.distributionClient.DeleteModel(modelName, force)
+	resp, err := m.distributionClient.DeleteModel(r.PathValue("name"), force)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -496,11 +439,8 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
-
 	// Query the model.
-	model, err := m.GetModel(modelName)
+	model, err := m.GetModel(r.PathValue("name"))
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -529,8 +469,6 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
-	// Normalize model name
-	model = NormalizeModelName(model)
 	switch action {
 	case "tag":
 		m.handleTagModel(w, r, model)
