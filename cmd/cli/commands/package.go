@@ -228,15 +228,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	}
 
 	// Process directory tar archives
-	var tempDirTarFiles []string
 	if len(opts.dirTarPaths) > 0 {
-		// Schedule cleanup of temp tar files
-		defer func() {
-			for _, tempFile := range tempDirTarFiles {
-				os.Remove(tempFile)
-			}
-		}()
-
 		// Determine base directory for resolving relative paths
 		var baseDir string
 		if opts.safetensorsDir != "" {
@@ -246,44 +238,15 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 			baseDir = filepath.Dir(opts.ggufPath)
 		}
 
-		for _, relDirPath := range opts.dirTarPaths {
-			// Reject absolute paths
-			if filepath.IsAbs(relDirPath) {
-				return fmt.Errorf("dir-tar path must be relative: %s", relDirPath)
-			}
+		processor := packaging.NewDirTarProcessor(opts.dirTarPaths, baseDir)
+		tarPaths, cleanup, err := processor.Process()
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 
-			// Resolve the full directory path
-			fullDirPath := filepath.Join(baseDir, relDirPath)
-			fullDirPath = filepath.Clean(fullDirPath)
-
-			// Verify the resolved path is within baseDir to prevent directory traversal
-			relPath, err := filepath.Rel(baseDir, fullDirPath)
-			if err != nil {
-				return fmt.Errorf("dir-tar path %q could not be validated: %w", relDirPath, err)
-			}
-			// Check if the relative path tries to escape the base directory
-			if relPath == ".." || len(relPath) >= 3 && relPath[:3] == ".."+string(filepath.Separator) {
-				return fmt.Errorf("dir-tar path %q escapes base directory", relDirPath)
-			}
-
-			// Verify the directory exists
-			info, err := os.Stat(fullDirPath)
-			if err != nil {
-				return fmt.Errorf("cannot access directory %q (resolved from %q): %w", fullDirPath, relDirPath, err)
-			}
-			if !info.IsDir() {
-				return fmt.Errorf("path %q is not a directory", fullDirPath)
-			}
-
-			cmd.PrintErrf("Creating tar archive for directory %q\n", relDirPath)
-			tempTarPath, err := packaging.CreateDirectoryTarArchive(fullDirPath)
-			if err != nil {
-				return fmt.Errorf("create tar archive for directory %q: %w", relDirPath, err)
-			}
-			tempDirTarFiles = append(tempDirTarFiles, tempTarPath)
-
-			cmd.PrintErrf("Adding directory tar archive from %q\n", relDirPath)
-			pkg, err = pkg.WithDirTar(tempTarPath)
+		for _, tarPath := range tarPaths {
+			pkg, err = pkg.WithDirTar(tarPath)
 			if err != nil {
 				return fmt.Errorf("add directory tar: %w", err)
 			}
