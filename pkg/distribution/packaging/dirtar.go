@@ -138,6 +138,12 @@ func NewDirTarProcessor(dirTarPaths []string, baseDir string) *DirTarProcessor {
 func (p *DirTarProcessor) Process() ([]string, func(), error) {
 	var tarPaths []string
 
+	// Get absolute paths for robust security validation
+	absBase, err := filepath.Abs(p.baseDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve base directory: %w", err)
+	}
+
 	for _, relDirPath := range p.dirTarPaths {
 		// Reject absolute paths
 		if filepath.IsAbs(relDirPath) {
@@ -147,12 +153,6 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 		// Resolve the full directory path
 		fullDirPath := filepath.Join(p.baseDir, relDirPath)
 		fullDirPath = filepath.Clean(fullDirPath)
-
-		// Get absolute paths for robust security validation
-		absBase, err := filepath.Abs(p.baseDir)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolve base directory: %w", err)
-		}
 
 		absFull, err := filepath.Abs(fullDirPath)
 		if err != nil {
