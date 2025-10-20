@@ -375,7 +375,7 @@ func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, ap
 	var messageContent interface{}
 	if len(imageURLs) > 0 {
 		// Multimodal message with images
-		contentParts := make([]ContentPart, 0, len(imageURLs)+1)
+		contentParts := make([]ContentPart, 0, len(imageURLs))
 
 		// Add all images first
 		for _, imageURL := range imageURLs {
