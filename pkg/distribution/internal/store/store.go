@@ -269,16 +269,16 @@ func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
 	}
 
 	for _, layer := range layers {
-		diffID, err := layer.DiffID()
+		digest, err := layer.Digest()
 		if err != nil {
 			return fmt.Errorf("getting layer diffID: %w", err)
 		}
-		hasBlob, err := s.hasBlob(diffID)
+		hasBlob, err := s.hasBlob(digest)
 		if err != nil {
-			return fmt.Errorf("checking if layer %s exists: %w", diffID, err)
+			return fmt.Errorf("checking if layer %s exists: %w", digest, err)
 		}
 		if !hasBlob {
-			return fmt.Errorf("layer %s not found in store, cannot use lightweight write", diffID)
+			return fmt.Errorf("layer %s not found in store, cannot use lightweight write", digest)
 		}
 	}
 
