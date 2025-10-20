@@ -43,13 +43,16 @@ func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
 }
 
 // FromModel returns a *Builder that builds model artifacts from an existing model artifact
-func FromModel(mdl types.ModelArtifact) *Builder {
+func FromModel(mdl types.ModelArtifact) (*Builder, error) {
 	// Capture original layers for comparison
-	layers, _ := mdl.Layers()
+	layers, err := mdl.Layers()
+	if err != nil {
+		return nil, fmt.Errorf("getting model layers: %w", err)
+	}
 	return &Builder{
 		model:          mdl,
 		originalLayers: layers,
-	}
+	}, nil
 }
 
 // WithLicense adds a license file to the artifact

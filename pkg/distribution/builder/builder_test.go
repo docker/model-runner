@@ -2,12 +2,15 @@ package builder_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
 func TestBuilder(t *testing.T) {
@@ -174,7 +177,10 @@ func TestFromModel(t *testing.T) {
 	}
 
 	// Step 2: Use FromModel() to create a new builder from the existing model
-	repackagedBuilder := builder.FromModel(initialTarget.artifact)
+	repackagedBuilder, err := builder.FromModel(initialTarget.artifact)
+	if err != nil {
+		t.Fatalf("Failed to create builder from model: %v", err)
+	}
 
 	// Step 3: Modify the context size to 4096
 	repackagedBuilder = repackagedBuilder.WithContextSize(4096)
@@ -236,7 +242,10 @@ func TestFromModelWithAdditionalLayers(t *testing.T) {
 	}
 
 	// Use FromModel() and add additional layers
-	repackagedBuilder := builder.FromModel(initialTarget.artifact)
+	repackagedBuilder, err := builder.FromModel(initialTarget.artifact)
+	if err != nil {
+		t.Fatalf("Failed to create builder from model: %v", err)
+	}
 	repackagedBuilder, err = repackagedBuilder.WithLicense(filepath.Join("..", "assets", "license.txt"))
 	if err != nil {
 		t.Fatalf("Failed to add license to repackaged model: %v", err)
@@ -290,6 +299,24 @@ func TestFromModelWithAdditionalLayers(t *testing.T) {
 	}
 }
 
+// TestFromModelErrorHandling tests that FromModel properly handles and surfaces errors from mdl.Layers()
+func TestFromModelErrorHandling(t *testing.T) {
+	// Create a mock model that fails when Layers() is called
+	mockModel := &mockFailingModel{}
+
+	// Attempt to create a builder from the failing model
+	_, err := builder.FromModel(mockModel)
+	if err == nil {
+		t.Fatal("Expected error when model.Layers() fails, got nil")
+	}
+
+	// Verify the error message indicates the issue
+	expectedErrMsg := "getting model layers"
+	if !strings.Contains(err.Error(), expectedErrMsg) {
+		t.Errorf("Expected error message to contain %q, got: %v", expectedErrMsg, err)
+	}
+}
+
 var _ builder.Target = &fakeTarget{}
 
 type fakeTarget struct {
@@ -299,4 +326,13 @@ type fakeTarget struct {
 func (ft *fakeTarget) Write(ctx context.Context, artifact types.ModelArtifact, writer io.Writer) error {
 	ft.artifact = artifact
 	return nil
+}
+
+// mockFailingModel is a mock that fails when Layers() is called
+type mockFailingModel struct {
+	types.ModelArtifact
+}
+
+func (m *mockFailingModel) Layers() ([]v1.Layer, error) {
+	return nil, fmt.Errorf("simulated layers error")
 }

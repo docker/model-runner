@@ -212,7 +212,10 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 		}
 
 		cmd.PrintErrf("Creating builder from existing model\n")
-		result.builder = builder.FromModel(modelArtifact)
+		result.builder, err = builder.FromModel(modelArtifact)
+		if err != nil {
+			return nil, fmt.Errorf("create builder from model: %w", err)
+		}
 	} else if opts.ggufPath != "" {
 		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
 		pkg, err := builder.FromGGUF(opts.ggufPath)
