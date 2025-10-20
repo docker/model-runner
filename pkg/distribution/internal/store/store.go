@@ -271,7 +271,7 @@ func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
 	for _, layer := range layers {
 		digest, err := layer.Digest()
 		if err != nil {
-			return fmt.Errorf("getting layer diffID: %w", err)
+			return fmt.Errorf("getting layer digest: %w", err)
 		}
 		hasBlob, err := s.hasBlob(digest)
 		if err != nil {
