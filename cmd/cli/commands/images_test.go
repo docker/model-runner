@@ -254,3 +254,120 @@ func TestProcessImagesInPrompt(t *testing.T) {
 		}
 	})
 }
+
+func TestPromptCleaning(t *testing.T) {
+	// Create temporary test images
+	tmpDir := t.TempDir()
+	jpegData := []byte{
+		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+		0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+		0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+		0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
+		0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C,
+		0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+		0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D,
+		0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20,
+		0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+		0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27,
+		0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34,
+		0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
+		0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4,
+		0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x03, 0xFF, 0xC4, 0x00, 0x14,
+		0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01,
+		0x00, 0x00, 0x3F, 0x00, 0x37, 0xFF, 0xD9,
+	}
+
+	img1Path := filepath.Join(tmpDir, "img1.jpg")
+	img2Path := filepath.Join(tmpDir, "img2.png")
+	img3Path := filepath.Join(tmpDir, "img3.webp")
+
+	for _, path := range []string{img1Path, img2Path, img3Path} {
+		if err := os.WriteFile(path, jpegData, 0644); err != nil {
+			t.Fatalf("failed to create test image %s: %v", path, err)
+		}
+	}
+
+	tests := []struct {
+		name           string
+		input          string
+		expectedPrompt string
+		expectedImages int
+	}{
+		{
+			name:           "single image at end",
+			input:          fmt.Sprintf("Describe this image %s", img1Path),
+			expectedPrompt: "Describe this image",
+			expectedImages: 1,
+		},
+		{
+			name:           "single image at beginning",
+			input:          fmt.Sprintf("%s What do you see?", img1Path),
+			expectedPrompt: "What do you see?",
+			expectedImages: 1,
+		},
+		{
+			name:           "single image in middle",
+			input:          fmt.Sprintf("Look at %s and describe it", img1Path),
+			expectedPrompt: "Look at  and describe it",
+			expectedImages: 1,
+		},
+		{
+			name:           "multiple images",
+			input:          fmt.Sprintf("Compare %s and %s", img1Path, img2Path),
+			expectedPrompt: "Compare  and",
+			expectedImages: 2,
+		},
+		{
+			name:           "three images with text",
+			input:          fmt.Sprintf("Analyze %s, %s, and %s carefully", img1Path, img2Path, img3Path),
+			expectedPrompt: "Analyze , , and  carefully",
+			expectedImages: 3,
+		},
+		{
+			name:           "image with quotes",
+			input:          fmt.Sprintf("What's in '%s'?", img1Path),
+			expectedPrompt: "What's in ?",
+			expectedImages: 1,
+		},
+		{
+			name:           "only image path",
+			input:          img1Path,
+			expectedPrompt: "",
+			expectedImages: 1,
+		},
+		{
+			name:           "image at start and end",
+			input:          fmt.Sprintf("%s Compare these %s", img1Path, img2Path),
+			expectedPrompt: "Compare these",
+			expectedImages: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanedPrompt, imageURLs, err := processImagesInPrompt(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if cleanedPrompt != tt.expectedPrompt {
+				t.Errorf("expected cleaned prompt %q, got %q", tt.expectedPrompt, cleanedPrompt)
+			}
+
+			if len(imageURLs) != tt.expectedImages {
+				t.Errorf("expected %d images, got %d", tt.expectedImages, len(imageURLs))
+			}
+
+			// Verify all image URLs are valid data URLs
+			for i, url := range imageURLs {
+				if !strings.HasPrefix(url, "data:image/") {
+					t.Errorf("image URL %d doesn't start with 'data:image/', got: %s", i, url[:30])
+				}
+			}
+		})
+	}
+}
