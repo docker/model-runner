@@ -16,8 +16,20 @@ type Layer struct {
 }
 
 type OpenAIChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // Can be string or []ContentPart for multimodal
+}
+
+// ContentPart represents a part of multimodal content (text or image)
+type ContentPart struct {
+	Type     string    `json:"type"` // "text" or "image_url"
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+// ImageURL represents an image in a message
+type ImageURL struct {
+	URL string `json:"url"` // data:image/jpeg;base64,...
 }
 
 type OpenAIChatRequest struct {

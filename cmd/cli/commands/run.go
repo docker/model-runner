@@ -208,7 +208,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 			// Create a cancellable context for the chat request
 			// This allows us to cancel the request if the user presses Ctrl+C during response generation
 			chatCtx, cancelChat := context.WithCancel(cmd.Context())
-			
+
 			// Set up signal handler to cancel the context on Ctrl+C
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT)
@@ -222,7 +222,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 			}()
 
 			err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, backend, model, userInput, apiKey)
-			
+
 			// Clean up signal handler
 			signal.Stop(sigChan)
 			// Do not close sigChan to avoid race condition
@@ -268,7 +268,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 		// Create a cancellable context for the chat request
 		// This allows us to cancel the request if the user presses Ctrl+C during response generation
 		chatCtx, cancelChat := context.WithCancel(cmd.Context())
-		
+
 		// Set up signal handler to cancel the context on Ctrl+C
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT)
@@ -283,7 +283,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 		}()
 
 		err = chatWithMarkdownContext(chatCtx, cmd, desktopClient, backend, model, userInput, apiKey)
-		
+
 		cancelChat()
 		signal.Stop(sigChan)
 		cancelChat()
@@ -494,9 +494,17 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 	useMarkdown := shouldUseMarkdown(colorMode)
 	debug, _ := cmd.Flags().GetBool("debug")
 
+	var imageURLs []string
+	cleanedPrompt, imgs, err := processImagesInPrompt(prompt)
+	if err != nil {
+		return fmt.Errorf("failed to process images: %w", err)
+	}
+	prompt = cleanedPrompt
+	imageURLs = imgs
+
 	if !useMarkdown {
 		// Simple case: just stream as plain text
-		return client.ChatWithContext(ctx, backend, model, prompt, apiKey, func(content string) {
+		return client.ChatWithContext(ctx, backend, model, prompt, apiKey, imageURLs, func(content string) {
 			cmd.Print(content)
 		}, false)
 	}
@@ -504,7 +512,7 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 	// For markdown: use streaming buffer to render code blocks as they complete
 	markdownBuffer := NewStreamingMarkdownBuffer()
 
-	err := client.ChatWithContext(ctx, backend, model, prompt, apiKey, func(content string) {
+	err = client.ChatWithContext(ctx, backend, model, prompt, apiKey, imageURLs, func(content string) {
 		// Use the streaming markdown buffer to intelligently render content
 		rendered, err := markdownBuffer.AddContent(content, true)
 		if err != nil {
@@ -616,7 +624,7 @@ func newRunCmd() *cobra.Command {
 			// Handle --detach flag: just load the model without interaction
 			if detach {
 				// Make a minimal request to load the model into memory
-				err := desktopClient.Chat(backend, model, "", apiKey, func(content string) {
+				err := desktopClient.Chat(backend, model, "", apiKey, nil, func(content string) {
 					// Silently discard output in detach mode
 				}, false)
 				if err != nil {

@@ -357,12 +357,12 @@ func (c *Client) fullModelID(id string) (string, error) {
 }
 
 // Chat performs a chat request and streams the response content with selective markdown rendering.
-func (c *Client) Chat(backend, model, prompt, apiKey string, outputFunc func(string), shouldUseMarkdown bool) error {
-	return c.ChatWithContext(context.Background(), backend, model, prompt, apiKey, outputFunc, shouldUseMarkdown)
+func (c *Client) Chat(backend, model, prompt, apiKey string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
+	return c.ChatWithContext(context.Background(), backend, model, prompt, apiKey, imageURLs, outputFunc, shouldUseMarkdown)
 }
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
-func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, apiKey string, outputFunc func(string), shouldUseMarkdown bool) error {
+func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, apiKey string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
 	model = dmrm.NormalizeModelName(model)
 	if !strings.Contains(strings.Trim(model, "/"), "/") {
 		// Do an extra API call to check if the model parameter isn't a model ID.
@@ -371,12 +371,42 @@ func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, ap
 		}
 	}
 
+	// Build the message content - either simple string or multimodal array
+	var messageContent interface{}
+	if len(imageURLs) > 0 {
+		// Multimodal message with images
+		contentParts := make([]ContentPart, 0, len(imageURLs)+1)
+
+		// Add all images first
+		for _, imageURL := range imageURLs {
+			contentParts = append(contentParts, ContentPart{
+				Type: "image_url",
+				ImageURL: &ImageURL{
+					URL: imageURL,
+				},
+			})
+		}
+
+		// Add text prompt if present
+		if prompt != "" {
+			contentParts = append(contentParts, ContentPart{
+				Type: "text",
+				Text: prompt,
+			})
+		}
+
+		messageContent = contentParts
+	} else {
+		// Simple text-only message
+		messageContent = prompt
+	}
+
 	reqBody := OpenAIChatRequest{
 		Model: model,
 		Messages: []OpenAIChatMessage{
 			{
 				Role:    "user",
-				Content: prompt,
+				Content: messageContent,
 			},
 		},
 		Stream: true,
