@@ -167,6 +167,94 @@ type packageOptions struct {
 	tag              string
 }
 
+// builderInitResult contains the result of initializing a builder from various sources
+type builderInitResult struct {
+	builder     *builder.Builder
+	distClient  *distribution.Client // Only set when building from existing model
+	cleanupFunc func()               // Optional cleanup function for temporary files
+}
+
+// initializeBuilder creates a package builder from GGUF, Safetensors, or existing model
+func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitResult, error) {
+	result := &builderInitResult{}
+
+	if opts.fromModel != "" {
+		// Get the model store path
+		userHomeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("get user home directory: %w", err)
+		}
+		modelStorePath := filepath.Join(userHomeDir, ".docker", "models")
+		if envPath := os.Getenv("MODELS_PATH"); envPath != "" {
+			modelStorePath = envPath
+		}
+
+		// Create a distribution client to access the model store
+		distClient, err := distribution.NewClient(distribution.WithStoreRootPath(modelStorePath))
+		if err != nil {
+			return nil, fmt.Errorf("create distribution client: %w", err)
+		}
+		result.distClient = distClient
+
+		// Package from existing model
+		cmd.PrintErrf("Reading model from store: %q\n", opts.fromModel)
+
+		// Get the model from the local store
+		mdl, err := distClient.GetModel(opts.fromModel)
+		if err != nil {
+			return nil, fmt.Errorf("get model from store: %w", err)
+		}
+
+		// Type assert to ModelArtifact - the Model from store implements both interfaces
+		modelArtifact, ok := mdl.(types.ModelArtifact)
+		if !ok {
+			return nil, fmt.Errorf("model does not implement ModelArtifact interface")
+		}
+
+		cmd.PrintErrf("Creating builder from existing model\n")
+		result.builder = builder.FromModel(modelArtifact)
+	} else if opts.ggufPath != "" {
+		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
+		pkg, err := builder.FromGGUF(opts.ggufPath)
+		if err != nil {
+			return nil, fmt.Errorf("add gguf file: %w", err)
+		}
+		result.builder = pkg
+	} else {
+		// Safetensors model from directory
+		cmd.PrintErrf("Scanning directory %q for safetensors model...\n", opts.safetensorsDir)
+		safetensorsPaths, tempConfigArchive, err := packaging.PackageFromDirectory(opts.safetensorsDir)
+		if err != nil {
+			return nil, fmt.Errorf("scan safetensors directory: %w", err)
+		}
+
+		// Set up cleanup for temp config archive
+		if tempConfigArchive != "" {
+			result.cleanupFunc = func() {
+				os.Remove(tempConfigArchive)
+			}
+		}
+
+		cmd.PrintErrf("Found %d safetensors file(s)\n", len(safetensorsPaths))
+		pkg, err := builder.FromSafetensors(safetensorsPaths)
+		if err != nil {
+			return nil, fmt.Errorf("create safetensors model: %w", err)
+		}
+
+		// Add config archive if it was created
+		if tempConfigArchive != "" {
+			cmd.PrintErrf("Adding config archive from directory\n")
+			pkg, err = pkg.WithConfigArchive(tempConfigArchive)
+			if err != nil {
+				return nil, fmt.Errorf("add config archive: %w", err)
+			}
+		}
+		result.builder = pkg
+	}
+
+	return result, nil
+}
+
 func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	var (
 		target builder.Target
@@ -183,76 +271,18 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		return err
 	}
 
-	// Get the model store path
-	userHomeDir, err := os.UserHomeDir()
+	// Initialize the package builder based on model format
+	initResult, err := initializeBuilder(cmd, opts)
 	if err != nil {
-		return fmt.Errorf("get user home directory: %w", err)
+		return err
 	}
-	modelStorePath := filepath.Join(userHomeDir, ".docker", "models")
-	if envPath := os.Getenv("MODELS_PATH"); envPath != "" {
-		modelStorePath = envPath
-	}
-
-	// Create a distribution client to access the model store
-	distClient, err := distribution.NewClient(distribution.WithStoreRootPath(modelStorePath))
-	if err != nil {
-		return fmt.Errorf("create distribution client: %w", err)
+	// Clean up any temporary files when done
+	if initResult.cleanupFunc != nil {
+		defer initResult.cleanupFunc()
 	}
 
-	// Create package builder based on model format
-	var pkg *builder.Builder
-	if opts.fromModel != "" {
-		// Package from existing model
-		cmd.PrintErrf("Reading model from store: %q\n", opts.fromModel)
-
-		// Get the model from the local store
-		mdl, err := distClient.GetModel(opts.fromModel)
-		if err != nil {
-			return fmt.Errorf("get model from store: %w", err)
-		}
-
-		// Type assert to ModelArtifact - the Model from store implements both interfaces
-		modelArtifact, ok := mdl.(types.ModelArtifact)
-		if !ok {
-			return fmt.Errorf("model does not implement ModelArtifact interface")
-		}
-
-		cmd.PrintErrf("Creating builder from existing model\n")
-		pkg = builder.FromModel(modelArtifact)
-	} else if opts.ggufPath != "" {
-		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
-		pkg, err = builder.FromGGUF(opts.ggufPath)
-		if err != nil {
-			return fmt.Errorf("add gguf file: %w", err)
-		}
-	} else {
-		// Safetensors model from directory
-		cmd.PrintErrf("Scanning directory %q for safetensors model...\n", opts.safetensorsDir)
-		safetensorsPaths, tempConfigArchive, err := packaging.PackageFromDirectory(opts.safetensorsDir)
-		if err != nil {
-			return fmt.Errorf("scan safetensors directory: %w", err)
-		}
-
-		// Clean up temp config archive when done
-		if tempConfigArchive != "" {
-			defer os.Remove(tempConfigArchive)
-		}
-
-		cmd.PrintErrf("Found %d safetensors file(s)\n", len(safetensorsPaths))
-		pkg, err = builder.FromSafetensors(safetensorsPaths)
-		if err != nil {
-			return fmt.Errorf("create safetensors model: %w", err)
-		}
-
-		// Add config archive if it was created
-		if tempConfigArchive != "" {
-			cmd.PrintErrf("Adding config archive from directory\n")
-			pkg, err = pkg.WithConfigArchive(tempConfigArchive)
-			if err != nil {
-				return fmt.Errorf("add config archive: %w", err)
-			}
-		}
-	}
+	pkg := initResult.builder
+	distClient := initResult.distClient
 
 	// Set context size
 	if opts.contextSize > 0 {
