@@ -38,7 +38,7 @@ func TestCorsMiddleware(t *testing.T) {
 			allowedOrigins: []string{"http://foo.com"},
 			method:         "GET",
 			origin:         "http://bar.com",
-			wantStatus:     http.StatusOK,
+			wantStatus:     http.StatusForbidden,
 			wantHeaders:    map[string]string{"Access-Control-Allow-Origin": ""},
 		},
 		{
@@ -74,7 +74,7 @@ func TestCorsMiddleware(t *testing.T) {
 			allowedOrigins: nil,
 			method:         "GET",
 			origin:         "http://foo.com",
-			wantStatus:     http.StatusOK,
+			wantStatus:     http.StatusForbidden,
 			wantHeaders:    map[string]string{"Access-Control-Allow-Origin": ""},
 		},
 	}
