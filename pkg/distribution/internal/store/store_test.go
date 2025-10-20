@@ -600,3 +600,357 @@ func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
 	mdl = mutate.AppendLayers(mdl, licenseLayer, mmprojLayer)
 	return mdl
 }
+
+// TestWriteLightweight tests the WriteLightweight method
+func TestWriteLightweight(t *testing.T) {
+	// Create a temporary directory for the test store
+	tempDir, err := os.MkdirTemp("", "lightweight-write-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create store
+	storePath := filepath.Join(tempDir, "lightweight-model-store")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	t.Run("SuccessfulLightweightWrite", func(t *testing.T) {
+		// Create and write a model normally to populate the store with blobs
+		baseModel := newTestModel(t)
+		if err := s.Write(baseModel, []string{"base-model:v1"}, nil); err != nil {
+			t.Fatalf("Write base model failed: %v", err)
+		}
+
+		// Get original digest
+		originalDigest, err := baseModel.Digest()
+		if err != nil {
+			t.Fatalf("Failed to get original digest: %v", err)
+		}
+
+		// Modify the model's config by changing context size
+		newContextSize := uint64(4096)
+		modifiedModel := mutate.ContextSize(baseModel, newContextSize)
+
+		// Use WriteLightweight to write the modified model
+		if err := s.WriteLightweight(modifiedModel, []string{"base-model:v2"}); err != nil {
+			t.Fatalf("WriteLightweight failed: %v", err)
+		}
+
+		// Verify the new model can be read
+		readModel, err := s.Read("base-model:v2")
+		if err != nil {
+			t.Fatalf("Read modified model failed: %v", err)
+		}
+
+		// Verify the new model has a different digest
+		newDigest, err := readModel.Digest()
+		if err != nil {
+			t.Fatalf("Failed to get new digest: %v", err)
+		}
+
+		if originalDigest.String() == newDigest.String() {
+			t.Error("Expected different digest for modified model")
+		}
+
+		// Verify both models exist in the index
+		models, err := s.List()
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+
+		if len(models) != 2 {
+			t.Fatalf("Expected 2 models in index, got %d", len(models))
+		}
+
+		// Verify both models reference the same layer blobs
+		var baseModelFiles []string
+		var modifiedModelFiles []string
+		for _, m := range models {
+			if containsTag(m.Tags, "base-model:v1") {
+				baseModelFiles = m.Files
+			}
+			if containsTag(m.Tags, "base-model:v2") {
+				modifiedModelFiles = m.Files
+			}
+		}
+
+		if len(baseModelFiles) == 0 || len(modifiedModelFiles) == 0 {
+			t.Fatal("Failed to find both models in index")
+		}
+
+		// The first file should be the same (gguf blob), but config should differ
+		if baseModelFiles[0] != modifiedModelFiles[0] {
+			t.Error("Expected models to share the same layer blobs")
+		}
+
+		// The license blob should also be shared
+		if len(baseModelFiles) >= 2 && len(modifiedModelFiles) >= 2 {
+			if baseModelFiles[1] != modifiedModelFiles[1] {
+				t.Error("Expected models to share the same license blob")
+			}
+		}
+	})
+
+	t.Run("FailureWhenLayerMissing", func(t *testing.T) {
+		// Create a separate store to ensure no blobs from previous tests exist
+		freshStorePath := filepath.Join(tempDir, "fresh-model-store")
+		freshStore, err := store.New(store.Options{
+			RootPath: freshStorePath,
+		})
+		if err != nil {
+			t.Fatalf("Failed to create fresh store: %v", err)
+		}
+
+		// Create a new model without writing its blobs first
+		freshModel := newTestModel(t)
+
+		// Attempt to use WriteLightweight without the blobs existing
+		err = freshStore.WriteLightweight(freshModel, []string{"missing-blobs:latest"})
+		if err == nil {
+			t.Fatal("Expected error when layer blobs are missing, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "not found in store") {
+			t.Errorf("Expected error about missing layer, got: %v", err)
+		}
+	})
+
+	t.Run("MultipleTags", func(t *testing.T) {
+		// Create and write a model normally
+		baseModel := newTestModel(t)
+		if err := s.Write(baseModel, []string{"multi-tag:base"}, nil); err != nil {
+			t.Fatalf("Write base model failed: %v", err)
+		}
+
+		// Create a variant with different config
+		newContextSize := uint64(8192)
+		variant := mutate.ContextSize(baseModel, newContextSize)
+
+		// Use WriteLightweight with multiple tags
+		if err := s.WriteLightweight(variant, []string{"multi-tag:variant1", "multi-tag:variant2"}); err != nil {
+			t.Fatalf("WriteLightweight with multiple tags failed: %v", err)
+		}
+
+		// Verify both tags point to the same model
+		model1, err := s.Read("multi-tag:variant1")
+		if err != nil {
+			t.Fatalf("Read variant1 failed: %v", err)
+		}
+
+		model2, err := s.Read("multi-tag:variant2")
+		if err != nil {
+			t.Fatalf("Read variant2 failed: %v", err)
+		}
+
+		digest1, err := model1.Digest()
+		if err != nil {
+			t.Fatalf("Failed to get digest1: %v", err)
+		}
+
+		digest2, err := model2.Digest()
+		if err != nil {
+			t.Fatalf("Failed to get digest2: %v", err)
+		}
+
+		if digest1.String() != digest2.String() {
+			t.Error("Expected both tags to point to the same model")
+		}
+
+		// Verify they share the same blobs as the base model
+		baseModelRead, err := s.Read("multi-tag:base")
+		if err != nil {
+			t.Fatalf("Read base model failed: %v", err)
+		}
+
+		baseLayers, err := baseModelRead.Layers()
+		if err != nil {
+			t.Fatalf("Failed to get base layers: %v", err)
+		}
+
+		variantLayers, err := model1.Layers()
+		if err != nil {
+			t.Fatalf("Failed to get variant layers: %v", err)
+		}
+
+		// Verify they have the same number of layers
+		if len(baseLayers) != len(variantLayers) {
+			t.Fatalf("Expected same number of layers, got base=%d variant=%d", len(baseLayers), len(variantLayers))
+		}
+
+		// Verify layer digests match (same blobs)
+		for i := range baseLayers {
+			baseDigest, err := baseLayers[i].Digest()
+			if err != nil {
+				t.Fatalf("Failed to get base layer digest: %v", err)
+			}
+			variantDigest, err := variantLayers[i].Digest()
+			if err != nil {
+				t.Fatalf("Failed to get variant layer digest: %v", err)
+			}
+			if baseDigest.String() != variantDigest.String() {
+				t.Errorf("Layer %d digest mismatch", i)
+			}
+		}
+	})
+
+	t.Run("WithMultimodalProjector", func(t *testing.T) {
+		// Create and write a model with multimodal projector
+		baseModel := newTestModelWithMultimodalProjector(t)
+		if err := s.Write(baseModel, []string{"mmproj-model:base"}, nil); err != nil {
+			t.Fatalf("Write base model with mmproj failed: %v", err)
+		}
+
+		// Create a variant with different context size
+		newContextSize := uint64(2048)
+		variant := mutate.ContextSize(baseModel, newContextSize)
+
+		// Use WriteLightweight for the variant
+		if err := s.WriteLightweight(variant, []string{"mmproj-model:variant"}); err != nil {
+			t.Fatalf("WriteLightweight with mmproj failed: %v", err)
+		}
+
+		// Read the variant back
+		readVariant, err := s.Read("mmproj-model:variant")
+		if err != nil {
+			t.Fatalf("Read variant failed: %v", err)
+		}
+
+		// Verify multimodal projector path exists
+		mmprojPath, err := readVariant.MMPROJPath()
+		if err != nil {
+			t.Fatalf("Failed to get mmproj path: %v", err)
+		}
+
+		if mmprojPath == "" {
+			t.Error("Expected non-empty multimodal projector path")
+		}
+
+		// Verify the manifest has all layer types
+		manifest, err := readVariant.Manifest()
+		if err != nil {
+			t.Fatalf("Failed to get manifest: %v", err)
+		}
+
+		// Should have 3 layers: GGUF + license + multimodal projector
+		if len(manifest.Layers) != 3 {
+			t.Fatalf("Expected 3 layers, got %d", len(manifest.Layers))
+		}
+
+		// Verify multimodal projector layer exists
+		foundMMProj := false
+		for _, layer := range manifest.Layers {
+			if layer.MediaType == types.MediaTypeMultimodalProjector {
+				foundMMProj = true
+				break
+			}
+		}
+
+		if !foundMMProj {
+			t.Error("Expected to find multimodal projector layer")
+		}
+	})
+
+	t.Run("IndexIntegrity", func(t *testing.T) {
+		// Create and write a base model
+		baseModel := newTestModel(t)
+		if err := s.Write(baseModel, []string{"integrity-test:base"}, nil); err != nil {
+			t.Fatalf("Write base model failed: %v", err)
+		}
+
+		// Create multiple variants using WriteLightweight
+		for i := 1; i <= 3; i++ {
+			contextSize := uint64(1024 * i)
+			variant := mutate.ContextSize(baseModel, contextSize)
+			tag := fmt.Sprintf("integrity-test:variant%d", i)
+			if err := s.WriteLightweight(variant, []string{tag}); err != nil {
+				t.Fatalf("WriteLightweight variant%d failed: %v", i, err)
+			}
+		}
+
+		// Verify the index has all models
+		models, err := s.List()
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+
+		// Should have base + 3 variants + any models from previous tests
+		integrityTestCount := 0
+		for _, m := range models {
+			for _, tag := range m.Tags {
+				if strings.HasPrefix(tag, "integrity-test:") {
+					integrityTestCount++
+					break
+				}
+			}
+		}
+
+		if integrityTestCount != 4 {
+			t.Fatalf("Expected 4 integrity-test models, got %d", integrityTestCount)
+		}
+
+		// Verify blob reference counts by checking that the GGUF blob
+		// is listed in all 4 models' Files
+		var ggufBlobHash string
+		blobRefCount := 0
+
+		for _, m := range models {
+			hasIntegrityTag := false
+			for _, tag := range m.Tags {
+				if strings.HasPrefix(tag, "integrity-test:") {
+					hasIntegrityTag = true
+					break
+				}
+			}
+
+			if hasIntegrityTag {
+				if len(m.Files) > 0 {
+					if ggufBlobHash == "" {
+						ggufBlobHash = m.Files[0]
+					}
+					if m.Files[0] == ggufBlobHash {
+						blobRefCount++
+					}
+				}
+			}
+		}
+
+		if blobRefCount != 4 {
+			t.Errorf("Expected GGUF blob to be referenced by 4 models, got %d", blobRefCount)
+		}
+
+		// Verify the blob file exists only once on disk
+		if ggufBlobHash != "" {
+			// Remove the "sha256:" prefix if present
+			hashStr := strings.TrimPrefix(ggufBlobHash, "sha256:")
+			blobPath := filepath.Join(storePath, "blobs", "sha256", hashStr)
+
+			if _, err := os.Stat(blobPath); os.IsNotExist(err) {
+				t.Errorf("Shared blob file doesn't exist: %s", blobPath)
+			}
+
+			// Verify there's only one copy by checking file count in blobs directory
+			blobsDir := filepath.Join(storePath, "blobs", "sha256")
+			entries, err := os.ReadDir(blobsDir)
+			if err != nil {
+				t.Fatalf("Failed to read blobs directory: %v", err)
+			}
+
+			// Count non-config blobs (config blobs will be different for each variant)
+			ggufCount := 0
+			for _, entry := range entries {
+				if !entry.IsDir() && entry.Name() == hashStr {
+					ggufCount++
+				}
+			}
+
+			if ggufCount != 1 {
+				t.Errorf("Expected exactly 1 GGUF blob file, found %d", ggufCount)
+			}
+		}
+	})
+}
