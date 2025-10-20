@@ -799,6 +799,56 @@ func (c *Client) handleQueryError(err error, path string) error {
 	return fmt.Errorf("error querying %s: %w", path, err)
 }
 
+// WarmupModel loads a model into memory without performing inference.
+// This is useful for warming up models in detached mode.
+func (c *Client) WarmupModel(ctx context.Context, backend, model string) error {
+	model = dmrm.NormalizeModelName(model)
+	if !strings.Contains(strings.Trim(model, "/"), "/") {
+		// Do an extra API call to check if the model parameter isn't a model ID.
+		if expanded, err := c.fullModelID(model); err == nil {
+			model = expanded
+		}
+	}
+
+	reqBody := struct {
+		Model string `json:"model"`
+	}{
+		Model: model,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	var loadPath string
+	if backend != "" {
+		loadPath = inference.InferencePrefix + "/" + backend + "/load"
+	} else {
+		loadPath = inference.InferencePrefix + "/load"
+	}
+
+	resp, err := c.doRequestWithAuthContext(
+		ctx,
+		http.MethodPost,
+		loadPath,
+		bytes.NewReader(jsonData),
+		backend,
+		"", // no API key needed for local load
+	)
+	if err != nil {
+		return c.handleQueryError(err, loadPath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("load failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	return nil
+}
+
 func (c *Client) Tag(source, targetRepo, targetTag string) error {
 	source = dmrm.NormalizeModelName(source)
 	// Check if the source is a model ID, and expand it if necessary

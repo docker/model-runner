@@ -125,6 +125,8 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
 	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = s.Configure
 	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
+	m["POST "+inference.InferencePrefix+"/{backend}/load"] = s.Load
+	m["POST "+inference.InferencePrefix+"/load"] = s.Load
 	m["GET "+inference.InferencePrefix+"/requests"] = s.openAIRecorder.GetRecordsHandler()
 	return m
 }
@@ -429,6 +431,89 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// Load handles loading a model into memory without performing inference.
+// This is useful for warming up models in detached mode.
+func (s *Scheduler) Load(w http.ResponseWriter, r *http.Request) {
+	// Determine the requested backend and ensure that it's valid.
+	var backend inference.Backend
+	if b := r.PathValue("backend"); b == "" {
+		backend = s.defaultBackend
+	} else {
+		backend = s.backends[b]
+	}
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var loadRequest LoadRequest
+	if err := json.Unmarshal(body, &loadRequest); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if loadRequest.Model == "" {
+		http.Error(w, "model name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Wait for the backend installation to complete
+	if err := s.installer.wait(r.Context(), backend.Name()); err != nil {
+		if errors.Is(err, ErrBackendNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if errors.Is(err, errInstallerNotStarted) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		} else if errors.Is(err, context.Canceled) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		} else {
+			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
+		}
+		return
+	}
+
+	// Resolve the model ID
+	modelID := s.modelManager.ResolveModelID(loadRequest.Model)
+
+	// Load the model using the loader (default to completion mode)
+	mode := inference.BackendModeCompletion
+	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, loadRequest.Model, mode)
+	if err != nil {
+		s.log.Warnf("Failed to load model %s (%s): %v", loadRequest.Model, modelID, err)
+		if errors.Is(err, errModelTooBig) {
+			http.Error(w, "model too big for available memory", http.StatusInsufficientStorage)
+		} else if errors.Is(err, context.Canceled) {
+			http.Error(w, "request canceled", http.StatusRequestTimeout)
+		} else {
+			http.Error(w, fmt.Sprintf("failed to load model: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Release the runner immediately since we're just loading it, not using it
+	defer s.loader.release(runner)
+
+	// Return success response
+	response := LoadResponse{
+		Status:  "loaded",
+		Message: fmt.Sprintf("Model %s loaded successfully", loadRequest.Model),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		s.log.Warnf("Failed to encode load response: %v", err)
+	}
 }
 
 // GetAllActiveRunners returns information about all active runners

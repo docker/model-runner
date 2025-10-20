@@ -13,7 +13,7 @@ import (
 type systemMemoryInfo struct{}
 
 func (i systemMemoryInfo) HaveSufficientMemory(req inference.RequiredMemory) (bool, error) {
-    return true, nil
+	return true, nil
 }
 
 func (i systemMemoryInfo) GetTotalMemory() inference.RequiredMemory {
