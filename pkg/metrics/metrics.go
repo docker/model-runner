@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -39,8 +40,11 @@ func NewTracker(httpClient *http.Client, log logging.Logger, userAgent string, d
 		client.Transport = http.DefaultTransport
 	}
 
+	userAgent = strings.TrimSpace(userAgent)
 	if userAgent == "" {
 		userAgent = "docker-model-runner"
+	} else {
+		userAgent = userAgent + " docker-model-runner"
 	}
 
 	if os.Getenv("DEBUG") == "1" {
@@ -59,24 +63,28 @@ func NewTracker(httpClient *http.Client, log logging.Logger, userAgent string, d
 	}
 }
 
-func (t *Tracker) TrackModel(model types.Model, userAgent string) {
+func (t *Tracker) TrackModel(model types.Model, userAgent, action string) {
 	if t.doNotTrack {
 		return
 	}
 
-	go t.trackModel(model, userAgent)
+	go t.trackModel(model, userAgent, action)
 }
 
-func (t *Tracker) trackModel(model types.Model, userAgent string) {
+func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	tags := model.Tags()
 	t.log.Debugln("Tracking model:", tags)
 	if len(tags) == 0 {
 		return
 	}
-	ua := t.userAgent
+	parts := []string{t.userAgent}
 	if userAgent != "" {
-		ua += " " + userAgent
+		parts = append(parts, userAgent)
 	}
+	if action != "" {
+		parts = append(parts, action)
+	}
+	ua := strings.Join(parts, " ")
 	for _, tag := range tags {
 		ref, err := name.ParseReference(tag)
 		if err != nil {

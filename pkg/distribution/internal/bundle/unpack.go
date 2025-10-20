@@ -60,6 +60,11 @@ func Unpack(dir string, model types.Model) (*Bundle, error) {
 		}
 	}
 
+	// Unpack directory tar archives (can be multiple)
+	if err := unpackDirTarArchives(bundle, model); err != nil {
+		return nil, fmt.Errorf("unpack directory tar archives: %w", err)
+	}
+
 	// Always create the runtime config
 	if err := unpackRuntimeConfig(bundle, model); err != nil {
 		return nil, fmt.Errorf("add config.json to runtime bundle: %w", err)
@@ -230,6 +235,52 @@ func unpackConfigArchive(bundle *Bundle, mdl types.Model) error {
 	return nil
 }
 
+func unpackDirTarArchives(bundle *Bundle, mdl types.Model) error {
+	// Cast to ModelArtifact to access Layers() method
+	artifact, ok := mdl.(types.ModelArtifact)
+	if !ok {
+		// If it's not a ModelArtifact, there are no layers to extract
+		return nil
+	}
+
+	// Get all layers from the model
+	layers, err := artifact.Layers()
+	if err != nil {
+		return fmt.Errorf("get model layers: %w", err)
+	}
+
+	modelDir := filepath.Join(bundle.dir, ModelSubdir)
+
+	// Iterate through layers and extract directory tar archives
+	for _, layer := range layers {
+		mediaType, err := layer.MediaType()
+		if err != nil {
+			fmt.Printf("Warning: failed to get media type for layer: %v", err)
+			continue
+		}
+
+		// Check if this is a directory tar layer
+		if mediaType != types.MediaTypeDirTar {
+			continue
+		}
+
+		// Get the layer as an uncompressed stream (decompression handled automatically)
+		uncompressed, err := layer.Uncompressed()
+		if err != nil {
+			return fmt.Errorf("get uncompressed layer: %w", err)
+		}
+
+		// Stream directly to tar extraction - no temp file needed
+		if err := extractTarArchiveFromReader(uncompressed, modelDir); err != nil {
+			uncompressed.Close()
+			return fmt.Errorf("extract directory tar archive: %w", err)
+		}
+		uncompressed.Close()
+	}
+
+	return nil
+}
+
 // validatePathWithinDirectory checks if targetPath is within baseDir to prevent directory traversal attacks.
 // It uses filepath.IsLocal() to provide robust security against
 // various directory traversal attempts including edge cases like empty paths, ".", "..", symbolic links, etc.
@@ -264,14 +315,7 @@ func validatePathWithinDirectory(baseDir, targetPath string) error {
 	return nil
 }
 
-func extractTarArchive(archivePath, destDir string) error {
-	// Open the tar file
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("open tar archive: %w", err)
-	}
-	defer file.Close()
-
+func extractTarArchiveFromReader(r io.Reader, destDir string) error {
 	// Get absolute path of destination directory for security checks
 	absDestDir, err := filepath.Abs(destDir)
 	if err != nil {
@@ -279,7 +323,7 @@ func extractTarArchive(archivePath, destDir string) error {
 	}
 
 	// Create tar reader
-	tr := tar.NewReader(file)
+	tr := tar.NewReader(r)
 
 	// Extract files
 	for {
@@ -326,6 +370,18 @@ func extractTarArchive(archivePath, destDir string) error {
 	}
 
 	return nil
+}
+
+func extractTarArchive(archivePath, destDir string) error {
+	// Open the tar file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open tar archive: %w", err)
+	}
+	defer file.Close()
+
+	// Delegate to the streaming version
+	return extractTarArchiveFromReader(file, destDir)
 }
 
 // extractFile extracts a single file from the tar reader

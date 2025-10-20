@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -89,12 +88,20 @@ func listModels(openai bool, backend string, desktopClient *desktop.Client, quie
 	}
 
 	if modelFilter != "" {
+		// Normalize the filter to match stored model names
+		normalizedFilter := dmrm.NormalizeModelName(modelFilter)
 		var filteredModels []dmrm.Model
 		for _, m := range models {
 			hasMatchingTag := false
 			for _, tag := range m.Tags {
+				if tag == normalizedFilter {
+					hasMatchingTag = true
+					break
+				}
+				// Also check without the tag part
 				modelName, _, _ := strings.Cut(tag, ":")
-				if slices.Contains([]string{modelName, tag + ":latest", tag}, modelFilter) {
+				filterName, _, _ := strings.Cut(normalizedFilter, ":")
+				if modelName == filterName {
 					hasMatchingTag = true
 					break
 				}
@@ -165,8 +172,10 @@ func appendRow(table *tablewriter.Table, tag string, model dmrm.Model) {
 		fmt.Fprintf(os.Stderr, "invalid model ID for model: %v\n", model)
 		return
 	}
+	// Strip default "ai/" prefix and ":latest" tag for display
+	displayTag := stripDefaultsFromModelName(tag)
 	table.Append([]string{
-		tag,
+		displayTag,
 		model.Config.Parameters,
 		model.Config.Quantization,
 		model.Config.Architecture,

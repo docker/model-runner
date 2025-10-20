@@ -15,6 +15,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/readline"
+	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -561,7 +562,8 @@ func newRunCmd() *cobra.Command {
 				return err
 			}
 
-			model := args[0]
+			// Normalize model name to add default org and tag if missing
+			model := models.NormalizeModelName(args[0])
 			prompt := ""
 			argsLen := len(args)
 			if argsLen > 1 {

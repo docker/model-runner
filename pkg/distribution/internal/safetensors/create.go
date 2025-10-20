@@ -72,40 +72,6 @@ func NewModel(paths []string) (*Model, error) {
 	}, nil
 }
 
-// NewModelWithConfigArchive creates a new safetensors model with a config archive
-func NewModelWithConfigArchive(safetensorsPaths []string, configArchivePath string) (*Model, error) {
-	model, err := NewModel(safetensorsPaths)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add config archive layer
-	if configArchivePath != "" {
-		// Check if a config archive layer already exists
-		for _, layer := range model.layers {
-			mediaType, err := layer.MediaType()
-			if err == nil && mediaType == types.MediaTypeVLLMConfigArchive {
-				return nil, fmt.Errorf("model already has a config archive layer")
-			}
-		}
-
-		configLayer, err := partial.NewLayer(configArchivePath, types.MediaTypeVLLMConfigArchive)
-		if err != nil {
-			return nil, fmt.Errorf("create config archive layer from %q: %w", configArchivePath, err)
-		}
-
-		diffID, err := configLayer.DiffID()
-		if err != nil {
-			return nil, fmt.Errorf("get config archive layer diffID: %w", err)
-		}
-
-		model.layers = append(model.layers, configLayer)
-		model.configFile.RootFS.DiffIDs = append(model.configFile.RootFS.DiffIDs, diffID)
-	}
-
-	return model, nil
-}
-
 // discoverSafetensorsShards attempts to auto-discover all shards for a given safetensors file
 // It looks for the pattern: <name>-XXXXX-of-YYYYY.safetensors
 // Returns (nil, nil) for single-file models, (paths, nil) for complete shard sets,

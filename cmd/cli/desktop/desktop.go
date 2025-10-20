@@ -58,14 +58,6 @@ type Status struct {
 	Error   error  `json:"error"`
 }
 
-// normalizeHuggingFaceModelName converts Hugging Face model names to lowercase
-func normalizeHuggingFaceModelName(model string) string {
-	if strings.HasPrefix(model, "hf.co/") {
-		return strings.ToLower(model)
-	}
-	return model
-}
-
 func (c *Client) Status() Status {
 	// TODO: Query "/".
 	resp, err := c.doRequest(http.MethodGet, inference.ModelsPrefix, nil)
@@ -108,7 +100,7 @@ func (c *Client) Status() Status {
 }
 
 func (c *Client) Pull(model string, ignoreRuntimeMemoryCheck bool, progress func(string)) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
+	model = dmrm.NormalizeModelName(model)
 	jsonData, err := json.Marshal(dmrm.ModelCreateRequest{From: model, IgnoreRuntimeMemoryCheck: ignoreRuntimeMemoryCheck})
 	if err != nil {
 		return "", false, fmt.Errorf("error marshaling request: %w", err)
@@ -176,7 +168,7 @@ func (c *Client) Pull(model string, ignoreRuntimeMemoryCheck bool, progress func
 }
 
 func (c *Client) Push(model string, progress func(string)) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
+	model = dmrm.NormalizeModelName(model)
 	pushPath := inference.ModelsPrefix + "/" + model + "/push"
 	resp, err := c.doRequest(
 		http.MethodPost,
@@ -271,7 +263,7 @@ func (c *Client) ListOpenAI(backend, apiKey string) (dmrm.OpenAIModelList, error
 }
 
 func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
-	model = normalizeHuggingFaceModelName(model)
+	model = dmrm.NormalizeModelName(model)
 	if model != "" {
 		if !strings.Contains(strings.Trim(model, "/"), "/") {
 			// Do an extra API call to check if the model parameter isn't a model ID.
@@ -295,7 +287,7 @@ func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
 }
 
 func (c *Client) InspectOpenAI(model string) (dmrm.OpenAIModel, error) {
-	model = normalizeHuggingFaceModelName(model)
+	model = dmrm.NormalizeModelName(model)
 	modelsRoute := inference.InferencePrefix + "/v1/models"
 	if !strings.Contains(strings.Trim(model, "/"), "/") {
 		// Do an extra API call to check if the model parameter isn't a model ID.
@@ -371,7 +363,7 @@ func (c *Client) Chat(backend, model, prompt, apiKey string, outputFunc func(str
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
 func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, apiKey string, outputFunc func(string), shouldUseMarkdown bool) error {
-	model = normalizeHuggingFaceModelName(model)
+	model = dmrm.NormalizeModelName(model)
 	if !strings.Contains(strings.Trim(model, "/"), "/") {
 		// Do an extra API call to check if the model parameter isn't a model ID.
 		if expanded, err := c.fullModelID(model); err == nil {
@@ -521,10 +513,10 @@ func (c *Client) ChatWithContext(ctx context.Context, backend, model, prompt, ap
 	return nil
 }
 
-func (c *Client) Remove(models []string, force bool) (string, error) {
+func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	modelRemoved := ""
-	for _, model := range models {
-		model = normalizeHuggingFaceModelName(model)
+	for _, model := range modelArgs {
+		model = dmrm.NormalizeModelName(model)
 		// Check if not a model ID passed as parameter.
 		if !strings.Contains(model, "/") {
 			if expanded, err := c.fullModelID(model); err == nil {
@@ -808,7 +800,7 @@ func (c *Client) handleQueryError(err error, path string) error {
 }
 
 func (c *Client) Tag(source, targetRepo, targetTag string) error {
-	source = normalizeHuggingFaceModelName(source)
+	source = dmrm.NormalizeModelName(source)
 	// Check if the source is a model ID, and expand it if necessary
 	if !strings.Contains(strings.Trim(source, "/"), "/") {
 		// Do an extra API call to check if the model parameter might be a model ID

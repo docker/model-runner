@@ -124,7 +124,8 @@ func printUsage() {
 	flag.PrintDefaults()
 	fmt.Println("\nCommands:")
 	fmt.Println("  pull <reference>                Pull a model from a registry")
-	fmt.Println("  package <source> <reference>    Package a model file as an OCI artifact and push it to a registry (use --licenses to add license files, --mmproj for multimodal projector)")
+	fmt.Println("  package <source> <reference>    Package a model file as an OCI artifact and push it to a registry")
+	fmt.Println("                                  (use --licenses to add license files, --mmproj for multimodal projector, --dir-tar for directories)")
 	fmt.Println("  push <tag>                      Push a model from the content store to the registry")
 	fmt.Println("  list                            List all models")
 	fmt.Println("  get <reference>                 Get a model by reference")
@@ -135,6 +136,7 @@ func printUsage() {
 	fmt.Println("  model-distribution-tool --store-path ./models pull registry.example.com/models/llama:v1.0")
 	fmt.Println("  model-distribution-tool package ./model.gguf registry.example.com/models/llama:v1.0 --licenses ./license1.txt --licenses ./license2.txt")
 	fmt.Println("  model-distribution-tool package ./model.gguf registry.example.com/models/llama:v1.0 --mmproj ./model.mmproj")
+	fmt.Println("  model-distribution-tool package ./model.gguf registry.example.com/models/llama:v1.0 --dir-tar ./config --dir-tar ./templates")
 	fmt.Println("  model-distribution-tool push registry.example.com/models/llama:v1.0")
 	fmt.Println("  model-distribution-tool list")
 	fmt.Println("  model-distribution-tool rm registry.example.com/models/llama:v1.0")
@@ -164,6 +166,7 @@ func cmdPackage(args []string) int {
 	fs := flag.NewFlagSet("package", flag.ExitOnError)
 	var (
 		licensePaths stringSliceFlag
+		dirTarPaths  stringSliceFlag
 		contextSize  uint64
 		file         string
 		tag          string
@@ -172,6 +175,7 @@ func cmdPackage(args []string) int {
 	)
 
 	fs.Var(&licensePaths, "licenses", "Paths to license files (can be specified multiple times)")
+	fs.Var(&dirTarPaths, "dir-tar", "Relative paths to directories to package as tar (can be specified multiple times)")
 	fs.Uint64Var(&contextSize, "context-size", 0, "Context size in tokens")
 	fs.StringVar(&mmproj, "mmproj", "", "Path to Multimodal Projector file")
 	fs.StringVar(&file, "file", "", "Write archived model to the given file")
@@ -335,6 +339,34 @@ func cmdPackage(args []string) int {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error adding chat template layer for %s: %v\n", chatTemplate, err)
 			return 1
+		}
+	}
+
+	// Process directory tar archives
+	if len(dirTarPaths) > 0 {
+		// Determine base directory for resolving relative paths
+		var baseDir string
+		if isSafetensors {
+			baseDir = source
+		} else {
+			// For GGUF, use the directory containing the GGUF file
+			baseDir = filepath.Dir(source)
+		}
+
+		processor := packaging.NewDirTarProcessor(dirTarPaths, baseDir)
+		tarPaths, cleanup, err := processor.Process()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error processing dir-tar paths: %v\n", err)
+			return 1
+		}
+		defer cleanup()
+
+		for _, tarPath := range tarPaths {
+			b, err = b.WithDirTar(tarPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error adding directory tar: %v\n", err)
+				return 1
+			}
 		}
 	}
 

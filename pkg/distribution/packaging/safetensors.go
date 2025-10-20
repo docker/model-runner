@@ -10,6 +10,9 @@ import (
 	"strings"
 )
 
+// configExtensions defines the file extensions that should be treated as config files
+var configExtensions = []string{".md", ".txt", ".json", ".vocab", ".jinja"}
+
 // PackageFromDirectory scans a directory for safetensors files and config files,
 // creating a temporary tar archive of the config files.
 // It returns the paths to safetensors files, path to temporary config archive (if created),
@@ -32,12 +35,13 @@ func PackageFromDirectory(dirPath string) (safetensorsPaths []string, tempConfig
 		fullPath := filepath.Join(dirPath, name)
 
 		// Collect safetensors files
-		if strings.HasSuffix(strings.ToLower(name), ".safetensors") {
+		lower := strings.ToLower(name)
+		if strings.HasSuffix(lower, ".safetensors") {
 			safetensorsPaths = append(safetensorsPaths, fullPath)
 		}
 
-		// Collect config files: *.json, merges.txt
-		if strings.HasSuffix(strings.ToLower(name), ".json") || strings.EqualFold(name, "merges.txt") {
+		// Collect config files
+		if isConfigFile(name) {
 			configFiles = append(configFiles, fullPath)
 		}
 	}
@@ -143,4 +147,17 @@ func addFileToTar(tw *tar.Writer, filePath string) error {
 	}
 
 	return nil
+}
+
+// isConfigFile checks if a file should be included as a config file based on its name.
+// It checks for extensions listed in configExtensions and the special case of the tokenizer.model file.
+func isConfigFile(name string) bool {
+	lower := strings.ToLower(name)
+	for _, ext := range configExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+
+	return strings.EqualFold(name, "tokenizer.model")
 }

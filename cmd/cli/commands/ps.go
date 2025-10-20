@@ -54,6 +54,9 @@ func psTable(ps []desktop.BackendStatus) string {
 		modelName := status.ModelName
 		if strings.HasPrefix(modelName, "sha256:") {
 			modelName = modelName[7:19]
+		} else {
+			// Strip default "ai/" prefix and ":latest" tag for display
+			modelName = stripDefaultsFromModelName(modelName)
 		}
 		table.Append([]string{
 			modelName,

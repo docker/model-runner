@@ -119,6 +119,18 @@ func newPackagedCmd() *cobra.Command {
 				}
 				opts.licensePaths[i] = filepath.Clean(l)
 			}
+
+			// Validate dir-tar paths are relative (not absolute)
+			for _, dirPath := range opts.dirTarPaths {
+				if filepath.IsAbs(dirPath) {
+					return fmt.Errorf(
+						"dir-tar path must be relative, got absolute path: %s\n\n"+
+							"See 'docker model package --help' for more information",
+						dirPath,
+					)
+				}
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -137,6 +149,7 @@ func newPackagedCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.fromModel, "from", "", "reference to an existing model to repackage")
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
+	c.Flags().StringArrayVar(&opts.dirTarPaths, "dir-tar", nil, "relative path to directory to package as tar (can be specified multiple times)")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
 	return c
@@ -149,6 +162,7 @@ type packageOptions struct {
 	safetensorsDir   string
 	fromModel        string
 	licensePaths     []string
+	dirTarPaths      []string
 	push             bool
 	tag              string
 }
@@ -278,6 +292,32 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 
 		cmd.PrintErrln("Model variant created successfully")
 	} else {
+		// Process directory tar archives
+		if len(opts.dirTarPaths) > 0 {
+			// Determine base directory for resolving relative paths
+			var baseDir string
+			if opts.safetensorsDir != "" {
+				baseDir = opts.safetensorsDir
+			} else {
+				// For GGUF, use the directory containing the GGUF file
+				baseDir = filepath.Dir(opts.ggufPath)
+			}
+
+			processor := packaging.NewDirTarProcessor(opts.dirTarPaths, baseDir)
+			tarPaths, cleanup, err := processor.Process()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			for _, tarPath := range tarPaths {
+				pkg, err = pkg.WithDirTar(tarPath)
+				if err != nil {
+					return fmt.Errorf("add directory tar: %w", err)
+				}
+			}
+		}
+
 		if opts.push {
 			cmd.PrintErrln("Pushing model to registry...")
 		} else {
@@ -324,7 +364,6 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 			cmd.PrintErrln("Model loaded successfully")
 		}
 	}
-
 	return nil
 }
 

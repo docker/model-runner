@@ -231,7 +231,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 			return
 		}
 		// Non-blocking call to track the model usage.
-		s.tracker.TrackModel(model, r.UserAgent())
+		s.tracker.TrackModel(model, r.UserAgent(), "inference/"+backendMode.String())
 	}
 
 	modelID := s.modelManager.ResolveModelID(request.Model)
@@ -415,7 +415,7 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	if model, err := s.modelManager.GetModel(configureRequest.Model); err == nil {
 		// Configure is called by compose for each model.
-		s.tracker.TrackModel(model, r.UserAgent())
+		s.tracker.TrackModel(model, r.UserAgent(), "configure/"+mode.String())
 	}
 	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
