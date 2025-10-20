@@ -15,11 +15,6 @@ func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 		allowedOrigins = getAllowedOrigins()
 	}
 
-	// Explicitly disable all origins.
-	if allowedOrigins == nil {
-		return next
-	}
-
 	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
 	allowedSet := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
@@ -29,8 +24,15 @@ func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 
+		allowed := allowAll || originAllowed(origin, allowedSet)
+
+		if origin != "" && !allowed {
+			http.Error(w, "Origin not allowed", http.StatusForbidden)
+			return
+		}
+
 		// Set CORS headers if origin is allowed
-		if origin != "" && (allowAll || originAllowed(origin, allowedSet)) {
+		if origin != "" && allowed {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 
@@ -38,7 +40,7 @@ func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 		// Only intercept OPTIONS if the origin is valid to prevent unauthorized preflight requests.
 		if r.Method == http.MethodOptions {
 			// Require valid Origin header for OPTIONS requests
-			if origin == "" || !(allowAll || originAllowed(origin, allowedSet)) {
+			if origin == "" || !allowed {
 				// No origin or invalid origin - pass to router for proper 405/404 response
 				next.ServeHTTP(w, r)
 				return
