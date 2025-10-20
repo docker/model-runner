@@ -426,7 +426,7 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 func isConfigOnlyModification(opts packageOptions) bool {
 	// Only config modifications are allowed for lightweight repackaging
 	hasConfigChanges := opts.contextSize > 0
-	hasFileAdditions := len(opts.licensePaths) > 0 || opts.chatTemplatePath != ""
+	hasFileAdditions := len(opts.licensePaths) > 0 || opts.chatTemplatePath != "" || len(opts.dirTarPaths) > 0
 
 	return hasConfigChanges && !hasFileAdditions
 }
