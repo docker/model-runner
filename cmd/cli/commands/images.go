@@ -67,7 +67,7 @@ func encodeImageToDataURL(filePath string) (string, error) {
 	}
 
 	contentType := http.DetectContentType(buf)
-	allowedTypes := []string{"image/jpeg", "image/jpg", "image/png", "image/webp"}
+	allowedTypes := []string{"image/jpeg", "image/png", "image/webp"}
 	if !slices.Contains(allowedTypes, contentType) {
 		return "", fmt.Errorf("invalid image type: %s", contentType)
 	}
