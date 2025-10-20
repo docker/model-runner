@@ -91,3 +91,14 @@ type ConfigureRequest struct {
 	RuntimeFlags    []string `json:"runtime-flags,omitempty"`
 	RawRuntimeFlags string   `json:"raw-runtime-flags,omitempty"`
 }
+
+// LoadRequest specifies the model to load into memory.
+type LoadRequest struct {
+	Model string `json:"model"`
+}
+
+// LoadResponse indicates whether the model was loaded successfully.
+type LoadResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}

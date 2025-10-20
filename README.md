@@ -93,6 +93,9 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 # Pull and run a model
 MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run ai/smollm2 "Hello, how are you?" 
+
+# Load a model into memory without interaction (detached mode)
+MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run --detach ai/smollm2
 ```
 
 #### Option 2: Using Docker
@@ -193,6 +196,11 @@ curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello, how are you?"}
   ]
+}'
+
+# Load a model into memory (without inference)
+curl http://localhost:8080/engines/llama.cpp/load -X POST -d '{
+  "model": "ai/smollm2"
 }'
 
 # Delete a model

@@ -208,7 +208,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 			// Create a cancellable context for the chat request
 			// This allows us to cancel the request if the user presses Ctrl+C during response generation
 			chatCtx, cancelChat := context.WithCancel(cmd.Context())
-			
+
 			// Set up signal handler to cancel the context on Ctrl+C
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT)
@@ -222,7 +222,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 			}()
 
 			err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, backend, model, userInput, apiKey)
-			
+
 			// Clean up signal handler
 			signal.Stop(sigChan)
 			// Do not close sigChan to avoid race condition
@@ -268,7 +268,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 		// Create a cancellable context for the chat request
 		// This allows us to cancel the request if the user presses Ctrl+C during response generation
 		chatCtx, cancelChat := context.WithCancel(cmd.Context())
-		
+
 		// Set up signal handler to cancel the context on Ctrl+C
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT)
@@ -283,7 +283,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 		}()
 
 		err = chatWithMarkdownContext(chatCtx, cmd, desktopClient, backend, model, userInput, apiKey)
-		
+
 		cancelChat()
 		signal.Stop(sigChan)
 		cancelChat()
@@ -615,10 +615,8 @@ func newRunCmd() *cobra.Command {
 
 			// Handle --detach flag: just load the model without interaction
 			if detach {
-				// Make a minimal request to load the model into memory
-				err := desktopClient.Chat(backend, model, "", apiKey, func(content string) {
-					// Silently discard output in detach mode
-				}, false)
+				// Load the model into memory using the new load endpoint
+				err := desktopClient.WarmupModel(cmd.Context(), backend, model)
 				if err != nil {
 					return handleClientError(err, "Failed to load model")
 				}

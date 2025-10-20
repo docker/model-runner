@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -224,4 +225,58 @@ func TestInspectOpenAIHuggingFaceModel(t *testing.T) {
 	model, err := client.InspectOpenAI(modelName)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedLowercase, model.ID)
+}
+
+func TestWarmupModel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	modelName := "ai/smollm2"
+	expectedModelName := "ai/smollm2:latest" // normalized with tag
+	backend := "llama.cpp"
+
+	mockClient := mockdesktop.NewMockDockerHttpClient(ctrl)
+	mockContext := NewContextForMock(mockClient)
+	client := New(mockContext)
+
+	mockClient.EXPECT().Do(gomock.Any()).Do(func(req *http.Request) {
+		// Verify the request path contains the backend
+		assert.Contains(t, req.URL.Path, backend)
+		assert.Contains(t, req.URL.Path, "/load")
+
+		// Verify the request body contains the model name
+		var reqBody struct {
+			Model string `json:"model"`
+		}
+		err := json.NewDecoder(req.Body).Decode(&reqBody)
+		require.NoError(t, err)
+		assert.Equal(t, expectedModelName, reqBody.Model)
+	}).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewBufferString(`{"status":"loaded","message":"Model ai/smollm2 loaded successfully"}`)),
+	}, nil)
+
+	err := client.WarmupModel(context.Background(), backend, modelName)
+	assert.NoError(t, err)
+}
+
+func TestWarmupModelWithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	modelName := "ai/smollm2"
+	backend := "llama.cpp"
+
+	mockClient := mockdesktop.NewMockDockerHttpClient(ctrl)
+	mockContext := NewContextForMock(mockClient)
+	client := New(mockContext)
+
+	mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(bytes.NewBufferString("failed to load model")),
+	}, nil)
+
+	err := client.WarmupModel(context.Background(), backend, modelName)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "load failed")
 }
