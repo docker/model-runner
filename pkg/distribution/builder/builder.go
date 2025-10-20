@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
@@ -14,7 +16,8 @@ import (
 
 // Builder builds a model artifact
 type Builder struct {
-	model types.ModelArtifact
+	model          types.ModelArtifact
+	originalLayers []v1.Layer // Snapshot of layers when created from existing model
 }
 
 // FromGGUF returns a *Builder that builds a model artifacts from a GGUF file
@@ -41,8 +44,11 @@ func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
 
 // FromModel returns a *Builder that builds model artifacts from an existing model artifact
 func FromModel(mdl types.ModelArtifact) *Builder {
+	// Capture original layers for comparison
+	layers, _ := mdl.Layers()
 	return &Builder{
-		model: mdl,
+		model:          mdl,
+		originalLayers: layers,
 	}
 }
 
@@ -53,13 +59,15 @@ func (b *Builder) WithLicense(path string) (*Builder, error) {
 		return nil, fmt.Errorf("license layer from %q: %w", path, err)
 	}
 	return &Builder{
-		model: mutate.AppendLayers(b.model, licenseLayer),
+		model:          mutate.AppendLayers(b.model, licenseLayer),
+		originalLayers: b.originalLayers,
 	}, nil
 }
 
 func (b *Builder) WithContextSize(size uint64) *Builder {
 	return &Builder{
-		model: mutate.ContextSize(b.model, size),
+		model:          mutate.ContextSize(b.model, size),
+		originalLayers: b.originalLayers,
 	}
 }
 
@@ -70,7 +78,8 @@ func (b *Builder) WithMultimodalProjector(path string) (*Builder, error) {
 		return nil, fmt.Errorf("mmproj layer from %q: %w", path, err)
 	}
 	return &Builder{
-		model: mutate.AppendLayers(b.model, mmprojLayer),
+		model:          mutate.AppendLayers(b.model, mmprojLayer),
+		originalLayers: b.originalLayers,
 	}, nil
 }
 
@@ -81,7 +90,8 @@ func (b *Builder) WithChatTemplateFile(path string) (*Builder, error) {
 		return nil, fmt.Errorf("chat template layer from %q: %w", path, err)
 	}
 	return &Builder{
-		model: mutate.AppendLayers(b.model, templateLayer),
+		model:          mutate.AppendLayers(b.model, templateLayer),
+		originalLayers: b.originalLayers,
 	}, nil
 }
 
@@ -105,7 +115,8 @@ func (b *Builder) WithConfigArchive(path string) (*Builder, error) {
 		return nil, fmt.Errorf("config archive layer from %q: %w", path, err)
 	}
 	return &Builder{
-		model: mutate.AppendLayers(b.model, configLayer),
+		model:          mutate.AppendLayers(b.model, configLayer),
+		originalLayers: b.originalLayers,
 	}, nil
 }
 
@@ -117,7 +128,8 @@ func (b *Builder) WithDirTar(path string) (*Builder, error) {
 		return nil, fmt.Errorf("dir tar layer from %q: %w", path, err)
 	}
 	return &Builder{
-		model: mutate.AppendLayers(b.model, dirTarLayer),
+		model:          mutate.AppendLayers(b.model, dirTarLayer),
+		originalLayers: b.originalLayers,
 	}, nil
 }
 
@@ -134,4 +146,42 @@ func (b *Builder) Model() types.ModelArtifact {
 // Build finalizes the artifact and writes it to the given target, reporting progress to the given writer
 func (b *Builder) Build(ctx context.Context, target Target, pw io.Writer) error {
 	return target.Write(ctx, b.model, pw)
+}
+
+// HasOnlyConfigChanges returns true if the builder was created from an existing model
+// and only configuration changes were made (no layers added or removed).
+// This is useful for determining if lightweight repackaging optimizations can be used.
+func (b *Builder) HasOnlyConfigChanges() bool {
+	// If not created from an existing model, return false
+	if b.originalLayers == nil {
+		return false
+	}
+
+	// Get current layers
+	currentLayers, err := b.model.Layers()
+	if err != nil {
+		return false
+	}
+
+	// If layer count changed, files were added or removed
+	if len(currentLayers) != len(b.originalLayers) {
+		return false
+	}
+
+	// Verify layer digests match to ensure no layer content changed
+	for i, origLayer := range b.originalLayers {
+		origDigest, err := origLayer.Digest()
+		if err != nil {
+			return false
+		}
+		currDigest, err := currentLayers[i].Digest()
+		if err != nil {
+			return false
+		}
+		if origDigest != currDigest {
+			return false
+		}
+	}
+
+	return true
 }

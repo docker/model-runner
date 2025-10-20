@@ -307,7 +307,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	}
 
 	// Check if we can use lightweight repackaging (config-only changes from existing model)
-	useLightweight := opts.fromModel != "" && !opts.push && isConfigOnlyModification(opts)
+	useLightweight := opts.fromModel != "" && pkg.HasOnlyConfigChanges()
 
 	if useLightweight {
 		cmd.PrintErrln("Creating lightweight model variant...")
@@ -347,52 +347,51 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 				}
 			}
 		}
+	}
+	if opts.push {
+		cmd.PrintErrln("Pushing model to registry...")
+	} else {
+		cmd.PrintErrln("Loading model to Model Runner...")
+	}
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		defer pw.Close()
+		done <- pkg.Build(cmd.Context(), target, pw)
+	}()
 
+	scanner := bufio.NewScanner(pr)
+	for scanner.Scan() {
+		progressLine := scanner.Text()
+		if progressLine == "" {
+			continue
+		}
+
+		// Parse the progress message
+		var progressMsg desktop.ProgressMessage
+		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
+			cmd.PrintErrln("Error displaying progress:", err)
+		}
+
+		// Print progress messages
+		TUIProgress(progressMsg.Message)
+	}
+	cmd.PrintErrln("") // newline after progress
+
+	if err := scanner.Err(); err != nil {
+		cmd.PrintErrln("Error streaming progress:", err)
+	}
+	if err := <-done; err != nil {
 		if opts.push {
-			cmd.PrintErrln("Pushing model to registry...")
-		} else {
-			cmd.PrintErrln("Loading model to Model Runner...")
+			return fmt.Errorf("failed to save packaged model: %w", err)
 		}
-		pr, pw := io.Pipe()
-		done := make(chan error, 1)
-		go func() {
-			defer pw.Close()
-			done <- pkg.Build(cmd.Context(), target, pw)
-		}()
+		return fmt.Errorf("failed to load packaged model: %w", err)
+	}
 
-		scanner := bufio.NewScanner(pr)
-		for scanner.Scan() {
-			progressLine := scanner.Text()
-			if progressLine == "" {
-				continue
-			}
-
-			// Parse the progress message
-			var progressMsg desktop.ProgressMessage
-			if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
-				cmd.PrintErrln("Error displaying progress:", err)
-			}
-
-			// Print progress messages
-			TUIProgress(progressMsg.Message)
-		}
-		cmd.PrintErrln("") // newline after progress
-
-		if err := scanner.Err(); err != nil {
-			cmd.PrintErrln("Error streaming progress:", err)
-		}
-		if err := <-done; err != nil {
-			if opts.push {
-				return fmt.Errorf("failed to save packaged model: %w", err)
-			}
-			return fmt.Errorf("failed to load packaged model: %w", err)
-		}
-
-		if opts.push {
-			cmd.PrintErrln("Model pushed successfully")
-		} else {
-			cmd.PrintErrln("Model loaded successfully")
-		}
+	if opts.push {
+		cmd.PrintErrln("Model pushed successfully")
+	} else {
+		cmd.PrintErrln("Model loaded successfully")
 	}
 	return nil
 }
@@ -449,14 +448,4 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 		}
 	}
 	return nil
-}
-
-// isConfigOnlyModification determines if the packaging operation only modifies config
-// without adding new files (licenses, chat templates, etc.)
-func isConfigOnlyModification(opts packageOptions) bool {
-	// Only config modifications are allowed for lightweight repackaging
-	hasConfigChanges := opts.contextSize > 0
-	hasFileAdditions := len(opts.licensePaths) > 0 || opts.chatTemplatePath != "" || len(opts.dirTarPaths) > 0
-
-	return hasConfigChanges && !hasFileAdditions
 }
