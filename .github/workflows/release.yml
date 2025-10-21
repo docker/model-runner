@@ -75,7 +75,7 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           file: Dockerfile
           platforms: linux/amd64, linux/arm64
@@ -87,7 +87,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           file: Dockerfile
           platforms: linux/amd64, linux/arm64
