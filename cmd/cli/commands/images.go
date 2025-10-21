@@ -17,15 +17,43 @@ const MaxImageSizeBytes int64 = 100 * 1024 * 1024
 
 // extractImagePaths finds image file paths in the input string using regex
 // Matches paths like: /path/to/file.jpg, ./image.png, C:\photos\pic.webp
+// Also handles quoted paths with spaces: "/path/to/my file.jpg" or '/path/with spaces/image.png'
+// Unquoted paths with spaces are also supported for better UX
 func extractImagePaths(input string) []string {
 	// Regex to match file paths:
-	// - Unix absolute: /path/to/file.jpg
-	// - Unix relative: ./path/to/file.jpg
-	// - Windows absolute: C:\path\to\file.jpg or C:/path/to/file.jpg
-	// - Windows relative: \path\to\file.jpg
-	regexPattern := `(?:[a-zA-Z]:[/\\]|[/\\]|\./)[^\s]*?\.(?i:jpg|jpeg|png|webp)\b`
+	// - Quoted paths (double or single quotes) - can contain spaces
+	// - Unix absolute: /path/to/file.jpg (with or without spaces)
+	// - Unix relative: ./path/to/file.jpg (with or without spaces)
+	// - Windows absolute: C:\path\to\file.jpg or C:/path/to/file.jpg (with or without spaces)
+	// - Windows relative: \path\to\file.jpg (with or without spaces)
+	// Pattern explanation:
+	//   1. "([^"]+?\.(?i:jpg|jpeg|png|webp))" - Double-quoted paths
+	//   2. '([^']+?\.(?i:jpg|jpeg|png|webp))' - Single-quoted paths
+	//   3. (?:[a-zA-Z]:[/\\]|[/\\]|\./)[^\n"']*?\.(?i:jpg|jpeg|png|webp)\b - Unquoted paths
+	//      - Matches from path start to image extension
+	//      - [^\n"'] allows spaces but stops at newlines or quotes
+	//      - Non-greedy *? ensures we stop at first valid extension
+	//      - \b word boundary ensures clean extension match
+	regexPattern := `"([^"]+?\.(?i:jpg|jpeg|png|webp))"|'([^']+?\.(?i:jpg|jpeg|png|webp))'|(?:[a-zA-Z]:[/\\]|[/\\]|\./)[^\n"']*?\.(?i:jpg|jpeg|png|webp)\b`
 	re := regexp.MustCompile(regexPattern)
-	return re.FindAllString(input, -1)
+	matches := re.FindAllStringSubmatch(input, -1)
+
+	var paths []string
+	for _, match := range matches {
+		// match[0] is the full match
+		// match[1] is the double-quoted path (if matched)
+		// match[2] is the single-quoted path (if matched)
+		// If neither capture group matched, match[0] is the unquoted path
+		if match[1] != "" {
+			paths = append(paths, match[1]) // double-quoted path
+		} else if match[2] != "" {
+			paths = append(paths, match[2]) // single-quoted path
+		} else {
+			paths = append(paths, match[0]) // unquoted path
+		}
+	}
+
+	return paths
 }
 
 // normalizeFilePath handles escaped characters in file paths

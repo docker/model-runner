@@ -44,6 +44,86 @@ func TestExtractImagePaths(t *testing.T) {
 			input:    "Check /path/image.JPG and /path/photo.Png",
 			expected: []string{"/path/image.JPG", "/path/photo.Png"},
 		},
+		{
+			name:     "path with spaces in double quotes",
+			input:    "Describe this image \"/path/to/my file.jpg\"",
+			expected: []string{"/path/to/my file.jpg"},
+		},
+		{
+			name:     "path with spaces in single quotes",
+			input:    "What's in '/Users/photos/vacation 2023/photo.png'?",
+			expected: []string{"/Users/photos/vacation 2023/photo.png"},
+		},
+		{
+			name:     "multiple paths with spaces",
+			input:    "Compare \"/path/my file.jpg\" and '/another path/image.png'",
+			expected: []string{"/path/my file.jpg", "/another path/image.png"},
+		},
+		{
+			name:     "Windows path with spaces",
+			input:    "Analyze \"C:\\Users\\My Documents\\photo.jpg\"",
+			expected: []string{"C:\\Users\\My Documents\\photo.jpg"},
+		},
+		{
+			name:     "mixed quoted and unquoted paths",
+			input:    "Compare /simple/path.jpg with \"/path with spaces/image.png\"",
+			expected: []string{"/simple/path.jpg", "/path with spaces/image.png"},
+		},
+		{
+			name:     "unquoted path with spaces",
+			input:    "What's in this image? /Users/ilopezluna/Documents/some thing.jpg",
+			expected: []string{"/Users/ilopezluna/Documents/some thing.jpg"},
+		},
+		{
+			name:     "unquoted Windows path with spaces",
+			input:    "Analyze C:\\Users\\My Documents\\photo.jpg",
+			expected: []string{"C:\\Users\\My Documents\\photo.jpg"},
+		},
+		{
+			name:     "multiple unquoted paths with spaces",
+			input:    "Compare /path/my file.jpg and C:\\Users\\My Photos\\image.png",
+			expected: []string{"/path/my file.jpg", "C:\\Users\\My Photos\\image.png"},
+		},
+		{
+			name:     "path followed by period",
+			input:    "Look at /Users/test/some image.jpg. What do you see?",
+			expected: []string{"/Users/test/some image.jpg"},
+		},
+		{
+			name:     "path followed by comma",
+			input:    "Check /path/my photo.png, it's interesting",
+			expected: []string{"/path/my photo.png"},
+		},
+		{
+			name:     "path followed by exclamation",
+			input:    "Amazing shot at /photos/vacation 2024/sunset.jpg!",
+			expected: []string{"/photos/vacation 2024/sunset.jpg"},
+		},
+		{
+			name:     "path followed by question mark",
+			input:    "What's in /docs/my file.jpeg?",
+			expected: []string{"/docs/my file.jpeg"},
+		},
+		{
+			name:     "path in middle of sentence",
+			input:    "I found /path/test image.jpg and it looks great",
+			expected: []string{"/path/test image.jpg"},
+		},
+		{
+			name:     "path with newline after",
+			input:    "Check this /path/photo.jpg\nAnd tell me what you think",
+			expected: []string{"/path/photo.jpg"},
+		},
+		{
+			name:     "multiple extensions in text",
+			input:    "The file.jpg format is used in /path/image.jpg here",
+			expected: []string{"/path/image.jpg"},
+		},
+		{
+			name:     "path with dots in filename",
+			input:    "Check /path/my image.v2.final.jpg for details",
+			expected: []string{"/path/my image.v2.final.jpg"},
+		},
 	}
 
 	for _, tt := range tests {
