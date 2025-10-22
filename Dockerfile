@@ -84,16 +84,10 @@ USER root
 
 RUN apt update && apt install -y python3 python3-venv python3-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
+# Copy vllm from official vllm/vllm-openai image
+COPY --from=vllm/vllm-openai:v0.11.0 --chown=modelrunner:modelrunner /usr/local/ /usr/local/
 
 USER modelrunner
-
-# Install uv and vLLM as modelrunner user
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
- && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
- && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"
-
-RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
 FROM llamacpp AS final-llamacpp
 # Copy the built binary from builder
