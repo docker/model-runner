@@ -14,7 +14,7 @@ BUILD_DIR := build
 INSTALL_DIR := install
 NATIVE_DIR := native
 
-.PHONY: build clean install-deps install-dir
+.PHONY: build clean install-deps build-dir install-dir
 
 build: install-deps
 ifeq ($(DETECTED_OS),macOS)
@@ -79,13 +79,17 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf $(INSTALL_DIR)
 
+build-dir:
+	@echo "$(shell pwd)/$(BUILD_DIR)"
+
 install-dir:
-	@echo "$(INSTALL_DIR)"
+	@echo "$(shell pwd)/$(INSTALL_DIR)"
 
 help:
 	@echo "Available targets:"
 	@echo "  build      	- Build llama.cpp (macOS only for now)"
 	@echo "  install-deps	- Install build dependencies"
+	@echo "  build-dir		- Print build directory path"
 	@echo "  install-dir	- Print install directory path"
 	@echo "  clean       	- Clean build artifacts"
 	@echo "  help        	- Show this help"
