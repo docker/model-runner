@@ -16,3 +16,6 @@ vendor/
 pkg/distribution/bin/
 /parallelget
 /cli
+
+llamacpp/build
+llamacpp/install
