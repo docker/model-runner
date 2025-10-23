@@ -8,19 +8,19 @@ FROM nvidia/cuda:${CUDA_VERSION}-devel-${CUDA_IMAGE_VARIANT} AS builder
 ARG TARGETARCH
 ARG CUDA_IMAGE_VARIANT
 
-COPY native/install-clang.sh .
+COPY llamacpp/native/install-clang.sh .
 RUN ./install-clang.sh "${CUDA_IMAGE_VARIANT}"
 
 WORKDIR /llama-server
 
 COPY .git .git
-COPY native/CMakeLists.txt .
-COPY native/src src
-COPY native/vendor vendor
+COPY llamacpp/native/CMakeLists.txt .
+COPY llamacpp/native/src src
+COPY llamacpp/native/vendor vendor
 
 # Fix submodule .git file to point to correct location in container
-RUN echo "gitdir: ../../.git/modules/native/vendor/llama.cpp" > vendor/llama.cpp/.git && \
-    sed -i 's|worktree = ../../../../../native/vendor/llama.cpp|worktree = /llama-server/vendor/llama.cpp|' .git/modules/native/vendor/llama.cpp/config
+RUN echo "gitdir: ../../.git/modules/llamacpp/native/vendor/llama.cpp" > vendor/llama.cpp/.git && \
+    sed -i 's|worktree = ../../../../../../llamacpp/native/vendor/llama.cpp|worktree = /llama-server/vendor/llama.cpp|' .git/modules/llamacpp/native/vendor/llama.cpp/config
 
 ENV CC=/usr/bin/clang
 ENV CXX=/usr/bin/clang++
