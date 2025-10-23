@@ -59,7 +59,7 @@ func NewModel(paths []string) (*Model, error) {
 	created := time.Now()
 	return &Model{
 		configFile: types.ConfigFile{
-			Config: configFromFiles(),
+			Config: configFromFiles(allPaths),
 			Descriptor: types.Descriptor{
 				Created: &created,
 			},
@@ -114,8 +114,42 @@ func discoverSafetensorsShards(path string) ([]string, error) {
 	return shards, nil
 }
 
-func configFromFiles() types.Config {
+func configFromFiles(paths []string) types.Config {
+	// Parse the first safetensors file to extract metadata
+	if len(paths) == 0 {
+		return types.Config{Format: types.FormatSafetensors}
+	}
+
+	header, err := ParseSafetensorsHeader(paths[0])
+	if err != nil {
+		// Continue without metadata if parsing fails
+		return types.Config{Format: types.FormatSafetensors}
+	}
+
+	// Calculate total size across all files
+	var totalSize int64
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil {
+			totalSize += info.Size()
+		}
+	}
+
+	// Calculate parameters
+	params := header.CalculateParameters()
+
+	// Extract architecture from metadata if available
+	architecture := ""
+	if arch, ok := header.Metadata["architecture"]; ok {
+		architecture = fmt.Sprintf("%v", arch)
+	}
+
 	return types.Config{
-		Format: types.FormatSafetensors,
+		Format:       types.FormatSafetensors,
+		Parameters:   formatParameters(params),
+		Quantization: header.GetQuantization(),
+		Size:         formatSize(totalSize),
+		Architecture: architecture,
+		Safetensors:  header.ExtractMetadata(),
 	}
 }
