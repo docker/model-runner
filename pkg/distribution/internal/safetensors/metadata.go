@@ -127,23 +127,36 @@ func (h *Header) CalculateParameters() int64 {
 }
 
 // GetQuantization determines the quantization type from tensor dtypes
+// Returns the most common dtype used across all tensors
 func (h *Header) GetQuantization() string {
-	// Collect unique dtypes
-	dtypes := make(map[string]bool)
+	if len(h.Tensors) == 0 {
+		return ""
+	}
+
+	// Count dtype occurrences
+	dtypeCounts := make(map[string]int)
 	for _, tensor := range h.Tensors {
-		dtypes[tensor.Dtype] = true
+		dtypeCounts[tensor.Dtype]++
 	}
 
 	// If all tensors have the same dtype, return it
-	if len(dtypes) == 1 {
-		for dtype := range dtypes {
+	if len(dtypeCounts) == 1 {
+		for dtype := range dtypeCounts {
 			return dtype
 		}
 	}
 
-	// If multiple dtypes, return "mixed"
-	// TODO return most common dtype instead
-	return "mixed"
+	// Find the most common dtype
+	var mostCommonDtype string
+	maxCount := 0
+	for dtype, count := range dtypeCounts {
+		if count > maxCount {
+			maxCount = count
+			mostCommonDtype = dtype
+		}
+	}
+
+	return mostCommonDtype
 }
 
 // ExtractMetadata converts header to string map (similar to GGUF)
