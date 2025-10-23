@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/docker/go-units"
 )
 
 // Header represents the JSON header in a safetensors file
@@ -161,32 +163,13 @@ func (h *Header) ExtractMetadata() map[string]string {
 	return metadata
 }
 
-// formatParameters converts parameter count to human-readable format
+// formatParameters converts parameter count to human-readable format matching GGUF style
+// Returns format like "361.82 M" (space before unit, no 'B' suffix, base 1000)
 func formatParameters(params int64) string {
-	if params >= 1_000_000_000 {
-		return fmt.Sprintf("%.2f B", float64(params)/1_000_000_000)
-	} else if params >= 1_000_000 {
-		return fmt.Sprintf("%.2f M", float64(params)/1_000_000)
-	} else if params >= 1_000 {
-		return fmt.Sprintf("%.2f K", float64(params)/1_000)
-	}
-	return fmt.Sprintf("%d", params)
+	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", " K", " M", " B", " T"})
 }
 
 // formatSize converts bytes to human-readable format
 func formatSize(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-
-	if bytes >= GB {
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-	} else if bytes >= MB {
-		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
-	} else if bytes >= KB {
-		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
-	}
-	return fmt.Sprintf("%d bytes", bytes)
+	return units.HumanSizeWithPrecision(float64(bytes), 2)
 }
