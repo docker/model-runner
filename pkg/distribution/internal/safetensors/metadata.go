@@ -10,6 +10,11 @@ import (
 	"github.com/docker/go-units"
 )
 
+const (
+	QuantizationUnknown = "unknown"
+	QuantizationMixed   = "mixed"
+)
+
 // Header represents the JSON header in a safetensors file
 type Header struct {
 	Metadata map[string]interface{}
@@ -127,16 +132,22 @@ func (h *Header) CalculateParameters() int64 {
 }
 
 // GetQuantization determines the quantization type from tensor dtypes
-// Returns the most common dtype used across all tensors
 func (h *Header) GetQuantization() string {
 	if len(h.Tensors) == 0 {
-		return ""
+		return QuantizationUnknown
 	}
 
-	// Count dtype occurrences
+	// Count dtype occurrences (skip empty dtypes)
 	dtypeCounts := make(map[string]int)
 	for _, tensor := range h.Tensors {
-		dtypeCounts[tensor.Dtype]++
+		if tensor.Dtype != "" {
+			dtypeCounts[tensor.Dtype]++
+		}
+	}
+
+	// No valid dtypes found
+	if len(dtypeCounts) == 0 {
+		return QuantizationUnknown
 	}
 
 	// If all tensors have the same dtype, return it
@@ -146,17 +157,7 @@ func (h *Header) GetQuantization() string {
 		}
 	}
 
-	// Find the most common dtype
-	var mostCommonDtype string
-	maxCount := 0
-	for dtype, count := range dtypeCounts {
-		if count > maxCount {
-			maxCount = count
-			mostCommonDtype = dtype
-		}
-	}
-
-	return mostCommonDtype
+	return QuantizationMixed
 }
 
 // ExtractMetadata converts header to string map (similar to GGUF)
