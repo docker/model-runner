@@ -117,6 +117,73 @@ func TestNewModel_WithMetadata(t *testing.T) {
 	}
 }
 
+func TestParseHeader_TruncatedFile(t *testing.T) {
+	// Create a test file with incomplete header
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "truncated.safetensors")
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Write header length claiming 1000 bytes
+	headerLen := uint64(1000)
+	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
+		file.Close()
+		t.Fatalf("failed to write header length: %v", err)
+	}
+
+	// But only write 500 bytes (truncated)
+	truncatedJSON := make([]byte, 500)
+	copy(truncatedJSON, []byte(`{"incomplete": "json`))
+	if _, err := file.Write(truncatedJSON); err != nil {
+		file.Close()
+		t.Fatalf("failed to write truncated data: %v", err)
+	}
+	file.Close()
+
+	// Attempt to parse - should fail gracefully
+	_, err = ParseSafetensorsHeader(filePath)
+	if err == nil {
+		t.Fatal("ParseSafetensorsHeader() expected error for truncated file, got nil")
+	}
+}
+
+func TestParseHeader_InvalidJSON(t *testing.T) {
+	// Create a test file with invalid JSON
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "invalid.safetensors")
+
+	// Create malformed JSON
+	invalidJSON := []byte(`{"missing": "closing brace", "broken": [1, 2, }`)
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Write header length
+	headerLen := uint64(len(invalidJSON))
+	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
+		file.Close()
+		t.Fatalf("failed to write header length: %v", err)
+	}
+
+	// Write invalid JSON
+	if _, err := file.Write(invalidJSON); err != nil {
+		file.Close()
+		t.Fatalf("failed to write invalid JSON: %v", err)
+	}
+	file.Close()
+
+	// Attempt to parse - should fail gracefully
+	_, err = ParseSafetensorsHeader(filePath)
+	if err == nil {
+		t.Fatal("ParseSafetensorsHeader() expected error for invalid JSON, got nil")
+	}
+}
+
 func TestNewModel_NoMetadata(t *testing.T) {
 	// Create a test safetensors file without metadata section
 	tmpDir := t.TempDir()
