@@ -56,10 +56,15 @@ func NewModel(paths []string) (*Model, error) {
 		diffIDs[i] = diffID
 	}
 
+	config, err := configFromFiles(allPaths)
+	if err != nil {
+		return nil, fmt.Errorf("create config from files: %w", err)
+	}
+
 	created := time.Now()
 	return &Model{
 		configFile: types.ConfigFile{
-			Config: configFromFiles(allPaths),
+			Config: config,
 			Descriptor: types.Descriptor{
 				Created: &created,
 			},
@@ -114,25 +119,26 @@ func discoverSafetensorsShards(path string) ([]string, error) {
 	return shards, nil
 }
 
-func configFromFiles(paths []string) types.Config {
+func configFromFiles(paths []string) (types.Config, error) {
 	// Parse the first safetensors file to extract metadata
 	if len(paths) == 0 {
-		return types.Config{Format: types.FormatSafetensors}
+		return types.Config{Format: types.FormatSafetensors}, nil
 	}
 
 	header, err := ParseSafetensorsHeader(paths[0])
 	if err != nil {
 		// Continue without metadata if parsing fails
-		return types.Config{Format: types.FormatSafetensors}
+		return types.Config{Format: types.FormatSafetensors}, nil
 	}
 
 	// Calculate total size across all files
 	var totalSize int64
 	for _, path := range paths {
 		info, err := os.Stat(path)
-		if err == nil {
-			totalSize += info.Size()
+		if err != nil {
+			return types.Config{}, fmt.Errorf("failed to stat file %s: %w", path, err)
 		}
+		totalSize += info.Size()
 	}
 
 	// Calculate parameters
@@ -151,5 +157,5 @@ func configFromFiles(paths []string) types.Config {
 		Size:         formatSize(totalSize),
 		Architecture: architecture,
 		Safetensors:  header.ExtractMetadata(),
-	}
+	}, nil
 }
