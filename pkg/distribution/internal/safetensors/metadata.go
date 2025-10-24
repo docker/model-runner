@@ -87,21 +87,27 @@ func ParseSafetensorsHeader(path string) (*Header, error) {
 		// Parse shape
 		var shape []int64
 		if shapeArray, ok := tensorMap["shape"].([]interface{}); ok {
-			for _, v := range shapeArray {
-				if floatVal, ok := v.(float64); ok {
-					shape = append(shape, int64(floatVal))
+			for index, v := range shapeArray {
+				floatVal, ok := v.(float64)
+				if !ok {
+					return nil, fmt.Errorf("invalid shape value for tensor %q at index %d: expected number, got %T", name, index, v)
 				}
+				shape = append(shape, int64(floatVal))
 			}
 		}
 
 		// Parse data_offsets
 		var dataOffsets [2]int64
-		if offsetsArray, ok := tensorMap["data_offsets"].([]interface{}); ok && len(offsetsArray) == 2 {
-			if start, ok := offsetsArray[0].(float64); ok {
-				dataOffsets[0] = int64(start)
+		if offsetsArray, ok := tensorMap["data_offsets"].([]interface{}); ok {
+			if len(offsetsArray) != 2 {
+				return nil, fmt.Errorf("invalid data_offsets for tensor %q: expected 2 elements, got %d", name, len(offsetsArray))
 			}
-			if end, ok := offsetsArray[1].(float64); ok {
-				dataOffsets[1] = int64(end)
+			for index, offset := range offsetsArray {
+				floatVal, ok := offset.(float64)
+				if !ok {
+					return nil, fmt.Errorf("invalid data_offsets value for tensor %q at index %d: expected number, got %T", name, index, offset)
+				}
+				dataOffsets[index] = int64(floatVal)
 			}
 		}
 
