@@ -10,10 +10,45 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
+// createTestSafetensorsFile is a helper function that creates a test safetensors file
+// with the specified header and data size.
+func createTestSafetensorsFile(t *testing.T, dir string, name string, header map[string]interface{}, dataSize int) string {
+	t.Helper()
+	filePath := filepath.Join(dir, name)
+
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		t.Fatalf("failed to marshal header: %v", err)
+	}
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	defer file.Close()
+
+	headerLen := uint64(len(headerJSON))
+	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
+		t.Fatalf("failed to write header length: %v", err)
+	}
+
+	if _, err := file.Write(headerJSON); err != nil {
+		t.Fatalf("failed to write header: %v", err)
+	}
+
+	if dataSize > 0 {
+		dummyData := make([]byte, dataSize)
+		if _, err := file.Write(dummyData); err != nil {
+			t.Fatalf("failed to write dummy data: %v", err)
+		}
+	}
+
+	return filePath
+}
+
 func TestNewModel_WithMetadata(t *testing.T) {
 	// Create a test safetensors file with metadata
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "test.safetensors")
 
 	header := map[string]interface{}{
 		"__metadata__": map[string]interface{}{
@@ -32,38 +67,7 @@ func TestNewModel_WithMetadata(t *testing.T) {
 		},
 	}
 
-	// Convert header to JSON
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		t.Fatalf("failed to marshal header: %v", err)
-	}
-
-	// Create file
-	file, err := os.Create(filePath)
-	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-
-	// Write header length
-	headerLen := uint64(len(headerJSON))
-	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
-		file.Close()
-		t.Fatalf("failed to write header length: %v", err)
-	}
-
-	// Write header JSON
-	if _, err := file.Write(headerJSON); err != nil {
-		file.Close()
-		t.Fatalf("failed to write header: %v", err)
-	}
-
-	// Write dummy tensor data
-	dummyData := make([]byte, 33562624)
-	if _, err := file.Write(dummyData); err != nil {
-		file.Close()
-		t.Fatalf("failed to write dummy data: %v", err)
-	}
-	file.Close()
+	filePath := createTestSafetensorsFile(t, tmpDir, "test.safetensors", header, 33562624)
 
 	// Create model
 	model, err := NewModel([]string{filePath})
@@ -187,7 +191,6 @@ func TestParseHeader_InvalidJSON(t *testing.T) {
 func TestNewModel_NoMetadata(t *testing.T) {
 	// Create a test safetensors file without metadata section
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "test.safetensors")
 
 	header := map[string]interface{}{
 		"weight": map[string]interface{}{
@@ -197,38 +200,7 @@ func TestNewModel_NoMetadata(t *testing.T) {
 		},
 	}
 
-	// Convert header to JSON
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		t.Fatalf("failed to marshal header: %v", err)
-	}
-
-	// Create file
-	file, err := os.Create(filePath)
-	if err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-
-	// Write header length
-	headerLen := uint64(len(headerJSON))
-	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
-		file.Close()
-		t.Fatalf("failed to write header length: %v", err)
-	}
-
-	// Write header JSON
-	if _, err := file.Write(headerJSON); err != nil {
-		file.Close()
-		t.Fatalf("failed to write header: %v", err)
-	}
-
-	// Write dummy tensor data
-	dummyData := make([]byte, 80000)
-	if _, err := file.Write(dummyData); err != nil {
-		file.Close()
-		t.Fatalf("failed to write dummy data: %v", err)
-	}
-	file.Close()
+	filePath := createTestSafetensorsFile(t, tmpDir, "test.safetensors", header, 80000)
 
 	// Create model
 	model, err := NewModel([]string{filePath})
