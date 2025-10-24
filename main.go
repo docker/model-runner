@@ -155,6 +155,9 @@ func main() {
 	router.Handle(inference.ModelsPrefix+"/", modelManager)
 	router.Handle(inference.InferencePrefix+"/", scheduler)
 
+	// Add alias for /v1/ to work the same as /engines/v1/ for OpenAI compatible endpoints
+	router.Handle("/v1/", scheduler)
+
 	// Add metrics endpoint if enabled
 	if os.Getenv("DISABLE_METRICS") != "1" {
 		metricsHandler := metrics.NewAggregatedMetricsHandler(
