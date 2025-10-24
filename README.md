@@ -57,17 +57,17 @@ If you encounter errors like `Package 'docker-model-plugin' has no installation 
    # Check Docker Model Runner version
    docker model version
    ```
-   
+
    Look for the source in the output. If it shows a package from your distro, you'll need to reinstall from Docker's official repositories.
 
 2. **Remove the distro version and install from Docker's official repository:**
    ```bash
    # Remove distro version (Ubuntu/Debian example)
    sudo apt-get purge docker docker.io containerd runc
-   
+
    # Install from Docker's official repository
    curl -fsSL https://get.docker.com | sudo bash
-   
+
    # Verify Docker Model Runner is available
    docker model --help
    ```
@@ -146,7 +146,7 @@ cd cmd/cli
 MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 # Pull and run a model
-MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run ai/smollm2 "Hello, how are you?" 
+MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run ai/smollm2 "Hello, how are you?"
 ```
 
 #### Option 2: Using Docker
@@ -173,7 +173,7 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 ## Using the Makefile
 
-This project includes a Makefile to simplify common development tasks. It requires Docker Desktop >= 4.41.0 
+This project includes a Makefile to simplify common development tasks. It requires Docker Desktop >= 4.41.0
 The Makefile provides the following targets:
 
 - `build` - Build the Go application
@@ -224,6 +224,7 @@ Available variants:
 - `cpu`: CPU-optimized version
 - `cuda`: CUDA-accelerated version for NVIDIA GPUs
 - `rocm`: ROCm-accelerated version for AMD GPUs
+- `musa`: MUSA-accelerated version for MTHREADS GPUs
 
 The binary path in the image follows this pattern: `/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}`
 

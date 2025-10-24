@@ -299,6 +299,10 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			hostConfig.Runtime = "rocm"
 		}
 		// ROCm devices are handled via device paths (/dev/kfd, /dev/dri) which are already added below
+	} else if gpu == gpupkg.GPUSupportMUSA {
+		if ok, err := gpupkg.HasMTHREADSRuntime(ctx, dockerClient); err == nil && ok {
+			hostConfig.Runtime = "mthreads"
+		}
 	}
 
 	// devicePaths contains glob patterns for common AI accelerator device files.

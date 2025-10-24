@@ -51,7 +51,7 @@ main() {
   # Ensure model path exists only if provided
   if [ -n "${MODELS_PATH-}" ]; then
     mkdir -p "$MODELS_PATH"
-    chmod a+rx "$MODELS_PATH"
+    chmod a+rwx "$MODELS_PATH"
   fi
 
   if [ -z "${DOCKER_IMAGE-}" ]; then

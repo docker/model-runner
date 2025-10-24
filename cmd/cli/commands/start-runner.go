@@ -24,7 +24,7 @@ func newStartRunner() *cobra.Command {
 	}
 	c.Flags().Uint16Var(&port, "port", 0,
 		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
-	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda)")
+	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|musa)")
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c
 }

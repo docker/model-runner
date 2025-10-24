@@ -371,6 +371,7 @@ func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 			command.Stdout = &output
 			command.Stderr = &output
 		},
+		binPath,
 		filepath.Join(binPath, "com.docker.llama-server"),
 		"--list-devices",
 	)

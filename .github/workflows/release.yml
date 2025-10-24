@@ -148,3 +148,18 @@ jobs:
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
+
+      - name: Build MUSA image
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        with:
+          file: Dockerfile
+          target: final-llamacpp
+          platforms: linux/amd64
+          build-args: |
+            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
+            "LLAMA_SERVER_VARIANT=musa"
+            "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.musa }}
