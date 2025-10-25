@@ -32,6 +32,8 @@ func controllerImageVariant(detectedGPU gpupkg.GPUSupport) string {
 		return "cuda"
 	case gpupkg.GPUSupportROCm:
 		return "rocm"
+	case gpupkg.GPUSupportCANN:
+		return "cann"
 	default:
 		return ""
 	}

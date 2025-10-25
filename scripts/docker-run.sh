@@ -11,6 +11,10 @@ add_accelerators() {
   # Add render group on Linux only (macOS doesn't have getent)
   if [[ "$OSTYPE" != "darwin"* ]]; then
     args+=("--group-add" "$(getent group render | cut -d: -f3)")
+    if [ -e "/dev/davinci_manager" ]; then
+      # ascend driver accessing group id is 1000(HwHiAiUser)
+      args+=("--group-add" "$(getent group HwHiAiUser | cut -d: -f3)")
+    fi
   fi
 }
 
@@ -22,6 +26,12 @@ add_optional_args() {
   if [ -n "${MODELS_PATH-}" ]; then
     args+=(-v "$MODELS_PATH:/models" -e MODELS_PATH=/models)
   fi
+
+  for i in /usr/local/dcmi /usr/local/bin/npu-smi /usr/local/Ascend/driver/lib64/ /usr/local/Ascend/driver/version.info /etc/ascend_install.info; do
+    if [ -e "$i" ]; then
+      args+=(-v "$i:$i")
+    fi
+  done
 
   if [ -n "${LLAMA_ARGS-}" ]; then
     args+=(-e "LLAMA_ARGS=$LLAMA_ARGS")
@@ -51,7 +61,7 @@ main() {
   # Ensure model path exists only if provided
   if [ -n "${MODELS_PATH-}" ]; then
     mkdir -p "$MODELS_PATH"
-    chmod a+rx "$MODELS_PATH"
+    chmod a+rwx "$MODELS_PATH"
   fi
 
   if [ -z "${DOCKER_IMAGE-}" ]; then

@@ -232,6 +232,39 @@ func isRootless(ctx context.Context, dockerClient *client.Client) bool {
 	return false
 }
 
+// Check whether the host Ascend driver path exists. If so, create the corresponding mount configuration.
+func tryGetBindAscendMounts() []mount.Mount {
+	hostPaths := []string{
+		"/usr/local/dcmi",
+		"/usr/local/bin/npu-smi",
+		"/usr/local/Ascend/driver/lib64",
+		"/usr/local/Ascend/driver/version.info",
+	}
+
+	var newMounts []mount.Mount
+	for _, hostPath := range hostPaths {
+		matches, err := filepath.Glob(hostPath)
+		if err != nil {
+			fmt.Errorf("Error checking glob pattern for %s: %v", hostPath, err)
+			continue
+		}
+
+		if len(matches) > 0 {
+			newMount := mount.Mount{
+				Type:     mount.TypeBind,
+				Source:   hostPath,
+				Target:   hostPath,
+				ReadOnly: true,
+			}
+			newMounts = append(newMounts, newMount)
+		} else {
+			fmt.Printf("  [NOT FOUND] Ascend driver path does not exist, skipping: %s\n", hostPath)
+		}
+	}
+
+	return newMounts
+}
+
 // CreateControllerContainer creates and starts a controller container.
 func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
 	imageName := controllerImageName(gpu)
@@ -276,6 +309,11 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			Name: "always",
 		},
 	}
+	ascendMounts := tryGetBindAscendMounts()
+	if len(ascendMounts) > 0 {
+		hostConfig.Mounts = append(hostConfig.Mounts, ascendMounts...)
+	}
+
 	portBindings := []nat.PortBinding{{HostIP: host, HostPort: portStr}}
 	if os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") != "1" {
 		// Don't bind the bridge gateway IP if we're treating Docker Desktop as Moby.
@@ -299,6 +337,11 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			hostConfig.Runtime = "rocm"
 		}
 		// ROCm devices are handled via device paths (/dev/kfd, /dev/dri) which are already added below
+	} else if gpu == gpupkg.GPUSupportCANN {
+		if ok, err := gpupkg.HasCANNRuntime(ctx, dockerClient); err == nil && ok {
+			hostConfig.Runtime = "cann"
+		}
+		// ToDo: Ascend device
 	}
 
 	// devicePaths contains glob patterns for common AI accelerator device files.

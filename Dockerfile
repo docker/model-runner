@@ -69,7 +69,7 @@ ENV MODEL_RUNNER_PORT=12434
 ENV LLAMA_SERVER_PATH=/app/bin
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib
+ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"

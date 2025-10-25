@@ -17,6 +17,8 @@ const (
 	GPUSupportCUDA
 	// GPUSupportROCm indicates ROCm GPU support.
 	GPUSupportROCm
+	// GPUSupportCANN indicates Ascend NPU support.
+	GPUSupportCANN
 )
 
 // ProbeGPUSupport determines whether or not the Docker engine has GPU support.
@@ -25,7 +27,10 @@ func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (
 	if hasROCm, err := HasROCmRuntime(ctx, dockerClient); err == nil && hasROCm {
 		return GPUSupportROCm, nil
 	}
-
+	// Check for CANN runtime first
+	if hasCANN, err := HasCANNRuntime(ctx, dockerClient); err == nil && hasCANN {
+		return GPUSupportCANN, nil
+	}
 	// Then search for nvidia-container-runtime on PATH
 	if _, err := exec.LookPath("nvidia-container-runtime"); err == nil {
 		return GPUSupportCUDA, nil
@@ -62,4 +67,14 @@ func HasROCmRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (b
 	}
 	_, hasROCm := info.Runtimes["rocm"]
 	return hasROCm, nil
+}
+
+// HasCANNRuntime determines whether there is a Ascend CANN runtime available
+func HasCANNRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
+	info, err := dockerClient.Info(ctx)
+	if err != nil {
+		return false, err
+	}
+	_, hasCANN := info.Runtimes["cann"]
+	return hasCANN, nil
 }
