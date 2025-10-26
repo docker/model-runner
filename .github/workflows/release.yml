@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Set up Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
         with:
           go-version: 1.24.2
           cache: true
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Format tags
         id: tags
@@ -92,7 +92,7 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -105,7 +105,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -120,7 +120,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
           target: final-vllm
@@ -135,7 +135,7 @@ jobs:
           provenance: mode=max
 
       - name: Build ROCm image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -150,7 +150,7 @@ jobs:
           tags: ${{ steps.tags.outputs.rocm }}
 
       - name: Build MUSA image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
           target: final-llamacpp
