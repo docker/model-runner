@@ -1,0 +1,23 @@
+command: docker model stop
+short: Stop a running model
+long: Stop a running model
+usage: docker model stop MODEL
+pname: docker model
+plink: docker_model.yaml
+options:
+    - option: backend
+      value_type: string
+      description: Optional backend to target
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+

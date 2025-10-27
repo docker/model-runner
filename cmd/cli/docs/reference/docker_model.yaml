@@ -22,6 +22,7 @@ cname:
     - docker model run
     - docker model start-runner
     - docker model status
+    - docker model stop
     - docker model stop-runner
     - docker model tag
     - docker model uninstall-runner
@@ -44,6 +45,7 @@ clink:
     - docker_model_run.yaml
     - docker_model_start-runner.yaml
     - docker_model_status.yaml
+    - docker_model_stop.yaml
     - docker_model_stop-runner.yaml
     - docker_model_tag.yaml
     - docker_model_uninstall-runner.yaml

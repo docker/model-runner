@@ -691,8 +691,12 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			// Check if a prompt was explicitly provided (even if empty string)
+			// If args length > 1, then a prompt argument was provided (even if it's "")
+			explicitPromptProvided := len(args) > 1
+
 			// Handle --detach flag: just load the model without interaction
-			if detach {
+			if detach || (explicitPromptProvided && prompt == "") {
 				// Make a minimal request to load the model into memory
 				err := desktopClient.Chat(model, "", nil, func(content string) {
 					// Silently discard output in detach mode
@@ -713,6 +717,14 @@ func newRunCmd() *cobra.Command {
 				cmd.Println()
 				return nil
 			}
+
+			// Preload the model in the background to optimize for the first user interaction
+			// This makes sure the model is loaded when the user types their first prompt
+			go func() {
+				_ = desktopClient.Chat(model, "", nil, func(content string) {
+					// Silently preload the model - discard output
+				}, false)
+			}()
 
 			// Use enhanced readline-based interactive mode when terminal is available
 			if term.IsTerminal(int(os.Stdin.Fd())) {

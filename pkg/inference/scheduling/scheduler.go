@@ -442,7 +442,7 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	}
 	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), utils.SanitizeForLog(configureRequest.Model), modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
@@ -533,6 +533,122 @@ func parseBackendMode(mode string) inference.BackendMode {
 // by delegating to the model manager
 func (s *Scheduler) handleModels(w http.ResponseWriter, r *http.Request) {
 	s.modelManager.ServeHTTP(w, r)
+}
+
+// HandleGenerate handles /api/generate requests
+// If prompt is empty, loads the model into memory
+// If prompt is empty and keep_alive is 0, unloads the model
+func (s *Scheduler) HandleGenerate(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var request GenerateRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	
+	if request.Model == "" {
+		http.Error(w, "model is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if it's a load/unload request (empty prompt)
+	if request.Prompt == "" {
+		// Load request - if keep_alive is 0, it's an unload request
+		if request.KeepAlive != nil && *request.KeepAlive == 0 {
+			// Unload the model
+			unloadReq := UnloadRequest{
+				Models:  []string{request.Model},
+				Backend: "", // Use default backend
+			}
+			_ = UnloadResponse{s.loader.Unload(r.Context(), unloadReq)}
+			
+			// Return unload response
+			response := GenerateResponse{
+				Model:      request.Model,
+				CreatedAt:  time.Now().UTC(),
+				Response:   "",
+				Done:       true,
+				DoneReason: "unload",
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+			return
+		} else {
+			// Load the model by requesting a minimal inference
+			// This will trigger the loading mechanism in the loader
+			backend := s.defaultBackend
+			if backend == nil {
+				http.Error(w, "no default backend available", http.StatusInternalServerError)
+				return
+			}
+			
+			modelID := s.modelManager.ResolveModelID(request.Model)
+			
+			// Request a runner to load the model - we'll do a minimal operation to trigger loading
+			runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, inference.BackendModeCompletion)
+			if err != nil {
+				http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
+				return
+			}
+			defer s.loader.release(runner)
+			
+			// Return load response
+			response := GenerateResponse{
+				Model:     request.Model,
+				CreatedAt: time.Now().UTC(),
+				Response:  "",
+				Done:      true,
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+	}
+
+	// Regular generate request - convert to OpenAI format and reuse existing logic
+	// Create an OpenAI-compatible request
+	openAIRequest := map[string]interface{}{
+		"model":     request.Model,
+		"prompt":    request.Prompt,
+		"stream":    request.Stream,
+		"system":    request.System,
+		"raw":       request.Raw,
+		"options":   request.Options,
+	}
+
+	// Add context if it exists
+	if request.Context != nil {
+		openAIRequest["context"] = request.Context
+	}
+
+	// Add template if it exists
+	if request.Template != "" {
+		openAIRequest["template"] = request.Template
+	}
+	
+	openAIBody, err := json.Marshal(openAIRequest)
+	if err != nil {
+		http.Error(w, "failed to process request", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a new request with the OpenAI body for forwarding
+	upstreamRequest := r.Clone(r.Context())
+	upstreamRequest.Body = io.NopCloser(bytes.NewReader(openAIBody))
+
+	// Call the existing OpenAI inference handler
+	s.handleOpenAIInference(w, upstreamRequest)
 }
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.

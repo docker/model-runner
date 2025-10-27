@@ -39,6 +39,14 @@ func handleClientError(err error, message string) error {
 	return errors.Join(err, errors.New(message))
 }
 
+// handleNotRunningError checks if the error indicates that the model was not running
+// and returns a user-friendly message in that case
+func handleNotRunningError(err error) error {
+	// For now, just return the error as-is
+	// This function can be expanded to handle specific "model not running" errors in the future
+	return err
+}
+
 // stripDefaultsFromModelName removes the default "ai/" prefix and ":latest" tag for display.
 // Examples:
 //   - "ai/gemma3:latest" -> "gemma3"
