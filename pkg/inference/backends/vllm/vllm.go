@@ -70,7 +70,7 @@ func (v *vLLM) UsesExternalModelManagement() bool {
 
 func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	if !platform.SupportsVLLM() {
-		return errors.New("not implemented")
+		return errors.New("vLLM backend is not yet supported on this platform")
 	}
 
 	vllmBinaryPath := v.binaryPath()
