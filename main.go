@@ -116,6 +116,15 @@ func main() {
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
+	// Auto-detect GPU type and set appropriate variant
+	// Check if we have supported AMD GPUs and set ROCm variant accordingly
+	if hasAMD, err := gpuInfo.HasSupportedAMDGPU(); err == nil && hasAMD {
+		log.Info("Supported AMD GPU detected, ROCm will be used automatically")
+		// This will be handled by the llama.cpp backend during server download
+	} else if err != nil {
+		log.Debugf("AMD GPU detection failed: %v", err)
+	}
+
 	// Create llama.cpp configuration from environment variables
 	llamaCppConfig := createLlamaCppConfigFromEnv()
 
