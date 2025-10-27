@@ -5,9 +5,6 @@ ARG CANN_IMAGE_VARIANT=ubuntu22.04
 
 FROM quay.io/ascend/cann:${CANN_VERSION}-${CANN_IMAGE_VARIANT}-py3.10 AS builder
 
-ARG TARGETARCH
-ARG CANN_IMAGE_VARIANT
-
 RUN apt-get update && apt-get install -y cmake ninja-build git build-essential curl
 
 WORKDIR /llama-server
