@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG CANN_VERSION=8.0.0-910b
-ARG CANN_IMAGE_VARIANT=openeuler22.03
+ARG CANN_IMAGE_VARIANT=ubuntu22.04
 
 FROM quay.io/ascend/cann:${CANN_VERSION}-${CANN_IMAGE_VARIANT}-py3.10 AS builder
 
