@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -140,6 +141,14 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
+	var draftBundle types.ModelBundle
+	if config != nil && config.Speculative != nil && config.Speculative.DraftModel != "" {
+		draftBundle, err = l.modelManager.GetBundle(config.Speculative.DraftModel)
+		if err != nil {
+			return fmt.Errorf("failed to get draft model: %w", err)
+		}
+	}
+
 	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		l.log.Warnf("failed to remove socket file %s: %w\n", socket, err)
 		l.log.Warnln("llama.cpp may not be able to start")
@@ -153,6 +162,19 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 	args, err := l.config.GetArgs(bundle, socket, mode, config)
 	if err != nil {
 		return fmt.Errorf("failed to get args for llama.cpp: %w", err)
+	}
+
+	if draftBundle != nil && config != nil && config.Speculative != nil {
+		draftPath := draftBundle.GGUFPath()
+		if draftPath != "" {
+			args = append(args, "--model-draft", draftPath)
+			if config.Speculative.NumTokens > 0 {
+				args = append(args, "--draft-max", strconv.Itoa(config.Speculative.NumTokens))
+			}
+			if config.Speculative.MinAcceptanceRate > 0 {
+				args = append(args, "--draft-p-min", strconv.FormatFloat(config.Speculative.MinAcceptanceRate, 'f', 2, 64))
+			}
+		}
 	}
 
 	// Sanitize args for safe logging
@@ -238,22 +260,9 @@ func (l *llamaCpp) GetDiskUsage() (int64, error) {
 }
 
 func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (inference.RequiredMemory, error) {
-	var mdlGguf *parser.GGUFFile
-	var mdlConfig types.Config
-	inStore, err := l.modelManager.IsModelInStore(model)
+	mdlGguf, mdlConfig, err := l.parseModel(ctx, model)
 	if err != nil {
-		return inference.RequiredMemory{}, fmt.Errorf("checking if model is in local store: %w", err)
-	}
-	if inStore {
-		mdlGguf, mdlConfig, err = l.parseLocalModel(model)
-		if err != nil {
-			return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
-		}
-	} else {
-		mdlGguf, mdlConfig, err = l.parseRemoteModel(ctx, model)
-		if err != nil {
-			return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
-		}
+		return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
 	}
 
 	contextSize := GetContextSize(mdlConfig, config)
@@ -266,29 +275,54 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 		ngl = 999
 	}
 
-	// TODO(p1-0tr): for now assume we are running on GPU (single one) - Devices[1];
-	// sum up weights + kv cache + context for an estimate of total GPU memory needed
-	// while running inference with the given model
-	estimate := mdlGguf.EstimateLLaMACppRun(parser.WithLLaMACppContextSize(int32(contextSize)),
-		// TODO(p1-0tr): add logic for resolving other param values, instead of hardcoding them
+	memory := l.estimateMemoryFromGGUF(mdlGguf, contextSize, ngl)
+
+	if config != nil && config.Speculative != nil && config.Speculative.DraftModel != "" {
+		draftGguf, _, err := l.parseModel(ctx, config.Speculative.DraftModel)
+		if err != nil {
+			return inference.RequiredMemory{}, fmt.Errorf("estimating draft model memory: %w", &inference.ErrGGUFParse{Err: err})
+		}
+		draftMemory := l.estimateMemoryFromGGUF(draftGguf, contextSize, ngl)
+		memory.RAM += draftMemory.RAM
+		memory.VRAM += draftMemory.VRAM
+	}
+
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		memory.VRAM = 1
+	}
+
+	return memory, nil
+}
+
+// parseModel parses a model (local or remote) and returns the GGUF file and config.
+func (l *llamaCpp) parseModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
+	inStore, err := l.modelManager.IsModelInStore(model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("checking if model is in local store: %w", err)
+	}
+	if inStore {
+		return l.parseLocalModel(model)
+	}
+	return l.parseRemoteModel(ctx, model)
+}
+
+// estimateMemoryFromGGUF estimates memory requirements from a parsed GGUF file.
+func (l *llamaCpp) estimateMemoryFromGGUF(ggufFile *parser.GGUFFile, contextSize uint64, ngl uint64) inference.RequiredMemory {
+	estimate := ggufFile.EstimateLLaMACppRun(
+		parser.WithLLaMACppContextSize(int32(contextSize)),
 		parser.WithLLaMACppLogicalBatchSize(2048),
-		parser.WithLLaMACppOffloadLayers(ngl))
+		parser.WithLLaMACppOffloadLayers(ngl),
+	)
 	ram := uint64(estimate.Devices[0].Weight.Sum() + estimate.Devices[0].KVCache.Sum() + estimate.Devices[0].Computation.Sum())
 	var vram uint64
 	if len(estimate.Devices) > 1 {
 		vram = uint64(estimate.Devices[1].Weight.Sum() + estimate.Devices[1].KVCache.Sum() + estimate.Devices[1].Computation.Sum())
 	}
 
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// TODO(p1-0tr): For now on windows/arm64 stick to the old behaviour, of allowing
-		// one model at a time. This WA requires gpuinfo.GetVRAMSize to return 1.
-		vram = 1
-	}
-
 	return inference.RequiredMemory{
 		RAM:  ram,
 		VRAM: vram,
-	}, nil
+	}
 }
 
 func (l *llamaCpp) parseLocalModel(model string) (*parser.GGUFFile, types.Config, error) {
@@ -384,7 +418,7 @@ func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 		l.log.Warnf("Failed to determine if llama-server is built with GPU support: %v", err)
 		return false
 	}
-	sc := bufio.NewScanner(strings.NewReader(string(output.Bytes())))
+	sc := bufio.NewScanner(strings.NewReader(output.String()))
 	expectDev := false
 	devRe := regexp.MustCompile(`\s{2}.*:\s`)
 	ndevs := 0

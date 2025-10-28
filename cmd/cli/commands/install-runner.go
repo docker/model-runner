@@ -116,7 +116,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 	}
 
 	// Ensure that we have an up-to-date copy of the image.
-	if err := standalone.EnsureControllerImage(ctx, dockerClient, gpu, printer); err != nil {
+	if err := standalone.EnsureControllerImage(ctx, dockerClient, gpu, "", printer); err != nil {
 		return nil, fmt.Errorf("unable to pull latest standalone model runner image: %w", err)
 	}
 
@@ -136,7 +136,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, modelStorageVolume, printer, engineKind); err != nil {
+	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -166,6 +166,7 @@ type runnerOptions struct {
 	port            uint16
 	host            string
 	gpuMode         string
+	backend         string
 	doNotTrack      bool
 	pullImage       bool
 	pruneContainers bool
@@ -254,9 +255,19 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions) error {
 		return fmt.Errorf("unknown GPU specification: %q", opts.gpuMode)
 	}
 
+	// Validate backend selection
+	if opts.backend != "" && opts.backend != "llama.cpp" && opts.backend != "vllm" {
+		return fmt.Errorf("unknown backend: %q (supported: llama.cpp, vllm)", opts.backend)
+	}
+
+	// Validate backend-GPU compatibility
+	if opts.backend == "vllm" && gpu != gpupkg.GPUSupportCUDA {
+		return fmt.Errorf("--backend vllm requires CUDA GPU support (--gpu=cuda or auto-detected CUDA)")
+	}
+
 	// Ensure that we have an up-to-date copy of the image, if requested.
 	if opts.pullImage {
-		if err := standalone.EnsureControllerImage(cmd.Context(), dockerClient, gpu, cmd); err != nil {
+		if err := standalone.EnsureControllerImage(cmd.Context(), dockerClient, gpu, opts.backend, cmd); err != nil {
 			return fmt.Errorf("unable to pull latest standalone model runner image: %w", err)
 		}
 	}
@@ -267,7 +278,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions) error {
 		return fmt.Errorf("unable to initialize standalone model storage: %w", err)
 	}
 	// Create the model runner container.
-	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, modelStorageVolume, cmd, engineKind); err != nil {
+	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, cmd, engineKind); err != nil {
 		return fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -279,6 +290,7 @@ func newInstallRunner() *cobra.Command {
 	var port uint16
 	var host string
 	var gpuMode string
+	var backend string
 	var doNotTrack bool
 	c := &cobra.Command{
 		Use:   "install-runner",
@@ -288,6 +300,7 @@ func newInstallRunner() *cobra.Command {
 				port:            port,
 				host:            host,
 				gpuMode:         gpuMode,
+				backend:         backend,
 				doNotTrack:      doNotTrack,
 				pullImage:       true,
 				pruneContainers: false,
@@ -299,6 +312,7 @@ func newInstallRunner() *cobra.Command {
 		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
 	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|rocm|musa)")
+	c.Flags().StringVar(&backend, "backend", "", "Specify backend (llama.cpp|vllm). Default: llama.cpp")
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c
 }

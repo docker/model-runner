@@ -8,6 +8,7 @@ import (
 func newStartRunner() *cobra.Command {
 	var port uint16
 	var gpuMode string
+	var backend string
 	var doNotTrack bool
 	c := &cobra.Command{
 		Use:   "start-runner",
@@ -16,6 +17,7 @@ func newStartRunner() *cobra.Command {
 			return runInstallOrStart(cmd, runnerOptions{
 				port:       port,
 				gpuMode:    gpuMode,
+				backend:    backend,
 				doNotTrack: doNotTrack,
 				pullImage:  false,
 			})
@@ -25,6 +27,7 @@ func newStartRunner() *cobra.Command {
 	c.Flags().Uint16Var(&port, "port", 0,
 		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
 	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|musa)")
+	c.Flags().StringVar(&backend, "backend", "", "Specify backend (llama.cpp|vllm). Default: llama.cpp")
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c
 }
