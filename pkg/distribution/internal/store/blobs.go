@@ -1,7 +1,6 @@
 package store
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -180,15 +179,17 @@ func (s *LocalStore) writeConfigFile(mdl v1.Image) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("get digest: %w", err)
 	}
+	hasBlob, err := s.hasBlob(hash)
+	if err != nil {
+		return false, fmt.Errorf("check config existence: %w", err)
+	}
+	if hasBlob {
+		return false, nil
+	}
+
 	path, err := s.blobPath(hash)
 	if err != nil {
 		return false, fmt.Errorf("get blob path: %w", err)
-	}
-	if _, err := os.Stat(path); err == nil {
-		// Config already exists in the store.
-		return false, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("stat config blob: %w", err)
 	}
 
 	rcf, err := mdl.RawConfigFile()

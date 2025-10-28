@@ -200,7 +200,7 @@ func (s *LocalStore) Version() string {
 }
 
 // Write writes a model to the store
-func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
+func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error) {
 	initialIndex, err := s.readIndex()
 	if err != nil {
 		return fmt.Errorf("reading models index: %w", err)
@@ -209,13 +209,23 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 	type cleanupFunc func() error
 	var cleanups []cleanupFunc
 	success := false
+	var rollbackErrors []error
 	defer func() {
 		if success {
 			return
 		}
 		for i := len(cleanups) - 1; i >= 0; i-- {
-			if err := cleanups[i](); err != nil && !errors.Is(err, os.ErrNotExist) {
-				fmt.Printf("Warning: failed to roll back store state: %v\n", err)
+			if cleanupErr := cleanups[i](); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+				rollbackErrors = append(rollbackErrors, cleanupErr)
+			}
+		}
+		if len(rollbackErrors) > 0 {
+			joined := errors.Join(rollbackErrors...)
+			wrapped := fmt.Errorf("rollback cleanup errors: %w", joined)
+			if err != nil {
+				err = errors.Join(err, wrapped)
+			} else {
+				err = wrapped
 			}
 		}
 	}()
@@ -336,7 +346,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 
 // WriteLightweight writes only the manifest and config for a model, assuming layers already exist in the store.
 // This is used for config-only modifications where the layer data hasn't changed.
-func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
+func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) (err error) {
 	initialIndex, err := s.readIndex()
 	if err != nil {
 		return fmt.Errorf("reading models index: %w", err)
@@ -345,13 +355,23 @@ func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
 	type cleanupFunc func() error
 	var cleanups []cleanupFunc
 	success := false
+	var rollbackErrors []error
 	defer func() {
 		if success {
 			return
 		}
 		for i := len(cleanups) - 1; i >= 0; i-- {
-			if err := cleanups[i](); err != nil && !errors.Is(err, os.ErrNotExist) {
-				fmt.Printf("Warning: failed to roll back store state: %v\n", err)
+			if cleanupErr := cleanups[i](); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+				rollbackErrors = append(rollbackErrors, cleanupErr)
+			}
+		}
+		if len(rollbackErrors) > 0 {
+			joined := errors.Join(rollbackErrors...)
+			wrapped := fmt.Errorf("rollback cleanup errors: %w", joined)
+			if err != nil {
+				err = errors.Join(err, wrapped)
+			} else {
+				err = wrapped
 			}
 		}
 	}()

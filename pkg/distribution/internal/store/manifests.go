@@ -47,9 +47,12 @@ func (s *LocalStore) WriteManifest(hash v1.Hash, raw []byte) error {
 	if err := s.writeIndex(idx.Add(newEntryForManifest(hash, manifest))); err != nil {
 		// Best effort rollback to avoid leaving an orphaned manifest on disk.
 		if removeErr := s.removeManifest(hash); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return fmt.Errorf("writing models index: %w (also failed to remove manifest: %v)", err, removeErr)
+			return errors.Join(
+				fmt.Errorf("write models index: %w", err),
+				fmt.Errorf("rollback remove manifest %s: %w", hash, removeErr),
+			)
 		}
-		return fmt.Errorf("writing models index: %w", err)
+		return fmt.Errorf("write models index: %w", err)
 	}
 	return nil
 }
@@ -75,7 +78,7 @@ func (s *LocalStore) removeManifest(hash v1.Hash) error {
 // writeFile is a wrapper around os.WriteFile that creates any parent directories as needed.
 func writeFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0777); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create parent directory %q: %w", dir, err)
 	}
 
@@ -102,7 +105,7 @@ func writeFile(path string, data []byte) error {
 		cleanup()
 		return fmt.Errorf("close temporary file %q: %w", tmpName, err)
 	}
-	if err := os.Chmod(tmpName, 0666); err != nil && !errors.Is(err, os.ErrPermission) {
+	if err := os.Chmod(tmpName, 0o644); err != nil {
 		cleanup()
 		return fmt.Errorf("chmod temporary file %q: %w", tmpName, err)
 	}
