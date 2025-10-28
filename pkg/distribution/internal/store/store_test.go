@@ -382,6 +382,88 @@ func TestStoreAPI(t *testing.T) {
 	})
 }
 
+func TestWriteRollsBackOnTagFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "store-rollback-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storePath := filepath.Join(tempDir, "rollback-store")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	mdl := newTestModel(t)
+
+	configHash, err := mdl.ConfigName()
+	if err != nil {
+		t.Fatalf("ConfigName failed: %v", err)
+	}
+	layers, err := mdl.Layers()
+	if err != nil {
+		t.Fatalf("Layers failed: %v", err)
+	}
+	var diffIDs []string
+	for _, layer := range layers {
+		diffID, err := layer.DiffID()
+		if err != nil {
+			t.Fatalf("DiffID failed: %v", err)
+		}
+		diffIDs = append(diffIDs, diffID.String())
+	}
+	digest, err := mdl.Digest()
+	if err != nil {
+		t.Fatalf("Digest failed: %v", err)
+	}
+
+	err = s.Write(mdl, []string{"invalid tag!"}, nil)
+	if err == nil {
+		t.Fatalf("expected write to fail for invalid tag")
+	}
+
+	models, err := s.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("expected no models in store after failed write, found %d", len(models))
+	}
+
+	configPath := filepath.Join(storePath, "blobs", configHash.Algorithm, configHash.Hex)
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config blob to be cleaned up, stat error: %v", err)
+	}
+
+	for _, digestStr := range diffIDs {
+		parts := strings.SplitN(digestStr, ":", 2)
+		if len(parts) != 2 {
+			t.Fatalf("unexpected diffID format: %q", digestStr)
+		}
+		layerPath := filepath.Join(storePath, "blobs", parts[0], parts[1])
+		if _, err := os.Stat(layerPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected layer blob %q to be cleaned up, stat error: %v", layerPath, err)
+		}
+	}
+
+	manifestPath := filepath.Join(storePath, "manifests", digest.Algorithm, digest.Hex)
+	if _, err := os.Stat(manifestPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected manifest to be cleaned up, stat error: %v", err)
+	}
+
+	modelsIndexPath := filepath.Join(storePath, "models.json")
+	content, err := os.ReadFile(modelsIndexPath)
+	if err != nil {
+		t.Fatalf("failed to read models index: %v", err)
+	}
+	if strings.Contains(string(content), digest.Hex) {
+		t.Fatalf("models index still references failed digest %s", digest.Hex)
+	}
+}
+
 // TestIncompleteFileHandling tests that files are created with .incomplete suffix and renamed on success
 func TestIncompleteFileHandling(t *testing.T) {
 	// Create a temporary directory for the test store

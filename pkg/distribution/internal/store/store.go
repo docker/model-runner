@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -200,9 +201,40 @@ func (s *LocalStore) Version() string {
 
 // Write writes a model to the store
 func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
-	// Write the config JSON file
-	if err := s.writeConfigFile(mdl); err != nil {
+	initialIndex, err := s.readIndex()
+	if err != nil {
+		return fmt.Errorf("reading models index: %w", err)
+	}
+
+	type cleanupFunc func() error
+	var cleanups []cleanupFunc
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			if err := cleanups[i](); err != nil && !errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("Warning: failed to roll back store state: %v\n", err)
+			}
+		}
+	}()
+
+	configCreated, err := s.writeConfigFile(mdl)
+	if err != nil {
 		return fmt.Errorf("writing config file: %w", err)
+	}
+	if configCreated {
+		cfgHash, hashErr := mdl.ConfigName()
+		if hashErr != nil {
+			return fmt.Errorf("config digest: %w", hashErr)
+		}
+		cleanups = append(cleanups, func() error {
+			if err := s.removeBlob(cfgHash); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove config blob: %w", err)
+			}
+			return nil
+		})
 	}
 
 	layers, err := mdl.Layers()
@@ -219,6 +251,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 		imageSize += size
 	}
 
+	var newLayerDigests []v1.Hash
 	for _, layer := range layers {
 		var pr *progress.Reporter
 		var progressChan chan<- v1.Update
@@ -227,18 +260,39 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 			progressChan = pr.Updates()
 		}
 
-		err := s.writeLayer(layer, progressChan)
+		created, diffID, err := s.writeLayer(layer, progressChan)
 
 		if progressChan != nil {
 			close(progressChan)
-			if err := pr.Wait(); err != nil {
-				fmt.Printf("reporter finished with non-fatal error: %v\n", err)
+			if pr != nil {
+				if err := pr.Wait(); err != nil {
+					fmt.Printf("reporter finished with non-fatal error: %v\n", err)
+				}
 			}
 		}
 
 		if err != nil {
 			return fmt.Errorf("writing blob: %w", err)
 		}
+		if created {
+			newLayerDigests = append(newLayerDigests, diffID)
+		}
+	}
+
+	if len(newLayerDigests) > 0 {
+		digests := append([]v1.Hash(nil), newLayerDigests...)
+		cleanups = append(cleanups, func() error {
+			var errs []error
+			for _, dg := range digests {
+				if err := s.removeBlob(dg); err != nil && !errors.Is(err, os.ErrNotExist) {
+					errs = append(errs, fmt.Errorf("remove blob %s: %w", dg, err))
+				}
+			}
+			if len(errs) > 0 {
+				return errors.Join(errs...)
+			}
+			return nil
+		})
 	}
 
 	// Write the manifest
@@ -250,18 +304,58 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("get raw manifest: %w", err)
 	}
+	manifestExists := false
+	if _, statErr := os.Stat(s.manifestPath(digest)); statErr == nil {
+		manifestExists = true
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("stat manifest: %w", statErr)
+	}
 	if err := s.WriteManifest(digest, rm); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
+	if !manifestExists {
+		cleanups = append(cleanups, func() error {
+			if err := s.removeManifest(digest); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove manifest: %w", err)
+			}
+			return nil
+		})
+	}
+	cleanups = append(cleanups, func() error {
+		if err := s.writeIndex(initialIndex); err != nil {
+			return fmt.Errorf("restore models index: %w", err)
+		}
+		return nil
+	})
 	if err := s.AddTags(digest.String(), tags); err != nil {
 		return fmt.Errorf("adding tags: %w", err)
 	}
-	return err
+	success = true
+	return nil
 }
 
 // WriteLightweight writes only the manifest and config for a model, assuming layers already exist in the store.
 // This is used for config-only modifications where the layer data hasn't changed.
 func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
+	initialIndex, err := s.readIndex()
+	if err != nil {
+		return fmt.Errorf("reading models index: %w", err)
+	}
+
+	type cleanupFunc func() error
+	var cleanups []cleanupFunc
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			if err := cleanups[i](); err != nil && !errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("Warning: failed to roll back store state: %v\n", err)
+			}
+		}
+	}()
+
 	// Verify that all layers already exist in the store
 	layers, err := mdl.Layers()
 	if err != nil {
@@ -283,8 +377,21 @@ func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
 	}
 
 	// Write the config JSON file
-	if err := s.writeConfigFile(mdl); err != nil {
+	configCreated, err := s.writeConfigFile(mdl)
+	if err != nil {
 		return fmt.Errorf("writing config file: %w", err)
+	}
+	if configCreated {
+		cfgHash, hashErr := mdl.ConfigName()
+		if hashErr != nil {
+			return fmt.Errorf("config digest: %w", hashErr)
+		}
+		cleanups = append(cleanups, func() error {
+			if err := s.removeBlob(cfgHash); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove config blob: %w", err)
+			}
+			return nil
+		})
 	}
 
 	// Write the manifest
@@ -296,12 +403,33 @@ func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) error {
 	if err != nil {
 		return fmt.Errorf("get raw manifest: %w", err)
 	}
+	manifestExists := false
+	if _, statErr := os.Stat(s.manifestPath(digest)); statErr == nil {
+		manifestExists = true
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("stat manifest: %w", statErr)
+	}
 	if err := s.WriteManifest(digest, rm); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
+	if !manifestExists {
+		cleanups = append(cleanups, func() error {
+			if err := s.removeManifest(digest); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove manifest: %w", err)
+			}
+			return nil
+		})
+	}
+	cleanups = append(cleanups, func() error {
+		if err := s.writeIndex(initialIndex); err != nil {
+			return fmt.Errorf("restore models index: %w", err)
+		}
+		return nil
+	})
 	if err := s.AddTags(digest.String(), tags); err != nil {
 		return fmt.Errorf("adding tags: %w", err)
 	}
+	success = true
 	return nil
 }
 
