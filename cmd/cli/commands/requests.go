@@ -35,8 +35,7 @@ func newRequestsCmd() *cobra.Command {
 				if model != "" {
 					errMsg = errMsg + " for " + model
 				}
-				err = handleClientError(err, errMsg)
-				return handleNotRunningError(err)
+				return handleClientError(err, errMsg)
 			}
 			defer cancel()
 

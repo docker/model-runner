@@ -58,7 +58,7 @@ func pullModel(cmd *cobra.Command, desktopClient *desktop.Client, model string, 
 	}
 
 	if err != nil {
-		return handleNotRunningError(handleClientError(err, "Failed to pull model"))
+		return handleClientError(err, "Failed to pull model")
 	}
 
 	cmd.Println(response)

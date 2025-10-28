@@ -59,11 +59,60 @@ func TestInstallRunnerCommandFlags(t *testing.T) {
 	cmd := newInstallRunner()
 
 	// Verify all expected flags exist
-	expectedFlags := []string{"port", "host", "gpu", "do-not-track"}
+	expectedFlags := []string{"port", "host", "gpu", "backend", "do-not-track"}
 	for _, flagName := range expectedFlags {
 		if cmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("Expected flag '--%s' not found", flagName)
 		}
+	}
+}
+
+func TestInstallRunnerBackendFlag(t *testing.T) {
+	cmd := newInstallRunner()
+
+	// Verify the --backend flag exists
+	backendFlag := cmd.Flags().Lookup("backend")
+	if backendFlag == nil {
+		t.Fatal("--backend flag not found")
+	}
+
+	// Verify the default value
+	if backendFlag.DefValue != "" {
+		t.Errorf("Expected default backend value to be empty, got '%s'", backendFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if backendFlag.Value.Type() != "string" {
+		t.Errorf("Expected backend flag type to be 'string', got '%s'", backendFlag.Value.Type())
+	}
+
+	// Test setting the flag to vllm
+	err := cmd.Flags().Set("backend", "vllm")
+	if err != nil {
+		t.Errorf("Failed to set backend flag: %v", err)
+	}
+
+	// Verify the value was set
+	backendValue, err := cmd.Flags().GetString("backend")
+	if err != nil {
+		t.Errorf("Failed to get backend flag value: %v", err)
+	}
+	if backendValue != "vllm" {
+		t.Errorf("Expected backend value to be 'vllm', got '%s'", backendValue)
+	}
+
+	// Test setting the flag to llama.cpp
+	err = cmd.Flags().Set("backend", "llama.cpp")
+	if err != nil {
+		t.Errorf("Failed to set backend flag to llama.cpp: %v", err)
+	}
+
+	backendValue, err = cmd.Flags().GetString("backend")
+	if err != nil {
+		t.Errorf("Failed to get backend flag value: %v", err)
+	}
+	if backendValue != "llama.cpp" {
+		t.Errorf("Expected backend value to be 'llama.cpp', got '%s'", backendValue)
 	}
 }
 

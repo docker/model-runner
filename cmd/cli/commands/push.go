@@ -45,7 +45,7 @@ func pushModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) 
 	}
 
 	if err != nil {
-		return handleNotRunningError(handleClientError(err, "Failed to push model"))
+		return handleClientError(err, "Failed to push model")
 	}
 
 	cmd.Println(response)

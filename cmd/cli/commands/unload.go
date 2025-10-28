@@ -25,8 +25,7 @@ func newUnloadCmd() *cobra.Command {
 			}
 			unloadResp, err := desktopClient.Unload(desktop.UnloadRequest{All: all, Backend: backend, Models: normalizedModels})
 			if err != nil {
-				err = handleClientError(err, "Failed to unload models")
-				return handleNotRunningError(err)
+				return handleClientError(err, "Failed to unload models")
 			}
 			unloaded := unloadResp.UnloadedRunners
 			if unloaded == 0 {

@@ -17,6 +17,8 @@ const (
 	GPUSupportCUDA
 	// GPUSupportROCm indicates ROCm GPU support.
 	GPUSupportROCm
+	// GPUSupportMUSA indicates MUSA GPU support.
+	GPUSupportMUSA
 )
 
 // ProbeGPUSupport determines whether or not the Docker engine has GPU support.
@@ -24,6 +26,11 @@ func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (
 	// Check for ROCm runtime first
 	if hasROCm, err := HasROCmRuntime(ctx, dockerClient); err == nil && hasROCm {
 		return GPUSupportROCm, nil
+	}
+
+	// Then check for MTHREADS runtime
+	if hasMTHREADS, err := HasMTHREADSRuntime(ctx, dockerClient); err == nil && hasMTHREADS {
+		return GPUSupportMUSA, nil
 	}
 
 	// Then search for nvidia-container-runtime on PATH
@@ -62,4 +69,14 @@ func HasROCmRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (b
 	}
 	_, hasROCm := info.Runtimes["rocm"]
 	return hasROCm, nil
+}
+
+// HasMTHREADSRuntime determines whether there is a mthreads runtime available
+func HasMTHREADSRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
+	info, err := dockerClient.Info(ctx)
+	if err != nil {
+		return false, err
+	}
+	_, hasMTHREADS := info.Runtimes["mthreads"]
+	return hasMTHREADS, nil
 }
