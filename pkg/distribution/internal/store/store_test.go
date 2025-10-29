@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
 // TestStoreAPI tests the store API directly
@@ -380,6 +382,198 @@ func TestStoreAPI(t *testing.T) {
 			t.Errorf("Shared blob file still exists after deleting all referencing models: %s", blobPath)
 		}
 	})
+}
+
+func TestWriteRollsBackOnTagFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "store-rollback-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storePath := filepath.Join(tempDir, "rollback-store")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	mdl := newTestModel(t)
+
+	configHash, err := mdl.ConfigName()
+	if err != nil {
+		t.Fatalf("ConfigName failed: %v", err)
+	}
+	layers, err := mdl.Layers()
+	if err != nil {
+		t.Fatalf("Layers failed: %v", err)
+	}
+	var diffIDs []string
+	for _, layer := range layers {
+		diffID, err := layer.DiffID()
+		if err != nil {
+			t.Fatalf("DiffID failed: %v", err)
+		}
+		diffIDs = append(diffIDs, diffID.String())
+	}
+	digest, err := mdl.Digest()
+	if err != nil {
+		t.Fatalf("Digest failed: %v", err)
+	}
+
+	err = s.Write(mdl, []string{"invalid tag!"}, nil)
+	if err == nil {
+		t.Fatalf("expected write to fail for invalid tag")
+	}
+
+	models, err := s.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("expected no models in store after failed write, found %d", len(models))
+	}
+
+	configPath := filepath.Join(storePath, "blobs", configHash.Algorithm, configHash.Hex)
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config blob to be cleaned up, stat error: %v", err)
+	}
+
+	for _, digestStr := range diffIDs {
+		parts := strings.SplitN(digestStr, ":", 2)
+		if len(parts) != 2 {
+			t.Fatalf("unexpected diffID format: %q", digestStr)
+		}
+		layerPath := filepath.Join(storePath, "blobs", parts[0], parts[1])
+		if _, err := os.Stat(layerPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected layer blob %q to be cleaned up, stat error: %v", layerPath, err)
+		}
+	}
+
+	manifestPath := filepath.Join(storePath, "manifests", digest.Algorithm, digest.Hex)
+	if _, err := os.Stat(manifestPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected manifest to be cleaned up, stat error: %v", err)
+	}
+
+	modelsIndexPath := filepath.Join(storePath, "models.json")
+	content, err := os.ReadFile(modelsIndexPath)
+	if err != nil {
+		t.Fatalf("failed to read models index: %v", err)
+	}
+	if strings.Contains(string(content), digest.Hex) {
+		t.Fatalf("models index still references failed digest %s", digest.Hex)
+	}
+}
+
+func TestWriteRollsBackOnConfigFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "store-config-failure")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storePath := filepath.Join(tempDir, "config-failure-store")
+	s, err := store.New(store.Options{RootPath: storePath})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	mdl := newTestModel(t)
+	cfgFailModel := configErrorModel{ModelArtifact: mdl}
+
+	if err := s.Write(cfgFailModel, []string{"cfg-failure:latest"}, nil); err == nil {
+		t.Fatalf("expected write to fail due to config overwrite")
+	}
+
+	assertStoreClean(t, s, storePath, mdl)
+}
+
+func TestWriteRollsBackOnLayerFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "store-layer-failure")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storePath := filepath.Join(tempDir, "layer-failure-store")
+	s, err := store.New(store.Options{RootPath: storePath})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	mdl := newTestModel(t)
+	layers, err := mdl.Layers()
+	if err != nil {
+		t.Fatalf("Layers failed: %v", err)
+	}
+	if len(layers) == 0 {
+		t.Fatalf("expected at least one layer")
+	}
+	newHash, err := v1.NewHash("sha256:" + strings.Repeat("c", 64))
+	if err != nil {
+		t.Fatalf("failed to build hash: %v", err)
+	}
+	failing := failingLayer{Layer: layers[0], hash: newHash}
+	mdl = mutate.AppendLayers(mdl, failing)
+
+	if err := s.Write(mdl, []string{"layer-failure:latest"}, nil); err == nil {
+		t.Fatalf("expected write to fail due to layer overwrite")
+	}
+
+	assertStoreClean(t, s, storePath, mdl)
+}
+
+func assertStoreClean(t *testing.T, s *store.LocalStore, storePath string, mdl types.ModelArtifact) {
+	t.Helper()
+
+	if models, err := s.List(); err != nil {
+		t.Fatalf("List failed: %v", err)
+	} else if len(models) != 0 {
+		t.Fatalf("expected no models in store after failed write, found %d", len(models))
+	}
+
+	manifestDigest, err := mdl.Digest()
+	if err != nil {
+		t.Fatalf("Digest failed: %v", err)
+	}
+	manifestPath := filepath.Join(storePath, "manifests", manifestDigest.Algorithm, manifestDigest.Hex)
+	if _, err := os.Stat(manifestPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected manifest %s to be cleaned up, stat error: %v", manifestPath, err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(storePath, "models.json"))
+	if err != nil {
+		t.Fatalf("failed to read models index: %v", err)
+	}
+	if strings.Contains(string(content), manifestDigest.Hex) {
+		t.Fatalf("models index still references failed digest %s", manifestDigest.Hex)
+	}
+}
+
+type configErrorModel struct {
+	types.ModelArtifact
+}
+
+func (configErrorModel) RawConfigFile() ([]byte, error) {
+	return nil, fmt.Errorf("forced config failure")
+}
+
+type failingLayer struct {
+	v1.Layer
+	hash v1.Hash
+}
+
+func (f failingLayer) DiffID() (v1.Hash, error) {
+	return f.hash, nil
+}
+
+func (f failingLayer) Digest() (v1.Hash, error) {
+	return f.hash, nil
+}
+
+func (f failingLayer) Uncompressed() (io.ReadCloser, error) {
+	return nil, fmt.Errorf("forced layer failure")
 }
 
 // TestIncompleteFileHandling tests that files are created with .incomplete suffix and renamed on success

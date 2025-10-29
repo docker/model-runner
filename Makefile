@@ -4,13 +4,16 @@ GO_VERSION := 1.23.7
 LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
+VLLM_BASE_IMAGE := nvidia/cuda:12.9.0-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
+DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 MODELS_PATH := $(shell pwd)/models-store
 LLAMA_ARGS ?=
 DOCKER_BUILD_ARGS := \
 	--load \
+	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
 	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
@@ -25,8 +28,7 @@ TAG ?=
 LICENSE ?=
 
 # Main targets
-.PHONY: build run clean test docker-build docker-build-multiplatform docker-run help validate model-distribution-tool
-
+.PHONY: build run clean test docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-run-impl help validate model-distribution-tool
 # Default target
 .DEFAULT_GOAL := build
 
@@ -67,6 +69,22 @@ docker-build-multiplatform:
 
 # Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build
+	@$(MAKE) -s docker-run-impl
+
+# Build vLLM Docker image
+docker-build-vllm:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-vllm \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM) \
+		LLAMA_SERVER_VARIANT=cuda \
+		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+
+# Run vLLM Docker container with TCP port access and mounted model storage
+docker-run-vllm: docker-build-vllm
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
+
+# Common implementation for running Docker container
+docker-run-impl:
 	@echo ""
 	@echo "Starting service on port $(PORT) with model storage at $(MODELS_PATH)..."
 	@echo "Service will be available at: http://localhost:$(PORT)"
@@ -121,6 +139,8 @@ help:
 	@echo "  docker-build			- Build Docker image for current platform"
 	@echo "  docker-build-multiplatform	- Build Docker image for multiple platforms"
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
+	@echo "  docker-build-vllm		- Build vLLM Docker image"
+	@echo "  docker-run-vllm		- Run vLLM Docker container"
 	@echo "  help				- Show this help message"
 	@echo ""
 	@echo "Model distribution tool targets:"

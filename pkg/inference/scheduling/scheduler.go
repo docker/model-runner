@@ -15,6 +15,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -501,7 +502,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 
 	// Look for an active llama.cpp backend
 	for _, backend := range runningBackends {
-		if backend.BackendName == "llama.cpp" {
+		if backend.BackendName == llamacpp.Name {
 			mode := parseBackendMode(backend.Mode)
 			// Find the runner slot for this backend/model combination
 			// We iterate through all runners since we don't know the draftModelID

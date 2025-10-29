@@ -2,6 +2,9 @@ package commands
 
 import (
 	"testing"
+
+	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 )
 
 func TestInstallRunnerHostFlag(t *testing.T) {
@@ -87,7 +90,7 @@ func TestInstallRunnerBackendFlag(t *testing.T) {
 	}
 
 	// Test setting the flag to vllm
-	err := cmd.Flags().Set("backend", "vllm")
+	err := cmd.Flags().Set("backend", vllm.Name)
 	if err != nil {
 		t.Errorf("Failed to set backend flag: %v", err)
 	}
@@ -97,12 +100,12 @@ func TestInstallRunnerBackendFlag(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to get backend flag value: %v", err)
 	}
-	if backendValue != "vllm" {
+	if backendValue != vllm.Name {
 		t.Errorf("Expected backend value to be 'vllm', got '%s'", backendValue)
 	}
 
 	// Test setting the flag to llama.cpp
-	err = cmd.Flags().Set("backend", "llama.cpp")
+	err = cmd.Flags().Set("backend", llamacpp.Name)
 	if err != nil {
 		t.Errorf("Failed to set backend flag to llama.cpp: %v", err)
 	}
@@ -111,7 +114,7 @@ func TestInstallRunnerBackendFlag(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to get backend flag value: %v", err)
 	}
-	if backendValue != "llama.cpp" {
+	if backendValue != llamacpp.Name {
 		t.Errorf("Expected backend value to be 'llama.cpp', got '%s'", backendValue)
 	}
 }

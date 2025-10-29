@@ -31,7 +31,7 @@ func newReinstallRunner() *cobra.Command {
 		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
 	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|musa)")
-	c.Flags().StringVar(&backend, "backend", "", "Specify backend (llama.cpp|vllm). Default: llama.cpp")
+	c.Flags().StringVar(&backend, "backend", "", backendUsage)
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c
 }

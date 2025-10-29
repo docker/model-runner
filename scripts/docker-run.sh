@@ -1,6 +1,11 @@
 #!/bin/bash
 
 add_accelerators() {
+  # Add NVIDIA GPU support for CUDA variants
+  if [[ "${DOCKER_IMAGE-}" == *"-cuda" ]]; then
+    args+=("--gpus" "all" "--runtime=nvidia")
+  fi
+
   # Add GPU/accelerator devices if present
   for i in /dev/dri /dev/kfd /dev/accel /dev/davinci* /dev/devmm_svm /dev/hisi_hdc; do
     if [ -e "$i" ]; then

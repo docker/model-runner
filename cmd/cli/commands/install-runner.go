@@ -7,13 +7,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/model-runner/cmd/cli/pkg/types"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +26,7 @@ const (
 	// installation will try to reach the model runner while waiting for it to
 	// be ready.
 	installWaitRetryInterval = 500 * time.Millisecond
+	backendUsage             = "Specify backend (" + llamacpp.Name + "|" + vllm.Name + "). Default: " + llamacpp.Name
 )
 
 // waitForStandaloneRunnerAfterInstall waits for a standalone model runner
@@ -256,12 +258,12 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions) error {
 	}
 
 	// Validate backend selection
-	if opts.backend != "" && opts.backend != "llama.cpp" && opts.backend != "vllm" {
-		return fmt.Errorf("unknown backend: %q (supported: llama.cpp, vllm)", opts.backend)
+	if opts.backend != "" && opts.backend != llamacpp.Name && opts.backend != vllm.Name {
+		return fmt.Errorf("unknown backend: %q (supported: %s, %s)", opts.backend, llamacpp.Name, vllm.Name)
 	}
 
 	// Validate backend-GPU compatibility
-	if opts.backend == "vllm" && gpu != gpupkg.GPUSupportCUDA {
+	if opts.backend == vllm.Name && gpu != gpupkg.GPUSupportCUDA {
 		return fmt.Errorf("--backend vllm requires CUDA GPU support (--gpu=cuda or auto-detected CUDA)")
 	}
 
@@ -312,7 +314,7 @@ func newInstallRunner() *cobra.Command {
 		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
 	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|rocm|musa)")
-	c.Flags().StringVar(&backend, "backend", "", "Specify backend (llama.cpp|vllm). Default: llama.cpp")
+	c.Flags().StringVar(&backend, "backend", "", backendUsage)
 	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
 	return c
 }

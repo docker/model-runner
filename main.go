@@ -122,7 +122,7 @@ func main() {
 	llamaCppBackend, err := llamacpp.New(
 		log,
 		modelManager,
-		log.WithFields(logrus.Fields{"component": "llama.cpp"}),
+		log.WithFields(logrus.Fields{"component": llamacpp.Name}),
 		llamaServerPath,
 		func() string {
 			wd, _ := os.Getwd()
@@ -145,7 +145,7 @@ func main() {
 	vllmBackend, err := vllm.New(
 		log,
 		modelManager,
-		log.WithFields(logrus.Fields{"component": "vllm"}),
+		log.WithFields(logrus.Fields{"component": vllm.Name}),
 		nil,
 	)
 	if err != nil {
