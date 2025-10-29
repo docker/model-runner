@@ -5,7 +5,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/spf13/cobra"
 )
 
@@ -35,8 +35,6 @@ func newPushCmd() *cobra.Command {
 }
 
 func pushModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
-	// Normalize model name to add default org and tag if missing
-	model = models.NormalizeModelName(model)
 	response, progressShown, err := desktopClient.Push(model, TUIProgress)
 
 	// Add a newline before any output (success or error) if progress was shown.

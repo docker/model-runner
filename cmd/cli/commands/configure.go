@@ -5,7 +5,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +39,7 @@ func newConfigureCmd() *cobra.Command {
 						argsBeforeDash)
 				}
 			}
-			opts.Model = models.NormalizeModelName(args[0])
+			opts.Model = args[0]
 			opts.RuntimeFlags = args[1:]
 			return nil
 		},
@@ -47,7 +47,7 @@ func newConfigureCmd() *cobra.Command {
 			// Build the speculative config if any speculative flags are set
 			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
 				opts.Speculative = &inference.SpeculativeDecodingConfig{
-					DraftModel:        models.NormalizeModelName(draftModel),
+					DraftModel:        draftModel,
 					NumTokens:         numTokens,
 					MinAcceptanceRate: minAcceptanceRate,
 				}

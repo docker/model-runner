@@ -5,7 +5,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +18,7 @@ func newUnloadCmd() *cobra.Command {
 		Use:   "unload " + cmdArgs,
 		Short: "Unload running models",
 		RunE: func(cmd *cobra.Command, modelArgs []string) error {
-			// Normalize model names
-			normalizedModels := make([]string, len(modelArgs))
-			for i, model := range modelArgs {
-				normalizedModels[i] = models.NormalizeModelName(model)
-			}
-			unloadResp, err := desktopClient.Unload(desktop.UnloadRequest{All: all, Backend: backend, Models: normalizedModels})
+			unloadResp, err := desktopClient.Unload(desktop.UnloadRequest{All: all, Backend: backend, Models: modelArgs})
 			if err != nil {
 				return handleClientError(err, "Failed to unload models")
 			}

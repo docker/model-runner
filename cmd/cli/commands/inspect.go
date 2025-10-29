@@ -6,7 +6,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/commands/formatter"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +48,7 @@ func newInspectCmd() *cobra.Command {
 }
 
 func inspectModel(args []string, openai bool, remote bool, desktopClient *desktop.Client) (string, error) {
-	// Normalize model name to add default org and tag if missing
-	modelName := models.NormalizeModelName(args[0])
+	modelName := args[0]
 	if openai {
 		model, err := desktopClient.InspectOpenAI(modelName)
 		if err != nil {

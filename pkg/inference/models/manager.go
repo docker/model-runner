@@ -294,8 +294,7 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
 	// Parse remote query parameter
 	remote := false
@@ -316,9 +315,19 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if remote {
-		apiModel, err = getRemoteModel(r.Context(), m, modelName)
+		// For remote lookups, always normalize the reference
+		normalizedRef := NormalizeModelName(modelRef)
+		apiModel, err = getRemoteModel(r.Context(), m, normalizedRef)
 	} else {
-		apiModel, err = getLocalModel(m, modelName)
+		// For local lookups, first try without normalization (as ID), then with normalization
+		apiModel, err = getLocalModel(m, modelRef)
+		if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+			// If not found as-is, try with normalization
+			normalizedRef := NormalizeModelName(modelRef)
+			if normalizedRef != modelRef { // only try normalized if it's different
+				apiModel, err = getLocalModel(m, normalizedRef)
+			}
+		}
 	}
 
 	if err != nil {
@@ -427,8 +436,7 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// the runner process exits (though this won't work for Windows, where we
 	// might need some separate cleanup process).
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
 	var force bool
 	if r.URL.Query().Has("force") {
@@ -439,7 +447,16 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := m.distributionClient.DeleteModel(modelName, force)
+	// First try to delete without normalization (as ID), then with normalization if not found
+	resp, err := m.distributionClient.DeleteModel(modelRef, force)
+	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+		// If not found as-is, try with normalization
+		normalizedRef := NormalizeModelName(modelRef)
+		if normalizedRef != modelRef { // only try normalized if it's different
+			resp, err = m.distributionClient.DeleteModel(normalizedRef, force)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -496,11 +513,18 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
-	// Query the model.
-	model, err := m.GetModel(modelName)
+	// Query the model - first try without normalization (as ID), then with normalization
+	model, err := m.GetModel(modelRef)
+	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+		// If not found as-is, try with normalization
+		normalizedRef := NormalizeModelName(modelRef)
+		if normalizedRef != modelRef { // only try normalized if it's different
+			model, err = m.GetModel(normalizedRef)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -529,13 +553,15 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
-	// Normalize model name
-	model = NormalizeModelName(model)
+	
+	// For tag and push actions, we likely expect model references rather than IDs,
+	// so normalize the model name, but we'll handle both cases in the handlers
+	normalizedModel := NormalizeModelName(model)
 	switch action {
 	case "tag":
-		m.handleTagModel(w, r, model)
+		m.handleTagModel(w, r, normalizedModel)
 	case "push":
-		m.handlePushModel(w, r, model)
+		m.handlePushModel(w, r, normalizedModel)
 	default:
 		http.Error(w, fmt.Sprintf("unknown action %q", action), http.StatusNotFound)
 	}
