@@ -30,16 +30,18 @@ With strong agentic and tool-use capabilities and support for over 100 languages
 
 | Model variant | Parameters | Quantization | Context window | VRAM¹ | Size |
 |---------------|------------|--------------|----------------|------|-------|
-| `ai/qwen3:latest`<br><br>`ai/qwen3:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 41K tokens | 5.49 GiB | 4.68 GB |
-| `ai/qwen3:0.6B-Q4_0` | 0.6B | Q4_0 | 41K tokens | 1.22 GiB | 441.67 MB |
-| `ai/qwen3:0.6B-Q4_K_M` | 0.6B | IQ2_XXS/Q4_K_M | 41K tokens | 1.23 GiB | 456.11 MB |
-| `ai/qwen3:0.6B-F16` | 0.6B | F16 | 41K tokens | 1.98 GiB | 1.40 GB |
-| `ai/qwen3:30B-A3B-F16` | 30B-A3B | F16 | 41K tokens | 57.25 GiB | 56.89 GB |
-| `ai/qwen3:30B-A3B-Q4_K_M` | 30B-A3B | IQ2_XXS/Q4_K_M | 41K tokens | 18.05 GiB | 17.28 GB |
-| `ai/qwen3:8B-Q4_0` | 8B | Q4_0 | 41K tokens | 5.26 GiB | 4.44 GB |
-| `ai/qwen3:8B-Q4_K_M` | 8B | IQ2_XXS/Q4_K_M | 41K tokens | 5.49 GiB | 4.68 GB |
-| `ai/qwen3:8B-F16` | 8B | F16 | 41K tokens | 15.24 GiB | 15.26 GB |
-| `ai/qwen3:14B-Q6_K` | 14B | IQ1_S/Q6_K | 41K tokens | 11.96 GiB | 11.28 GB |
+| `ai/qwen3:8B-Q4_K_M`<br><br>`ai/qwen3:latest` | 8B | MOSTLY_Q4_K_M | 41K tokens | 5.80 GiB | 4.68 GB |
+| `ai/qwen3:0.6B-Q4_0` | 0.6B | MOSTLY_Q4_0 | 41K tokens | 1.51 GiB | 441.67 MB |
+| `ai/qwen3:0.6B-Q4_K_M` | 0.6B | MOSTLY_Q4_K_M | 41K tokens | 1.53 GiB | 456.11 MB |
+| `ai/qwen3:0.6B-F16` | 0.6B | MOSTLY_F16 | 41K tokens | 2.27 GiB | 1.40 GB |
+| `ai/qwen3:4B-F16` | 4B | MOSTLY_F16 | 262K tokens | 8.92 GiB | 7.49 GB |
+| `ai/qwen3:4B-UD-Q4_K_XL` | 4B | MOSTLY_Q4_K_M | 262K tokens | 3.80 GiB | 2.37 GB |
+| `ai/qwen3:8B-F16` | 8B | MOSTLY_F16 | 41K tokens | 15.54 GiB | 15.26 GB |
+| `ai/qwen3:14B-Q6_K` | 14B | MOSTLY_Q6_K | 41K tokens | 12.27 GiB | 11.28 GB |
+| `ai/qwen3:30B-A3B-F16` | 30B-A3B | MOSTLY_F16 | 41K tokens | 57.55 GiB | 56.89 GB |
+| `ai/qwen3:30B-A3B-Q4_K_M` | 30B-A3B | MOSTLY_Q4_K_M | 41K tokens | 18.35 GiB | 17.28 GB |
+| `ai/qwen3:4B-UD-Q8_K_XL` | 4B | MOSTLY_Q8_0 | 262K tokens | 6.13 GiB | 4.70 GB |
+| `ai/qwen3:8B-Q4_0` | 8B | MOSTLY_Q4_0 | 41K tokens | 5.56 GiB | 4.44 GB |
 
 ¹: VRAM estimated based on model characteristics.
 

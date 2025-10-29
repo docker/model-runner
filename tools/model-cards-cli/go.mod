@@ -23,13 +23,13 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529 // indirect
-	github.com/smallnest/ringbuffer v0.0.0-20241116012123-461381446e3d // indirect
+	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
-	golang.org/x/crypto v0.29.0 // indirect
-	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
-	gonum.org/v1/gonum v0.15.1 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
+	gonum.org/v1/gonum v0.16.0 // indirect
 )
