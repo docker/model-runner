@@ -17,8 +17,7 @@ func newDFCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			df, err := desktopClient.DF()
 			if err != nil {
-				err = handleClientError(err, "Failed to list running models")
-				return handleNotRunningError(err)
+				return handleClientError(err, "Failed to list running models")
 			}
 			cmd.Print(diskUsageTable(df))
 			return nil

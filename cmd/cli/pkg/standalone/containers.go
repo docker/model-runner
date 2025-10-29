@@ -233,8 +233,8 @@ func isRootless(ctx context.Context, dockerClient *client.Client) bool {
 }
 
 // CreateControllerContainer creates and starts a controller container.
-func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
-	imageName := controllerImageName(gpu)
+func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
+	imageName := controllerImageName(gpu, backend)
 
 	// Set up the container configuration.
 	portStr := strconv.Itoa(int(port))
@@ -334,14 +334,21 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	if runtime.GOOS == "linux" {
 		out, err := exec.CommandContext(ctx, "getent", "group", "render").CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to retrieve the GID of 'render': %w", err)
+			printer.Printf("Warning: render group not found, skipping group addition\n")
+		} else {
+			trimmedOut := strings.TrimSpace(string(out))
+			tokens := strings.Split(trimmedOut, ":")
+			if len(tokens) < 3 {
+				printer.Printf("Warning: unexpected getent output format: %q\n", trimmedOut)
+			} else {
+				gid, err := strconv.Atoi(tokens[2])
+				if err != nil {
+					printer.Printf("Warning: failed to parse render GID from %q: %v\n", tokens[2], err)
+				} else {
+					hostConfig.GroupAdd = append(hostConfig.GroupAdd, strconv.Itoa(gid))
+				}
+			}
 		}
-		tokens := strings.Split(string(out), ":")
-		gid, err := strconv.Atoi(tokens[2])
-		if err != nil {
-			return fmt.Errorf("failed to parse the GID of 'render': %w", err)
-		}
-		hostConfig.GroupAdd = append(hostConfig.GroupAdd, strconv.Itoa(gid))
 	}
 
 	// Create the container. If we detect that a concurrent installation is in

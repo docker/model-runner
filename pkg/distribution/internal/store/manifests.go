@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,7 +44,17 @@ func (s *LocalStore) WriteManifest(hash v1.Hash, raw []byte) error {
 		return fmt.Errorf("reading models: %w", err)
 	}
 
-	return s.writeIndex(idx.Add(newEntryForManifest(hash, manifest)))
+	if err := s.writeIndex(idx.Add(newEntryForManifest(hash, manifest))); err != nil {
+		// Best effort rollback to avoid leaving an orphaned manifest on disk.
+		if removeErr := s.removeManifest(hash); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return errors.Join(
+				fmt.Errorf("write models index: %w", err),
+				fmt.Errorf("rollback remove manifest %s: %w", hash, removeErr),
+			)
+		}
+		return fmt.Errorf("write models index: %w", err)
+	}
+	return nil
 }
 
 func newEntryForManifest(digest v1.Hash, manifest *v1.Manifest) IndexEntry {
@@ -66,8 +77,48 @@ func (s *LocalStore) removeManifest(hash v1.Hash) error {
 
 // writeFile is a wrapper around os.WriteFile that creates any parent directories as needed.
 func writeFile(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0777); err != nil {
-		return fmt.Errorf("create parent directory %q: %w", filepath.Dir(path), err)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create parent directory %q: %w", dir, err)
 	}
-	return os.WriteFile(path, data, 0666)
+
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() {
+		_ = os.Remove(tmpName)
+	}
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("write temporary file %q: %w", tmpName, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("sync temporary file %q: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("close temporary file %q: %w", tmpName, err)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		cleanup()
+		return fmt.Errorf("chmod temporary file %q: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		removeErr := os.Remove(path)
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			cleanup()
+			return fmt.Errorf("replace %q with temporary file: %w (also failed to remove existing file: %v)", path, err, removeErr)
+		}
+		if err := os.Rename(tmpName, path); err != nil {
+			cleanup()
+			return fmt.Errorf("replace %q with temporary file: %w", path, err)
+		}
+	}
+	return nil
 }

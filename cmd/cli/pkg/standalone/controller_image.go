@@ -20,13 +20,18 @@ func controllerImageVersion() string {
 	return defaultControllerImageVersion
 }
 
-func controllerImageVariant(detectedGPU gpupkg.GPUSupport) string {
+func controllerImageVariant(detectedGPU gpupkg.GPUSupport, backend string) string {
 	if variant, ok := os.LookupEnv("MODEL_RUNNER_CONTROLLER_VARIANT"); ok {
 		if variant == "cpu" || variant == "generic" {
 			return ""
 		}
 		return variant
 	}
+	// If vLLM backend is requested, return vllm-cuda variant
+	if backend == "vllm" {
+		return "vllm-cuda"
+	}
+	// Default to llama.cpp backend behavior
 	switch detectedGPU {
 	case gpupkg.GPUSupportCUDA:
 		return "cuda"
@@ -47,6 +52,6 @@ func fmtControllerImageName(repo, version, variant string) string {
 	return tag
 }
 
-func controllerImageName(detectedGPU gpupkg.GPUSupport) string {
-	return fmtControllerImageName(ControllerImage, controllerImageVersion(), controllerImageVariant(detectedGPU))
+func controllerImageName(detectedGPU gpupkg.GPUSupport, backend string) string {
+	return fmtControllerImageName(ControllerImage, controllerImageVersion(), controllerImageVariant(detectedGPU, backend))
 }

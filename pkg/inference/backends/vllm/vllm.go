@@ -2,6 +2,7 @@ package vllm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
@@ -28,6 +30,8 @@ const (
 	Name    = "vllm"
 	vllmDir = "/opt/vllm-env/bin"
 )
+
+var StatusNotFound = errors.New("vLLM binary not found")
 
 // vLLM is the vLLM-based backend implementation.
 type vLLM struct {
@@ -76,7 +80,8 @@ func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	vllmBinaryPath := v.binaryPath()
 	if _, err := os.Stat(vllmBinaryPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("vLLM binary not found at %s", vllmBinaryPath)
+			v.status = StatusNotFound.Error()
+			return StatusNotFound
 		}
 		return fmt.Errorf("failed to check vLLM binary: %w", err)
 	}
@@ -105,18 +110,45 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
+	var draftBundle types.ModelBundle
+	if backendConfig != nil && backendConfig.Speculative != nil && backendConfig.Speculative.DraftModel != "" {
+		draftBundle, err = v.modelManager.GetBundle(backendConfig.Speculative.DraftModel)
+		if err != nil {
+			return fmt.Errorf("failed to get draft model: %w", err)
+		}
+	}
+
 	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		v.log.Warnf("failed to remove socket file %s: %v\n", socket, err)
 		v.log.Warnln("vLLM may not be able to start")
 	}
 
-	// Get arguments from config
 	args, err := v.config.GetArgs(bundle, socket, mode, backendConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get vLLM arguments: %w", err)
 	}
 
-	// Add served model name
+	if draftBundle != nil && backendConfig != nil && backendConfig.Speculative != nil {
+		draftPath := draftBundle.SafetensorsPath()
+		if draftPath != "" {
+			// vLLM uses --speculative_config with a JSON string
+			// Dynamically construct JSON, omitting num_speculative_tokens if not set
+			speculativeConfigMap := map[string]interface{}{
+				"model": filepath.Dir(draftPath),
+			}
+			if backendConfig.Speculative.NumTokens > 0 {
+				speculativeConfigMap["num_speculative_tokens"] = backendConfig.Speculative.NumTokens
+			}
+			speculativeConfigBytes, err := json.Marshal(speculativeConfigMap)
+			if err != nil {
+				return fmt.Errorf("failed to marshal speculative config for vLLM: %w", err)
+			}
+			speculativeConfig := string(speculativeConfigBytes)
+			args = append(args, "--speculative_config", speculativeConfig)
+			args = append(args, "--use-v2-block-manager")
+		}
+	}
+
 	args = append(args, "--served-model-name", model, modelRef)
 
 	// Sanitize args for safe logging

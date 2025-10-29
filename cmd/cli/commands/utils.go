@@ -2,12 +2,13 @@ package commands
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/pkg/errors"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 )
 
 const (
@@ -18,24 +19,24 @@ const (
 const (
 	enableViaCLI = "Enable Docker Model Runner via the CLI → docker desktop enable model-runner"
 	enableViaGUI = "Enable Docker Model Runner via the GUI → Go to Settings->AI->Enable Docker Model Runner"
+	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model install-runner --vllm"
 )
 
 var notRunningErr = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")
 
 func handleClientError(err error, message string) error {
 	if errors.Is(err, desktop.ErrServiceUnavailable) {
-		return notRunningErr
-	}
-	return errors.Wrap(err, message)
-}
-
-func handleNotRunningError(err error) error {
-	if errors.Is(err, notRunningErr) {
+		err = notRunningErr
 		var buf bytes.Buffer
 		hooks.PrintNextSteps(&buf, []string{enableViaCLI, enableViaGUI})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
+	} else if strings.Contains(err.Error(), vllm.StatusNotFound.Error()) {
+		// Handle `run` error.
+		var buf bytes.Buffer
+		hooks.PrintNextSteps(&buf, []string{enableVLLM})
+		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
 	}
-	return err
+	return errors.Join(err, errors.New(message))
 }
 
 // stripDefaultsFromModelName removes the default "ai/" prefix and ":latest" tag for display.

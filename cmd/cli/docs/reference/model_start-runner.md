@@ -7,6 +7,7 @@ Start Docker Model Runner (Docker Engine only)
 
 | Name             | Type     | Default | Description                                                                                            |
 |:-----------------|:---------|:--------|:-------------------------------------------------------------------------------------------------------|
+| `--backend`      | `string` |         | Specify backend (llama.cpp\|vllm). Default: llama.cpp                                                  |
 | `--do-not-track` | `bool`   |         | Do not track models usage in Docker Model Runner                                                       |
 | `--gpu`          | `string` | `auto`  | Specify GPU support (none\|auto\|cuda\|musa)                                                           |
 | `--port`         | `uint16` | `0`     | Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode) |

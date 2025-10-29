@@ -37,9 +37,16 @@ func (m BackendMode) String() string {
 	}
 }
 
+type SpeculativeDecodingConfig struct {
+	DraftModel        string  `json:"draft_model,omitempty"`
+	NumTokens         int     `json:"num_tokens,omitempty"`
+	MinAcceptanceRate float64 `json:"min_acceptance_rate,omitempty"`
+}
+
 type BackendConfiguration struct {
-	ContextSize  int64    `json:"context-size,omitempty"`
-	RuntimeFlags []string `json:"runtime-flags,omitempty"`
+	ContextSize  int64                       `json:"context-size,omitempty"`
+	RuntimeFlags []string                    `json:"runtime-flags,omitempty"`
+	Speculative  *SpeculativeDecodingConfig `json:"speculative,omitempty"`
 }
 
 type RequiredMemory struct {

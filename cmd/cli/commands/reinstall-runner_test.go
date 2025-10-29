@@ -39,7 +39,7 @@ func TestReinstallRunnerCommandFlags(t *testing.T) {
 	cmd := newReinstallRunner()
 
 	// Verify all expected flags exist
-	expectedFlags := []string{"port", "host", "gpu", "do-not-track"}
+	expectedFlags := []string{"port", "host", "gpu", "backend", "do-not-track"}
 	for _, flagName := range expectedFlags {
 		if cmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("Expected flag '--%s' not found", flagName)

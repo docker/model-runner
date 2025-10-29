@@ -78,29 +78,33 @@ type blob interface {
 	Uncompressed() (io.ReadCloser, error)
 }
 
-// writeLayer write the layer blob to the store
-func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) error {
+// writeLayer writes the layer blob to the store.
+// It returns true when a new blob was created and the blob's DiffID.
+func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.Hash, error) {
 	hash, err := layer.DiffID()
 	if err != nil {
-		return fmt.Errorf("get file hash: %w", err)
+		return false, v1.Hash{}, fmt.Errorf("get file hash: %w", err)
 	}
 	hasBlob, err := s.hasBlob(hash)
 	if err != nil {
-		return fmt.Errorf("check blob existence: %w", err)
+		return false, v1.Hash{}, fmt.Errorf("check blob existence: %w", err)
 	}
 	if hasBlob {
-		// todo: write something to the progress channel (we probably need to redo progress reporting a little bit)
-		return nil
+		// TODO: write something to the progress channel (we probably need to redo progress reporting a little bit)
+		return false, hash, nil
 	}
 
 	lr, err := layer.Uncompressed()
 	if err != nil {
-		return fmt.Errorf("get blob contents: %w", err)
+		return false, v1.Hash{}, fmt.Errorf("get blob contents: %w", err)
 	}
 	defer lr.Close()
 	r := progress.NewReader(lr, updates)
 
-	return s.WriteBlob(hash, r)
+	if err := s.WriteBlob(hash, r); err != nil {
+		return false, hash, err
+	}
+	return true, hash, nil
 }
 
 // WriteBlob writes the blob to the store, reporting progress to the given channel.
@@ -169,19 +173,31 @@ func incompletePath(path string) string {
 	return path + ".incomplete"
 }
 
-// writeConfigFile writes the model config JSON file to the blob store
-func (s *LocalStore) writeConfigFile(mdl v1.Image) error {
+// writeConfigFile writes the model config JSON file to the blob store and reports whether the file was newly created.
+func (s *LocalStore) writeConfigFile(mdl v1.Image) (bool, error) {
 	hash, err := mdl.ConfigName()
 	if err != nil {
-		return fmt.Errorf("get digest: %w", err)
+		return false, fmt.Errorf("get digest: %w", err)
 	}
-	rcf, err := mdl.RawConfigFile()
+	hasBlob, err := s.hasBlob(hash)
 	if err != nil {
-		return fmt.Errorf("get raw manifest: %w", err)
+		return false, fmt.Errorf("check config existence: %w", err)
 	}
+	if hasBlob {
+		return false, nil
+	}
+
 	path, err := s.blobPath(hash)
 	if err != nil {
-		return fmt.Errorf("get blob path: %w", err)
+		return false, fmt.Errorf("get blob path: %w", err)
 	}
-	return writeFile(path, rcf)
+
+	rcf, err := mdl.RawConfigFile()
+	if err != nil {
+		return false, fmt.Errorf("get raw manifest: %w", err)
+	}
+	if err := writeFile(path, rcf); err != nil {
+		return false, err
+	}
+	return true, nil
 }
