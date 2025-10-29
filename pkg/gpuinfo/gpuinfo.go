@@ -19,3 +19,7 @@ func (g *GPUInfo) GetVRAMSize() (uint64, error) {
 func (g *GPUInfo) HasSupportedAMDGPU() (bool, error) {
 	return hasSupportedAMDGPU()
 }
+
+func (g *GPUInfo) HasSupportedMTHREADSGPU() (bool, error) {
+	return hasSupportedMTHREADSGPU()
+}

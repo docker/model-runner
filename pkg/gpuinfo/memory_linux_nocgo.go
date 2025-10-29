@@ -13,3 +13,8 @@ func getVRAMSize(_ string) (uint64, error) {
 func hasSupportedAMDGPU() (bool, error) {
 	return false, errors.New("unimplemented without cgo")
 }
+
+// hasSupportedMTHREADSGPU returns true if the system has supported AMD GPUs
+func hasSupportedMTHREADSGPU() (bool, error) {
+	return false, errors.New("unimplemented without cgo")
+}
