@@ -468,6 +468,41 @@ func containsTag(tags []string, tag string) bool {
 	return false
 }
 
+func TestWriteHandlesExistingBlobsGracefully(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "store-existing-blob")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storePath := filepath.Join(tempDir, "existing-blob-store")
+	s, err := store.New(store.Options{RootPath: storePath})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	model := newTestModel(t)
+
+	if err := s.Write(model, []string{"existing:latest"}, nil); err != nil {
+		t.Fatalf("first write failed: %v", err)
+	}
+
+	if err := s.Write(model, []string{"existing:latest"}, nil); err != nil {
+		t.Fatalf("second write failed despite existing blobs: %v", err)
+	}
+
+	models, err := s.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected one model in store, found %d", len(models))
+	}
+	if !containsTag(models[0].Tags, "existing:latest") {
+		t.Fatalf("expected tag existing:latest to be present, got %v", models[0].Tags)
+	}
+}
+
 // TestStoreWithMultimodalProjector tests storing and retrieving models with multimodal projector files
 func TestStoreWithMultimodalProjector(t *testing.T) {
 	// Create a temporary directory for the test store
