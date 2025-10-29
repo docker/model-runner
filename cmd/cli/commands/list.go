@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,15 +61,13 @@ func listModels(openai bool, desktopClient *desktop.Client, quiet bool, jsonForm
 	if openai {
 		models, err := desktopClient.ListOpenAI()
 		if err != nil {
-			err = handleClientError(err, "Failed to list models")
-			return "", handleNotRunningError(err)
+			return "", handleClientError(err, "Failed to list models")
 		}
 		return formatter.ToStandardJSON(models)
 	}
 	models, err := desktopClient.List()
 	if err != nil {
-		err = handleClientError(err, "Failed to list models")
-		return "", handleNotRunningError(err)
+		return "", handleClientError(err, "Failed to list models")
 	}
 
 	if modelFilter != "" {
@@ -118,7 +117,7 @@ func prettyPrintModels(models []dmrm.Model) string {
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
 
-	table.SetHeader([]string{"MODEL NAME", "PARAMETERS", "QUANTIZATION", "ARCHITECTURE", "MODEL ID", "CREATED", "SIZE"})
+	table.SetHeader([]string{"MODEL NAME", "PARAMETERS", "QUANTIZATION", "ARCHITECTURE", "MODEL ID", "CREATED", "CONTEXT", "SIZE"})
 
 	table.SetBorder(false)
 	table.SetColumnSeparator("")
@@ -127,13 +126,14 @@ func prettyPrintModels(models []dmrm.Model) string {
 	table.SetNoWhiteSpace(true)
 
 	table.SetColumnAlignment([]int{
-		tablewriter.ALIGN_LEFT, // MODEL
-		tablewriter.ALIGN_LEFT, // PARAMETERS
-		tablewriter.ALIGN_LEFT, // QUANTIZATION
-		tablewriter.ALIGN_LEFT, // ARCHITECTURE
-		tablewriter.ALIGN_LEFT, // MODEL ID
-		tablewriter.ALIGN_LEFT, // CREATED
-		tablewriter.ALIGN_LEFT, // SIZE
+		tablewriter.ALIGN_LEFT,  // MODEL
+		tablewriter.ALIGN_LEFT,  // PARAMETERS
+		tablewriter.ALIGN_LEFT,  // QUANTIZATION
+		tablewriter.ALIGN_LEFT,  // ARCHITECTURE
+		tablewriter.ALIGN_LEFT,  // MODEL ID
+		tablewriter.ALIGN_LEFT,  // CREATED
+		tablewriter.ALIGN_RIGHT, // CONTEXT
+		tablewriter.ALIGN_LEFT,  // SIZE
 	})
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 
@@ -158,6 +158,19 @@ func appendRow(table *tablewriter.Table, tag string, model dmrm.Model) {
 	}
 	// Strip default "ai/" prefix and ":latest" tag for display
 	displayTag := stripDefaultsFromModelName(tag)
+	contextSize := ""
+	if model.Config.ContextSize != nil {
+		contextSize = fmt.Sprintf("%d", *model.Config.ContextSize)
+	} else if model.Config.GGUF != nil {
+		if v, ok := model.Config.GGUF["llama.context_length"]; ok {
+			if parsed, err := strconv.ParseUint(v, 10, 64); err == nil {
+				contextSize = fmt.Sprintf("%d", parsed)
+			} else {
+				fmt.Fprintf(os.Stderr, "invalid context length %q for model %s: %v\n", v, model.ID, err)
+			}
+		}
+	}
+
 	table.Append([]string{
 		displayTag,
 		model.Config.Parameters,
@@ -165,6 +178,7 @@ func appendRow(table *tablewriter.Table, tag string, model dmrm.Model) {
 		model.Config.Architecture,
 		model.ID[7:19],
 		units.HumanDuration(time.Since(time.Unix(model.Created, 0))) + " ago",
+		contextSize,
 		model.Config.Size,
 	})
 }

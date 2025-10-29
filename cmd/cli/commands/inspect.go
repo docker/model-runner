@@ -53,15 +53,13 @@ func inspectModel(args []string, openai bool, remote bool, desktopClient *deskto
 	if openai {
 		model, err := desktopClient.InspectOpenAI(modelName)
 		if err != nil {
-			err = handleClientError(err, "Failed to get model "+modelName)
-			return "", handleNotRunningError(err)
+			return "", handleClientError(err, "Failed to get model "+modelName)
 		}
 		return formatter.ToStandardJSON(model)
 	}
 	model, err := desktopClient.Inspect(modelName, remote)
 	if err != nil {
-		err = handleClientError(err, "Failed to get model "+modelName)
-		return "", handleNotRunningError(err)
+		return "", handleClientError(err, "Failed to get model "+modelName)
 	}
 	return formatter.ToStandardJSON(model)
 }

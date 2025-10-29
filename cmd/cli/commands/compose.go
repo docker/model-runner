@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
@@ -36,6 +37,9 @@ func newUpCommand() *cobra.Command {
 	var ctxSize int64
 	var rawRuntimeFlags string
 	var backend string
+	var draftModel string
+	var numTokens int
+	var minAcceptanceRate float64
 	c := &cobra.Command{
 		Use: "up",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,11 +72,24 @@ func newUpCommand() *cobra.Command {
 				sendInfo("Setting raw runtime flags to " + rawRuntimeFlags)
 			}
 
+			// Build speculative config if any speculative flags are set
+			var speculativeConfig *inference.SpeculativeDecodingConfig
+			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
+				normalizedDraftModel := dmrm.NormalizeModelName(draftModel)
+				speculativeConfig = &inference.SpeculativeDecodingConfig{
+					DraftModel:        normalizedDraftModel,
+					NumTokens:         numTokens,
+					MinAcceptanceRate: minAcceptanceRate,
+				}
+				sendInfo(fmt.Sprintf("Enabling speculative decoding with draft model: %s", normalizedDraftModel))
+			}
+
 			for _, model := range models {
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
 					Model:           model,
 					ContextSize:     ctxSize,
 					RawRuntimeFlags: rawRuntimeFlags,
+					Speculative:     speculativeConfig,
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d and runtime-flags %s"
 					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, rawRuntimeFlags, err)
@@ -100,6 +117,9 @@ func newUpCommand() *cobra.Command {
 	c.Flags().Int64Var(&ctxSize, "context-size", -1, "context size for the model")
 	c.Flags().StringVar(&rawRuntimeFlags, "runtime-flags", "", "raw runtime flags to pass to the inference engine")
 	c.Flags().StringVar(&backend, "backend", llamacpp.Name, "inference backend to use")
+	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
+	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
+	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	_ = c.MarkFlagRequired("model")
 	return c
 }

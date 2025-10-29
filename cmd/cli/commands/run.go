@@ -257,7 +257,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 				if errors.Is(err, context.Canceled) {
 					cmd.Println()
 				} else {
-					cmd.PrintErr(handleClientError(err, "Failed to generate a response"))
+					cmd.PrintErrln(handleClientError(err, "Failed to generate a response"))
 				}
 				sb.Reset()
 				continue
@@ -317,7 +317,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 			if errors.Is(err, context.Canceled) {
 				fmt.Println("\nUse Ctrl + d or /bye to exit.")
 			} else {
-				cmd.PrintErr(handleClientError(err, "Failed to generate a response"))
+				cmd.PrintErrln(handleClientError(err, "Failed to generate a response"))
 			}
 			continue
 		}
@@ -628,17 +628,17 @@ func newRunCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to create Docker client: %w", err)
 				}
-				
+
 				// Run the NIM model
 				if err := runNIMModel(cmd.Context(), dockerClient, model, cmd); err != nil {
 					return fmt.Errorf("failed to run NIM model: %w", err)
 				}
-				
+
 				// If no prompt provided, enter interactive mode
 				if prompt == "" {
 					scanner := bufio.NewScanner(os.Stdin)
 					cmd.Println("Interactive chat mode started. Type '/bye' to exit.")
-					
+
 					for {
 						userInput, err := readMultilineInput(cmd, scanner)
 						if err != nil {
@@ -648,26 +648,26 @@ func newRunCmd() *cobra.Command {
 							}
 							return fmt.Errorf("Error reading input: %v", err)
 						}
-						
+
 						if strings.ToLower(strings.TrimSpace(userInput)) == "/bye" {
 							cmd.Println("Chat session ended.")
 							break
 						}
-						
+
 						if strings.TrimSpace(userInput) == "" {
 							continue
 						}
-						
+
 						if err := chatWithNIM(cmd, model, userInput); err != nil {
 							cmd.PrintErr(fmt.Errorf("failed to chat with NIM: %w", err))
 							continue
 						}
-						
+
 						cmd.Println()
 					}
 					return nil
 				}
-				
+
 				// Single prompt mode
 				if err := chatWithNIM(cmd, model, prompt); err != nil {
 					return fmt.Errorf("failed to chat with NIM: %w", err)
@@ -683,7 +683,7 @@ func newRunCmd() *cobra.Command {
 			_, err := desktopClient.Inspect(model, false)
 			if err != nil {
 				if !errors.Is(err, desktop.ErrNotFound) {
-					return handleNotRunningError(handleClientError(err, "Failed to inspect model"))
+					return handleClientError(err, "Failed to inspect model")
 				}
 				cmd.Println("Unable to find model '" + model + "' locally. Pulling from the server.")
 				if err := pullModel(cmd, desktopClient, model, ignoreRuntimeMemoryCheck); err != nil {

@@ -24,37 +24,37 @@ A powerful command-line interface for managing, running, packaging, and deployin
    ```
 3. **Install Model Runner:**
    ```bash
-   ./model install-runner
+   ./model-cli install-runner
    ```
    Use `--gpu cuda` for GPU support, or `--gpu auto` for automatic detection.
 
 ## Usage
-Run `./model --help` to see all commands and options.
+Run `./model-cli --help` to see all commands and options.
 
 ### Common Commands
-- `model install-runner` — Install the Docker Model Runner
-- `model start-runner` — Start the Docker Model Runner
-- `model stop-runner` — Stop the Docker Model Runner
-- `model restart-runner` — Restart the Docker Model Runner
-- `model run MODEL [PROMPT]` — Run a model with a prompt or enter chat mode
-- `model list` — List available models
-- `model package --gguf <path> --push <target>` — Package and push a model
-- `model logs` — View logs
-- `model status` — Check runner status
-- `model configure MODEL [flags]` — Configure model runtime
-- `model unload MODEL` — Unload a model
-- `model tag SOURCE TARGET` — Tag a model
-- `model pull MODEL` — Pull a model
-- `model push MODEL` — Push a model
-- `model rm MODEL` — Remove a model
+- `model-cli install-runner` — Install the Docker Model Runner
+- `model-cli start-runner` — Start the Docker Model Runner
+- `model-cli stop-runner` — Stop the Docker Model Runner
+- `model-cli restart-runner` — Restart the Docker Model Runner
+- `model-cli run MODEL [PROMPT]` — Run a model with a prompt or enter chat mode
+- `model-cli list` — List available models
+- `model-cli package --gguf <path> --push <target>` — Package and push a model
+- `model-cli logs` — View logs
+- `model-cli status` — Check runner status
+- `model-cli configure MODEL [flags]` — Configure model runtime
+- `model-cli unload MODEL` — Unload a model
+- `model-cli tag SOURCE TARGET` — Tag a model
+- `model-cli pull MODEL` — Pull a model
+- `model-cli push MODEL` — Push a model
+- `model-cli rm MODEL` — Remove a model
 
 ## Example: Interactive Chat
 ```bash
-./model run llama.cpp "What is the capital of France?"
+./model-cli run llama.cpp "What is the capital of France?"
 ```
 Or enter chat mode:
 ```bash
-./model run llama.cpp
+./model-cli run llama.cpp
 > """
 Tell me a joke.
 """

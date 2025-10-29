@@ -28,7 +28,7 @@ LICENSE ?=
 .PHONY: build run clean test docker-build docker-build-multiplatform docker-run help validate model-distribution-tool
 
 # Default target
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := build
 
 # Build the Go application
 build:

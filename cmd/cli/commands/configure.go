@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/spf13/cobra"
@@ -11,9 +12,12 @@ import (
 
 func newConfigureCmd() *cobra.Command {
 	var opts scheduling.ConfigureRequest
+	var draftModel string
+	var numTokens int
+	var minAcceptanceRate float64
 
 	c := &cobra.Command{
-		Use:    "configure [--context-size=<n>] MODEL [-- <runtime-flags...>]",
+		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] MODEL [-- <runtime-flags...>]",
 		Short:  "Configure runtime options for a model",
 		Hidden: true,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -40,11 +44,22 @@ func newConfigureCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Build the speculative config if any speculative flags are set
+			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
+				opts.Speculative = &inference.SpeculativeDecodingConfig{
+					DraftModel:        models.NormalizeModelName(draftModel),
+					NumTokens:         numTokens,
+					MinAcceptanceRate: minAcceptanceRate,
+				}
+			}
 			return desktopClient.ConfigureBackend(opts)
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, -1),
 	}
 
 	c.Flags().Int64Var(&opts.ContextSize, "context-size", -1, "context size (in tokens)")
+	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
+	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
+	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	return c
 }
