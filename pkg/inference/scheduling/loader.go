@@ -13,6 +13,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
 )
@@ -229,7 +230,7 @@ func (l *loader) evict(idleOnly bool) int {
 		}
 		if unused && (!idleOnly || idle || defunct) {
 			l.log.Infof("Evicting %s backend runner with model %s (%s) in %s mode",
-				r.backend, r.modelID, runnerInfo.modelRef, r.mode,
+				r.backend, r.modelID, utils.SanitizeForLog(runnerInfo.modelRef), r.mode,
 			)
 			l.slots[runnerInfo.slot].terminate()
 			l.slots[runnerInfo.slot] = nil
@@ -251,7 +252,7 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 		unused := l.references[runnerInfo.slot] == 0
 		if unused && (allBackends || r.backend == backend) && r.modelID == model && r.mode == mode {
 			l.log.Infof("Evicting %s backend runner with model %s (%s) in %s mode",
-				r.backend, r.modelID, runnerInfo.modelRef, r.mode,
+				r.backend, r.modelID, utils.SanitizeForLog(runnerInfo.modelRef), r.mode,
 			)
 			l.slots[runnerInfo.slot].terminate()
 			l.slots[runnerInfo.slot] = nil
@@ -434,7 +435,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		// TODO(p1-0tr): For now override memory checks in case model can't be parsed
 		// e.g. model is too new for gguf-parser-go to know. We should provide a cleaner
 		// way to bypass these checks.
-		l.log.Warnf("Could not parse model(%s), memory checks will be ignored for it. Error: %s", modelID, parseErr)
+		l.log.Warnf("Could not parse model(%s), memory checks will be ignored for it. Error: %s", utils.SanitizeForLog(modelID), parseErr)
 		memory = inference.RequiredMemory{
 			RAM:  0,
 			VRAM: 0,
@@ -442,7 +443,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	} else if err != nil {
 		return nil, err
 	}
-	l.log.Infof("Loading %s, which will require %d MB RAM and %d MB VRAM on a system with %d MB RAM and %d MB VRAM", modelID, memory.RAM/1024/1024, memory.VRAM/1024/1024, l.totalMemory.RAM/1024/1024, l.totalMemory.VRAM/1024/1024)
+	l.log.Infof("Loading %s, which will require %d MB RAM and %d MB VRAM on a system with %d MB RAM and %d MB VRAM", utils.SanitizeForLog(modelID), memory.RAM/1024/1024, memory.VRAM/1024/1024, l.totalMemory.RAM/1024/1024, l.totalMemory.VRAM/1024/1024)
 	if l.totalMemory.RAM == 1 {
 		l.log.Warnf("RAM size unknown. Assume model will fit, but only one.")
 		memory.RAM = 1
@@ -491,7 +492,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		if ok {
 			select {
 			case <-l.slots[existing.slot].done:
-				l.log.Warnf("%s runner for %s is defunct. Waiting for it to be evicted.", backendName, existing.modelRef)
+				l.log.Warnf("%s runner for %s is defunct. Waiting for it to be evicted.", backendName, utils.SanitizeForLog(existing.modelRef))
 				if l.references[existing.slot] == 0 {
 					l.evictRunner(backendName, modelID, mode)
 				} else {
@@ -534,11 +535,11 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		if slot >= 0 {
 			// runnerConfig was already retrieved earlier (lines 401-405), no need to look it up again
 			// Create the runner.
-			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
+			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, utils.SanitizeForLog(modelID), mode)
 			runner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
 				l.log.Warnf("Unable to start %s backend runner with model %s in %s mode: %v",
-					backendName, modelID, mode, err,
+					backendName, utils.SanitizeForLog(modelID), mode, err,
 				)
 				return nil, fmt.Errorf("unable to start runner: %w", err)
 			}
@@ -552,7 +553,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			if err := runner.wait(ctx); err != nil {
 				runner.terminate()
 				l.log.Warnf("Initialization for %s backend runner with model %s in %s mode failed: %v",
-					backendName, modelID, mode, err,
+					backendName, utils.SanitizeForLog(modelID), mode, err,
 				)
 				return nil, fmt.Errorf("error waiting for runner to be ready: %w", err)
 			}

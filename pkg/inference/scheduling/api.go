@@ -94,3 +94,33 @@ type ConfigureRequest struct {
 	RawRuntimeFlags string                              `json:"raw-runtime-flags,omitempty"`
 	Speculative     *inference.SpeculativeDecodingConfig `json:"speculative,omitempty"`
 }
+
+// GenerateRequest represents the request structure for /api/generate endpoint
+type GenerateRequest struct {
+	Model     string `json:"model"`
+	Prompt    string `json:"prompt"`
+	System    string `json:"system,omitempty"`
+	Template  string `json:"template,omitempty"`
+	Context   []int  `json:"context,omitempty"`
+	Stream    *bool  `json:"stream,omitempty"`
+	Raw       bool   `json:"raw,omitempty"`
+	KeepAlive *int   `json:"keep_alive,omitempty"`
+	Options   map[string]interface{} `json:"options,omitempty"`
+}
+
+// GenerateResponse represents the response structure for /api/generate endpoint
+type GenerateResponse struct {
+	Model     string    `json:"model"`
+	CreatedAt time.Time `json:"created_at"`
+	Response  string    `json:"response"`
+	Done      bool      `json:"done"`
+	DoneReason string   `json:"done_reason,omitempty"`
+	Context    []int    `json:"context,omitempty"`
+	TotalDuration int64 `json:"total_duration,omitempty"`
+	LoadDuration  int64 `json:"load_duration,omitempty"`
+	PromptEvalCount int `json:"prompt_eval_count,omitempty"`
+	PromptEvalDuration int64 `json:"prompt_eval_duration,omitempty"`
+	EvalCount int         `json:"eval_count,omitempty"`
+	EvalDuration int64    `json:"eval_duration,omitempty"`
+}
+

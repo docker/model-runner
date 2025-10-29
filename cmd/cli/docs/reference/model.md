@@ -23,6 +23,7 @@ Docker Model Runner
 | [`run`](model_run.md)                           | Run a model and interact with it using a submitted prompt or chat mode                          |
 | [`start-runner`](model_start-runner.md)         | Start Docker Model Runner (Docker Engine only)                                                  |
 | [`status`](model_status.md)                     | Check if the Docker Model Runner is running                                                     |
+| [`stop`](model_stop.md)                         | Stop a running model                                                                            |
 | [`stop-runner`](model_stop-runner.md)           | Stop Docker Model Runner (Docker Engine only)                                                   |
 | [`tag`](model_tag.md)                           | Tag a model                                                                                     |
 | [`uninstall-runner`](model_uninstall-runner.md) | Uninstall Docker Model Runner (Docker Engine only)                                              |

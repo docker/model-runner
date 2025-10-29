@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -48,4 +49,25 @@ func SanitizeForLog(s string) string {
 	}
 
 	return result.String()
+}
+// SanitizeModelNameForCommand sanitizes a model name to be safe for use in command arguments.
+// This prevents command injection by allowing only safe characters in model names.
+func SanitizeModelNameForCommand(modelName string) string {
+	if modelName == "" {
+		return ""
+	}
+	
+	// Only allow alphanumeric characters, dots, hyphens, underscores, and forward slashes
+	// This covers common model name formats like "user/model-name", "model.v1", etc.
+	re := regexp.MustCompile(`^[a-zA-Z0-9._/-]+$`)
+	if !re.MatchString(modelName) {
+		// If the model name contains unsafe characters, clean it
+		// Replace unsafe characters with underscores
+		safeModelName := regexp.MustCompile(`[^a-zA-Z0-9._/-]`).ReplaceAllString(modelName, "_")
+		// Ensure it doesn't start or end with unsafe sequences like ".." that could be path traversal
+		safeModelName = strings.ReplaceAll(safeModelName, "..", "_")
+		return safeModelName
+	}
+	
+	return modelName
 }

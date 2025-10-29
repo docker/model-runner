@@ -179,6 +179,17 @@ func main() {
 	// Add /v1 as an alias for /engines/v1
 	router.Handle("/v1/", &V1AliasHandler{scheduler: scheduler})
 
+	// Add API endpoints by creating a custom handler
+	apiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/generate":
+			scheduler.HandleGenerate(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	router.Handle("/api/generate", apiHandler)
+
 	// Add metrics endpoint if enabled
 	if os.Getenv("DISABLE_METRICS") != "1" {
 		metricsHandler := metrics.NewAggregatedMetricsHandler(
