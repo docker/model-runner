@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-func Size(path string) (float64, error) {
+func Size(path string) (int64, error) {
 	var size int64
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -20,5 +20,5 @@ func Size(path string) (float64, error) {
 		}
 		return nil
 	})
-	return float64(size), err
+	return size, err
 }

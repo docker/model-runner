@@ -1,0 +1,13 @@
+{{- if .Values.modelInit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "docker-model-runner.fullname" . }}-init
+  labels:
+    {{- include "docker-model-runner.labels" . | nindent 4 }}
+data:
+  models: |
+    {{- range .Values.modelInit.models }}
+    {{ . }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,91 @@
+---
+# Source: docker-model-runner/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-model-runner
+  labels:
+    helm.sh/chart: docker-model-runner-0.1.0
+    app.kubernetes.io/name: docker-model-runner
+    app.kubernetes.io/instance: docker-model-runner
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 12434
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: docker-model-runner
+    app.kubernetes.io/instance: docker-model-runner
+---
+# Source: docker-model-runner/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-model-runner
+  labels:
+    helm.sh/chart: docker-model-runner-0.1.0
+    app.kubernetes.io/name: docker-model-runner
+    app.kubernetes.io/instance: docker-model-runner
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docker-model-runner
+      app.kubernetes.io/instance: docker-model-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docker-model-runner
+        app.kubernetes.io/instance: docker-model-runner
+    spec:
+      initContainers:
+      - name: changeowner
+        image: busybox
+        command: ["sh", "-c", "chmod a+rwx /models"]
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+
+      containers:
+      - name: model-runner
+        image: "docker/model-runner:latest"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 12434
+        env:
+        - name: DMR_ORIGINS
+          value: "http://localhost:31245,http://localhost:12434"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        securityContext:
+          allowPrivilegeEscalation: false
+        readinessProbe:
+          httpGet:
+            path: /engines/status
+            port: 12434
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /engines/status
+            port: 12434
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          failureThreshold: 3
+      volumes:
+      - name: model-storage
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+              resources:
+                requests:
+                  storage: 100Gi

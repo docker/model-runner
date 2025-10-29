@@ -1,0 +1,6 @@
+apiVersion: v2
+name: docker-model-runner
+description: A Helm chart for Docker Model Runner
+type: application
+version: 0.1.0
+appVersion: "latest"

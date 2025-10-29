@@ -8,12 +8,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"sync"
 	"time"
 
-	"github.com/docker/model-distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/docker/model-runner/pkg/middleware"
+	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -34,6 +43,15 @@ type Scheduler struct {
 	loader *loader
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// httpHandler is the HTTP request handler, which wraps router with
+	// the server-level middleware.
+	httpHandler http.Handler
+	// tracker is the metrics tracker.
+	tracker *metrics.Tracker
+	// openAIRecorder is used to record OpenAI API inference requests and responses.
+	openAIRecorder *metrics.OpenAIRecorder
+	// lock is used to synchronize access to the scheduler's router.
+	lock sync.RWMutex
 }
 
 // NewScheduler creates a new inference scheduler.
@@ -43,7 +61,12 @@ func NewScheduler(
 	defaultBackend inference.Backend,
 	modelManager *models.Manager,
 	httpClient *http.Client,
+	allowedOrigins []string,
+	tracker *metrics.Tracker,
+	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
+	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
+
 	// Create the scheduler.
 	s := &Scheduler{
 		log:            log,
@@ -51,8 +74,10 @@ func NewScheduler(
 		defaultBackend: defaultBackend,
 		modelManager:   modelManager,
 		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager),
+		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),
 		router:         http.NewServeMux(),
+		tracker:        tracker,
+		openAIRecorder: openAIRecorder,
 	}
 
 	// Register routes.
@@ -64,8 +89,17 @@ func NewScheduler(
 		s.router.HandleFunc(route, handler)
 	}
 
+	s.RebuildRoutes(allowedOrigins)
+
 	// Scheduler successfully initialized.
 	return s
+}
+
+func (s *Scheduler) RebuildRoutes(allowedOrigins []string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	// Update handlers that depend on the allowed origins.
+	s.httpHandler = middleware.CorsMiddleware(allowedOrigins, s.router)
 }
 
 func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
@@ -81,20 +115,21 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	for _, route := range openAIRoutes {
 		m[route] = s.handleOpenAIInference
 	}
+
+	// Register /v1/models routes - these delegate to the model manager
+	m["GET "+inference.InferencePrefix+"/{backend}/v1/models"] = s.handleModels
+	m["GET "+inference.InferencePrefix+"/{backend}/v1/models/{name...}"] = s.handleModels
+	m["GET "+inference.InferencePrefix+"/v1/models"] = s.handleModels
+	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = s.handleModels
+
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
 	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
+	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = s.Configure
+	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
+	m["GET "+inference.InferencePrefix+"/requests"] = s.openAIRecorder.GetRecordsHandler()
 	return m
-}
-
-func (s *Scheduler) GetRoutes() []string {
-	routeHandlers := s.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
 }
 
 // Run is the scheduler's main run loop. By the time it returns, all inference
@@ -149,26 +184,6 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Wait for the corresponding backend installation to complete or fail. We
-	// don't allow any requests to be scheduled for a backend until it has
-	// completed installation.
-	if err := s.installer.wait(r.Context(), backend.Name()); err != nil {
-		if errors.Is(err, ErrBackendNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if errors.Is(err, errInstallerNotStarted) {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		} else if errors.Is(err, context.Canceled) {
-			// This could be due to the client aborting the request (in which
-			// case this response will be ignored) or the inference service
-			// shutting down (since that will also cancel the request context).
-			// Either way, provide a response, even if it's ignored.
-			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-		} else {
-			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
-		}
-		return
-	}
-
 	// Determine the backend operation mode.
 	backendMode, ok := backendModeForRequest(r.URL.Path)
 	if !ok {
@@ -189,7 +204,8 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		if _, err := s.modelManager.GetModel(request.Model); err != nil {
+		model, err := s.modelManager.GetModel(request.Model)
+		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
 			} else {
@@ -197,15 +213,65 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 			}
 			return
 		}
+		// Non-blocking call to track the model usage.
+		s.tracker.TrackModel(model, r.UserAgent(), "inference/"+backendMode.String())
+
+		// Automatically identify models for vLLM.
+		config, err := model.Config()
+		if err != nil {
+			s.log.Warnln("failed to fetch model config:", err)
+		} else {
+			if config.Format == types.FormatSafetensors {
+				if vllmBackend, ok := s.backends[vllm.Name]; ok {
+					backend = vllmBackend
+				} else {
+					s.log.Warnf("Model %s is in safetensors format but vLLM backend is not available. "+
+						"Backend %s may not support this format and could fail at runtime.",
+						utils.SanitizeForLog(request.Model), backend.Name())
+				}
+			}
+		}
 	}
 
+	// Wait for the corresponding backend installation to complete or fail. We
+	// don't allow any requests to be scheduled for a backend until it has
+	// completed installation.
+	if err := s.installer.wait(r.Context(), backend.Name()); err != nil {
+		if errors.Is(err, ErrBackendNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if errors.Is(err, errInstallerNotStarted) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		} else if errors.Is(err, context.Canceled) {
+			// This could be due to the client aborting the request (in which
+			// case this response will be ignored) or the inference service
+			// shutting down (since that will also cancel the request context).
+			// Either way, provide a response, even if it's ignored.
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		} else if errors.Is(err, vllm.StatusNotFound) {
+			http.Error(w, err.Error(), http.StatusPreconditionFailed)
+		} else {
+			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
+		}
+		return
+	}
+
+	modelID := s.modelManager.ResolveModelID(request.Model)
+
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), request.Model, backendMode)
+	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
 	}
 	defer s.loader.release(runner)
+
+	// Record the request in the OpenAI recorder.
+	recordID := s.openAIRecorder.RecordRequest(request.Model, r, body)
+	w = s.openAIRecorder.NewResponseRecorder(w)
+	defer func() {
+		// Record the response in the OpenAI recorder.
+		s.openAIRecorder.RecordResponse(recordID, request.Model, w)
+	}()
 
 	// Create a request with the body replaced for forwarding upstream.
 	upstreamRequest := r.Clone(r.Context())
@@ -230,7 +296,7 @@ func (s *Scheduler) ResetInstaller(httpClient *http.Client) {
 
 // GetRunningBackends returns information about all running backends
 func (s *Scheduler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
-	runningBackends := s.getLoaderStatus()
+	runningBackends := s.getLoaderStatus(r.Context())
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(runningBackends); err != nil {
@@ -240,25 +306,26 @@ func (s *Scheduler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
 }
 
 // getLoaderStatus returns information about all running backends managed by the loader
-func (s *Scheduler) getLoaderStatus() []BackendStatus {
-	if !s.loader.lock(context.Background()) {
+func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
+	if !s.loader.lock(ctx) {
 		return []BackendStatus{}
 	}
 	defer s.loader.unlock()
 
 	result := make([]BackendStatus, 0, len(s.loader.runners))
 
-	for key, slot := range s.loader.runners {
-		if s.loader.slots[slot] != nil {
+	for key, runnerInfo := range s.loader.runners {
+		if s.loader.slots[runnerInfo.slot] != nil {
 			status := BackendStatus{
 				BackendName: key.backend,
-				ModelName:   key.model,
+				ModelName:   runnerInfo.modelRef,
 				Mode:        key.mode.String(),
 				LastUsed:    time.Time{},
+				InUse:       s.loader.references[runnerInfo.slot] > 0,
 			}
 
-			if s.loader.references[slot] == 0 {
-				status.LastUsed = s.loader.timestamps[slot]
+			if s.loader.references[runnerInfo.slot] == 0 {
+				status.LastUsed = s.loader.timestamps[runnerInfo.slot]
 			}
 
 			result = append(result, status)
@@ -317,7 +384,160 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
+	// Determine the requested backend and ensure that it's valid.
+	var backend inference.Backend
+	if b := r.PathValue("backend"); b == "" {
+		backend = s.defaultBackend
+	} else {
+		backend = s.backends[b]
+	}
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	configureRequest := ConfigureRequest{
+		ContextSize: -1,
+	}
+	if err := json.Unmarshal(body, &configureRequest); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	var runtimeFlags []string
+	if len(configureRequest.RuntimeFlags) > 0 {
+		runtimeFlags = configureRequest.RuntimeFlags
+	} else {
+		rawFlags, err := shellwords.Parse(configureRequest.RawRuntimeFlags)
+		if err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		runtimeFlags = rawFlags
+	}
+
+	var runnerConfig inference.BackendConfiguration
+	runnerConfig.ContextSize = configureRequest.ContextSize
+	runnerConfig.RuntimeFlags = runtimeFlags
+	runnerConfig.Speculative = configureRequest.Speculative
+
+	mode := inference.BackendModeCompletion
+	if slices.Contains(runnerConfig.RuntimeFlags, "--embeddings") {
+		mode = inference.BackendModeEmbedding
+	}
+
+	if model, err := s.modelManager.GetModel(configureRequest.Model); err == nil {
+		// Configure is called by compose for each model.
+		s.tracker.TrackModel(model, r.UserAgent(), "configure/"+mode.String())
+	}
+	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
+	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
+		if errors.Is(err, errRunnerAlreadyActive) {
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// GetAllActiveRunners returns information about all active runners
+func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
+	runningBackends := s.getLoaderStatus(context.Background())
+	var activeRunners []metrics.ActiveRunner
+
+	if !s.loader.lock(context.Background()) {
+		return activeRunners
+	}
+	defer s.loader.unlock()
+
+	for _, backend := range runningBackends {
+		mode := parseBackendMode(backend.Mode)
+		// Find the runner slot for this backend/model combination
+		// We iterate through all runners since we don't know the draftModelID
+		for key, runnerInfo := range s.loader.runners {
+			if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
+				socket, err := RunnerSocketPath(runnerInfo.slot)
+				if err != nil {
+					s.log.Warnf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err)
+					continue
+				}
+
+				activeRunners = append(activeRunners, metrics.ActiveRunner{
+					BackendName: backend.BackendName,
+					ModelName:   backend.ModelName,
+					Mode:        backend.Mode,
+					Socket:      socket,
+				})
+				break // Found the runner, no need to continue iterating
+			}
+		}
+	}
+
+	return activeRunners
+}
+
+// GetLlamaCppSocket returns the Unix socket path for an active llama.cpp runner
+func (s *Scheduler) GetLlamaCppSocket() (string, error) {
+	runningBackends := s.getLoaderStatus(context.Background())
+
+	if !s.loader.lock(context.Background()) {
+		return "", errors.New("failed to acquire loader lock")
+	}
+	defer s.loader.unlock()
+
+	// Look for an active llama.cpp backend
+	for _, backend := range runningBackends {
+		if backend.BackendName == "llama.cpp" {
+			mode := parseBackendMode(backend.Mode)
+			// Find the runner slot for this backend/model combination
+			// We iterate through all runners since we don't know the draftModelID
+			for key, runnerInfo := range s.loader.runners {
+				if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
+					// Use the RunnerSocketPath function to get the socket path
+					return RunnerSocketPath(runnerInfo.slot)
+				}
+			}
+		}
+	}
+
+	return "", errors.New("no active llama.cpp backend found")
+}
+
+// parseBackendMode converts a string mode to BackendMode
+func parseBackendMode(mode string) inference.BackendMode {
+	switch mode {
+	case "completion":
+		return inference.BackendModeCompletion
+	case "embedding":
+		return inference.BackendModeEmbedding
+	default:
+		return inference.BackendModeCompletion
+	}
+}
+
+// handleModels handles GET /engines/{backend}/v1/models* requests
+// by delegating to the model manager
+func (s *Scheduler) handleModels(w http.ResponseWriter, r *http.Request) {
+	s.modelManager.ServeHTTP(w, r)
+}
+
 // ServeHTTP implements net/http.Handler.ServeHTTP.
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	s.httpHandler.ServeHTTP(w, r)
 }

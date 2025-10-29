@@ -2,6 +2,7 @@ package scheduling
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,13 +14,15 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/metrics"
 )
 
 const (
 	// maximumReadinessPings is the maximum number of retries that a runner will
 	// perform when pinging a backend for readiness.
-	maximumReadinessPings = 60
+	maximumReadinessPings = 600
 	// readinessRetryInterval is the interval at which a runner will retry
 	// readiness checks for a backend.
 	readinessRetryInterval = 500 * time.Millisecond
@@ -28,6 +31,10 @@ const (
 // errBackendNotReadyInTime indicates that an inference backend took too
 // long to initialize and respond to a readiness request.
 var errBackendNotReadyInTime = errors.New("inference backend took too long to initialize")
+
+// errBackendQuitUnexpectedly indicates that an inference backend terminated
+// unexpectedly
+var errBackendQuitUnexpectedly = errors.New("inference backend quit unexpectedly")
 
 // RunnerSocketPath determines the Unix domain socket path used to communicate
 // with runners at the specified slot. It can be overridden during init().
@@ -58,15 +65,22 @@ type runner struct {
 	proxy *httputil.ReverseProxy
 	// proxyLog is the stream used for logging by proxy.
 	proxyLog io.Closer
+	// openAIRecorder is used to record OpenAI API inference requests and responses.
+	openAIRecorder *metrics.OpenAIRecorder
+	// err is the error returned by the runner's backend, only valid after done is closed.
+	err error
 }
 
 // run creates a new runner instance.
 func run(
 	log logging.Logger,
 	backend inference.Backend,
-	model string,
+	modelID string,
+	modelRef string,
 	mode inference.BackendMode,
 	slot int,
+	runnerConfig *inference.BackendConfiguration,
+	openAIRecorder *metrics.OpenAIRecorder,
 ) (*runner, error) {
 	// Create a dialer / transport that target backend on the specified slot.
 	socket, err := RunnerSocketPath(slot)
@@ -106,6 +120,12 @@ func run(
 		r.URL.Path = trimRequestPathToOpenAIRoot(r.URL.Path)
 		r.URL.RawPath = trimRequestPathToOpenAIRoot(r.URL.RawPath)
 	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// CORS headers are set by the CorsMiddleware from pkg/inference/cors.go,
+		// so we remove them here to avoid duplication and potential misconfiguration.
+		resp.Header.Del("Access-Control-Allow-Origin")
+		return nil
+	}
 	proxy.Transport = transport
 	proxyLog := log.Writer()
 	proxy.ErrorLog = logpkg.New(proxyLog, "", 0)
@@ -115,35 +135,77 @@ func run(
 	runCtx, runCancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})
 
+	r := &runner{
+		log:            log,
+		backend:        backend,
+		model:          modelID,
+		mode:           mode,
+		cancel:         runCancel,
+		done:           runDone,
+		transport:      transport,
+		client:         client,
+		proxy:          proxy,
+		proxyLog:       proxyLog,
+		openAIRecorder: openAIRecorder,
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		// If the error is EOF, the underlying runner likely bailed, and closed its socket
+		// unexpectedly. Wait for the runner process to complete, but time out in case
+		// the runner process only killed its comms and is stuck.
+		if errors.Is(err, io.EOF) {
+			w.WriteHeader(http.StatusInternalServerError)
+			select {
+			case <-r.done:
+				res := OpenAIErrorResponse{
+					Type:           "error",
+					Code:           nil,
+					Message:        r.err.Error(),
+					Param:          nil,
+					SequenceNumber: 1,
+				}
+				errJson, err := json.Marshal(&res)
+				if err == nil {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.Write(errJson)
+				}
+				return
+			case <-time.After(30 * time.Second):
+			}
+		} else {
+			w.WriteHeader(http.StatusBadGateway)
+		}
+	}
+
+	r.openAIRecorder.SetConfigForModel(modelID, runnerConfig)
+
 	// Start the backend run loop.
 	go func() {
-		if err := backend.Run(runCtx, socket, model, mode); err != nil {
+		if err := backend.Run(runCtx, socket, modelID, modelRef, mode, runnerConfig); err != nil {
 			log.Warnf("Backend %s running model %s exited with error: %v",
-				backend.Name(), model, err,
+				backend.Name(), utils.SanitizeForLog(modelRef), err,
 			)
+			r.err = err
 		}
 		close(runDone)
 	}()
 
 	// Create the runner.
-	return &runner{
-		log:       log,
-		backend:   backend,
-		model:     model,
-		mode:      mode,
-		cancel:    runCancel,
-		done:      runDone,
-		transport: transport,
-		client:    client,
-		proxy:     proxy,
-		proxyLog:  proxyLog,
-	}, nil
+	return r, nil
 }
 
 // wait waits for the runner to be ready.
 func (r *runner) wait(ctx context.Context) error {
 	// Loop and poll for readiness.
 	for p := 0; p < maximumReadinessPings; p++ {
+		select {
+		case <-r.done:
+			if r.err == nil {
+				return errBackendQuitUnexpectedly
+			}
+			return r.err
+		default:
+		}
 		// Create and execute a request targeting a known-valid endpoint.
 		readyRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/v1/models", http.NoBody)
 		if err != nil {
@@ -189,6 +251,8 @@ func (r *runner) terminate() {
 	if err := r.proxyLog.Close(); err != nil {
 		r.log.Warnf("Unable to close reverse proxy log writer: %v", err)
 	}
+
+	r.openAIRecorder.RemoveModel(r.model)
 }
 
 // ServeHTTP implements net/http.Handler.ServeHTTP. It forwards requests to the

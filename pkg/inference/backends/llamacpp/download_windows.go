@@ -33,7 +33,7 @@ func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger,
 			}
 		}
 	}
-	desiredVersion := "latest"
+	desiredVersion := GetDesiredServerVersion()
 	desiredVariant := "cpu"
 	if canUseCUDA11 {
 		desiredVariant = "cuda"

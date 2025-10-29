@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "docker-model-runner.fullname" . }}
+  labels:
+    {{- include "docker-model-runner.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: {{ .Values.service.targetPort }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "docker-model-runner.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.nodePort.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "docker-model-runner.fullname" . }}-nodeport
+  labels:
+    {{- include "docker-model-runner.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: {{ .Values.service.targetPort }}
+    nodePort: {{ .Values.nodePort.port }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "docker-model-runner.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "docker-model-runner.fullname" . }}
+  labels:
+    {{- include "docker-model-runner.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "docker-model-runner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "docker-model-runner.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+      - name: changeowner
+        image: busybox
+        command: ["sh", "-c", "chmod a+rwx /models"]
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+
+      containers:
+      - name: model-runner
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.service.targetPort }}
+        env:
+        - name: DMR_ORIGINS
+          value: "http://localhost:{{ .Values.nodePort.port }},http://localhost:{{ .Values.service.targetPort }}"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        securityContext:
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.readinessProbe.httpGet.path }}
+            port: {{ .Values.readinessProbe.httpGet.port }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.livenessProbe.httpGet.path }}
+            port: {{ .Values.livenessProbe.httpGet.port }}
+          initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+        {{- if .Values.gpu.enabled }}
+        resources:
+          limits:
+            {{- include "docker-model-runner.gpuResources" . | nindent 12 }}
+          requests:
+            {{- include "docker-model-runner.gpuResources" . | nindent 12 }}
+        {{- end }}
+
+      {{- if .Values.modelInit.enabled }}
+      - name: model-init
+        image: curlimages/curl:8.14.1
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -ex
+          MODEL_RUNNER=http://localhost:{{ .Values.service.targetPort }}
+          echo "Pre-pulling models..."
+          while IFS= read -r model; do
+            if [ -n "$model" ]; then
+              echo "Pulling model: $model"
+              curl -d "{\"from\": \"$model\"}" "$MODEL_RUNNER"/models/create
+            fi
+          done < /config/models
+          echo "Model pre-pull complete"
+          tail -f /dev/null
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        - name: init-config
+          mountPath: /config
+      {{- end }}
+      volumes:
+      - name: model-storage
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+              {{- if .Values.storage.storageClass }}
+              storageClassName: {{ .Values.storage.storageClass }}
+              {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.storage.size }}
+      {{- if .Values.modelInit.enabled }}
+      - name: init-config
+        configMap:
+          name: {{ include "docker-model-runner.fullname" . }}-init
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

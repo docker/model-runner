@@ -1,0 +1,74 @@
+replicaCount: 1
+
+image:
+  repository: docker/model-runner
+  pullPolicy: IfNotPresent
+  # Use 'latest', 'latest-cuda', or 'latest-rocm' for different acceleration variants
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 12434
+
+nodePort:
+  enabled: false
+  port: 31245
+
+# GPU resource allocation
+gpu:
+  enabled: false
+  # GPU vendor: nvidia or amd
+  vendor: nvidia
+  # Number of GPUs to request
+  count: 1
+  # For AMD GPUs, ensure you're using a ROCm-enabled image tag (e.g., latest-rocm)
+
+# Ephemeral volume configuration
+storage:
+  # Storage size for ephemeral volume
+  size: 100Gi
+  # Storage class for ephemeral volume
+  storageClass: ""
+
+# Model pre-pull configuration
+modelInit:
+  enabled: false
+  models: []
+
+# Environment variables
+env:
+  DMR_ORIGINS: "http://localhost:31246,http://localhost:80"
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+
+# Probes
+readinessProbe:
+  httpGet:
+    path: /engines/status
+    port: 12434
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+livenessProbe:
+  httpGet:
+    path: /engines/status
+    port: 12434
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  failureThreshold: 3
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

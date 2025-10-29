@@ -17,6 +17,14 @@ const (
 	BackendModeEmbedding
 )
 
+type ErrGGUFParse struct {
+	Err error
+}
+
+func (e *ErrGGUFParse) Error() string {
+	return "failed to parse GGUF: " + e.Err.Error()
+}
+
 // String implements Stringer.String for BackendMode.
 func (m BackendMode) String() string {
 	switch m {
@@ -27,6 +35,23 @@ func (m BackendMode) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+type SpeculativeDecodingConfig struct {
+	DraftModel        string  `json:"draft_model,omitempty"`
+	NumTokens         int     `json:"num_tokens,omitempty"`
+	MinAcceptanceRate float64 `json:"min_acceptance_rate,omitempty"`
+}
+
+type BackendConfiguration struct {
+	ContextSize  int64                       `json:"context-size,omitempty"`
+	RuntimeFlags []string                    `json:"runtime-flags,omitempty"`
+	Speculative  *SpeculativeDecodingConfig `json:"speculative,omitempty"`
+}
+
+type RequiredMemory struct {
+	RAM  uint64
+	VRAM uint64 // TODO(p1-0tr): for now assume we are working with single GPU set-ups
 }
 
 // Backend is the interface implemented by inference engine backends. Backend
@@ -66,9 +91,12 @@ type Backend interface {
 	// to be loaded. Backends should not load multiple models at once and should
 	// instead load only the specified model. Backends should still respond to
 	// OpenAI API requests for other models with a 421 error code.
-	Run(ctx context.Context, socket, model string, mode BackendMode) error
+	Run(ctx context.Context, socket, model string, modelRef string, mode BackendMode, config *BackendConfiguration) error
 	// Status returns a description of the backend's state.
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.
-	GetDiskUsage() (float64, error)
+	GetDiskUsage() (int64, error)
+	// GetRequiredMemoryForModel returns the required working memory for a given
+	// model.
+	GetRequiredMemoryForModel(ctx context.Context, model string, config *BackendConfiguration) (RequiredMemory, error)
 }

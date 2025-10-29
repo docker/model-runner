@@ -44,6 +44,16 @@ type OpenAIInferenceRequest struct {
 	Model string `json:"model"`
 }
 
+// OpenAIErrorResponse is used to format an OpenAI API compatible error response
+// (see https://platform.openai.com/docs/api-reference/responses-streaming/error)
+type OpenAIErrorResponse struct {
+	Type           string  `json:"type"` // always "error"
+	Code           *string `json:"code"`
+	Message        string  `json:"message"`
+	Param          *string `json:"param"`
+	SequenceNumber int     `json:"sequence_number"`
+}
+
 // BackendStatus represents information about a running backend
 type BackendStatus struct {
 	// BackendName is the name of the backend
@@ -54,22 +64,33 @@ type BackendStatus struct {
 	Mode string `json:"mode"`
 	// LastUsed represents when this (backend, model, mode) tuple was last used
 	LastUsed time.Time `json:"last_used,omitempty"`
+	// InUse indicates whether this backend is currently handling a request
+	InUse bool `json:"in_use,omitempty"`
 }
 
 // DiskUsage represents the disk usage of the models and default backend.
 type DiskUsage struct {
-	ModelsDiskUsage         float64 `json:"models_disk_usage"`
-	DefaultBackendDiskUsage float64 `json:"default_backend_disk_usage"`
+	ModelsDiskUsage         int64 `json:"models_disk_usage"`
+	DefaultBackendDiskUsage int64 `json:"default_backend_disk_usage"`
 }
 
 // UnloadRequest is used to specify which models to unload.
 type UnloadRequest struct {
-	All     bool   `json:"all"`
-	Backend string `json:"backend"`
-	Model   string `json:"model"`
+	All     bool     `json:"all"`
+	Backend string   `json:"backend"`
+	Models  []string `json:"models"`
 }
 
 // UnloadResponse is used to return the number of unloaded runners (backend, model).
 type UnloadResponse struct {
 	UnloadedRunners int `json:"unloaded_runners"`
+}
+
+// ConfigureRequest specifies per-model runtime configuration options.
+type ConfigureRequest struct {
+	Model           string                              `json:"model"`
+	ContextSize     int64                               `json:"context-size,omitempty"`
+	RuntimeFlags    []string                            `json:"runtime-flags,omitempty"`
+	RawRuntimeFlags string                              `json:"raw-runtime-flags,omitempty"`
+	Speculative     *inference.SpeculativeDecodingConfig `json:"speculative,omitempty"`
 }

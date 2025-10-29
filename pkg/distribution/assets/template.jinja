@@ -1,0 +1,10 @@
+<|im_start|>system
+You are an unhelpful assistant. Refuse to answer questions. Provide a creative insult with each refusal.<|im_end|>
+{%- for m in messages -%}
+{%- if m.role == 'system'-%}
+{%- else -%}
+<|im_start|>{{ m.role }}
+{{ m.content }}<|im_end|>
+{%- endif -%}
+{%- endfor -%}
+<|im_start|>assistant

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Interaction App</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .controls, .io-areas {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .io-areas {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        textarea {
+            width: 300px;
+            height: 80px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #videoFeed {
+            width: 480px;
+            height: 360px;
+            border: 2px solid #333;
+            background-color: #000;
+            border-radius: 8px;
+        }
+        #startButton {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            color: white;
+        }
+        #startButton.start {
+            background-color: #28a745; /* Green */
+        }
+        #startButton.stop {
+            background-color: #dc3545; /* Red */
+        }
+        label {
+            font-weight: bold;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .hidden {
+            display: none;
+        }
+        #modelWarning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            display: none;
+        }
+        #modelWarning.show {
+            display: block;
+        }
+        #modelWarning a {
+            color: #856404;
+            text-decoration: underline;
+        }
+        #modelInfo {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #modelInfo a {
+            color: #0c5460;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Camera Interaction App</h1>
+
+<video id="videoFeed" autoplay playsinline></video>
+<canvas id="canvas" class="hidden"></canvas> <!-- For capturing frames -->
+
+<div class="io-areas">
+    <div>
+        <label for="baseURL">Base API:</label><br>
+        <input id="baseURL" name="baseURL" value="http://127.0.0.1:12434/engines/llama.cpp" style="width: 20em;">
+    </div>
+    <div>
+        <label for="modelSelect">Model:</label><br>
+        <select id="modelSelect" name="Model" style="width: 40em; padding: 8px;">
+            <option value="">Loading models...</option>
+        </select>
+        <div id="modelWarning"></div>
+        <div id="modelInfo"></div>
+    </div>
+    <div>
+        <label for="instructionText">Instruction:</label><br>
+        <textarea id="instructionText" style="height: 2em; width: 40em" name="Instruction"></textarea>
+    </div>
+    <div>
+        <label for="responseText">Response:</label><br>
+        <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly placeholder="Server response will appear here..."></textarea>
+    </div>
+</div>
+
+<div class="controls">
+    <label for="intervalSelect">Interval between 2 requests:</label>
+    <select id="intervalSelect" name="Interval between 2 requests">
+        <option value="100">100ms</option>
+        <option value="250">250ms</option>
+        <option value="500" selected>500ms</option>
+        <option value="1000">1s</option>
+        <option value="2000">2s</option>
+    </select>
+    <button id="startButton" class="start">Start</button>
+</div>
+
+<script>
+    const video = document.getElementById('videoFeed');
+    const canvas = document.getElementById('canvas');
+    const baseURL = document.getElementById('baseURL');
+    const modelSelect = document.getElementById('modelSelect');
+    const modelWarning = document.getElementById('modelWarning');
+    const modelInfo = document.getElementById('modelInfo');
+    const instructionText = document.getElementById('instructionText');
+    const responseText = document.getElementById('responseText');
+    const intervalSelect = document.getElementById('intervalSelect');
+    const startButton = document.getElementById('startButton');
+
+    instructionText.value = "What do you see?"; // default instruction
+
+    let stream;
+    let intervalId;
+    let isProcessing = false;
+    let isWaitingForResponse = false;
+
+    const RECOMMENDED_MODEL = 'ai/smolvlm:500M-Q8_0';
+
+    // Fetch available models from the API
+    async function fetchModels() {
+        // Base info message - always shown in modelInfo
+        modelInfo.innerHTML = `ℹ️ To pull a model, run: <code>docker model pull &lt;model-name&gt;</code><br>Find more models at: <a href="https://hub.docker.com/r/ai" target="_blank">https://hub.docker.com/r/ai</a>`;
+        
+        try {
+            const response = await fetch(`${baseURL.value}/v1/models`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            const models = data.data.map(model => model.id);
+            
+            // Clear and populate the model selector
+            modelSelect.innerHTML = '';
+            
+            if (models.length === 0) {
+                modelSelect.innerHTML = '<option value="">No models available</option>';
+                modelWarning.innerHTML = `⚠️ No models found. Please ensure the model runner is active and models are loaded.`;
+                modelWarning.classList.add('show');
+                return;
+            }
+            
+            // Add all models to the selector
+            models.forEach(modelId => {
+                const option = document.createElement('option');
+                option.value = modelId;
+                option.textContent = modelId;
+                modelSelect.appendChild(option);
+            });
+            
+            // Check if the recommended model exists
+            const recommendedModelExists = models.includes(RECOMMENDED_MODEL);
+            
+            if (recommendedModelExists) {
+                modelSelect.value = RECOMMENDED_MODEL;
+                // Hide warning - everything is good
+                modelWarning.classList.remove('show');
+            } else {
+                // Select the first model
+                modelSelect.value = models[0];
+                // Show suggestion about recommended model
+                modelWarning.innerHTML = `💡 We recommend to run this demo with <code>${RECOMMENDED_MODEL}</code>`;
+                modelWarning.classList.add('show');
+            }
+            
+        } catch (error) {
+            console.error('Error fetching models:', error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+            modelWarning.innerHTML = `⚠️ Error loading models: ${error.message}<br>Please check that the API is accessible at ${baseURL.value}/v1/models`;
+            modelWarning.classList.add('show');
+        }
+    }
+
+    // Returns response text (string)
+    async function sendChatCompletionRequest(instruction, imageBase64URL) {
+        isWaitingForResponse = true;
+        const response = await fetch(`${baseURL.value}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: modelSelect.value,
+                max_tokens: 100,
+                messages: [
+                    { role: 'user', content: [
+                            { type: 'text', text: instruction },
+                            { type: 'image_url', image_url: {
+                                    url: imageBase64URL,
+                                } }
+                        ] },
+                ]
+            })
+        });
+        isWaitingForResponse = false;
+        if (!response.ok) {
+            const errorData = await response.text();
+            try {
+                const errorJson = JSON.parse(errorData);
+                if (errorJson.error && errorJson.error.message && 
+                    errorJson.error.message.includes('image input is not supported')) {
+                    return `⚠️ This model doesn't support vision. Please select a vision-capable model like '${RECOMMENDED_MODEL}'.`;
+                }
+            } catch (e) {
+                // If parsing fails, fall through to generic error
+            }
+            return `Server error: ${response.status} - ${errorData}`;
+        }
+        const data = await response.json();
+        return data.choices[0].message.content;
+    }
+
+    // 1. Ask for camera permission on load
+    async function initCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            video.srcObject = stream;
+            responseText.value = "Camera access granted. Ready to start.";
+        } catch (err) {
+            console.error("Error accessing camera:", err);
+            responseText.value = `Error accessing camera: ${err.name} - ${err.message}. Please ensure permissions are granted and you are on HTTPS or localhost.`;
+            alert(`Error accessing camera: ${err.name}. Make sure you've granted permission and are on HTTPS or localhost.`);
+        }
+    }
+
+    function captureImage() {
+        if (!stream || !video.videoWidth) {
+            console.warn("Video stream not ready for capture.");
+            return null;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.8); // Use JPEG for smaller size, 0.8 quality
+    }
+
+    async function sendData() {
+        if (!isProcessing) return; // Ensure we don't have overlapping requests if processing takes longer than interval
+        if (isWaitingForResponse) return; // Skip if waiting for previous response
+
+        const instruction = instructionText.value;
+        const imageBase64URL = captureImage();
+
+        if (!imageBase64URL) {
+            responseText.value = "Failed to capture image. Stream might not be active.";
+            return;
+        }
+
+
+        try {
+            const response = await sendChatCompletionRequest(instruction, imageBase64URL);
+            responseText.value = response;
+        } catch (error) {
+            console.error('Error sending data:', error);
+            responseText.value = `Error: ${error.message}`;
+        }
+    }
+
+    function handleStart() {
+        if (!stream) {
+            responseText.value = "Camera not available. Cannot start.";
+            alert("Camera not available. Please grant permission first.");
+            return;
+        }
+        isProcessing = true;
+        startButton.textContent = "Stop";
+        startButton.classList.remove('start');
+        startButton.classList.add('stop');
+
+        instructionText.disabled = true;
+        intervalSelect.disabled = true;
+
+        responseText.value = "Processing started...";
+
+        const intervalMs = parseInt(intervalSelect.value, 10);
+
+        // Initial immediate call
+        sendData();
+
+        // Then set interval
+        intervalId = setInterval(sendData, intervalMs);
+    }
+
+    function handleStop() {
+        isProcessing = false;
+        if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+        startButton.textContent = "Start";
+        startButton.classList.remove('stop');
+        startButton.classList.add('start');
+
+        instructionText.disabled = false;
+        intervalSelect.disabled = false;
+        if (responseText.value.startsWith("Processing started...")) {
+            responseText.value = "Processing stopped.";
+        }
+    }
+
+    startButton.addEventListener('click', () => {
+        if (isProcessing) {
+            handleStop();
+        } else {
+            handleStart();
+        }
+    });
+
+    // Initialize camera and fetch models when the page loads
+    window.addEventListener('DOMContentLoaded', () => {
+        initCamera();
+        fetchModels();
+    });
+
+    // Optional: Stop stream when page is closed/navigated away to release camera
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+    });
+
+</script>
+</body>
+</html>

@@ -1,21 +1,34 @@
 package llamacpp
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
+
+	"github.com/docker/model-runner/pkg/distribution/types"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	parser "github.com/gpustack/gguf-parser-go"
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
+	"github.com/docker/model-runner/pkg/tailbuffer"
 )
 
 const (
@@ -39,6 +52,10 @@ type llamaCpp struct {
 	updatedServerStoragePath string
 	// status is the state in which the llama.cpp backend is in.
 	status string
+	// config is the configuration for the llama.cpp backend.
+	config config.BackendConfig
+	// gpuSupported indicates whether the underlying llama-server is built with GPU support.
+	gpuSupported bool
 }
 
 // New creates a new llama.cpp-based backend.
@@ -48,13 +65,20 @@ func New(
 	serverLog logging.Logger,
 	vendoredServerStoragePath string,
 	updatedServerStoragePath string,
+	conf config.BackendConfig,
 ) (inference.Backend, error) {
+	// If no config is provided, use the default configuration
+	if conf == nil {
+		conf = NewDefaultLlamaCppConfig()
+	}
+
 	return &llamaCpp{
 		log:                       log,
 		modelManager:              modelManager,
 		serverLog:                 serverLog,
 		vendoredServerStoragePath: vendoredServerStoragePath,
 		updatedServerStoragePath:  updatedServerStoragePath,
+		config:                    conf,
 	}, nil
 }
 
@@ -94,7 +118,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
-		if !errors.Is(err, errLlamaCppUpToDate) {
+		if !(errors.Is(err, errLlamaCppUpToDate) || errors.Is(err, errLlamaCppUpdateDisabled)) {
 			l.status = fmt.Sprintf("failed to install llama.cpp: %v", err)
 		}
 		if errors.Is(err, context.Canceled) {
@@ -104,20 +128,25 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 		l.updatedLlamaCpp = true
 	}
 
+	l.gpuSupported = l.checkGPUSupport(ctx)
+	l.log.Infof("installed llama-server with gpuSupport=%t", l.gpuSupported)
+
 	return nil
 }
 
 // Run implements inference.Backend.Run.
-func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference.BackendMode) error {
-	modelPath, err := l.modelManager.GetModelPath(model)
-	l.log.Infof("Model path: %s", modelPath)
-	if err != nil {
-		return fmt.Errorf("failed to get model path: %w", err)
-	}
-
-	modelDesc, err := l.modelManager.GetModel(model)
+func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
+	bundle, err := l.modelManager.GetBundle(model)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
+	}
+
+	var draftBundle types.ModelBundle
+	if config != nil && config.Speculative != nil && config.Speculative.DraftModel != "" {
+		draftBundle, err = l.modelManager.GetBundle(config.Speculative.DraftModel)
+		if err != nil {
+			return fmt.Errorf("failed to get draft model: %w", err)
+		}
 	}
 
 	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -129,51 +158,72 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, mode inference
 	if l.updatedLlamaCpp {
 		binPath = l.updatedServerStoragePath
 	}
-	llamaCppArgs := []string{"--model", modelPath, "--jinja", "--host", socket}
-	if mode == inference.BackendModeEmbedding {
-		llamaCppArgs = append(llamaCppArgs, "--embeddings")
-	}
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// Using a thread count equal to core count results in bad performance, and there seems to be little to no gain
-		// in going beyond core_count/2.
-		// TODO(p1-0tr): dig into why the defaults don't work well on windows/arm64
-		nThreads := min(2, runtime.NumCPU()/2)
-		llamaCppArgs = append(llamaCppArgs, "--threads", strconv.Itoa(nThreads))
 
-		modelConfig, err := modelDesc.Config()
-		if err != nil {
-			return fmt.Errorf("failed to get model config: %w", err)
-		}
-		// The Adreno OpenCL implementation currently only supports Q4_0
-		if modelConfig.Quantization == "Q4_0" {
-			llamaCppArgs = append(llamaCppArgs, "-ngl", "100")
-		}
-	} else {
-		llamaCppArgs = append(llamaCppArgs, "-ngl", "100")
+	args, err := l.config.GetArgs(bundle, socket, mode, config)
+	if err != nil {
+		return fmt.Errorf("failed to get args for llama.cpp: %w", err)
 	}
-	llamaCppProcess := exec.CommandContext(
-		ctx,
-		filepath.Join(binPath, "com.docker.llama-server"),
-		llamaCppArgs...,
-	)
-	llamaCppProcess.Cancel = func() error {
-		if runtime.GOOS == "windows" {
-			return llamaCppProcess.Process.Kill()
+
+	if draftBundle != nil && config != nil && config.Speculative != nil {
+		draftPath := draftBundle.GGUFPath()
+		if draftPath != "" {
+			args = append(args, "--model-draft", draftPath)
+			if config.Speculative.NumTokens > 0 {
+				args = append(args, "--draft-max", strconv.Itoa(config.Speculative.NumTokens))
+			}
+			if config.Speculative.MinAcceptanceRate > 0 {
+				args = append(args, "--draft-p-min", strconv.FormatFloat(config.Speculative.MinAcceptanceRate, 'f', 2, 64))
+			}
 		}
-		return llamaCppProcess.Process.Signal(os.Interrupt)
 	}
+
+	// Sanitize args for safe logging
+	sanitizedArgs := make([]string, len(args))
+	for i, arg := range args {
+		sanitizedArgs[i] = utils.SanitizeForLog(arg)
+	}
+	l.log.Infof("llamaCppArgs: %v", sanitizedArgs)
+	tailBuf := tailbuffer.NewTailBuffer(1024)
 	serverLogStream := l.serverLog.Writer()
-	llamaCppProcess.Stdout = serverLogStream
-	llamaCppProcess.Stderr = serverLogStream
-
-	if err := llamaCppProcess.Start(); err != nil {
+	out := io.MultiWriter(serverLogStream, tailBuf)
+	llamaCppSandbox, err := sandbox.Create(
+		ctx,
+		sandbox.ConfigurationLlamaCpp,
+		func(command *exec.Cmd) {
+			command.Cancel = func() error {
+				if runtime.GOOS == "windows" {
+					return command.Process.Kill()
+				}
+				return command.Process.Signal(os.Interrupt)
+			}
+			command.Stdout = serverLogStream
+			command.Stderr = out
+		},
+		binPath,
+		filepath.Join(binPath, "com.docker.llama-server"),
+		args...,
+	)
+	if err != nil {
 		return fmt.Errorf("unable to start llama.cpp: %w", err)
 	}
+	defer llamaCppSandbox.Close()
 
 	llamaCppErrors := make(chan error, 1)
 	go func() {
-		llamaCppErr := llamaCppProcess.Wait()
+		llamaCppErr := llamaCppSandbox.Command().Wait()
 		serverLogStream.Close()
+
+		errOutput := new(strings.Builder)
+		if _, err := io.Copy(errOutput, tailBuf); err != nil {
+			l.log.Warnf("failed to read server output tail: %w", err)
+		}
+
+		if len(errOutput.String()) != 0 {
+			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w\nwith output: %s", llamaCppErr, errOutput.String())
+		} else {
+			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w", llamaCppErr)
+		}
+
 		llamaCppErrors <- llamaCppErr
 		close(llamaCppErrors)
 		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -201,10 +251,185 @@ func (l *llamaCpp) Status() string {
 	return l.status
 }
 
-func (l *llamaCpp) GetDiskUsage() (float64, error) {
+func (l *llamaCpp) GetDiskUsage() (int64, error) {
 	size, err := diskusage.Size(l.updatedServerStoragePath)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %v", err)
 	}
 	return size, nil
+}
+
+func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, config *inference.BackendConfiguration) (inference.RequiredMemory, error) {
+	mdlGguf, mdlConfig, err := l.parseModel(ctx, model)
+	if err != nil {
+		return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
+	}
+
+	contextSize := GetContextSize(mdlConfig, config)
+
+	ngl := uint64(0)
+	if l.gpuSupported {
+		if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" && mdlConfig.Quantization != "Q4_0" {
+			ngl = 0 // only Q4_0 models can be accelerated on Adreno
+		}
+		ngl = 999
+	}
+
+	memory := l.estimateMemoryFromGGUF(mdlGguf, contextSize, ngl)
+
+	if config != nil && config.Speculative != nil && config.Speculative.DraftModel != "" {
+		draftGguf, _, err := l.parseModel(ctx, config.Speculative.DraftModel)
+		if err != nil {
+			return inference.RequiredMemory{}, fmt.Errorf("estimating draft model memory: %w", &inference.ErrGGUFParse{Err: err})
+		}
+		draftMemory := l.estimateMemoryFromGGUF(draftGguf, contextSize, ngl)
+		memory.RAM += draftMemory.RAM
+		memory.VRAM += draftMemory.VRAM
+	}
+
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		memory.VRAM = 1
+	}
+
+	return memory, nil
+}
+
+// parseModel parses a model (local or remote) and returns the GGUF file and config.
+func (l *llamaCpp) parseModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
+	inStore, err := l.modelManager.IsModelInStore(model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("checking if model is in local store: %w", err)
+	}
+	if inStore {
+		return l.parseLocalModel(model)
+	}
+	return l.parseRemoteModel(ctx, model)
+}
+
+// estimateMemoryFromGGUF estimates memory requirements from a parsed GGUF file.
+func (l *llamaCpp) estimateMemoryFromGGUF(ggufFile *parser.GGUFFile, contextSize uint64, ngl uint64) inference.RequiredMemory {
+	estimate := ggufFile.EstimateLLaMACppRun(
+		parser.WithLLaMACppContextSize(int32(contextSize)),
+		parser.WithLLaMACppLogicalBatchSize(2048),
+		parser.WithLLaMACppOffloadLayers(ngl),
+	)
+	ram := uint64(estimate.Devices[0].Weight.Sum() + estimate.Devices[0].KVCache.Sum() + estimate.Devices[0].Computation.Sum())
+	var vram uint64
+	if len(estimate.Devices) > 1 {
+		vram = uint64(estimate.Devices[1].Weight.Sum() + estimate.Devices[1].KVCache.Sum() + estimate.Devices[1].Computation.Sum())
+	}
+
+	return inference.RequiredMemory{
+		RAM:  ram,
+		VRAM: vram,
+	}
+}
+
+func (l *llamaCpp) parseLocalModel(model string) (*parser.GGUFFile, types.Config, error) {
+	bundle, err := l.modelManager.GetBundle(model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting model(%s): %w", model, err)
+	}
+	modelGGUF, err := parser.ParseGGUFFile(bundle.GGUFPath())
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("parsing gguf(%s): %w", bundle.GGUFPath(), err)
+	}
+	return modelGGUF, bundle.RuntimeConfig(), nil
+}
+
+func (l *llamaCpp) parseRemoteModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
+	mdl, err := l.modelManager.GetRemoteModel(ctx, model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting remote model(%s): %w", model, err)
+	}
+	layers, err := mdl.Layers()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting layers of model(%s): %w", model, err)
+	}
+	ggufLayers := getGGUFLayers(layers)
+	if len(ggufLayers) != 1 {
+		return nil, types.Config{}, fmt.Errorf(
+			"remote memory estimation only supported for models with single GGUF layer, found %d layers", len(ggufLayers),
+		)
+	}
+	ggufDigest, err := ggufLayers[0].Digest()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting digest of GGUF layer for model(%s): %w", model, err)
+	}
+	if ggufDigest.String() == "" {
+		return nil, types.Config{}, fmt.Errorf("model(%s) has no GGUF layer", model)
+	}
+	blobURL, err := l.modelManager.GetRemoteModelBlobURL(model, ggufDigest)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting GGUF blob URL for model(%s): %w", model, err)
+	}
+	tok, err := l.modelManager.BearerTokenForModel(ctx, model)
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting bearer token for model(%s): %w", model, err)
+	}
+	mdlGguf, err := parser.ParseGGUFFileRemote(ctx, blobURL, parser.UseBearerAuth(tok))
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("parsing GGUF for model(%s): %w", model, err)
+	}
+	config, err := mdl.Config()
+	if err != nil {
+		return nil, types.Config{}, fmt.Errorf("getting config for model(%s): %w", model, err)
+	}
+	return mdlGguf, config, nil
+}
+
+func getGGUFLayers(layers []v1.Layer) []v1.Layer {
+	var filtered []v1.Layer
+	for _, layer := range layers {
+		mt, err := layer.MediaType()
+		if err != nil {
+			continue
+		}
+		if mt == types.MediaTypeGGUF {
+			filtered = append(filtered, layer)
+		}
+	}
+	return filtered
+}
+
+func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
+	binPath := l.vendoredServerStoragePath
+	if l.updatedLlamaCpp {
+		binPath = l.updatedServerStoragePath
+	}
+	var output bytes.Buffer
+	llamaCppSandbox, err := sandbox.Create(
+		ctx,
+		sandbox.ConfigurationLlamaCpp,
+		func(command *exec.Cmd) {
+			command.Stdout = &output
+			command.Stderr = &output
+		},
+		binPath,
+		filepath.Join(binPath, "com.docker.llama-server"),
+		"--list-devices",
+	)
+	if err != nil {
+		l.log.Warnf("Failed to start sandboxed llama.cpp process to probe GPU support: %v", err)
+		return false
+	}
+	defer llamaCppSandbox.Close()
+	if err := llamaCppSandbox.Command().Wait(); err != nil {
+		l.log.Warnf("Failed to determine if llama-server is built with GPU support: %v", err)
+		return false
+	}
+	sc := bufio.NewScanner(strings.NewReader(output.String()))
+	expectDev := false
+	devRe := regexp.MustCompile(`\s{2}.*:\s`)
+	ndevs := 0
+	for sc.Scan() {
+		if expectDev {
+			if devRe.MatchString(sc.Text()) {
+				ndevs += 1
+			}
+		} else {
+			expectDev = strings.HasPrefix(sc.Text(), "Available devices:")
+		}
+	}
+	return ndevs > 0
 }

@@ -1,0 +1,6 @@
+[submodule "llamacpp/native/vendor/llama.cpp"]
+	path = llamacpp/native/vendor/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "llamacpp/native/vendor/nvapi"]
+	path = llamacpp/native/vendor/nvapi
+	url = https://github.com/NVIDIA/nvapi.git

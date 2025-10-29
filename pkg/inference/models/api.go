@@ -3,7 +3,7 @@ package models
 import (
 	"fmt"
 
-	"github.com/docker/model-distribution/types"
+	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
 // ModelCreateRequest represents a model create request. It is designed to
@@ -14,6 +14,9 @@ import (
 type ModelCreateRequest struct {
 	// From is the name of the model to pull.
 	From string `json:"from"`
+	// IgnoreRuntimeMemoryCheck indicates whether the server should check if it has sufficient
+	// memory to run the given model (assuming default configuration).
+	IgnoreRuntimeMemoryCheck bool `json:"ignore-runtime-memory-check,omitempty"`
 }
 
 // ToOpenAIList converts the model list to its OpenAI API representation. This function never
@@ -88,7 +91,7 @@ type Model struct {
 	// ID is the globally unique model identifier.
 	ID string `json:"id"`
 	// Tags are the list of tags associated with the model.
-	Tags []string `json:"tags"`
+	Tags []string `json:"tags,omitempty"`
 	// Created is the Unix epoch timestamp corresponding to the model creation.
 	Created int64 `json:"created"`
 	// Config describes the model.

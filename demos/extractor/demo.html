@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Data Extractor Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            background-color: #f0f0f0;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-top: -10px;
+            margin-bottom: 20px;
+        }
+        .config-section, .schema-section, .upload-section, .result-section {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input[type="text"], input[type="number"], select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        textarea {
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            min-height: 200px;
+        }
+        input[type="file"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background-color: #007bff;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-primary:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #28a745;
+            margin-left: 10px;
+        }
+        .btn-secondary:hover {
+            background-color: #218838;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        #result {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            min-height: 100px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .success {
+            color: #28a745;
+        }
+        .info {
+            color: #17a2b8;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .loading {
+            color: #ffc107;
+        }
+        #modelWarning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+            display: none;
+        }
+        #modelWarning.show {
+            display: block;
+        }
+        #modelInfo {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        #modelInfo a {
+            color: #0c5460;
+            text-decoration: underline;
+        }
+        .schema-examples {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .schema-examples button {
+            padding: 6px 12px;
+            font-size: 13px;
+            background-color: #6c757d;
+        }
+        .schema-examples button:hover {
+            background-color: #5a6268;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<h1>PDF Data Extractor Demo</h1>
+<p class="subtitle">Extract structured data from PDF documents using JSON schemas and AI models</p>
+
+<!-- Configuration Section -->
+<div class="config-section">
+    <div class="section-title">🔧 API Configuration</div>
+    
+    <div class="form-group">
+        <label for="baseUrl">Base API URL:</label>
+        <input type="text" id="baseUrl" value="http://127.0.0.1:12434/engines/v1" placeholder="http://127.0.0.1:12434/engines/v1">
+        <div id="modelInfo">
+            ℹ️ To pull a model, run: <code>docker model pull &lt;model-name&gt;</code><br>
+            Find more models at: <a href="https://hub.docker.com/r/ai" target="_blank">https://hub.docker.com/r/ai</a>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="modelSelect">Model:</label>
+        <select id="modelSelect">
+            <option value="">Loading models...</option>
+        </select>
+        <div id="modelWarning"></div>
+    </div>
+
+    <div class="grid-2">
+        <div class="form-group">
+            <label for="temperature">Temperature (0-2):</label>
+            <input type="number" id="temperature" value="0.1" min="0" max="2" step="0.1">
+        </div>
+    </div>
+</div>
+
+<!-- Schema Section -->
+<div class="schema-section">
+    <div class="section-title">📋 JSON Schema</div>
+    
+    <div class="form-group">
+        <label for="schema">Define the structure to extract:</label>
+        <textarea id="schema"></textarea>
+        <div class="schema-examples">
+            <span style="margin-right: 10px; align-self: center; font-size: 14px;">Quick examples:</span>
+            <button onclick="loadInvoiceSchema()">Invoice</button>
+            <button onclick="loadReceiptSchema()">Receipt</button>
+            <button onclick="loadFormSchema()">Form</button>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Section -->
+<div class="upload-section">
+    <div class="section-title">📄 PDF Upload</div>
+    
+    <div class="form-group">
+        <label for="pdfFile">Select PDF file:</label>
+        <input type="file" id="pdfFile" accept=".pdf">
+    </div>
+
+    <div class="button-group">
+        <button id="extractButton" class="btn-primary" onclick="extractData()">Extract Data</button>
+    </div>
+</div>
+
+<!-- Result Section -->
+<div class="result-section">
+    <div class="section-title">📊 Extraction Result</div>
+    <div id="result">Upload a PDF and click "Extract Data" to see results...</div>
+</div>
+
+<script>
+    const SERVER_URL = 'http://localhost:3000';
+    
+    // Default invoice schema
+    const INVOICE_SCHEMA = {
+        "invoiceNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "vendorName": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": { "type": "string" },
+                    "quantity": { "type": "number" },
+                    "price": { "type": "number" }
+                }
+            }
+        }
+    };
+
+    const RECEIPT_SCHEMA = {
+        "storeName": { "type": "string" },
+        "date": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "price": { "type": "number" }
+                }
+            }
+        },
+        "paymentMethod": { "type": "string" }
+    };
+
+    const FORM_SCHEMA = {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "date": { "type": "string" }
+    };
+
+    // Load default schema on page load
+    function loadInvoiceSchema() {
+        document.getElementById('schema').value = JSON.stringify(INVOICE_SCHEMA, null, 2);
+    }
+
+    function loadReceiptSchema() {
+        document.getElementById('schema').value = JSON.stringify(RECEIPT_SCHEMA, null, 2);
+    }
+
+    function loadFormSchema() {
+        document.getElementById('schema').value = JSON.stringify(FORM_SCHEMA, null, 2);
+    }
+
+    // Fetch available models
+    async function fetchModels() {
+        const baseUrl = document.getElementById('baseUrl').value;
+        const modelSelect = document.getElementById('modelSelect');
+        const modelWarning = document.getElementById('modelWarning');
+
+        try {
+            const response = await fetch(`${SERVER_URL}/api/models`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ baseUrl })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const models = data.data.map(model => model.id);
+
+            modelSelect.innerHTML = '';
+
+            if (models.length === 0) {
+                modelSelect.innerHTML = '<option value="">No models available</option>';
+                modelWarning.innerHTML = '⚠️ No models found. Please ensure the model runner is active and models are loaded.';
+                modelWarning.classList.add('show');
+                return;
+            }
+
+            models.forEach(modelId => {
+                const option = document.createElement('option');
+                option.value = modelId;
+                option.textContent = modelId;
+                modelSelect.appendChild(option);
+            });
+
+            // Select first model by default
+            modelSelect.value = models[0];
+            modelWarning.classList.remove('show');
+
+        } catch (error) {
+            console.error('Error fetching models:', error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+            modelWarning.innerHTML = `⚠️ Error loading models: ${error.message}`;
+            modelWarning.classList.add('show');
+        }
+    }
+
+    // Extract data from PDF
+    async function extractData() {
+        const pdfFile = document.getElementById('pdfFile').files[0];
+        const schema = document.getElementById('schema').value;
+        const baseUrl = document.getElementById('baseUrl').value;
+        const model = document.getElementById('modelSelect').value;
+        const temperature = document.getElementById('temperature').value;
+        const resultDiv = document.getElementById('result');
+        const extractButton = document.getElementById('extractButton');
+
+        // Validation
+        if (!pdfFile) {
+            resultDiv.innerHTML = '<span class="error">❌ Please select a PDF file</span>';
+            return;
+        }
+
+        if (!schema.trim()) {
+            resultDiv.innerHTML = '<span class="error">❌ Please provide a JSON schema</span>';
+            return;
+        }
+
+        if (!model) {
+            resultDiv.innerHTML = '<span class="error">❌ Please select a model</span>';
+            return;
+        }
+
+        // Validate JSON schema
+        try {
+            JSON.parse(schema);
+        } catch (error) {
+            resultDiv.innerHTML = `<span class="error">❌ Invalid JSON schema: ${error.message}</span>`;
+            return;
+        }
+
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('pdf', pdfFile);
+        formData.append('schema', schema);
+        formData.append('baseUrl', baseUrl);
+        formData.append('model', model);
+        formData.append('temperature', temperature);
+
+        // Show loading state
+        extractButton.disabled = true;
+        resultDiv.innerHTML = '<span class="loading">⏳ Extracting data from PDF... This may take a moment.</span>';
+
+        try {
+            const response = await fetch(`${SERVER_URL}/api/extract`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || result.message || 'Extraction failed');
+            }
+
+            if (result.success) {
+                let output = '<span class="success">✅ Extraction successful!</span>\n\n';
+                output += '<strong>Extracted Data:</strong>\n';
+                output += JSON.stringify(result.data, null, 2);
+                output += '\n\n<span class="info">📊 Tokens used: ' + result.tokensUsed + '</span>';
+                output += '\n<span class="info">🤖 Model: ' + result.model + '</span>';
+                resultDiv.innerHTML = output;
+            } else {
+                throw new Error(result.error || 'Unknown error occurred');
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            resultDiv.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+        } finally {
+            extractButton.disabled = false;
+        }
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+        loadInvoiceSchema();
+        fetchModels();
+    });
+
+    // Refresh models when base URL changes
+    document.getElementById('baseUrl').addEventListener('change', fetchModels);
+</script>
+
+</body>
+</html>

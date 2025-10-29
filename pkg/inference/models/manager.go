@@ -10,13 +10,17 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
-	"github.com/docker/model-distribution/distribution"
-	"github.com/docker/model-distribution/registry"
-	"github.com/docker/model-distribution/types"
 	"github.com/docker/model-runner/pkg/diskusage"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/registry"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/middleware"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,6 +28,8 @@ const (
 	// maximumConcurrentModelPulls is the maximum number of concurrent model
 	// pulls that a model manager will allow.
 	maximumConcurrentModelPulls = 2
+	defaultOrg                  = "ai"
+	defaultTag                  = "latest"
 )
 
 // Manager manages inference model pulls and storage.
@@ -35,8 +41,17 @@ type Manager struct {
 	pullTokens chan struct{}
 	// router is the HTTP request router.
 	router *http.ServeMux
+	// httpHandler is the HTTP request handler, which wraps router with
+	// the server-level middleware.
+	httpHandler http.Handler
 	// distributionClient is the client for model distribution.
 	distributionClient *distribution.Client
+	// registryClient is the client for model registry.
+	registryClient *registry.Client
+	// lock is used to synchronize access to the models manager's router.
+	lock sync.RWMutex
+	// memoryEstimator is used to calculate runtime memory requirements for models.
+	memoryEstimator memory.MemoryEstimator
 }
 
 type ClientConfig struct {
@@ -51,7 +66,7 @@ type ClientConfig struct {
 }
 
 // NewManager creates a new model's manager.
-func NewManager(log logging.Logger, c ClientConfig) *Manager {
+func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Manager {
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
@@ -65,12 +80,20 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		// respond to requests, but may return errors if the client is required.
 	}
 
+	// Create the model registry client.
+	registryClient := registry.NewClient(
+		registry.WithTransport(c.Transport),
+		registry.WithUserAgent(c.UserAgent),
+	)
+
 	// Create the manager.
 	m := &Manager{
 		log:                log,
 		pullTokens:         make(chan struct{}, maximumConcurrentModelPulls),
 		router:             http.NewServeMux(),
 		distributionClient: distributionClient,
+		registryClient:     registryClient,
+		memoryEstimator:    memoryEstimator,
 	}
 
 	// Register routes.
@@ -82,6 +105,8 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		m.router.HandleFunc(route, handler)
 	}
 
+	m.RebuildRoutes(allowedOrigins)
+
 	// Populate the pull concurrency semaphore.
 	for i := 0; i < maximumConcurrentModelPulls; i++ {
 		m.pullTokens <- struct{}{}
@@ -91,9 +116,63 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 	return m
 }
 
+func (m *Manager) RebuildRoutes(allowedOrigins []string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	// Update handlers that depend on the allowed origins.
+	m.httpHandler = middleware.CorsMiddleware(allowedOrigins, m.router)
+}
+
+// NormalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
+// It also converts Hugging Face model names to lowercase.
+// Examples:
+//   - "gemma3" -> "ai/gemma3:latest"
+//   - "gemma3:v1" -> "ai/gemma3:v1"
+//   - "myorg/gemma3" -> "myorg/gemma3:latest"
+//   - "ai/gemma3:latest" -> "ai/gemma3:latest" (unchanged)
+//   - "hf.co/model" -> "hf.co/model:latest" (unchanged - has registry)
+//   - "hf.co/Model" -> "hf.co/model:latest" (converted to lowercase)
+func NormalizeModelName(model string) string {
+	// If the model is empty, return as-is
+	if model == "" {
+		return model
+	}
+
+	// Normalize HuggingFace model names (lowercase)
+	if strings.HasPrefix(model, "hf.co/") {
+		model = strings.ToLower(model)
+	}
+
+	// Check if model contains a registry (domain with dot before first slash)
+	firstSlash := strings.Index(model, "/")
+	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
+		// Has a registry, just ensure tag
+		if !strings.Contains(model, ":") {
+			return model + ":" + defaultTag
+		}
+		return model
+	}
+
+	// Split by colon to check for tag
+	parts := strings.SplitN(model, ":", 2)
+	nameWithOrg := parts[0]
+	tag := defaultTag
+	if len(parts) == 2 {
+		tag = parts[1]
+	}
+
+	// If name doesn't contain a slash, add the default org
+	if !strings.Contains(nameWithOrg, "/") {
+		nameWithOrg = defaultOrg + "/" + nameWithOrg
+	}
+
+	return nameWithOrg + ":" + tag
+}
+
 func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
+		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
 		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
 		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
@@ -104,15 +183,6 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
 		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           m.handleOpenAIGetModel,
 	}
-}
-
-func (m *Manager) GetRoutes() []string {
-	routeHandlers := m.routeHandlers()
-	routes := make([]string, 0, len(routeHandlers))
-	for route := range routeHandlers {
-		routes = append(routes, route)
-	}
-	return routes
 }
 
 // handleCreateModel handles POST <inference-prefix>/models/create requests.
@@ -129,9 +199,31 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize the model name to add defaults
+	request.From = NormalizeModelName(request.From)
+
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
+	if memory.RuntimeMemoryCheckEnabled() && !request.IgnoreRuntimeMemoryCheck {
+		m.log.Infof("Will estimate memory required for %q", request.From)
+		proceed, req, totalMem, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
+		if err != nil {
+			m.log.Warnf("Failed to validate sufficient system memory for model %q: %s", request.From, err)
+			// Prefer staying functional in case of unexpected estimation errors.
+			proceed = true
+		}
+		if !proceed {
+			errstr := fmt.Sprintf("Runtime memory requirement for model %q exceeds total system memory: required %d RAM %d VRAM, system %d RAM %d VRAM", request.From, req.RAM, req.VRAM, totalMem.RAM, totalMem.VRAM)
+			m.log.Warnf(errstr)
+			http.Error(w, errstr, http.StatusInsufficientStorage)
+			return
+		}
+	}
 	if err := m.PullModel(request.From, r, w); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)
+			return
+		}
 		if errors.Is(err, registry.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", request.From, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
@@ -147,9 +239,28 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
+		if errors.Is(err, distribution.ErrUnsupportedFormat) {
+			m.log.Warnf("Unsupported model format for %q: %v", request.From, err)
+			http.Error(w, distribution.ErrUnsupportedFormat.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleLoadModel handles POST <inference-prefix>/models/load requests.
+func (m *Manager) handleLoadModel(w http.ResponseWriter, r *http.Request) {
+	if m.distributionClient == nil {
+		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if _, err := m.distributionClient.LoadModel(r.Body, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	return
 }
 
 // handleGetModels handles GET <inference-prefix>/models requests.
@@ -184,24 +295,39 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
+	// Normalize model name
+	modelName := NormalizeModelName(r.PathValue("name"))
 
-	// Query the model.
-	model, err := m.GetModel(r.PathValue("name"))
-	if err != nil {
-		if errors.Is(err, distribution.ErrModelNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+	// Parse remote query parameter
+	remote := false
+	if r.URL.Query().Has("remote") {
+		if val, err := strconv.ParseBool(r.URL.Query().Get("remote")); err != nil {
+			m.log.Warnln("Error while parsing remote query parameter:", err)
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			remote = val
 		}
+	}
+
+	if remote && m.registryClient == nil {
+		http.Error(w, "registry client unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	apiModel, err := ToModel(model)
+	var apiModel *Model
+	var err error
+
+	if remote {
+		apiModel, err = getRemoteModel(r.Context(), m, modelName)
+	} else {
+		apiModel, err = getLocalModel(m, modelName)
+	}
+
 	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) || errors.Is(err, registry.ErrModelNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -211,6 +337,77 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(apiModel); err != nil {
 		m.log.Warnln("Error while encoding model response:", err)
 	}
+}
+
+// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
+func (m *Manager) ResolveModelID(modelRef string) string {
+	// Sanitize modelRef to prevent log forgery
+	sanitizedModelRef := strings.ReplaceAll(modelRef, "\n", "")
+	sanitizedModelRef = strings.ReplaceAll(sanitizedModelRef, "\r", "")
+
+	model, err := m.GetModel(sanitizedModelRef)
+	if err != nil {
+		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	modelID, err := model.ID()
+	if err != nil {
+		m.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
+		return sanitizedModelRef
+	}
+
+	return modelID
+}
+
+func getLocalModel(m *Manager, name string) (*Model, error) {
+	if m.distributionClient == nil {
+		return nil, errors.New("model distribution service unavailable")
+	}
+
+	// Query the model.
+	model, err := m.GetModel(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return ToModel(model)
+}
+
+func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error) {
+	if m.registryClient == nil {
+		return nil, errors.New("registry client unavailable")
+	}
+
+	m.log.Infoln("Getting remote model:", name)
+	model, err := m.registryClient.Model(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := model.ID()
+	if err != nil {
+		return nil, err
+	}
+
+	descriptor, err := model.Descriptor()
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := model.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	apiModel := &Model{
+		ID:      id,
+		Tags:    nil,
+		Created: descriptor.Created.Unix(),
+		Config:  config,
+	}
+
+	return apiModel, nil
 }
 
 // handleDeleteModel handles DELETE <inference-prefix>/models/{name} requests.
@@ -231,6 +428,9 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// the runner process exits (though this won't work for Windows, where we
 	// might need some separate cleanup process).
 
+	// Normalize model name
+	modelName := NormalizeModelName(r.PathValue("name"))
+
 	var force bool
 	if r.URL.Query().Has("force") {
 		if val, err := strconv.ParseBool(r.URL.Query().Get("force")); err != nil {
@@ -240,7 +440,8 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := m.distributionClient.DeleteModel(r.PathValue("name"), force); err != nil {
+	resp, err := m.distributionClient.DeleteModel(modelName, force)
+	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -252,6 +453,11 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		m.log.Warnln("Error while deleting model:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("error writing response: %v", err), http.StatusInternalServerError)
 	}
 }
 
@@ -291,8 +497,11 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize model name
+	modelName := NormalizeModelName(r.PathValue("name"))
+
 	// Query the model.
-	model, err := m.GetModel(r.PathValue("name"))
+	model, err := m.GetModel(modelName)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -321,6 +530,8 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
+	// Normalize model name
+	model = NormalizeModelName(model)
 	switch action {
 	case "tag":
 		m.handleTagModel(w, r, model)
@@ -416,7 +627,7 @@ func (m *Manager) handlePrune(w http.ResponseWriter, _ *http.Request) {
 }
 
 // GetDiskUsage returns the disk usage of the model store.
-func (m *Manager) GetDiskUsage() (float64, error, int) {
+func (m *Manager) GetDiskUsage() (int64, error, int) {
 	if m.distributionClient == nil {
 		return 0, errors.New("model distribution service unavailable"), http.StatusServiceUnavailable
 	}
@@ -432,7 +643,14 @@ func (m *Manager) GetDiskUsage() (float64, error, int) {
 
 // ServeHTTP implement net/http.Handler.ServeHTTP.
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.router.ServeHTTP(w, r)
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	m.httpHandler.ServeHTTP(w, r)
+}
+
+// IsModelInStore checks if a given model is in the local store.
+func (m *Manager) IsModelInStore(ref string) (bool, error) {
+	return m.distributionClient.IsModelInStore(ref)
 }
 
 // GetModel returns a single model.
@@ -444,17 +662,40 @@ func (m *Manager) GetModel(ref string) (types.Model, error) {
 	return model, err
 }
 
-// GetModelPath returns the path to a model's files.
-func (m *Manager) GetModelPath(ref string) (string, error) {
-	model, err := m.GetModel(ref)
+// GetRemoteModel returns a single remote model.
+func (m *Manager) GetRemoteModel(ctx context.Context, ref string) (types.ModelArtifact, error) {
+	model, err := m.registryClient.Model(ctx, ref)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("error while getting remote model: %w", err)
 	}
-	path, err := model.GGUFPath()
+	return model, nil
+}
+
+// GetRemoteModelBlobURL returns the URL of a given model blob.
+func (m *Manager) GetRemoteModelBlobURL(ref string, digest v1.Hash) (string, error) {
+	blobURL, err := m.registryClient.BlobURL(ref, digest)
 	if err != nil {
-		return "", fmt.Errorf("error while getting model path: %w", err)
+		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
 	}
-	return path, nil
+	return blobURL, nil
+}
+
+// BearerTokenForModel returns the bearer token needed to pull a given model.
+func (m *Manager) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
+	tok, err := m.registryClient.BearerToken(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("error while getting bearer token for model: %w", err)
+	}
+	return tok, nil
+}
+
+// GetBundle returns model bundle.
+func (m *Manager) GetBundle(ref string) (types.ModelBundle, error) {
+	bundle, err := m.distributionClient.GetBundle(ref)
+	if err != nil {
+		return nil, fmt.Errorf("error while getting model bundle: %w", err)
+	}
+	return bundle, err
 }
 
 // PullModel pulls a model to local storage. Any error it returns is suitable
