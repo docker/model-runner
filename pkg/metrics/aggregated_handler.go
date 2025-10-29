@@ -13,6 +13,7 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 // AggregatedMetricsHandler collects metrics from all active runners and aggregates them with labels
@@ -121,7 +122,7 @@ func (h *AggregatedMetricsHandler) fetchRunnerMetrics(ctx context.Context, runne
 	}
 
 	// Parse metrics using official Prometheus parser
-	parser := expfmt.TextParser{}
+	parser := expfmt.NewTextParser(model.LegacyValidation)
 	families, err := parser.TextToMetricFamilies(strings.NewReader(string(body)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse metrics: %w", err)
