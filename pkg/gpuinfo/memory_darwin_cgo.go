@@ -23,3 +23,9 @@ func hasSupportedAMDGPU() (bool, error) {
 	// AMD GPU detection is only supported on Linux
 	return false, nil
 }
+
+// hasSupportedMTHREADSGPU returns true if the system has supported AMD GPUs
+func hasSupportedMTHREADSGPU() (bool, error) {
+	// MTHREADS GPU detection is only supported on Linux
+	return false, nil
+}

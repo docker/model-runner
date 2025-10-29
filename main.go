@@ -125,6 +125,14 @@ func main() {
 		log.Debugf("AMD GPU detection failed: %v", err)
 	}
 
+	// Check if we have supported MTHREADS GPUs and set ROCm variant accordingly
+	if hasAMD, err := gpuInfo.HasSupportedMTHREADSGPU(); err == nil && hasAMD {
+		log.Info("Supported MTHREADS GPU detected, MUSA will be used automatically")
+		// This will be handled by the llama.cpp backend during server download
+	} else if err != nil {
+		log.Debugf("MTHREADS GPU detection failed: %v", err)
+	}
+
 	// Create llama.cpp configuration from environment variables
 	llamaCppConfig := createLlamaCppConfigFromEnv()
 
