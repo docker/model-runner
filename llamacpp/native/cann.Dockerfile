@@ -1,12 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG CANN_VERSION=8.0.0-910b
-ARG CANN_IMAGE_VARIANT=openeuler22.03
+ARG CANN_IMAGE_VARIANT=ubuntu22.04
 
-FROM quay.io/ascend/cann:{CANN_VERSION}-{CANN_IMAGE_VARIANT}-py3.10 AS builder
-
-ARG TARGETARCH
-ARG CANN_IMAGE_VARIANT
+FROM quay.io/ascend/cann:${CANN_VERSION}-${CANN_IMAGE_VARIANT}-py3.10 AS builder
 
 RUN apt-get update && apt-get install -y cmake ninja-build git build-essential curl
 
