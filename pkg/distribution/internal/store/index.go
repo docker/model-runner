@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
+
+	"github.com/docker/model-runner/pkg/distribution/registry"
 )
 
 // Index represents the index of all models in the store
@@ -16,7 +18,7 @@ type Index struct {
 }
 
 func (i Index) Tag(reference string, tag string) (Index, error) {
-	tagRef, err := name.NewTag(tag)
+	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return Index{}, fmt.Errorf("invalid tag: %w", err)
 	}
@@ -39,7 +41,7 @@ func (i Index) Tag(reference string, tag string) (Index, error) {
 }
 
 func (i Index) UnTag(tag string) (name.Tag, Index, error) {
-	tagRef, err := name.NewTag(tag)
+	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return name.Tag{}, Index{}, err
 	}
@@ -141,12 +143,12 @@ type IndexEntry struct {
 }
 
 func (e IndexEntry) HasTag(tag string) bool {
-	ref, err := name.NewTag(tag)
+	ref, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
@@ -159,7 +161,7 @@ func (e IndexEntry) HasTag(tag string) bool {
 
 func (e IndexEntry) hasTag(tag name.Tag) bool {
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
@@ -174,7 +176,7 @@ func (e IndexEntry) MatchesReference(reference string) bool {
 	if e.ID == reference {
 		return true
 	}
-	ref, err := name.ParseReference(reference)
+	ref, err := name.ParseReference(reference, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
@@ -200,7 +202,7 @@ func (e IndexEntry) Tag(tag name.Tag) IndexEntry {
 func (e IndexEntry) UnTag(tag name.Tag) IndexEntry {
 	var tags []string
 	for i, t := range e.Tags {
-		tr, err := name.ParseReference(t)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}

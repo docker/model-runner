@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -86,7 +87,7 @@ func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	}
 	ua := strings.Join(parts, " ")
 	for _, tag := range tags {
-		ref, err := name.ParseReference(tag)
+		ref, err := name.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			t.log.Errorf("Error parsing reference: %v\n", err)
 			return
