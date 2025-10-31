@@ -23,8 +23,8 @@ func TestGGUF(t *testing.T) {
 			if cfg.Format != types.FormatGGUF {
 				t.Fatalf("Unexpected format: got %s expected %s", cfg.Format, types.FormatGGUF)
 			}
-			if cfg.Parameters != "183" {
-				t.Fatalf("Unexpected parameters: got %s expected %s", cfg.Parameters, "183")
+			if cfg.Parameters != "183.00" {
+				t.Fatalf("Unexpected parameters: got %s expected %s", cfg.Parameters, "183.00")
 			}
 			if cfg.Architecture != "llama" {
 				t.Fatalf("Unexpected architecture: got %s expected %s", cfg.Parameters, "llama")
@@ -32,8 +32,8 @@ func TestGGUF(t *testing.T) {
 			if cfg.Quantization != "Unknown" { // todo: testdata with a real value
 				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
 			}
-			if cfg.Size != "864 B" {
-				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
+			if cfg.Size != "864B" {
+				t.Fatalf("Unexpected size: got %s expected %s", cfg.Size, "864B")
 			}
 
 			// Test GGUF metadata
@@ -109,8 +109,8 @@ func TestGGUFShards(t *testing.T) {
 			if cfg.Format != types.FormatGGUF {
 				t.Fatalf("Unexpected format: got %s expected %s", cfg.Format, types.FormatGGUF)
 			}
-			if cfg.Parameters != "183" {
-				t.Fatalf("Unexpected parameters: got %s expected %s", cfg.Parameters, "183")
+			if cfg.Parameters != "183.00" {
+				t.Fatalf("Unexpected parameters: got %s expected %s", cfg.Parameters, "183.00")
 			}
 			if cfg.Architecture != "llama" {
 				t.Fatalf("Unexpected architecture: got %s expected %s", cfg.Parameters, "llama")
@@ -118,8 +118,8 @@ func TestGGUFShards(t *testing.T) {
 			if cfg.Quantization != "Unknown" { // todo: testdata with a real value
 				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
 			}
-			if cfg.Size != "864 B" {
-				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
+			if cfg.Size != "864B" {
+				t.Fatalf("Unexpected size: got %s expected %s", cfg.Size, "864B")
 			}
 
 			// Test GGUF metadata

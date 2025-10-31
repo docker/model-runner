@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/go-units"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	parser "github.com/gpustack/gguf-parser-go"
 
@@ -53,12 +54,26 @@ func configFromFile(path string) types.Config {
 	if err != nil {
 		return types.Config{} // continue without metadata
 	}
+	
+	meta := gguf.Metadata()
 	return types.Config{
 		Format:       types.FormatGGUF,
-		Parameters:   strings.TrimSpace(gguf.Metadata().Parameters.String()),
-		Architecture: strings.TrimSpace(gguf.Metadata().Architecture),
-		Quantization: strings.TrimSpace(gguf.Metadata().FileType.String()),
-		Size:         strings.TrimSpace(gguf.Metadata().Size.String()),
+		Parameters:   formatParameters(int64(meta.Parameters)),
+		Architecture: strings.TrimSpace(meta.Architecture),
+		Quantization: strings.TrimSpace(meta.FileType.String()),
+		Size:         formatSize(int64(meta.Size)),
 		GGUF:         extractGGUFMetadata(&gguf.Header),
 	}
+}
+
+// formatParameters converts parameter count to human-readable format
+// Returns format like "361.82M" or "1.5B" (no space, base 1000, where B = Billion)
+func formatParameters(params int64) string {
+	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", "K", "M", "B", "T"})
+}
+
+// formatSize converts bytes to human-readable format using binary units (base 1024)
+// Returns format like "244.45MiB" (no space, matching Docker's format)
+func formatSize(bytes int64) string {
+	return units.BytesSize(float64(bytes))
 }

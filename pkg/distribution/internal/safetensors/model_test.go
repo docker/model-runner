@@ -92,7 +92,7 @@ func TestNewModel_WithMetadata(t *testing.T) {
 	}
 
 	// Verify parameters (4096*4096 + 4096 = 16781312)
-	expectedParams := "16.78 M"
+	expectedParams := "16.78M"
 	if config.Parameters != expectedParams {
 		t.Errorf("Config.Parameters = %v, want %v", config.Parameters, expectedParams)
 	}
@@ -220,7 +220,7 @@ func TestNewModel_NoMetadata(t *testing.T) {
 	}
 
 	// Verify parameters (100*200 = 20000)
-	expectedParams := "20.00 K"
+	expectedParams := "20.00K"
 	if config.Parameters != expectedParams {
 		t.Errorf("Config.Parameters = %v, want %v", config.Parameters, expectedParams)
 	}
