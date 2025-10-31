@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -20,6 +21,21 @@ import (
 const (
 	DefaultUserAgent = "model-distribution"
 )
+
+// getDefaultRegistryOptions returns name.Option slice with custom default registry
+// and insecure flag if the corresponding environment variables are set.
+// - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
+// - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
+func getDefaultRegistryOptions() []name.Option {
+	var opts []name.Option
+	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
+		opts = append(opts, name.WithDefaultRegistry(defaultReg))
+	}
+	if os.Getenv("INSECURE_REGISTRY") == "true" {
+		opts = append(opts, name.Insecure)
+	}
+	return opts
+}
 
 var (
 	DefaultTransport = remote.DefaultTransport
@@ -75,7 +91,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifact, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference)
+	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
 	if err != nil {
 		return nil, NewReferenceError(reference, err)
 	}
@@ -115,7 +131,7 @@ func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifa
 
 func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference)
+	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
 	if err != nil {
 		return "", NewReferenceError(reference, err)
 	}
@@ -129,7 +145,7 @@ func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
 
 func (c *Client) BearerToken(ctx context.Context, reference string) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference)
+	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
 	if err != nil {
 		return "", NewReferenceError(reference, err)
 	}
@@ -165,7 +181,7 @@ type Target struct {
 }
 
 func (c *Client) NewTarget(tag string) (*Target, error) {
-	ref, err := name.NewTag(tag)
+	ref, err := name.NewTag(tag, getDefaultRegistryOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tag: %q: %w", tag, err)
 	}

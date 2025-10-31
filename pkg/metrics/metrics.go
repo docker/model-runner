@@ -15,6 +15,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// getDefaultRegistryOptions returns name.Option slice with custom default registry
+// and insecure flag if the corresponding environment variables are set.
+// - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
+// - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
+func getDefaultRegistryOptions() []name.Option {
+	var opts []name.Option
+	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
+		opts = append(opts, name.WithDefaultRegistry(defaultReg))
+	}
+	if os.Getenv("INSECURE_REGISTRY") == "true" {
+		opts = append(opts, name.Insecure)
+	}
+	return opts
+}
+
 type Tracker struct {
 	doNotTrack bool
 	transport  http.RoundTripper
@@ -86,7 +101,7 @@ func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	}
 	ua := strings.Join(parts, " ")
 	for _, tag := range tags {
-		ref, err := name.ParseReference(tag)
+		ref, err := name.ParseReference(tag, getDefaultRegistryOptions()...)
 		if err != nil {
 			t.log.Errorf("Error parsing reference: %v\n", err)
 			return
