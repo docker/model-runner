@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -22,24 +23,31 @@ const (
 	DefaultUserAgent = "model-distribution"
 )
 
-// getDefaultRegistryOptions returns name.Option slice with custom default registry
+var (
+	defaultRegistryOpts []name.Option
+	once                sync.Once
+	DefaultTransport    = remote.DefaultTransport
+)
+
+// GetDefaultRegistryOptions returns name.Option slice with custom default registry
 // and insecure flag if the corresponding environment variables are set.
+// Environment variables are read once at first call and cached for consistency.
+// Returns a copy of the options to prevent race conditions from slice modifications.
 // - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
 // - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
-func getDefaultRegistryOptions() []name.Option {
-	var opts []name.Option
-	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
-		opts = append(opts, name.WithDefaultRegistry(defaultReg))
-	}
-	if os.Getenv("INSECURE_REGISTRY") == "true" {
-		opts = append(opts, name.Insecure)
-	}
-	return opts
+func GetDefaultRegistryOptions() []name.Option {
+	once.Do(func() {
+		var opts []name.Option
+		if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
+			opts = append(opts, name.WithDefaultRegistry(defaultReg))
+		}
+		if os.Getenv("INSECURE_REGISTRY") == "true" {
+			opts = append(opts, name.Insecure)
+		}
+		defaultRegistryOpts = opts
+	})
+	return append([]name.Option(nil), defaultRegistryOpts...)
 }
-
-var (
-	DefaultTransport = remote.DefaultTransport
-)
 
 type Client struct {
 	transport http.RoundTripper
@@ -91,7 +99,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifact, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
+	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
 	if err != nil {
 		return nil, NewReferenceError(reference, err)
 	}
@@ -131,7 +139,7 @@ func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifa
 
 func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
+	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
 	if err != nil {
 		return "", NewReferenceError(reference, err)
 	}
@@ -145,7 +153,7 @@ func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
 
 func (c *Client) BearerToken(ctx context.Context, reference string) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
+	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
 	if err != nil {
 		return "", NewReferenceError(reference, err)
 	}
@@ -181,7 +189,7 @@ type Target struct {
 }
 
 func (c *Client) NewTarget(tag string) (*Target, error) {
-	ref, err := name.NewTag(tag, getDefaultRegistryOptions()...)
+	ref, err := name.NewTag(tag, GetDefaultRegistryOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tag: %q: %w", tag, err)
 	}

@@ -8,22 +8,9 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
-)
 
-// getDefaultRegistryOptions returns name.Option slice with custom default registry
-// and insecure flag if the corresponding environment variables are set.
-// - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
-// - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
-func getDefaultRegistryOptions() []name.Option {
-	var opts []name.Option
-	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
-		opts = append(opts, name.WithDefaultRegistry(defaultReg))
-	}
-	if os.Getenv("INSECURE_REGISTRY") == "true" {
-		opts = append(opts, name.Insecure)
-	}
-	return opts
-}
+	"github.com/docker/model-runner/pkg/distribution/registry"
+)
 
 // Index represents the index of all models in the store
 type Index struct {
@@ -31,7 +18,7 @@ type Index struct {
 }
 
 func (i Index) Tag(reference string, tag string) (Index, error) {
-	tagRef, err := name.NewTag(tag, getDefaultRegistryOptions()...)
+	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return Index{}, fmt.Errorf("invalid tag: %w", err)
 	}
@@ -54,7 +41,7 @@ func (i Index) Tag(reference string, tag string) (Index, error) {
 }
 
 func (i Index) UnTag(tag string) (name.Tag, Index, error) {
-	tagRef, err := name.NewTag(tag, getDefaultRegistryOptions()...)
+	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return name.Tag{}, Index{}, err
 	}
@@ -156,12 +143,12 @@ type IndexEntry struct {
 }
 
 func (e IndexEntry) HasTag(tag string) bool {
-	ref, err := name.NewTag(tag, getDefaultRegistryOptions()...)
+	ref, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t, getDefaultRegistryOptions()...)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
@@ -174,7 +161,7 @@ func (e IndexEntry) HasTag(tag string) bool {
 
 func (e IndexEntry) hasTag(tag name.Tag) bool {
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t, getDefaultRegistryOptions()...)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
@@ -189,7 +176,7 @@ func (e IndexEntry) MatchesReference(reference string) bool {
 	if e.ID == reference {
 		return true
 	}
-	ref, err := name.ParseReference(reference, getDefaultRegistryOptions()...)
+	ref, err := name.ParseReference(reference, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
@@ -215,7 +202,7 @@ func (e IndexEntry) Tag(tag name.Tag) IndexEntry {
 func (e IndexEntry) UnTag(tag name.Tag) IndexEntry {
 	var tags []string
 	for i, t := range e.Tags {
-		tr, err := name.ParseReference(t, getDefaultRegistryOptions()...)
+		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}

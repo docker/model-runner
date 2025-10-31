@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -14,21 +15,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/sirupsen/logrus"
 )
-
-// getDefaultRegistryOptions returns name.Option slice with custom default registry
-// and insecure flag if the corresponding environment variables are set.
-// - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
-// - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
-func getDefaultRegistryOptions() []name.Option {
-	var opts []name.Option
-	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
-		opts = append(opts, name.WithDefaultRegistry(defaultReg))
-	}
-	if os.Getenv("INSECURE_REGISTRY") == "true" {
-		opts = append(opts, name.Insecure)
-	}
-	return opts
-}
 
 type Tracker struct {
 	doNotTrack bool
@@ -101,7 +87,7 @@ func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	}
 	ua := strings.Join(parts, " ")
 	for _, tag := range tags {
-		ref, err := name.ParseReference(tag, getDefaultRegistryOptions()...)
+		ref, err := name.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			t.log.Errorf("Error parsing reference: %v\n", err)
 			return
