@@ -32,6 +32,9 @@ jobs:
       - name: Run tests with race detection
         run: go test -race ./...
 
+      - name: Run integration tests with race detection
+        run: go test -v -race -tags=integration -timeout=5m ./...
+
       - name: validate
         run: make validate
 

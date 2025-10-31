@@ -105,6 +105,26 @@ func NewContextForMock(client DockerHttpClient) *ModelRunnerContext {
 	}
 }
 
+// NewContextForTest creates a ModelRunnerContext for integration testing
+// with a custom URL endpoint. This is intended for use in integration tests
+// where the Model Runner endpoint is dynamically created (e.g., testcontainers).
+func NewContextForTest(endpoint string, client DockerHttpClient) (*ModelRunnerContext, error) {
+	urlPrefix, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	return &ModelRunnerContext{
+		kind:      types.ModelRunnerEngineKindMoby,
+		urlPrefix: urlPrefix,
+		client:    client,
+	}, nil
+}
+
 // DetectContext determines the current Docker Model Runner context.
 func DetectContext(ctx context.Context, cli *command.DockerCli) (*ModelRunnerContext, error) {
 	// Check for an explicit endpoint setting.

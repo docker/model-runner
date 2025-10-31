@@ -28,7 +28,7 @@ TAG ?=
 LICENSE ?=
 
 # Main targets
-.PHONY: build run clean test docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-run-impl help validate model-distribution-tool
+.PHONY: build run clean test integration-tests docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-run-impl help validate model-distribution-tool
 # Default target
 .DEFAULT_GOAL := build
 
@@ -59,6 +59,12 @@ clean:
 # Run tests
 test:
 	go test -v ./...
+
+integration-tests:
+	@echo "Running integration tests..."
+	@echo "Note: This requires Docker to be running"
+	@go test -v -race -tags=integration -timeout=5m .
+	@echo "Integration tests completed!"
 
 validate:
 	find . -type f -name "*.sh" | xargs shellcheck
