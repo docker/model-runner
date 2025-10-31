@@ -70,7 +70,7 @@ If the submodule is already initialized, this command is safe to run and will en
 
    Make sure everything builds cleanly without errors.
 
-5**Commit the submodule update:**
+5. **Commit the submodule update:**
 
    ```bash
    git add vendor/llama.cpp
