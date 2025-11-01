@@ -16,7 +16,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
@@ -325,6 +325,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		}
 
 		cmd.PrintErrln("Model variant created successfully")
+		return nil // Return early to avoid the Build operation in lightweight case
 	} else {
 		// Process directory tar archives
 		if len(opts.dirTarPaths) > 0 {
@@ -412,9 +413,7 @@ func newModelRunnerTarget(client *desktop.Client, tag string) (*modelRunnerTarge
 	}
 	if tag != "" {
 		var err error
-		// Normalize the tag to add default namespace (ai/) and tag (:latest) if missing
-		normalizedTag := models.NormalizeModelName(tag)
-		target.tag, err = name.NewTag(normalizedTag)
+		target.tag, err = name.NewTag(tag)
 		if err != nil {
 			return nil, fmt.Errorf("invalid tag: %w", err)
 		}

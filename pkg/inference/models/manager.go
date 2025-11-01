@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/docker/model-runner/pkg/diskusage"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -173,6 +174,7 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
 		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
+		"POST " + inference.ModelsPrefix + "/package":                         m.handlePackageModel,
 		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
 		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
@@ -295,8 +297,7 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
 	// Parse remote query parameter
 	remote := false
@@ -317,9 +318,24 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if remote {
-		apiModel, err = getRemoteModel(r.Context(), m, modelName)
+		// For remote lookups, always normalize the reference
+		normalizedRef := NormalizeModelName(modelRef)
+		apiModel, err = getRemoteModel(r.Context(), m, normalizedRef)
 	} else {
-		apiModel, err = getLocalModel(m, modelName)
+		// For local lookups, first try without normalization (as ID), then with normalization
+		apiModel, err = getLocalModel(m, modelRef)
+		if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+			// If not found as-is, try with normalization
+			normalizedRef := NormalizeModelName(modelRef)
+			if normalizedRef != modelRef { // only try normalized if it's different
+				apiModel, err = getLocalModel(m, normalizedRef)
+			}
+		}
+
+		// If still not found, try partial name matching (e.g., "smollm2" for "ai/smollm2:latest")
+		if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+			apiModel, err = findModelByPartialName(m, modelRef)
+		}
 	}
 
 	if err != nil {
@@ -410,6 +426,40 @@ func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error
 	return apiModel, nil
 }
 
+// findModelByPartialName looks for a model by matching the provided reference
+// against model tags using partial name matching (e.g., "smollm2" matches "ai/smollm2:latest")
+func findModelByPartialName(m *Manager, modelRef string) (*Model, error) {
+	// Get all models to search through their tags
+	models, err := m.distributionClient.ListModels()
+	if err != nil {
+		return nil, err
+	}
+
+	// Look for a model whose tags match the reference
+	for _, model := range models {
+		for _, tag := range model.Tags() {
+			// Extract the model name without tag part (e.g., from "ai/smollm2:latest" get "ai/smollm2")
+			tagWithoutVersion := tag
+			if idx := strings.LastIndex(tag, ":"); idx != -1 {
+				tagWithoutVersion = tag[:idx]
+			}
+
+			// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
+			namePart := tagWithoutVersion
+			if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
+				namePart = tagWithoutVersion[idx+1:]
+			}
+
+			// Check if the reference matches the name part
+			if namePart == modelRef {
+				return ToModel(model)
+			}
+		}
+	}
+
+	return nil, distribution.ErrModelNotFound
+}
+
 // handleDeleteModel handles DELETE <inference-prefix>/models/{name} requests.
 // query params:
 // - force: if true, delete the model even if it has multiple tags
@@ -428,8 +478,7 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// the runner process exits (though this won't work for Windows, where we
 	// might need some separate cleanup process).
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
 	var force bool
 	if r.URL.Query().Has("force") {
@@ -440,7 +489,16 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := m.distributionClient.DeleteModel(modelName, force)
+	// First try to delete without normalization (as ID), then with normalization if not found
+	resp, err := m.distributionClient.DeleteModel(modelRef, force)
+	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+		// If not found as-is, try with normalization
+		normalizedRef := NormalizeModelName(modelRef)
+		if normalizedRef != modelRef { // only try normalized if it's different
+			resp, err = m.distributionClient.DeleteModel(normalizedRef, force)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -497,11 +555,18 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize model name
-	modelName := NormalizeModelName(r.PathValue("name"))
+	modelRef := r.PathValue("name")
 
-	// Query the model.
-	model, err := m.GetModel(modelName)
+	// Query the model - first try without normalization (as ID), then with normalization
+	model, err := m.GetModel(modelRef)
+	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+		// If not found as-is, try with normalization
+		normalizedRef := NormalizeModelName(modelRef)
+		if normalizedRef != modelRef { // only try normalized if it's different
+			model, err = m.GetModel(normalizedRef)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -530,13 +595,15 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
-	// Normalize model name
-	model = NormalizeModelName(model)
+
+	// For tag and push actions, we likely expect model references rather than IDs,
+	// so normalize the model name, but we'll handle both cases in the handlers
+	normalizedModel := NormalizeModelName(model)
 	switch action {
 	case "tag":
-		m.handleTagModel(w, r, model)
+		m.handleTagModel(w, r, normalizedModel)
 	case "push":
-		m.handlePushModel(w, r, model)
+		m.handlePushModel(w, r, normalizedModel)
 	default:
 		http.Error(w, fmt.Sprintf("unknown action %q", action), http.StatusNotFound)
 	}
@@ -565,22 +632,106 @@ func (m *Manager) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 	// Construct the target string.
 	target := fmt.Sprintf("%s:%s", repo, tag)
 
-	// Call the Tag method on the distribution client with source and modelName.
-	if err := m.distributionClient.Tag(model, target); err != nil {
-		m.log.Warnf("Failed to apply tag %q to model %q: %v", target, model, err)
+	// First try to tag using the provided model reference as-is
+	err := m.distributionClient.Tag(model, target)
+	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
+		// Check if the model parameter is a model ID (starts with sha256:) or is a partial name
+		var foundModelRef string
+		found := false
 
-		if errors.Is(err, distribution.ErrModelNotFound) {
+		// If it looks like an ID, try to find the model by ID
+		if strings.HasPrefix(model, "sha256:") || len(model) == 12 { // 12-char short ID
+			// Get all models and find the one matching this ID
+			models, listErr := m.distributionClient.ListModels()
+			if listErr != nil {
+				http.Error(w, fmt.Sprintf("error listing models: %v", listErr), http.StatusInternalServerError)
+				return
+			}
+
+			for _, mModel := range models {
+				modelID, idErr := mModel.ID()
+				if idErr != nil {
+					m.log.Warnf("Failed to get model ID: %v", idErr)
+					continue
+				}
+
+				// Check if the model ID matches (can be full or short ID)
+				if modelID == model || strings.HasPrefix(modelID, model) {
+					// Use the first tag of this model as the source reference
+					tags := mModel.Tags()
+					if len(tags) > 0 {
+						foundModelRef = tags[0]
+						found = true
+						break
+					}
+				}
+			}
+		}
+
+		// If not found by ID, try partial name matching (similar to inspect)
+		if !found {
+			models, listErr := m.distributionClient.ListModels()
+			if listErr != nil {
+				http.Error(w, fmt.Sprintf("error listing models: %v", listErr), http.StatusInternalServerError)
+				return
+			}
+
+			// Look for a model whose tags match the provided reference
+			for _, mModel := range models {
+				for _, tagStr := range mModel.Tags() {
+					// Extract the model name without tag part (e.g., from "ai/smollm2:latest" get "ai/smollm2")
+					tagWithoutVersion := tagStr
+					if idx := strings.LastIndex(tagStr, ":"); idx != -1 {
+						tagWithoutVersion = tagStr[:idx]
+					}
+
+					// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
+					namePart := tagWithoutVersion
+					if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
+						namePart = tagWithoutVersion[idx+1:]
+					}
+
+					// Check if the provided model matches the name part
+					if namePart == model {
+						// Found a match - use the tag string that matched as the source reference
+						foundModelRef = tagStr
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
+
+		if !found {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 
+		// Now tag using the found model reference (the matching tag)
+		if tagErr := m.distributionClient.Tag(foundModelRef, target); tagErr != nil {
+			m.log.Warnf("Failed to apply tag %q to resolved model %q: %v", target, foundModelRef, tagErr)
+			http.Error(w, tagErr.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if err != nil {
+		// If there's an error other than not found, return it
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Respond with success.
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("Model %q tagged successfully with %q", model, target)))
+	response := map[string]string{
+		"message": fmt.Sprintf("Model tagged successfully with %q", target),
+		"target":  target,
+	}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		m.log.Warnln("Error while encoding tag response:", err)
+	}
 }
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
@@ -609,6 +760,90 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+// handlePackageModel handles POST <inference-prefix>/models/package requests.
+func (m *Manager) handlePackageModel(w http.ResponseWriter, r *http.Request) {
+	if m.distributionClient == nil {
+		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Decode the request
+	var request ModelPackageRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if request.From == "" || request.Tag == "" {
+		http.Error(w, "both 'from' and 'tag' fields are required", http.StatusBadRequest)
+		return
+	}
+
+	// Normalize the source model name
+	request.From = NormalizeModelName(request.From)
+
+	// Create a builder from an existing model by getting the bundle first
+	// Since ModelArtifact interface is needed to work with the builder
+	bundle, err := m.distributionClient.GetBundle(request.From)
+	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) {
+			http.Error(w, fmt.Sprintf("source model not found: %s", request.From), http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("error getting source model bundle %s: %v", request.From, err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Create a builder from the existing model artifact (from the bundle)
+	modelArtifact, ok := bundle.(types.ModelArtifact)
+	if !ok {
+		http.Error(w, "source model does not implement ModelArtifact interface", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a builder from the existing model
+	bldr, err := builder.FromModel(modelArtifact)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error creating builder from model: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Apply context size if specified
+	if request.ContextSize > 0 {
+		bldr = bldr.WithContextSize(request.ContextSize)
+	}
+
+	// Get the built model artifact
+	builtModel := bldr.Model()
+
+	// Check if we can use lightweight repackaging (config-only changes from existing model)
+	useLightweight := bldr.HasOnlyConfigChanges()
+
+	if useLightweight {
+		// Use the lightweight method to avoid re-transferring layers
+		if err := m.distributionClient.WriteLightweightModel(builtModel, []string{request.Tag}); err != nil {
+			http.Error(w, fmt.Sprintf("error creating lightweight model: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// If there are layer changes, we need a different approach (this shouldn't happen with context size only)
+		// For now, return an error if we can't use lightweight
+		http.Error(w, "only config-only changes are supported for repackaging", http.StatusBadRequest)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]string{
+		"message": fmt.Sprintf("Successfully packaged model from %s with tag %s", request.From, request.Tag),
+		"model":   request.Tag,
+	}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		m.log.Warnln("Error while encoding package response:", err)
 	}
 }
 

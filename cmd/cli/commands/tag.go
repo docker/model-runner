@@ -6,7 +6,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 )
@@ -37,10 +37,6 @@ func newTagCmd() *cobra.Command {
 }
 
 func tagModel(cmd *cobra.Command, desktopClient *desktop.Client, source, target string) error {
-	// Normalize source model name to add default org and tag if missing
-	source = models.NormalizeModelName(source)
-	// Normalize target model name to add default org and tag if missing
-	target = models.NormalizeModelName(target)
 	// Ensure tag is valid
 	tag, err := name.NewTag(target)
 	if err != nil {

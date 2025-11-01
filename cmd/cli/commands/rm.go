@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +28,7 @@ func newRemoveCmd() *cobra.Command {
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), cmd); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
-			// Normalize model names to add default org and tag if missing
-			normalizedArgs := make([]string, len(args))
-			for i, arg := range args {
-				normalizedArgs[i] = models.NormalizeModelName(arg)
-			}
-			response, err := desktopClient.Remove(normalizedArgs, force)
+			response, err := desktopClient.Remove(args, force)
 			if response != "" {
 				cmd.Print(response)
 			}
