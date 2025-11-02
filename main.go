@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/docker/model-runner/pkg/distribution/transport/resumable"
@@ -22,6 +21,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/routing"
+	"github.com/docker/model-runner/pkg/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -255,7 +255,7 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	}
 
 	// Split the string by spaces, respecting quoted arguments
-	args := splitArgs(argsStr)
+	args := utils.SplitArgs(argsStr)
 
 	// Check for disallowed arguments
 	disallowedArgs := []string{"--model", "--host", "--embeddings", "--mmproj"}
@@ -271,31 +271,4 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	return &llamacpp.Config{
 		Args: args,
 	}
-}
-
-// splitArgs splits a string into arguments, respecting quoted arguments
-func splitArgs(s string) []string {
-	var args []string
-	var currentArg strings.Builder
-	inQuotes := false
-
-	for _, r := range s {
-		switch {
-		case r == '"' || r == '\'':
-			inQuotes = !inQuotes
-		case r == ' ' && !inQuotes:
-			if currentArg.Len() > 0 {
-				args = append(args, currentArg.String())
-				currentArg.Reset()
-			}
-		default:
-			currentArg.WriteRune(r)
-		}
-	}
-
-	if currentArg.Len() > 0 {
-		args = append(args, currentArg.String())
-	}
-
-	return args
 }
