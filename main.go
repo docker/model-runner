@@ -21,7 +21,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/routing"
-	"github.com/docker/model-runner/pkg/utils"
+	"github.com/mattn/go-shellwords"
 	"github.com/sirupsen/logrus"
 )
 
@@ -255,7 +255,10 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	}
 
 	// Split the string by spaces, respecting quoted arguments
-	args := utils.SplitArgs(argsStr)
+	args, err := shellwords.Parse(argsStr)
+	if err != nil {
+		log.Fatalf("Failed to parse LLAMA_ARGS: %v", err)
+	}
 
 	// Check for disallowed arguments
 	disallowedArgs := []string{"--model", "--host", "--embeddings", "--mmproj"}
