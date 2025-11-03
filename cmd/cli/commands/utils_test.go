@@ -17,27 +17,27 @@ func TestNormalizeModelName(t *testing.T) {
 		{
 			name:     "simple model name",
 			input:    "gemma3",
-			expected: "ai/gemma3:latest",
+			expected: "index.docker.io/ai/gemma3:latest",
 		},
 		{
 			name:     "model name with tag",
 			input:    "gemma3:v1",
-			expected: "ai/gemma3:v1",
+			expected: "index.docker.io/ai/gemma3:v1",
 		},
 		{
 			name:     "model name with org",
 			input:    "myorg/gemma3",
-			expected: "myorg/gemma3:latest",
+			expected: "index.docker.io/myorg/gemma3:latest",
 		},
 		{
 			name:     "model name with org and tag",
 			input:    "myorg/gemma3:v1",
-			expected: "myorg/gemma3:v1",
+			expected: "index.docker.io/myorg/gemma3:v1",
 		},
 		{
 			name:     "fully qualified model name",
 			input:    "ai/gemma3:latest",
-			expected: "ai/gemma3:latest",
+			expected: "index.docker.io/ai/gemma3:latest",
 		},
 		{
 			name:     "huggingface model",
@@ -52,12 +52,17 @@ func TestNormalizeModelName(t *testing.T) {
 		{
 			name:     "registry with model",
 			input:    "docker.io/library/model",
-			expected: "docker.io/library/model:latest",
+			expected: "index.docker.io/library/model:latest",
 		},
 		{
 			name:     "registry with model and tag",
 			input:    "docker.io/library/model:v1",
-			expected: "docker.io/library/model:v1",
+			expected: "index.docker.io/library/model:v1",
+		},
+		{
+			name:     "localhost registry with port",
+			input:    "localhost:5001/ai/smollm2",
+			expected: "localhost:5001/ai/smollm2:latest",
 		},
 		{
 			name:     "empty string",
@@ -67,12 +72,12 @@ func TestNormalizeModelName(t *testing.T) {
 		{
 			name:     "ai prefix already present",
 			input:    "ai/gemma3",
-			expected: "ai/gemma3:latest",
+			expected: "index.docker.io/ai/gemma3:latest",
 		},
 		{
 			name:     "model name with latest tag already",
 			input:    "gemma3:latest",
-			expected: "ai/gemma3:latest",
+			expected: "index.docker.io/ai/gemma3:latest",
 		},
 	}
 
@@ -163,25 +168,25 @@ func TestNormalizeModelNameConsistency(t *testing.T) {
 		{
 			name:                   "locally packaged model without namespace",
 			userProvidedName:       "my-model",
-			expectedNormalizedName: "ai/my-model:latest",
-			description:            "When a user packages a local model as 'my-model', it should be normalized to 'ai/my-model:latest'",
+			expectedNormalizedName: "index.docker.io/ai/my-model:latest",
+			description:            "When a user packages a local model as 'my-model', it should be normalized to 'index.docker.io/ai/my-model:latest'",
 		},
 		{
 			name:                   "locally packaged model without namespace but with tag",
 			userProvidedName:       "my-model:v1.0",
-			expectedNormalizedName: "ai/my-model:v1.0",
-			description:            "When a user packages a local model as 'my-model:v1.0', it should be normalized to 'ai/my-model:v1.0'",
+			expectedNormalizedName: "index.docker.io/ai/my-model:v1.0",
+			description:            "When a user packages a local model as 'my-model:v1.0', it should be normalized to 'index.docker.io/ai/my-model:v1.0'",
 		},
 		{
 			name:                   "model with explicit namespace",
 			userProvidedName:       "myorg/my-model",
-			expectedNormalizedName: "myorg/my-model:latest",
+			expectedNormalizedName: "index.docker.io/myorg/my-model:latest",
 			description:            "When a user packages a model with explicit org 'myorg/my-model', it should keep the org",
 		},
 		{
 			name:                   "model with ai namespace explicitly set",
 			userProvidedName:       "ai/my-model",
-			expectedNormalizedName: "ai/my-model:latest",
+			expectedNormalizedName: "index.docker.io/ai/my-model:latest",
 			description:            "When a user explicitly sets 'ai/' namespace, it should remain the same",
 		},
 	}
