@@ -1,0 +1,116 @@
+package registry
+
+import (
+	"os"
+	"sync"
+	"testing"
+
+	"github.com/google/go-containerregistry/pkg/name"
+)
+
+func TestGetDefaultRegistryOptions_NoEnvVars(t *testing.T) {
+	// Reset the sync.Once for this test
+	resetOnceForTest()
+
+	// Ensure no env vars are set
+	os.Unsetenv("DEFAULT_REGISTRY")
+	os.Unsetenv("INSECURE_REGISTRY")
+
+	opts := GetDefaultRegistryOptions()
+
+	if len(opts) != 0 {
+		t.Errorf("Expected empty options slice, got %d options", len(opts))
+	}
+}
+
+func TestGetDefaultRegistryOptions_OnlyDefaultRegistry(t *testing.T) {
+	// Reset the sync.Once for this test
+	resetOnceForTest()
+
+	t.Setenv("DEFAULT_REGISTRY", "custom.registry.io")
+	os.Unsetenv("INSECURE_REGISTRY")
+
+	opts := GetDefaultRegistryOptions()
+
+	if len(opts) != 1 {
+		t.Fatalf("Expected 1 option, got %d", len(opts))
+	}
+
+	// Verify the option sets the default registry by parsing a reference without explicit registry
+	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	if err != nil {
+		t.Fatalf("Failed to parse reference: %v", err)
+	}
+
+	if ref.Context().Registry.Name() != "custom.registry.io" {
+		t.Errorf("Expected registry to be 'custom.registry.io', got '%s'", ref.Context().Registry.Name())
+	}
+
+	// Verify it's not insecure (should use https)
+	if ref.Context().Registry.Scheme() != "https" {
+		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Registry.Scheme())
+	}
+}
+
+func TestGetDefaultRegistryOptions_OnlyInsecureRegistry(t *testing.T) {
+	// Reset the sync.Once for this test
+	resetOnceForTest()
+
+	os.Unsetenv("DEFAULT_REGISTRY")
+	t.Setenv("INSECURE_REGISTRY", "true")
+
+	opts := GetDefaultRegistryOptions()
+
+	if len(opts) != 1 {
+		t.Fatalf("Expected 1 option, got %d", len(opts))
+	}
+
+	// Verify the option makes the registry insecure by parsing a reference
+	ref, err := name.ParseReference("myregistry.io/myrepo/myimage:tag", opts...)
+	if err != nil {
+		t.Fatalf("Failed to parse reference: %v", err)
+	}
+
+	// Insecure registries should use http
+	if ref.Context().Registry.Scheme() != "http" {
+		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Registry.Scheme())
+	}
+}
+
+func TestGetDefaultRegistryOptions_BothEnvVars(t *testing.T) {
+	// Reset the sync.Once for this test
+	resetOnceForTest()
+
+	t.Setenv("DEFAULT_REGISTRY", "custom.registry.io")
+	t.Setenv("INSECURE_REGISTRY", "true")
+
+	opts := GetDefaultRegistryOptions()
+
+	if len(opts) != 2 {
+		t.Fatalf("Expected 2 options, got %d", len(opts))
+	}
+
+	// Verify both options are applied
+	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	if err != nil {
+		t.Fatalf("Failed to parse reference: %v", err)
+	}
+
+	// Check custom registry is used
+	if ref.Context().Registry.Name() != "custom.registry.io" {
+		t.Errorf("Expected registry to be 'custom.registry.io', got '%s'", ref.Context().Registry.Name())
+	}
+
+	// Check insecure is applied (http scheme)
+	if ref.Context().Registry.Scheme() != "http" {
+		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Registry.Scheme())
+	}
+}
+
+// Helper function to reset the sync.Once for testing
+// Note: This is a workaround for testing. In production code, sync.Once ensures
+// the initialization only happens once for the lifetime of the program.
+func resetOnceForTest() {
+	once = sync.Once{}
+	defaultRegistryOpts = nil
+}
