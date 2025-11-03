@@ -21,6 +21,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
 )
@@ -139,35 +140,25 @@ func NormalizeModelName(model string) string {
 		return model
 	}
 
+	model = strings.TrimSpace(model)
+
 	// Normalize HuggingFace model names (lowercase)
 	if strings.HasPrefix(model, "hf.co/") {
 		model = strings.ToLower(model)
 	}
 
-	// Check if model contains a registry (domain with dot before first slash)
-	firstSlash := strings.Index(model, "/")
-	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
-		// Has a registry, just ensure tag
-		if !strings.Contains(model, ":") {
-			return model + ":" + defaultTag
-		}
-		return model
+	// Add default namespace if there's no slash (means no org/namespace)
+	if !strings.Contains(model, "/") {
+		model = defaultOrg + "/" + model
 	}
 
-	// Split by colon to check for tag
-	parts := strings.SplitN(model, ":", 2)
-	nameWithOrg := parts[0]
-	tag := defaultTag
-	if len(parts) == 2 {
-		tag = parts[1]
+	// Try to strictly parse (no DockerHub/library defaults applied)
+	if ref, err := name.ParseReference(model, registry.GetDefaultRegistryOptions()...); err == nil {
+		return ref.Name()
 	}
 
-	// If name doesn't contain a slash, add the default org
-	if !strings.Contains(nameWithOrg, "/") {
-		nameWithOrg = defaultOrg + "/" + nameWithOrg
-	}
-
-	return nameWithOrg + ":" + tag
+	// Fallback to cleaned input
+	return model
 }
 
 func (m *Manager) routeHandlers() map[string]http.HandlerFunc {

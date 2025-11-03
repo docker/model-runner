@@ -16,10 +16,12 @@ import (
 
 	"github.com/docker/go-units"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/inference"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/fatih/color"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 )
@@ -351,20 +353,18 @@ func (c *Client) fullModelID(id string) (string, error) {
 		}
 		// If not found with exact match, try partial name matching
 		for _, tag := range m.Tags {
-			// Extract the model name without tag part (e.g., from "ai/smollm2:latest" get "ai/smollm2")
-			tagWithoutVersion := tag
-			if idx := strings.LastIndex(tag, ":"); idx != -1 {
-				tagWithoutVersion = tag[:idx]
+			// Try to parse both the stored tag and the input ID
+			tagRef, err1 := name.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
+			idRef, err2 := name.ParseReference(id, registry.GetDefaultRegistryOptions()...)
+			if err1 != nil || err2 != nil {
+				// fallback to string comparison if parsing fails
+				if tag == id {
+					return m.ID, nil
+				}
+				continue
 			}
-
-			// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
-			namePart := tagWithoutVersion
-			if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
-				namePart = tagWithoutVersion[idx+1:]
-			}
-
-			// Check if the ID matches the name part
-			if namePart == id {
+			// Compare normalized names (without tag or digest)
+			if tagRef.Context().Name() == idRef.Context().Name() {
 				return m.ID, nil
 			}
 		}
