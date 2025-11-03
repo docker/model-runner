@@ -21,6 +21,23 @@ func TestGetDefaultRegistryOptions_NoEnvVars(t *testing.T) {
 	if len(opts) != 0 {
 		t.Errorf("Expected empty options slice, got %d options", len(opts))
 	}
+
+	// Verify that the default registry (index.docker.io) is used when no options are set
+	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	if err != nil {
+		t.Fatalf("Failed to parse reference: %v", err)
+	}
+
+	// When no DEFAULT_REGISTRY is set, the default should be index.docker.io
+	expectedRegistry := "index.docker.io"
+	if ref.Context().Registry.Name() != expectedRegistry {
+		t.Errorf("Expected default registry to be '%s', got '%s'", expectedRegistry, ref.Context().Registry.Name())
+	}
+
+	// Verify it uses HTTPS (secure by default)
+	if ref.Context().Registry.Scheme() != "https" {
+		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Registry.Scheme())
+	}
 }
 
 func TestGetDefaultRegistryOptions_OnlyDefaultRegistry(t *testing.T) {
