@@ -75,13 +75,12 @@ func newUpCommand() *cobra.Command {
 			// Build speculative config if any speculative flags are set
 			var speculativeConfig *inference.SpeculativeDecodingConfig
 			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
-				normalizedDraftModel := dmrm.NormalizeModelName(draftModel)
 				speculativeConfig = &inference.SpeculativeDecodingConfig{
-					DraftModel:        normalizedDraftModel,
+					DraftModel:        draftModel,
 					NumTokens:         numTokens,
 					MinAcceptanceRate: minAcceptanceRate,
 				}
-				sendInfo(fmt.Sprintf("Enabling speculative decoding with draft model: %s", normalizedDraftModel))
+				sendInfo(fmt.Sprintf("Enabling speculative decoding with draft model: %s", draftModel))
 			}
 
 			for _, model := range models {

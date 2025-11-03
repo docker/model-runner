@@ -19,6 +19,32 @@ type ModelCreateRequest struct {
 	IgnoreRuntimeMemoryCheck bool `json:"ignore-runtime-memory-check,omitempty"`
 }
 
+// ModelPackageRequest represents a model package request, which creates a new model
+// from an existing one with modified properties (e.g., context size).
+type ModelPackageRequest struct {
+	// From is the name of the source model to package from.
+	From string `json:"from"`
+	// Tag is the name to give the new packaged model.
+	Tag string `json:"tag"`
+	// ContextSize specifies the context size to set for the new model.
+	ContextSize uint64 `json:"context-size,omitempty"`
+}
+
+// SimpleModel is a wrapper that allows creating a model with modified configuration
+type SimpleModel struct {
+	types.Model
+	ConfigValue     types.Config
+	DescriptorValue types.Descriptor
+}
+
+func (s *SimpleModel) Config() (types.Config, error) {
+	return s.ConfigValue, nil
+}
+
+func (s *SimpleModel) Descriptor() (types.Descriptor, error) {
+	return s.DescriptorValue, nil
+}
+
 // ToOpenAIList converts the model list to its OpenAI API representation. This function never
 // returns a nil slice (though it may return an empty slice).
 func ToOpenAIList(l []types.Model) (*OpenAIModelList, error) {

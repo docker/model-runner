@@ -6,7 +6,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/pkg/inference/models"
+
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -42,8 +42,6 @@ func newPullCmd() *cobra.Command {
 }
 
 func pullModel(cmd *cobra.Command, desktopClient *desktop.Client, model string, ignoreRuntimeMemoryCheck bool) error {
-	// Normalize model name to add default org and tag if missing
-	model = models.NormalizeModelName(model)
 	var progress func(string)
 	if isatty.IsTerminal(os.Stdout.Fd()) {
 		progress = TUIProgress

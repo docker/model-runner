@@ -72,12 +72,13 @@ func listModels(openai bool, desktopClient *desktop.Client, quiet bool, jsonForm
 	}
 
 	if modelFilter != "" {
-		// Normalize the filter to match stored model names
+		// Normalize the filter to match stored model names (backend normalizes when storing)
 		normalizedFilter := dmrm.NormalizeModelName(modelFilter)
 		var filteredModels []dmrm.Model
 		for _, m := range models {
 			hasMatchingTag := false
 			for _, tag := range m.Tags {
+				// Tags are stored in normalized format by the backend
 				if tag == normalizedFilter {
 					hasMatchingTag = true
 					break

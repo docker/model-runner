@@ -214,7 +214,7 @@ func TestHandleGetModel(t *testing.T) {
 			remote:        false,
 			modelName:     "nonexistent:v1",
 			expectedCode:  http.StatusNotFound,
-			expectedError: "error while getting model",
+			expectedError: "model not found",
 		},
 		{
 			name:         "get remote model - success",
@@ -227,7 +227,7 @@ func TestHandleGetModel(t *testing.T) {
 			remote:        true,
 			modelName:     uri.Host + "/ai/nonexistent:v1",
 			expectedCode:  http.StatusNotFound,
-			expectedError: "not found",
+			expectedError: "failed to pull model",
 		},
 	}
 
