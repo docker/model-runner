@@ -65,6 +65,21 @@ func TestNormalizeModelName(t *testing.T) {
 			expected: "localhost:5001/ai/smollm2:latest",
 		},
 		{
+			name:     "simple model name with digest",
+			input:    "gemma3@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			expected: "index.docker.io/ai/gemma3@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+		},
+		{
+			name:     "model with org and digest",
+			input:    "myorg/gemma3@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			expected: "index.docker.io/myorg/gemma3@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		},
+		{
+			name:     "fully qualified model with digest",
+			input:    "ai/gemma3@sha256:fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+			expected: "index.docker.io/ai/gemma3@sha256:fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+		},
+		{
 			name:     "empty string",
 			input:    "",
 			expected: "",

@@ -152,7 +152,7 @@ func NormalizeModelName(model string) string {
 		model = defaultOrg + "/" + model
 	}
 
-	// Try to strictly parse (no DockerHub/library defaults applied)
+	// Parse reference with standard registry defaults (adds index.docker.io/ prefix)
 	if ref, err := name.ParseReference(model, registry.GetDefaultRegistryOptions()...); err == nil {
 		return ref.Name()
 	}
