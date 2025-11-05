@@ -355,22 +355,10 @@ func (c *Client) fullModelID(id string) (string, error) {
 				return m.ID, nil
 			}
 		}
-		// If not found with exact match, try partial name matching
+
+		// Normalize everything and try to find exact matches
 		for _, tag := range m.Tags {
-			// Extract the model name without tag part (e.g., from "ai/smollm2:latest" get "ai/smollm2")
-			tagWithoutVersion := tag
-			if idx := strings.LastIndex(tag, ":"); idx != -1 {
-				tagWithoutVersion = tag[:idx]
-			}
-
-			// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
-			namePart := tagWithoutVersion
-			if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
-				namePart = tagWithoutVersion[idx+1:]
-			}
-
-			// Check if the ID matches the name part
-			if namePart == id {
+			if dmrm.NormalizeModelName(tag) == dmrm.NormalizeModelName(id) {
 				return m.ID, nil
 			}
 		}
