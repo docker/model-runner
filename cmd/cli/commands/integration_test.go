@@ -776,3 +776,244 @@ func TestIntegration_PushModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, strings.TrimSpace(models), "Model should be removed")
 }
+
+// TestIntegration_RemoveModel tests removing models with various reference formats
+// to ensure proper reference normalization and correct removal behavior.
+func TestIntegration_RemoveModel(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Ensure no models exist initially
+	models, err := listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	if len(models) != 0 {
+		t.Fatal("Expected no initial models, but found some")
+	}
+
+	// Create and push a test model with default org (ai/rm-test:latest)
+	modelRef := "ai/rm-test:latest"
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
+
+	// Generate all reference test cases
+	info := modelInfo{
+		name:         "rm-test",
+		org:          "ai",
+		tag:          "latest",
+		registry:     "registry.local:5000",
+		modelID:      modelID,
+		digest:       digest,
+		expectedName: "ai/rm-test:latest",
+	}
+	testCases := generateReferenceTestCases(info)
+
+	// Test 1: Remove model using various reference formats
+	t.Run("remove with various reference formats", func(t *testing.T) {
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// Pull the model
+				pullRef := "rm-test"
+				t.Logf("Pulling model with reference: %s", pullRef)
+				err := pullModel(newPullCmd(), env.client, pullRef, true)
+				require.NoError(t, err, "Failed to pull model")
+
+				// Verify model exists
+				models, err := listModels(false, env.client, true, false, "")
+				require.NoError(t, err)
+				truncatedID := modelID[7:19]
+				require.Equal(t, truncatedID, strings.TrimSpace(models), "Model not found after pull")
+
+				// Remove using the test case reference
+				t.Logf("Removing model with reference: %s", tc.ref)
+				err = removeModel(env.client, tc.ref)
+				require.NoError(t, err, "Failed to remove model with reference: %s", tc.ref)
+
+				// Verify model is removed
+				models, err = listModels(false, env.client, true, false, "")
+				require.NoError(t, err)
+				require.Empty(t, strings.TrimSpace(models), "Model should be removed after rm with reference: %s", tc.ref)
+
+				t.Logf("✓ Successfully removed model using reference: %s", tc.ref)
+			})
+		}
+	})
+
+	// Test 2: Remove multiple models in one command
+	t.Run("remove multiple models", func(t *testing.T) {
+		// Create and push two different models
+		modelRef1 := "ai/rm-multi-1:latest"
+		modelID1, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef1, 2048)
+		modelRef2 := "ai/rm-multi-2:latest"
+		modelID2, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef2, 2048)
+
+		// Pull both models
+		t.Logf("Pulling first model: rm-multi-1")
+		err := pullModel(newPullCmd(), env.client, "rm-multi-1", true)
+		require.NoError(t, err, "Failed to pull first model")
+
+		t.Logf("Pulling second model: rm-multi-2")
+		err = pullModel(newPullCmd(), env.client, "rm-multi-2", true)
+		require.NoError(t, err, "Failed to pull second model")
+
+		// Verify both models exist
+		models, err := listModels(false, env.client, false, false, "")
+		require.NoError(t, err)
+		require.Contains(t, models, modelID1[7:19], "First model should exist")
+		require.Contains(t, models, modelID2[7:19], "Second model should exist")
+
+		// Remove both models in one command
+		t.Logf("Removing both models: rm-multi-1 and rm-multi-2")
+		_, err = env.client.Remove([]string{"rm-multi-1", "rm-multi-2"}, false)
+		require.NoError(t, err, "Failed to remove multiple models")
+
+		// Verify both models are removed
+		models, err = listModels(false, env.client, true, false, "")
+		require.NoError(t, err)
+		require.Empty(t, strings.TrimSpace(models), "All models should be removed")
+
+		t.Logf("✓ Successfully removed multiple models in one command")
+	})
+
+	// Test 3: Tag-specific removal (removing one tag keeps others)
+	t.Run("remove specific tag keeps other tags", func(t *testing.T) {
+		// Pull the model
+		t.Logf("Pulling model: rm-test")
+		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		require.NoError(t, err, "Failed to pull model")
+
+		// Add multiple tags to the same model
+		t.Logf("Adding tags v1, v2, and v3 to the model")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:v1")
+		require.NoError(t, err, "Failed to create v1 tag")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:v2")
+		require.NoError(t, err, "Failed to create v2 tag")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:v3")
+		require.NoError(t, err, "Failed to create v3 tag")
+
+		// Verify all tags exist
+		model, err := env.client.Inspect(modelID, false)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(model.Tags), 4, "Model should have at least 4 tags")
+		t.Logf("Model has %d tags: %v", len(model.Tags), model.Tags)
+
+		// Remove one specific tag (v1)
+		t.Logf("Removing only the v1 tag")
+		err = removeModel(env.client, "rm-test:v1")
+		require.NoError(t, err, "Failed to remove v1 tag")
+
+		// Verify the model still exists with remaining tags
+		model, err = env.client.Inspect(modelID, false)
+		require.NoError(t, err, "Model should still exist after removing one tag")
+
+		// Verify v1 tag is gone but others remain
+		tagFound := false
+		for _, tag := range model.Tags {
+			if tag == "rm-test:v1" || tag == "ai/rm-test:v1" {
+				tagFound = true
+				break
+			}
+		}
+		require.False(t, tagFound, "v1 tag should be removed")
+
+		// Verify other tags still exist
+		v2Found := false
+		v3Found := false
+		for _, tag := range model.Tags {
+			if strings.Contains(tag, ":v2") {
+				v2Found = true
+			}
+			if strings.Contains(tag, ":v3") {
+				v3Found = true
+			}
+		}
+		require.True(t, v2Found, "v2 tag should still exist")
+		require.True(t, v3Found, "v3 tag should still exist")
+
+		t.Logf("✓ Successfully removed specific tag while keeping others")
+
+		// Cleanup: remove the entire model
+		err = removeModel(env.client, modelID)
+		require.NoError(t, err, "Failed to cleanup model")
+	})
+
+	// Test 4: Model ID removal removes all tags
+	t.Run("remove by model ID removes all tags", func(t *testing.T) {
+		// Pull the model
+		t.Logf("Pulling model: rm-test")
+		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		require.NoError(t, err, "Failed to pull model")
+
+		// Add multiple tags
+		t.Logf("Adding multiple tags to the model")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:tag1")
+		require.NoError(t, err, "Failed to create tag1")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:tag2")
+		require.NoError(t, err, "Failed to create tag2")
+		err = tagModel(newTagCmd(), env.client, "rm-test", "rm-test:tag3")
+		require.NoError(t, err, "Failed to create tag3")
+
+		// Verify tags exist
+		model, err := env.client.Inspect(modelID, false)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(model.Tags), 4, "Model should have multiple tags")
+		t.Logf("Model has %d tags before ID removal", len(model.Tags))
+
+		// Remove by model ID (should remove entire model and all tags)
+		t.Logf("Removing by model ID: %s", modelID)
+		err = removeModel(env.client, modelID)
+		require.NoError(t, err, "Failed to remove by model ID")
+
+		// Verify the entire model is gone
+		models, err := listModels(false, env.client, true, false, "")
+		require.NoError(t, err)
+		require.Empty(t, strings.TrimSpace(models), "Model should be completely removed when removed by ID")
+
+		// Verify we can't inspect by any of the previous tags
+		_, err = env.client.Inspect("rm-test:tag1", false)
+		require.Error(t, err, "Should fail to inspect removed tag1")
+		_, err = env.client.Inspect("rm-test:tag2", false)
+		require.Error(t, err, "Should fail to inspect removed tag2")
+
+		t.Logf("✓ Successfully removed entire model and all tags by model ID")
+	})
+
+	// Test 5: Force flag behavior
+	t.Run("force flag", func(t *testing.T) {
+		// Pull the model
+		t.Logf("Pulling model: rm-test")
+		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		require.NoError(t, err, "Failed to pull model")
+
+		// Test removal with force flag
+		t.Logf("Removing model with force flag")
+		_, err = env.client.Remove([]string{"rm-test"}, true)
+		require.NoError(t, err, "Failed to remove with force flag")
+
+		// Verify model is removed
+		models, err := listModels(false, env.client, true, false, "")
+		require.NoError(t, err)
+		require.Empty(t, strings.TrimSpace(models), "Model should be removed with force flag")
+
+		t.Logf("✓ Successfully removed model with force flag")
+	})
+
+	// Test 6: Error cases
+	t.Run("error cases", func(t *testing.T) {
+		t.Run("remove non-existent model", func(t *testing.T) {
+			err := removeModel(env.client, "non-existent-model:v1")
+			require.Error(t, err, "Should fail when removing non-existent model")
+			t.Logf("✓ Correctly failed to remove non-existent model: %v", err)
+		})
+
+		t.Run("remove with empty reference", func(t *testing.T) {
+			_, err := env.client.Remove([]string{""}, false)
+			require.Error(t, err, "Should fail with empty reference")
+			t.Logf("✓ Correctly failed to remove with empty reference: %v", err)
+		})
+
+		t.Run("remove with invalid reference", func(t *testing.T) {
+			err := removeModel(env.client, "invalid:reference:format")
+			require.Error(t, err, "Should fail with invalid reference format")
+			t.Logf("✓ Correctly failed to remove with invalid reference: %v", err)
+		})
+	})
+}
