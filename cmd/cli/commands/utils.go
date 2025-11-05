@@ -11,14 +11,8 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/moby/term"
 	"github.com/spf13/cobra"
-)
-
-const (
-	defaultOrg = "ai"
-	defaultTag = "latest"
 )
 
 const (
@@ -26,16 +20,6 @@ const (
 	enableViaGUI = "Enable Docker Model Runner via the GUI → Go to Settings->AI->Enable Docker Model Runner"
 	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model install-runner --vllm"
 )
-
-// getDefaultRegistry returns the default registry, checking for environment override
-// If DEFAULT_REGISTRY environment variable is set, it returns that value
-// Otherwise, it returns name.DefaultRegistry ("index.docker.io")
-func getDefaultRegistry() string {
-	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
-		return defaultReg
-	}
-	return name.DefaultRegistry
-}
 
 var notRunningErr = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")
 
@@ -96,58 +80,4 @@ func (cp *commandPrinter) GetFdInfo() (fd uintptr, isTerminal bool) {
 // asPrinter wraps a cobra.Command to implement standalone.StatusPrinter
 func asPrinter(cmd *cobra.Command) standalone.StatusPrinter {
 	return &commandPrinter{cmd: cmd}
-}
-
-// stripDefaultsFromModelName removes the default "ai/" prefix, default registry, and ":latest" tag for display.
-// Examples:
-//   - "ai/gemma3:latest" -> "gemma3"
-//   - "ai/gemma3:v1" -> "gemma3:v1"
-//   - "myorg/gemma3:latest" -> "myorg/gemma3"
-//   - "gemma3:latest" -> "gemma3"
-//   - "index.docker.io/ai/gemma3:latest" -> "gemma3"
-//   - "docker.io/ai/gemma3:latest" -> "gemma3"
-//   - "docker.io/myorg/gemma3:latest" -> "myorg/gemma3"
-//   - "hf.co/bartowski/model:latest" -> "hf.co/bartowski/model"
-func stripDefaultsFromModelName(model string) string {
-	// Get the current default registry (checking for environment override)
-	defaultRegistry := getDefaultRegistry()
-
-	// Handle the common default registries that are aliases for each other
-	// Always handle "index.docker.io" and "docker.io" as defaults regardless of DEFAULT_REGISTRY env var
-	// since they are equivalent and commonly used interchangeably
-	defaultRegistries := []string{"index.docker.io/", "docker.io/"}
-	if defaultRegistry != "" &&
-		defaultRegistry != "index.docker.io" &&
-		defaultRegistry != "docker.io" {
-
-		// Ensure it has a trailing slash for correct prefix trimming
-		if !strings.HasSuffix(defaultRegistry, "/") {
-			defaultRegistry += "/"
-		}
-		// Overwrite the list to contain only the custom registry
-		defaultRegistries = []string{defaultRegistry}
-	}
-
-	// Check for the common default registries first
-	for _, reg := range defaultRegistries {
-		if strings.HasPrefix(model, reg) {
-			// Remove the registry prefix
-			model = strings.TrimPrefix(model, reg)
-			break
-		}
-	}
-
-	// If model has default org prefix (without tag, or with :latest tag), strip the org
-	// but preserve other tags
-	if strings.HasPrefix(model, defaultOrg+"/") {
-		model = strings.TrimPrefix(model, defaultOrg+"/")
-	}
-
-	// Check if model has :latest but no slash (no org specified) - strip :latest
-	if strings.HasSuffix(model, ":"+defaultTag) {
-		model = strings.TrimSuffix(model, ":"+defaultTag)
-	}
-
-	// For other cases (ai/ with custom tag, custom org with :latest, etc.), keep as-is
-	return model
 }

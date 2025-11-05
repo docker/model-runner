@@ -38,7 +38,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{"apple:latest"}, 2000),
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"mango:latest"}, 3000),
 			},
-			expectedOrder: []string{"apple", "mango", "zebra"},
+			expectedOrder: []string{"apple:latest", "mango:latest", "zebra:latest"},
 			description:   "Models should be sorted alphabetically by display name",
 		},
 		{
@@ -48,7 +48,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{"apple:latest"}, 2000),
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"Mango:latest"}, 3000),
 			},
-			expectedOrder: []string{"apple", "Mango", "Zebra"},
+			expectedOrder: []string{"apple:latest", "Mango:latest", "Zebra:latest"},
 			description:   "Sorting should be case-insensitive",
 		},
 		{
@@ -58,7 +58,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{}, 2000),
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"alpha:latest"}, 3000),
 			},
-			expectedOrder: []string{"<none>", "alpha", "beta"},
+			expectedOrder: []string{"<none>", "alpha:latest", "beta:latest"},
 			description:   "Models without tags display as <none> and are sorted with other rows",
 		},
 		{
@@ -69,7 +69,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{}, 3000),
 				testModel("sha256:423456789012345678901234567890123456789012345678901234567890abcd", []string{"apple:latest"}, 4000),
 			},
-			expectedOrder: []string{"<none>", "<none>", "apple", "zebra"},
+			expectedOrder: []string{"<none>", "<none>", "apple:latest", "zebra:latest"},
 			description:   "Multiple models without tags each create a <none> row, sorted with other rows",
 		},
 		{
@@ -78,7 +78,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:123456789012345678901234567890123456789012345678901234567890abcd", []string{"zoo:latest", "animal:v1"}, 1000),
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{"apple:latest", "fruit:v1"}, 2000),
 			},
-			expectedOrder: []string{"animal:v1", "apple", "fruit:v1", "zoo"},
+			expectedOrder: []string{"animal:v1", "apple:latest", "fruit:v1", "zoo:latest"},
 			description:   "Each tag creates a separate row, all rows are sorted together",
 		},
 		{
@@ -88,8 +88,8 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{"hf.co/model-a:latest"}, 2000),
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"ai/model-m:latest"}, 3000),
 			},
-			expectedOrder: []string{"hf.co/model-a", "hf.co/model-z", "model-m"},
-			description:   "Should handle models with different prefixes, sorting by display name (ai/ prefix stripped, :latest suffix stripped)",
+			expectedOrder: []string{"ai/model-m:latest", "hf.co/model-a:latest", "hf.co/model-z:latest"},
+			description:   "Should handle models with different prefixes, sorting by display name",
 		},
 		{
 			name: "models with :latest tag vs specific tags",
@@ -99,8 +99,8 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"qwen3:14B-Q6_K"}, 3000),
 				testModel("sha256:423456789012345678901234567890123456789012345678901234567890abcd", []string{"qwen3:4B-F16"}, 4000),
 			},
-			expectedOrder: []string{"qwen3", "qwen3:0.6B-F16", "qwen3:14B-Q6_K", "qwen3:4B-F16"},
-			description:   "Model with :latest (displays as 'qwen3') should appear before variants with specific tags",
+			expectedOrder: []string{"qwen3:0.6B-F16", "qwen3:14B-Q6_K", "qwen3:4B-F16", "qwen3:latest"},
+			description:   "Models with specific tags should be sorted with :latest",
 		},
 		{
 			name: "base model name sorting - qwen3 vs qwen3-coder",
@@ -110,7 +110,7 @@ func TestListModelsSorting(t *testing.T) {
 				testModel("sha256:323456789012345678901234567890123456789012345678901234567890abcd", []string{"qwen3:latest"}, 3000),
 				testModel("sha256:423456789012345678901234567890123456789012345678901234567890abcd", []string{"qwen3-coder:30B"}, 4000),
 			},
-			expectedOrder: []string{"qwen3", "qwen3:0.6B-F16", "qwen3-coder", "qwen3-coder:30B"},
+			expectedOrder: []string{"qwen3:0.6B-F16", "qwen3:latest", "qwen3-coder:30B", "qwen3-coder:latest"},
 			description:   "All qwen3 variants should appear before qwen3-coder variants (base name comparison)",
 		},
 		{
@@ -121,7 +121,7 @@ func TestListModelsSorting(t *testing.T) {
 				// Model 2: has tags in the middle
 				testModel("sha256:223456789012345678901234567890123456789012345678901234567890abcd", []string{"mango:latest", "banana:v2"}, 2000),
 			},
-			expectedOrder: []string{"apple:v1", "banana:v2", "mango", "zebra"},
+			expectedOrder: []string{"apple:v1", "banana:v2", "mango:latest", "zebra:latest"},
 			description:   "Tags from different models should be interspersed in sorted order, not grouped by model",
 		},
 	}
@@ -134,13 +134,13 @@ func TestListModelsSorting(t *testing.T) {
 			// Parse the output to extract model names in order
 			actualOrder := extractModelNamesFromOutput(output)
 
-			// Convert expected tags to display names (stripping defaults)
+			// Convert expected tags to display names
 			expectedDisplayNames := make([]string, len(tt.expectedOrder))
 			for i, tag := range tt.expectedOrder {
 				if tag == "" {
 					expectedDisplayNames[i] = "<none>"
 				} else {
-					expectedDisplayNames[i] = stripDefaultsFromModelName(tag)
+					expectedDisplayNames[i] = tag
 				}
 			}
 
@@ -187,7 +187,7 @@ func TestListModelsSingleModel(t *testing.T) {
 	}
 	output := prettyPrintModels(models)
 	actualOrder := extractModelNamesFromOutput(output)
-	if len(actualOrder) != 1 || actualOrder[0] != "single" {
+	if len(actualOrder) != 1 || actualOrder[0] != "single:latest" {
 		t.Errorf("Single model should remain unchanged, got %v", actualOrder)
 	}
 }
@@ -294,12 +294,12 @@ func TestPrettyPrintModelsWithMultipleTags(t *testing.T) {
 	output := prettyPrintModels(models)
 
 	// Find positions of each tag display
-	qwen3Pos := strings.Index(output, "qwen3  ") // Just "qwen3" (from :latest with stripped suffix)
+	qwen3LatestPos := strings.Index(output, "qwen3:latest")
 	qwen3_0_6Pos := strings.Index(output, "qwen3:0.6B-F16")
 	qwen3_8Pos := strings.Index(output, "qwen3:8B-Q4_K_M")
 
-	if qwen3Pos == -1 {
-		t.Error("Expected output to contain 'qwen3' (from qwen3:latest)")
+	if qwen3LatestPos == -1 {
+		t.Error("Expected output to contain 'qwen3:latest'")
 	}
 	if qwen3_0_6Pos == -1 {
 		t.Error("Expected output to contain 'qwen3:0.6B-F16'")
@@ -308,11 +308,11 @@ func TestPrettyPrintModelsWithMultipleTags(t *testing.T) {
 		t.Error("Expected output to contain 'qwen3:8B-Q4_K_M'")
 	}
 
-	// Verify tags are in correct order: qwen3 < qwen3:0.6B-F16 < qwen3:8B-Q4_K_M
-	if qwen3Pos > qwen3_0_6Pos {
-		t.Error("'qwen3' should appear before 'qwen3:0.6B-F16'")
-	}
+	// Verify tags are in correct order: qwen3:0.6B-F16 < qwen3:8B-Q4_K_M < qwen3:latest
 	if qwen3_0_6Pos > qwen3_8Pos {
 		t.Error("'qwen3:0.6B-F16' should appear before 'qwen3:8B-Q4_K_M'")
+	}
+	if qwen3_8Pos > qwen3LatestPos {
+		t.Error("'qwen3:8B-Q4_K_M' should appear before 'qwen3:latest'")
 	}
 }

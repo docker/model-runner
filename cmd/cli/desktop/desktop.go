@@ -355,13 +355,6 @@ func (c *Client) fullModelID(id string) (string, error) {
 				return m.ID, nil
 			}
 		}
-
-		// Normalize everything and try to find exact matches
-		for _, tag := range m.Tags {
-			if dmrm.NormalizeModelName(tag) == dmrm.NormalizeModelName(id) {
-				return m.ID, nil
-			}
-		}
 	}
 
 	return "", fmt.Errorf("model with ID %s not found", id)

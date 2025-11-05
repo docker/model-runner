@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,21 +73,12 @@ func listModels(openai bool, desktopClient *desktop.Client, quiet bool, jsonForm
 	}
 
 	if modelFilter != "" {
-		// Normalize the filter to match stored model names (backend normalizes when storing)
-		normalizedFilter := dmrm.NormalizeModelName(modelFilter)
 		var filteredModels []dmrm.Model
 		for _, m := range models {
 			hasMatchingTag := false
 			for _, tag := range m.Tags {
-				// Tags are stored in normalized format by the backend
-				if tag == normalizedFilter {
-					hasMatchingTag = true
-					break
-				}
-				// Also check without the tag part
 				modelName, _, _ := strings.Cut(tag, ":")
-				filterName, _, _ := strings.Cut(normalizedFilter, ":")
-				if modelName == filterName {
+				if slices.Contains([]string{modelName, tag + ":latest", tag}, modelFilter) {
 					hasMatchingTag = true
 					break
 				}
@@ -135,9 +127,8 @@ func prettyPrintModels(models []dmrm.Model) string {
 		}
 
 		for _, tag := range m.Tags {
-			displayName := stripDefaultsFromModelName(tag)
 			rows = append(rows, displayRow{
-				displayName: displayName,
+				displayName: tag,
 				tag:         tag,
 				model:       m,
 			})
@@ -214,8 +205,6 @@ func appendRow(table *tablewriter.Table, tag string, model dmrm.Model) {
 		fmt.Fprintf(os.Stderr, "invalid model ID for model: %v\n", model)
 		return
 	}
-	// Strip default "ai/" prefix and ":latest" tag for display
-	displayTag := stripDefaultsFromModelName(tag)
 	contextSize := ""
 	if model.Config.ContextSize != nil {
 		contextSize = fmt.Sprintf("%d", *model.Config.ContextSize)
@@ -230,7 +219,7 @@ func appendRow(table *tablewriter.Table, tag string, model dmrm.Model) {
 	}
 
 	table.Append([]string{
-		displayTag,
+		tag,
 		model.Config.Parameters,
 		model.Config.Quantization,
 		model.Config.Architecture,
