@@ -637,7 +637,7 @@ func TestIntegration_PushModel(t *testing.T) {
 
 	// Set up custom registry with different alias
 	t.Log("Starting custom OCI registry container...")
-	customRegistryCtr, err := tc.Run(context.Background(), "registry:3",
+	customRegistryCtr, err := tc.Run(t.Context(), "registry:3",
 		network.WithNetwork([]string{"custom-registry.local"}, env.net),
 	)
 	require.NoError(t, err)
