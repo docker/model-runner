@@ -29,6 +29,7 @@ type testEnv struct {
 	ctx         context.Context
 	registryURL string
 	client      *desktop.Client
+	net         *testcontainers.DockerNetwork
 }
 
 // modelInfo contains all the information needed to generate model references
@@ -128,6 +129,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 		ctx:         ctx,
 		registryURL: registryURL,
 		client:      client,
+		net:         net,
 	}
 }
 
@@ -618,6 +620,153 @@ func TestIntegration_TagModel(t *testing.T) {
 	})
 
 	// Cleanup: remove the model
+	t.Logf("Removing model %s", truncatedID)
+	err = removeModel(env.client, modelID)
+	require.NoError(t, err, "Failed to remove model")
+
+	// Verify model was removed
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.Empty(t, strings.TrimSpace(models), "Model should be removed")
+}
+
+// TestIntegration_PushModel tests pushing a model to registries with various reference formats
+// to ensure proper reference normalization and successful push operations.
+func TestIntegration_PushModel(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Set up custom registry with different alias
+	t.Log("Starting custom OCI registry container...")
+	customRegistryCtr, err := tc.Run(context.Background(), "registry:3",
+		network.WithNetwork([]string{"custom-registry.local"}, env.net),
+	)
+	require.NoError(t, err)
+	testcontainers.CleanupContainer(t, customRegistryCtr)
+
+	customRegistryEndpoint, err := customRegistryCtr.Endpoint(t.Context(), "")
+	require.NoError(t, err)
+	customRegistryURL := fmt.Sprintf("http://%s", customRegistryEndpoint)
+	t.Logf("Custom registry available at: %s", customRegistryURL)
+
+	// Ensure no models exist initially
+	models, err := listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	if len(models) != 0 {
+		t.Fatal("Expected no initial models, but found some")
+	}
+
+	// Create and push a test model with default org (ai/tag-test:latest)
+	modelRef := "ai/tag-test:latest"
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
+
+	// Pull the model using a simple reference
+	pullRef := "tag-test"
+	t.Logf("Pulling model with reference: %s", pullRef)
+	err = pullModel(newPullCmd(), env.client, pullRef, true)
+	require.NoError(t, err, "Failed to pull model")
+
+	// Verify the model was pulled
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	truncatedID := modelID[7:19]
+	require.Equal(t, truncatedID, strings.TrimSpace(models), "Model not found after pull")
+
+	// Test 1: Push to default registry with various reference formats
+	t.Run("push to default registry", func(t *testing.T) {
+		// Generate test cases for pushing to default registry
+		pushInfo := modelInfo{
+			name:         "push-test",
+			org:          "ai",
+			tag:          "v1",
+			registry:     "registry.local:5000",
+			modelID:      modelID,
+			digest:       digest,
+			expectedName: "ai/push-test:v1",
+		}
+		testCases := generateReferenceTestCases(pushInfo)
+
+		for _, tc := range testCases {
+			// Skip ID-based or digest-based references for push tests
+			if strings.Contains(tc.name, "model ID") || strings.Contains(tc.name, "digest") {
+				continue
+			}
+
+			t.Run(tc.name, func(t *testing.T) {
+				// First tag the model with the custom registry reference
+				t.Logf("Tagging %s as %s", "tag-test", tc.ref)
+				err := tagModel(newTagCmd(), env.client, "tag-test", tc.ref)
+				require.NoError(t, err, "Failed to tag model for custom registry")
+
+				// Push the tagged model
+				t.Logf("Pushing model to custom registry with reference: %s", tc.ref)
+				_, _, err = env.client.Push(tc.ref, func(msg string) {
+					t.Logf("Progress: %s", msg)
+				})
+				require.NoError(t, err, "Failed to push model to custom registry")
+				t.Logf("✓ Successfully pushed model to custom registry: %s", tc.ref)
+			})
+		}
+	})
+
+	// Test 2: Push to custom registry with explicit registry in reference
+	t.Run("push to custom registry", func(t *testing.T) {
+		customTestCases := []struct {
+			name      string
+			sourceRef string
+			targetRef string
+		}{
+			{
+				name:      "push with custom registry and org",
+				sourceRef: "tag-test",
+				targetRef: "custom-registry.local:5000/ai/push-test:custom",
+			},
+			{
+				name:      "push with custom registry and different org",
+				sourceRef: "tag-test",
+				targetRef: "custom-registry.local:5000/test/push-test:v2",
+			},
+			{
+				name:      "push with custom registry FQDN",
+				sourceRef: "tag-test",
+				targetRef: "custom-registry.local:5000/custom/push-test:latest",
+			},
+		}
+
+		for _, tc := range customTestCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// First tag the model with the custom registry reference
+				t.Logf("Tagging %s as %s", tc.sourceRef, tc.targetRef)
+				err := tagModel(newTagCmd(), env.client, tc.sourceRef, tc.targetRef)
+				require.NoError(t, err, "Failed to tag model for custom registry")
+
+				// Push the tagged model
+				t.Logf("Pushing model to custom registry with reference: %s", tc.targetRef)
+				_, _, err = env.client.Push(tc.targetRef, func(msg string) {
+					t.Logf("Progress: %s", msg)
+				})
+				require.NoError(t, err, "Failed to push model to custom registry")
+				t.Logf("✓ Successfully pushed model to custom registry: %s", tc.targetRef)
+			})
+		}
+	})
+
+	// Test 3: Error cases
+	t.Run("error cases", func(t *testing.T) {
+		t.Run("push non-existent model", func(t *testing.T) {
+			_, _, err := env.client.Push("non-existent-model:v1", func(msg string) {})
+			require.Error(t, err, "Should fail when pushing non-existent model")
+			t.Logf("✓ Correctly failed to push non-existent model: %v", err)
+		})
+
+		t.Run("push with invalid reference", func(t *testing.T) {
+			_, _, err := env.client.Push("", func(msg string) {})
+			require.Error(t, err, "Should fail with empty reference")
+			t.Logf("✓ Correctly failed to push with invalid reference: %v", err)
+		})
+	})
+
+	// Final cleanup: remove the model
 	t.Logf("Removing model %s", truncatedID)
 	err = removeModel(env.client, modelID)
 	require.NoError(t, err, "Failed to remove model")

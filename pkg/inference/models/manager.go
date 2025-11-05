@@ -596,14 +596,13 @@ func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
 
-	// For tag and push actions, we likely expect model references rather than IDs,
-	// so normalize the model name, but we'll handle both cases in the handlers
-	normalizedModel := NormalizeModelName(model)
 	switch action {
 	case "tag":
-		m.handleTagModel(w, r, normalizedModel)
+		// For tag actions, we likely expect model references rather than IDs,
+		// so normalize the model name, but we'll handle both cases in the handlers
+		m.handleTagModel(w, r, NormalizeModelName(model))
 	case "push":
-		m.handlePushModel(w, r, normalizedModel)
+		m.handlePushModel(w, r, model)
 	default:
 		http.Error(w, fmt.Sprintf("unknown action %q", action), http.StatusNotFound)
 	}
