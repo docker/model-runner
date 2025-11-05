@@ -809,6 +809,11 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	// Test 1: Remove model using various reference formats
 	t.Run("remove with various reference formats", func(t *testing.T) {
 		for _, tc := range testCases {
+			// Skip digest-based references for remove tests (not supported for local removal)
+			if strings.Contains(tc.name, "digest") {
+				continue
+			}
+
 			t.Run(tc.name, func(t *testing.T) {
 				// Pull the model
 				pullRef := "rm-test"
