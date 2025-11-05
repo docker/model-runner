@@ -185,8 +185,8 @@ func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.Do
 }
 
 // removeModel removes a model from the local store
-func removeModel(client *desktop.Client, modelID string) error {
-	_, err := client.Remove([]string{modelID}, true)
+func removeModel(client *desktop.Client, modelID string, force bool) error {
+	_, err := client.Remove([]string{modelID}, force)
 	return err
 }
 
@@ -400,7 +400,7 @@ func TestIntegration_PullModel(t *testing.T) {
 
 			// Clean up: remove the model for the next test iteration
 			t.Logf("Removing model %s", truncatedID)
-			err = removeModel(env.client, tc.expectedModelID)
+			err = removeModel(env.client, tc.expectedModelID, true)
 			require.NoError(t, err, "Failed to remove model")
 		})
 	}
@@ -456,7 +456,7 @@ func TestIntegration_InspectModel(t *testing.T) {
 
 	// Cleanup: remove the model
 	t.Logf("Removing model %s", truncatedID)
-	err = removeModel(env.client, modelID)
+	err = removeModel(env.client, modelID, true)
 	require.NoError(t, err, "Failed to remove model")
 
 	// Verify model was removed
@@ -621,7 +621,7 @@ func TestIntegration_TagModel(t *testing.T) {
 
 	// Cleanup: remove the model
 	t.Logf("Removing model %s", truncatedID)
-	err = removeModel(env.client, modelID)
+	err = removeModel(env.client, modelID, true)
 	require.NoError(t, err, "Failed to remove model")
 
 	// Verify model was removed
@@ -768,7 +768,7 @@ func TestIntegration_PushModel(t *testing.T) {
 
 	// Final cleanup: remove the model
 	t.Logf("Removing model %s", truncatedID)
-	err = removeModel(env.client, modelID)
+	err = removeModel(env.client, modelID, true)
 	require.NoError(t, err, "Failed to remove model")
 
 	// Verify model was removed
@@ -829,7 +829,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 				// Remove using the test case reference
 				t.Logf("Removing model with reference: %s", tc.ref)
-				err = removeModel(env.client, tc.ref)
+				err = removeModel(env.client, tc.ref, true)
 				require.NoError(t, err, "Failed to remove model with reference: %s", tc.ref)
 
 				// Verify model is removed
@@ -902,7 +902,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 		// Remove one specific tag (v1)
 		t.Logf("Removing only the v1 tag")
-		err = removeModel(env.client, "rm-test:v1")
+		err = removeModel(env.client, "rm-test:v1", false)
 		require.NoError(t, err, "Failed to remove v1 tag")
 
 		// Verify the model still exists with remaining tags
@@ -936,7 +936,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		t.Logf("✓ Successfully removed specific tag while keeping others")
 
 		// Cleanup: remove the entire model
-		err = removeModel(env.client, modelID)
+		err = removeModel(env.client, modelID, false)
 		require.NoError(t, err, "Failed to cleanup model")
 	})
 
@@ -964,21 +964,11 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 		// Remove by model ID (should remove entire model and all tags)
 		t.Logf("Removing by model ID: %s", modelID)
-		err = removeModel(env.client, modelID)
-		require.NoError(t, err, "Failed to remove by model ID")
-
-		// Verify the entire model is gone
-		models, err := listModels(false, env.client, true, false, "")
-		require.NoError(t, err)
-		require.Empty(t, strings.TrimSpace(models), "Model should be completely removed when removed by ID")
-
-		// Verify we can't inspect by any of the previous tags
-		_, err = env.client.Inspect("rm-test:tag1", false)
-		require.Error(t, err, "Should fail to inspect removed tag1")
-		_, err = env.client.Inspect("rm-test:tag2", false)
-		require.Error(t, err, "Should fail to inspect removed tag2")
-
-		t.Logf("✓ Successfully removed entire model and all tags by model ID")
+		err = removeModel(env.client, modelID, false)
+		if !strings.Contains(err.Error(), "(must be forced) due to multiple tag references") {
+			t.Fatalf("Expected error about multiple tag references when removing by ID without force, got: %v", err)
+		}
+		require.Error(t, err, "(must be forced) due to multiple tag references")
 	})
 
 	// Test 5: Force flag behavior
@@ -990,7 +980,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 		// Test removal with force flag
 		t.Logf("Removing model with force flag")
-		_, err = env.client.Remove([]string{"rm-test"}, true)
+		err = removeModel(env.client, modelID, true)
 		require.NoError(t, err, "Failed to remove with force flag")
 
 		// Verify model is removed
@@ -1004,7 +994,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	// Test 6: Error cases
 	t.Run("error cases", func(t *testing.T) {
 		t.Run("remove non-existent model", func(t *testing.T) {
-			err := removeModel(env.client, "non-existent-model:v1")
+			err := removeModel(env.client, "non-existent-model:v1", false)
 			require.Error(t, err, "Should fail when removing non-existent model")
 			t.Logf("✓ Correctly failed to remove non-existent model: %v", err)
 		})
@@ -1016,7 +1006,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		})
 
 		t.Run("remove with invalid reference", func(t *testing.T) {
-			err := removeModel(env.client, "invalid:reference:format")
+			err := removeModel(env.client, "invalid:reference:format", false)
 			require.Error(t, err, "Should fail with invalid reference format")
 			t.Logf("✓ Correctly failed to remove with invalid reference: %v", err)
 		})
