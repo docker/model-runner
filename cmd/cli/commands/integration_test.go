@@ -693,7 +693,7 @@ func TestIntegration_PushModel(t *testing.T) {
 			}
 
 			t.Run(tc.name, func(t *testing.T) {
-				// First tag the model with the custom registry reference
+				// First tag the model with the desired reference
 				t.Logf("Tagging %s as %s", "tag-test", tc.ref)
 				err := tagModel(newTagCmd(), env.client, "tag-test", tc.ref)
 				require.NoError(t, err, "Failed to tag model for custom registry")
