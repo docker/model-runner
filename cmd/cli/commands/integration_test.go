@@ -806,7 +806,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	}
 	testCases := generateReferenceTestCases(info)
 
-	// Test 1: Remove model using various reference formats
+	// Remove model using various reference formats
 	t.Run("remove with various reference formats", func(t *testing.T) {
 		for _, tc := range testCases {
 			// Skip digest-based references for remove tests (not supported for local removal)
@@ -829,7 +829,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 				// Remove using the test case reference
 				t.Logf("Removing model with reference: %s", tc.ref)
-				err = removeModel(env.client, tc.ref, true)
+				err = removeModel(env.client, tc.ref, false)
 				require.NoError(t, err, "Failed to remove model with reference: %s", tc.ref)
 
 				// Verify model is removed
@@ -842,7 +842,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		}
 	})
 
-	// Test 2: Remove multiple models in one command
+	// Remove multiple models in one command
 	t.Run("remove multiple models", func(t *testing.T) {
 		// Create and push two different models
 		modelRef1 := "ai/rm-multi-1:latest"
@@ -878,7 +878,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		t.Logf("✓ Successfully removed multiple models in one command")
 	})
 
-	// Test 3: Tag-specific removal (removing one tag keeps others)
+	// Tag-specific removal (removing one tag keeps others)
 	t.Run("remove specific tag keeps other tags", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
@@ -940,7 +940,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		require.NoError(t, err, "Failed to cleanup model")
 	})
 
-	// Test 4: Model ID removal removes all tags
+	// Model ID removal removes all tags
 	t.Run("remove by model ID removes all tags", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
@@ -971,7 +971,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		require.Error(t, err, "(must be forced) due to multiple tag references")
 	})
 
-	// Test 5: Force flag behavior
+	// Force flag behavior
 	t.Run("force flag", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
@@ -991,10 +991,16 @@ func TestIntegration_RemoveModel(t *testing.T) {
 		t.Logf("✓ Successfully removed model with force flag")
 	})
 
-	// Test 6: Error cases
+	// Error cases
 	t.Run("error cases", func(t *testing.T) {
 		t.Run("remove non-existent model", func(t *testing.T) {
 			err := removeModel(env.client, "non-existent-model:v1", false)
+			require.Error(t, err, "Should fail when removing non-existent model")
+			t.Logf("✓ Correctly failed to remove non-existent model: %v", err)
+		})
+
+		t.Run("force remove non-existent model", func(t *testing.T) {
+			err := removeModel(env.client, "non-existent-model:v1", true)
 			require.Error(t, err, "Should fail when removing non-existent model")
 			t.Logf("✓ Correctly failed to remove non-existent model: %v", err)
 		})
