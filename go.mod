@@ -3,7 +3,7 @@ module github.com/docker/model-runner
 go 1.24.0
 
 require (
-	github.com/containerd/containerd/v2 v2.1.4
+	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containerd/platforms v1.0.0-rc.1
 	github.com/docker/go-units v0.5.0
 	github.com/elastic/go-sysinfo v1.15.4
