@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,9 +22,9 @@ import (
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/common"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
-	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/sandbox"
 	"github.com/docker/model-runner/pkg/tailbuffer"
@@ -149,8 +148,8 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		}
 	}
 
-	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		l.log.Warnf("failed to remove socket file %s: %w\n", socket, err)
+	if err := common.HandleSocketCleanup(socket); err != nil {
+		l.log.Warnf("failed to remove socket file %s: %v\n", socket, err)
 		l.log.Warnln("llama.cpp may not be able to start")
 	}
 
@@ -177,12 +176,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		}
 	}
 
-	// Sanitize args for safe logging
-	sanitizedArgs := make([]string, len(args))
-	for i, arg := range args {
-		sanitizedArgs[i] = utils.SanitizeForLog(arg)
-	}
-	l.log.Infof("llamaCppArgs: %v", sanitizedArgs)
+	common.SanitizedArgsLog(l.log, "llamaCppArgs", args)
 	tailBuf := tailbuffer.NewTailBuffer(1024)
 	serverLogStream := l.serverLog.Writer()
 	out := io.MultiWriter(serverLogStream, tailBuf)
@@ -210,24 +204,11 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 
 	llamaCppErrors := make(chan error, 1)
 	go func() {
-		llamaCppErr := llamaCppSandbox.Command().Wait()
-		serverLogStream.Close()
-
-		errOutput := new(strings.Builder)
-		if _, err := io.Copy(errOutput, tailBuf); err != nil {
-			l.log.Warnf("failed to read server output tail: %w", err)
-		}
-
-		if len(errOutput.String()) != 0 {
-			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w\nwith output: %s", llamaCppErr, errOutput.String())
-		} else {
-			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w", llamaCppErr)
-		}
-
+		llamaCppErr := common.ProcessExitHandler(l.log, llamaCppSandbox, tailBuf, serverLogStream, socket)
 		llamaCppErrors <- llamaCppErr
 		close(llamaCppErrors)
-		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			l.log.Warnf("failed to remove socket file %s on exit: %w\n", socket, err)
+		if err := common.HandleSocketCleanup(socket); err != nil {
+			l.log.Warnf("failed to remove socket file %s on exit: %v\n", socket, err)
 		}
 	}()
 	defer func() {

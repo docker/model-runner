@@ -17,9 +17,9 @@ import (
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/common"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
-	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/sandbox"
 	"github.com/docker/model-runner/pkg/tailbuffer"
@@ -118,7 +118,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		}
 	}
 
-	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := common.HandleSocketCleanup(socket); err != nil {
 		v.log.Warnf("failed to remove socket file %s: %v\n", socket, err)
 		v.log.Warnln("vLLM may not be able to start")
 	}
@@ -151,12 +151,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 
 	args = append(args, "--served-model-name", model, modelRef)
 
-	// Sanitize args for safe logging
-	sanitizedArgs := make([]string, len(args))
-	for i, arg := range args {
-		sanitizedArgs[i] = utils.SanitizeForLog(arg)
-	}
-	v.log.Infof("vLLM args: %v", sanitizedArgs)
+	common.SanitizedArgsLog(v.log, "vLLM args", args)
 	tailBuf := tailbuffer.NewTailBuffer(1024)
 	serverLogStream := v.serverLog.Writer()
 	out := io.MultiWriter(serverLogStream, tailBuf)
@@ -184,23 +179,10 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 
 	vllmErrors := make(chan error, 1)
 	go func() {
-		vllmErr := vllmSandbox.Command().Wait()
-		serverLogStream.Close()
-
-		errOutput := new(strings.Builder)
-		if _, err := io.Copy(errOutput, tailBuf); err != nil {
-			v.log.Warnf("failed to read server output tail: %v", err)
-		}
-
-		if len(errOutput.String()) != 0 {
-			vllmErr = fmt.Errorf("vLLM exit status: %w\nwith output: %s", vllmErr, errOutput.String())
-		} else {
-			vllmErr = fmt.Errorf("vLLM exit status: %w", vllmErr)
-		}
-
+		vllmErr := common.ProcessExitHandler(v.log, vllmSandbox, tailBuf, serverLogStream, socket)
 		vllmErrors <- vllmErr
 		close(vllmErrors)
-		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := common.HandleSocketCleanup(socket); err != nil {
 			v.log.Warnf("failed to remove socket file %s on exit: %v\n", socket, err)
 		}
 	}()
