@@ -59,6 +59,13 @@ class SemanticSearch {
       throw new Error('Vectors must have the same length');
     }
 
+    // Validate that all elements are finite numbers
+    for (let i = 0; i < vecA.length; i++) {
+      if (!Number.isFinite(vecA[i]) || !Number.isFinite(vecB[i])) {
+        throw new Error('Vectors must not contain NaN or infinite values');
+      }
+    }
+
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
