@@ -1,11 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs').promises;
 const SemanticSearch = require('./search');
 const CodebaseIndexer = require('./indexer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configuration
+const PREGENERATED_INDEX_URL = 'https://gist.githubusercontent.com/ilopezluna/92d9ef10f6a1129167c0b50a46891e26/raw/9b985b5e14cb01a6e565ef43277a17062a214fce/gistfile1.txt';
+const INDEX_PATH = path.join(__dirname, 'embeddings-index.json');
 
 // Middleware
 app.use(cors());
@@ -124,7 +129,7 @@ app.post('/api/index/rebuild', async (req, res) => {
   }
 });
 
-// Utility function
+// Utility functions
 function formatBytes(bytes, decimals = 2) {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
@@ -134,8 +139,52 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+async function downloadPregeneratedIndex() {
+  console.log('No local embeddings index found.');
+  console.log('Downloading pre-generated index from GitHub Gist...');
+  console.log(`URL: ${PREGENERATED_INDEX_URL}`);
+  
+  try {
+    const response = await fetch(PREGENERATED_INDEX_URL);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.text();
+    await fs.writeFile(INDEX_PATH, data, 'utf8');
+    
+    console.log('✓ Pre-generated index downloaded successfully!');
+    console.log(`  Saved to: ${INDEX_PATH}`);
+    
+    // Parse to show stats
+    const index = JSON.parse(data);
+    console.log(`  Files indexed: ${index.metadata.totalFiles}`);
+    console.log(`  Total embeddings: ${index.metadata.totalEmbeddings}`);
+    console.log(`  Generated: ${new Date(index.metadata.generatedAt).toLocaleString()}`);
+    
+    return true;
+  } catch (error) {
+    console.error('✗ Failed to download pre-generated index:', error.message);
+    console.error('  You can manually download it from:');
+    console.error(`  ${PREGENERATED_INDEX_URL}`);
+    console.error('  Or generate your own with: npm run index');
+    return false;
+  }
+}
+
+async function ensureIndexExists() {
+  try {
+    await fs.access(INDEX_PATH);
+    return true; // Index exists
+  } catch (error) {
+    // Index doesn't exist, download it
+    return await downloadPregeneratedIndex();
+  }
+}
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║  Codebase Embeddings Search Server                        ║
@@ -151,15 +200,31 @@ app.listen(PORT, () => {
 ╚════════════════════════════════════════════════════════════╝
   `);
   
-  // Try to load index on startup
-  search.loadIndex()
-    .then(() => {
+  // Ensure index exists (download if needed)
+  const indexReady = await ensureIndexExists();
+  
+  if (indexReady) {
+    // Try to load index
+    try {
+      await search.loadIndex();
       const metadata = search.getMetadata();
       if (metadata) {
-        console.log(`Loaded index with ${metadata.totalEmbeddings} embeddings from ${metadata.totalFiles} files`);
+        console.log(`✓ Index loaded successfully!`);
+        console.log(`  Files indexed: ${metadata.totalFiles}`);
+        console.log(`  Total embeddings: ${metadata.totalEmbeddings}`);
+        console.log(`  Generated: ${new Date(metadata.generatedAt).toLocaleString()}`);
+        console.log();
+        console.log('Ready to search! Open http://localhost:' + PORT + '/index.html');
       }
-    })
-    .catch(() => {
-      console.log('No index found. Run "npm run index" to create one.');
-    });
+    } catch (error) {
+      console.error('Failed to load index:', error.message);
+      console.error('Try running: npm run index');
+    }
+  } else {
+    console.log();
+    console.log('⚠ Server started without an index.');
+    console.log('  To use the demo, you need to either:');
+    console.log('  1. Download the pre-generated index: npm run download-index');
+    console.log('  2. Generate your own index: npm run index');
+  }
 });
