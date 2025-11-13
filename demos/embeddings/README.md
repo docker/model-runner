@@ -4,7 +4,7 @@ This demo application enables semantic search over your codebase using AI embedd
 
 ## Quick Start (Recommended) ⚡
 
-The demo automatically downloads a pre-generated embeddings index from a [GitHub Gist](https://gist.github.com/ilopezluna/92d9ef10f6a1129167c0b50a46891e26) on first run, so you can start searching immediately without waiting for indexing.
+The demo automatically downloads a pre-generated embeddings index from a [GitHub Gist](https://gist.githubusercontent.com/ilopezluna/235518ab315c23275c90c5cddb1375b8/raw/df541734b3f4843f99b8ce34f4cee240addde08f/embeddings-index.json) on first run, so you can start searching immediately without waiting for indexing.
 
 ### Prerequisites
 
