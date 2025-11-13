@@ -112,8 +112,8 @@ class CodebaseIndexer {
       const line = lines[i];
       const lineSize = line.length;
 
-      // Check for function boundaries
-      const isFunctionStart = /^func\s+/.test(line.trim());
+      // Check for function boundaries (matches both functions and methods with receivers)
+      const isFunctionStart = /^func\s*(\([^\)]*\)\s*)?\w+/.test(line.trim());
       
       if (isFunctionStart && currentChunk.length > 0 && currentSize > maxChars * 0.3) {
         // Save current chunk before starting new function
