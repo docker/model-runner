@@ -489,6 +489,22 @@ func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	modelRemoved := ""
 	for _, model := range modelArgs {
 		model = normalizeHuggingFaceModelName(model)
+
+		// Handle digest references (model@sha256:...)
+		// These need to be normalized to include default org if missing
+		if strings.Contains(model, "@") && !strings.Contains(model, "/") {
+			// Split on @ to get repository and digest
+			parts := strings.SplitN(model, "@", 2)
+			if len(parts) == 2 {
+				repo := parts[0]
+				digest := parts[1]
+				// Add default org if the repository doesn't contain a slash
+				if !strings.Contains(repo, "/") {
+					model = fmt.Sprintf("ai/%s@%s", repo, digest)
+				}
+			}
+		}
+
 		// Only expand simple names without tags or digests to model IDs
 		// Tagged references (model:tag) and digest references (model@sha256:...)
 		// should be passed as-is to allow tag-specific operations

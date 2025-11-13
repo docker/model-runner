@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/sirupsen/logrus"
@@ -309,7 +310,11 @@ func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse
 	if err != nil {
 		return &DeleteModelResponse{}, fmt.Errorf("getting model ID: %w", err)
 	}
-	isTag := id != reference
+
+	// Check if this is a digest reference (contains @)
+	// Digest references like "name@sha256:..." should be treated as ID references, not tags
+	isDigestReference := strings.Contains(reference, "@")
+	isTag := id != reference && !isDigestReference
 
 	resp := DeleteModelResponse{}
 
