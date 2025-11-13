@@ -14,13 +14,16 @@ The demo automatically downloads a pre-generated embeddings index from a [GitHub
 ### Installation
 
 ```bash
-# 1. Navigate to the demo directory
+# Pull ai/qwen3-embedding:0.6B-F16
+docker model pull ai/qwen3-embedding:0.6B-F16
+
+# Navigate to the demo directory
 cd demos/embeddings
 
-# 2. Install dependencies
+# Install dependencies
 npm install
 
-# 3. Start the server
+# Start the server
 npm start
 ```
 
