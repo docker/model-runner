@@ -175,9 +175,10 @@ func downloadModelsOnlyIfNotFound(desktopClient *desktop.Client, models []string
 			}
 			return false
 		}) {
-			_, _, err = desktopClient.Pull(model, false, func(s string) {
+			printer := desktop.NewSimplePrinter(func(s string) {
 				_ = sendInfo(s)
 			})
+			_, _, err = desktopClient.Pull(model, false, printer)
 			if err != nil {
 				_ = sendErrorf("Failed to pull model: %v", err)
 				return fmt.Errorf("Failed to pull model: %v\n", err)

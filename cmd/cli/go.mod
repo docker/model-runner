@@ -14,7 +14,6 @@ require (
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
 	github.com/fatih/color v1.18.0
 	github.com/google/go-containerregistry v0.20.6
-	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/moby/term v0.5.2
 	github.com/muesli/termenv v0.16.0
@@ -87,6 +86,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-shellwords v1.0.12 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect

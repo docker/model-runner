@@ -374,7 +374,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 		}
 
 		// Print progress messages
-		TUIProgress(progressMsg.Message)
+		fmt.Print("\r\033[K", progressMsg.Message)
 	}
 	cmd.PrintErrln("") // newline after progress
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/go-units"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
@@ -105,7 +104,7 @@ func (c *Client) Status() Status {
 	}
 }
 
-func (c *Client) Pull(model string, ignoreRuntimeMemoryCheck bool, progress func(string)) (string, bool, error) {
+func (c *Client) Pull(model string, ignoreRuntimeMemoryCheck bool, printer standalone.StatusPrinter) (string, bool, error) {
 	model = normalizeHuggingFaceModelName(model)
 	jsonData, err := json.Marshal(dmrm.ModelCreateRequest{From: model, IgnoreRuntimeMemoryCheck: ignoreRuntimeMemoryCheck})
 	if err != nil {
@@ -128,52 +127,16 @@ func (c *Client) Pull(model string, ignoreRuntimeMemoryCheck bool, progress func
 		return "", false, fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, string(body))
 	}
 
-	progressShown := false
-	current := uint64(0)                     // Track cumulative progress across all layers
-	layerProgress := make(map[string]uint64) // Track progress per layer ID
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		progressLine := scanner.Text()
-		if progressLine == "" {
-			continue
-		}
-
-		// Parse the progress message
-		var progressMsg ProgressMessage
-		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
-			return "", progressShown, fmt.Errorf("error parsing progress message: %w", err)
-		}
-
-		// Handle different message types
-		switch progressMsg.Type {
-		case "progress":
-			// Update the current progress for this layer
-			layerID := progressMsg.Layer.ID
-			layerProgress[layerID] = progressMsg.Layer.Current
-
-			// Sum all layer progress values
-			current = uint64(0)
-			for _, layerCurrent := range layerProgress {
-				current += layerCurrent
-			}
-
-			progress(fmt.Sprintf("Downloaded %s of %s", units.CustomSize("%.2f%s", float64(current), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}), units.CustomSize("%.2f%s", float64(progressMsg.Total), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"})))
-			progressShown = true
-		case "error":
-			return "", progressShown, fmt.Errorf("error pulling model: %s", progressMsg.Message)
-		case "success":
-			return progressMsg.Message, progressShown, nil
-		default:
-			return "", progressShown, fmt.Errorf("unknown message type: %s", progressMsg.Type)
-		}
+	// Use Docker-style progress display
+	message, progressShown, err := DisplayProgress(resp.Body, printer)
+	if err != nil {
+		return "", progressShown, err
 	}
 
-	// If we get here, something went wrong
-	return "", progressShown, fmt.Errorf("unexpected end of stream while pulling model %s", model)
+	return message, progressShown, nil
 }
 
-func (c *Client) Push(model string, progress func(string)) (string, bool, error) {
+func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
 	model = normalizeHuggingFaceModelName(model)
 	pushPath := inference.ModelsPrefix + "/" + model + "/push"
 	resp, err := c.doRequest(
@@ -191,37 +154,13 @@ func (c *Client) Push(model string, progress func(string)) (string, bool, error)
 		return "", false, fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, string(body))
 	}
 
-	progressShown := false
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		progressLine := scanner.Text()
-		if progressLine == "" {
-			continue
-		}
-
-		// Parse the progress message
-		var progressMsg ProgressMessage
-		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
-			return "", progressShown, fmt.Errorf("error parsing progress message: %w", err)
-		}
-
-		// Handle different message types
-		switch progressMsg.Type {
-		case "progress":
-			progress(progressMsg.Message)
-			progressShown = true
-		case "error":
-			return "", progressShown, fmt.Errorf("error pushing model: %s", progressMsg.Message)
-		case "success":
-			return progressMsg.Message, progressShown, nil
-		default:
-			return "", progressShown, fmt.Errorf("unknown message type: %s", progressMsg.Type)
-		}
+	// Use Docker-style progress display
+	message, progressShown, err := DisplayProgress(resp.Body, printer)
+	if err != nil {
+		return "", progressShown, err
 	}
 
-	// If we get here, something went wrong
-	return "", progressShown, fmt.Errorf("unexpected end of stream while pushing model %s", model)
+	return message, progressShown, nil
 }
 
 func (c *Client) List() ([]dmrm.Model, error) {

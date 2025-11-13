@@ -10,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/docker/model-runner/pkg/distribution/transport/resumable"
 	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -87,7 +86,7 @@ func main() {
 		models.ClientConfig{
 			StoreRootPath: modelPath,
 			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			Transport:     resumable.New(baseTransport),
+			Transport:     baseTransport,
 		},
 		nil,
 		memEstimator,
