@@ -157,11 +157,18 @@ func ManifestForLayers(i WithLayers) (*v1.Manifest, error) {
 
 	var layers []v1.Descriptor
 	for _, l := range ls {
-		desc, err := partial.Descriptor(l)
-		if err != nil {
-			return nil, fmt.Errorf("get layer descriptor: %w", err)
+		// Check if this is our Layer type which embeds the full descriptor with annotations
+		if layer, ok := l.(*Layer); ok {
+			// Use the embedded descriptor directly to preserve annotations
+			layers = append(layers, layer.Descriptor)
+		} else {
+			// Fall back to partial.Descriptor for other layer types
+			desc, err := partial.Descriptor(l)
+			if err != nil {
+				return nil, fmt.Errorf("get layer descriptor: %w", err)
+			}
+			layers = append(layers, *desc)
 		}
-		layers = append(layers, *desc)
 	}
 
 	return &v1.Manifest{

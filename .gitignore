@@ -19,3 +19,5 @@ pkg/distribution/bin/
 
 llamacpp/build
 llamacpp/install
+
+.DS_Store

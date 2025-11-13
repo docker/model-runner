@@ -37,6 +37,20 @@ const (
 
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")
+
+	// OCI Annotation keys for model layers
+	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md
+
+	// AnnotationFilePath specifies the file path of the layer (string)
+	AnnotationFilePath = "org.cncf.model.filepath"
+
+	// AnnotationFileMetadata specifies the metadata of the file (string), value is the JSON string of FileMetadata
+	AnnotationFileMetadata = "org.cncf.model.file.metadata+json"
+
+	// AnnotationMediaTypeUntested indicates whether the media type classification of files in the layer is untested (string)
+	// Valid values are "true" or "false". When set to "true", it signals that the model packager has not verified
+	// the media type classification and the type is inferred or assumed based on some heuristics.
+	AnnotationMediaTypeUntested = "org.cncf.model.file.mediatype.untested"
 )
 
 type Format string
@@ -62,4 +76,29 @@ type Config struct {
 // Descriptor provides metadata about the provenance of the model.
 type Descriptor struct {
 	Created *time.Time `json:"created,omitempty"`
+}
+
+// FileMetadata represents the metadata of file, which is the value definition of AnnotationFileMetadata.
+// This follows the OCI image specification for model artifacts.
+type FileMetadata struct {
+	// File name
+	Name string `json:"name"`
+
+	// File permission mode (e.g., Unix permission bits)
+	Mode uint32 `json:"mode"`
+
+	// User ID (identifier of the file owner)
+	Uid uint32 `json:"uid"`
+
+	// Group ID (identifier of the file's group)
+	Gid uint32 `json:"gid"`
+
+	// File size (in bytes)
+	Size int64 `json:"size"`
+
+	// File last modification time
+	ModTime time.Time `json:"mtime"`
+
+	// File type flag (e.g., regular file, directory, etc.)
+	Typeflag byte `json:"typeflag"`
 }

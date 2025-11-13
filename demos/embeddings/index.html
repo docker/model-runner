@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codebase Semantic Search</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .status-bar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .status-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .search-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            border-color: #667eea;
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 20px;
+        }
+
+        .search-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e0e0e0;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .results-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .results-title {
+            font-size: 1.5em;
+            color: #333;
+        }
+
+        .results-count {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .result-item {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .result-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .result-file {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 1.1em;
+            word-break: break-all;
+        }
+
+        .result-similarity {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .result-meta {
+            color: #999;
+            font-size: 0.85em;
+            margin-bottom: 10px;
+        }
+
+        .result-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            color: #1976d2;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .no-results-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .example-queries {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .example-queries h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .example-query {
+            display: inline-block;
+            background: white;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 20px;
+            border: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+        }
+
+        .example-query:hover {
+            border-color: #667eea;
+            background: #f0f5ff;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .status-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .search-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .result-header {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Codebase Semantic Search</h1>
+            <p class="subtitle">Search your codebase using natural language queries powered by AI embeddings</p>
+        </div>
+
+        <div class="status-bar" id="statusBar">
+            <div class="status-content">
+                <div class="status-item">
+                    <span class="status-label">Index Status</span>
+                    <span class="status-value" id="indexStatus">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Files Indexed</span>
+                    <span class="status-value" id="filesIndexed">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Total Embeddings</span>
+                    <span class="status-value" id="totalEmbeddings">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Last Updated</span>
+                    <span class="status-value" id="lastUpdated">-</span>
+                </div>
+                <button class="btn btn-secondary" id="rebuildBtn" onclick="rebuildIndex()">
+                    Rebuild Index
+                </button>
+            </div>
+        </div>
+
+        <div class="search-section">
+            <div class="search-box">
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    class="search-input" 
+                    placeholder="Ask a question about the codebase... (e.g., 'Where is the model ps command?')"
+                    onkeypress="handleKeyPress(event)"
+                >
+                <span class="search-icon">🔍</span>
+            </div>
+            
+            <div class="search-controls">
+                <div class="control-group">
+                    <label for="topK">Results:</label>
+                    <input type="number" id="topK" value="10" min="1" max="50">
+                </div>
+                <button class="btn btn-primary" id="searchBtn" onclick="performSearch()">
+                    Search
+                </button>
+            </div>
+
+            <div class="example-queries">
+                <h4>Example queries:</h4>
+                <span class="example-query" onclick="setQuery('Where is the model ps command?')">
+                    Where is the model ps command?
+                </span>
+                <span class="example-query" onclick="setQuery('How Testcontainers is used?')">
+                    How Testcontainers is used?
+                </span>
+                <span class="example-query" onclick="setQuery('GPU memory handling')">
+                    GPU memory handling
+                </span>
+                <span class="example-query" onclick="setQuery('inference backend implementation')">
+                    Inference backend implementation
+                </span>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-header">
+                <h2 class="results-title">Search Results</h2>
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+            <div id="resultsContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+
+        // Load index status on page load
+        window.addEventListener('load', () => {
+            loadIndexStatus();
+        });
+
+        async function loadIndexStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/index/status`);
+                const data = await response.json();
+
+                if (data.exists) {
+                    document.getElementById('indexStatus').textContent = '✓ Ready';
+                    document.getElementById('indexStatus').style.color = '#4caf50';
+                    document.getElementById('filesIndexed').textContent = data.metadata.totalFiles.toLocaleString();
+                    document.getElementById('totalEmbeddings').textContent = data.metadata.totalEmbeddings.toLocaleString();
+                    
+                    const date = new Date(data.metadata.generatedAt);
+                    document.getElementById('lastUpdated').textContent = date.toLocaleString();
+                } else {
+                    document.getElementById('indexStatus').textContent = '⚠ Not Found';
+                    document.getElementById('indexStatus').style.color = '#ff9800';
+                    showInfo('No index found. Click "Rebuild Index" to create one.');
+                }
+            } catch (error) {
+                document.getElementById('indexStatus').textContent = '✗ Error';
+                document.getElementById('indexStatus').style.color = '#f44336';
+                console.error('Error loading status:', error);
+            }
+        }
+
+        function setQuery(query) {
+            document.getElementById('searchInput').value = query;
+            document.getElementById('searchInput').focus();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        }
+
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const topK = parseInt(document.getElementById('topK').value);
+
+            if (!query) {
+                showError('Please enter a search query');
+                return;
+            }
+
+            // Show loading state
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsSection.style.display = 'block';
+            resultsContainer.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Searching codebase...</p>
+                </div>
+            `;
+
+            // Disable search button
+            const searchBtn = document.getElementById('searchBtn');
+            searchBtn.disabled = true;
+            searchBtn.textContent = 'Searching...';
+
+            try {
+                const response = await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query, topK }),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Search failed');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+            } catch (error) {
+                showError(`Search failed: ${error.message}`);
+                resultsContainer.innerHTML = '';
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.textContent = 'Search';
+            }
+        }
+
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('resultsContainer');
+            const resultsCount = document.getElementById('resultsCount');
+
+            resultsCount.textContent = `${data.count} result${data.count !== 1 ? 's' : ''} found`;
+
+            if (data.results.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <div class="no-results-icon">🔍</div>
+                        <h3>No results found</h3>
+                        <p>Try a different query or rebuild the index</p>
+                    </div>
+                `;
+                return;
+            }
+
+            resultsContainer.innerHTML = data.results.map((result, index) => `
+                <div class="result-item">
+                    <div class="result-header">
+                        <div class="result-file">${result.filePath}</div>
+                        <div class="result-similarity">${(result.similarity * 100).toFixed(1)}%</div>
+                    </div>
+                    <div class="result-meta">
+                        Lines ${result.startLine}-${result.endLine} | ${result.fileType}
+                    </div>
+                    <div class="result-content">${escapeHtml(result.content.substring(0, 500))}${result.content.length > 500 ? '...' : ''}</div>
+                </div>
+            `).join('');
+        }
+
+        async function rebuildIndex() {
+            if (!confirm('Rebuilding the index may take several minutes. Continue?')) {
+                return;
+            }
+
+            const rebuildBtn = document.getElementById('rebuildBtn');
+            rebuildBtn.disabled = true;
+            rebuildBtn.textContent = 'Indexing...';
+
+            showInfo('Indexing started. This may take several minutes. Check the server console for progress.');
+
+            try {
+                const response = await fetch(`${API_BASE}/index/rebuild`, {
+                    method: 'POST',
+                });
+
+                const data = await response.json();
+                
+                // Poll for completion
+                const pollInterval = setInterval(async () => {
+                    const status = await fetch(`${API_BASE}/index/status`);
+                    const statusData = await status.json();
+                    
+                    if (statusData.exists) {
+                        clearInterval(pollInterval);
+                        loadIndexStatus();
+                        rebuildBtn.disabled = false;
+                        rebuildBtn.textContent = 'Rebuild Index';
+                        showInfo('Index rebuilt successfully!');
+                    }
+                }, 5000);
+
+                // Stop polling after 30 minutes
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                    rebuildBtn.disabled = false;
+                    rebuildBtn.textContent = 'Rebuild Index';
+                }, 30 * 60 * 1000);
+            } catch (error) {
+                showError(`Failed to start indexing: ${error.message}`);
+                rebuildBtn.disabled = false;
+                rebuildBtn.textContent = 'Rebuild Index';
+            }
+        }
+
+        function showError(message) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsSection.style.display = 'block';
+            resultsContainer.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function showInfo(message) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsSection.style.display = 'block';
+            resultsContainer.innerHTML = `<div class="info">${message}</div>`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
