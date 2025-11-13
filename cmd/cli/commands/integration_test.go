@@ -935,8 +935,8 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 		t.Logf("✓ Successfully removed specific tag while keeping others")
 
-		// Cleanup: remove the entire model
-		err = removeModel(env.client, modelID, false)
+		// Cleanup: remove the entire model (force=true since multiple tags remain)
+		err = removeModel(env.client, modelID, true)
 		require.NoError(t, err, "Failed to cleanup model")
 	})
 

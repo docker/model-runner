@@ -489,8 +489,10 @@ func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	modelRemoved := ""
 	for _, model := range modelArgs {
 		model = normalizeHuggingFaceModelName(model)
-		// Check if not a model ID passed as parameter.
-		if !strings.Contains(model, "/") {
+		// Only expand simple names without tags or digests to model IDs
+		// Tagged references (model:tag) and digest references (model@sha256:...)
+		// should be passed as-is to allow tag-specific operations
+		if !strings.Contains(model, "/") && !strings.Contains(model, ":") && !strings.Contains(model, "@") {
 			if expanded, err := c.fullModelID(model); err == nil {
 				model = expanded
 			}
