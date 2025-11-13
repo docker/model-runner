@@ -71,5 +71,5 @@ npm start
 
 - [Docker Model Runner Documentation](https://docs.docker.com/ai/model-runner/)
 - [Embedding Models on Docker Hub](https://hub.docker.com/u/ai?page=1&search=embed)
-- [Pre-generated Index Gist](https://gist.github.com/ilopezluna/92d9ef10f6a1129167c0b50a46891e26)
+- [Pre-generated Index Gist](https://gist.githubusercontent.com/ilopezluna/235518ab315c23275c90c5cddb1375b8/raw/df541734b3f4843f99b8ce34f4cee240addde08f/embeddings-index.json)
 - [Cosine Similarity Explanation](https://en.wikipedia.org/wiki/Cosine_similarity)
