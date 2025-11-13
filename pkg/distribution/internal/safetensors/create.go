@@ -63,17 +63,19 @@ func NewModel(paths []string) (*Model, error) {
 
 	created := time.Now()
 	return &Model{
-		configFile: types.ConfigFile{
-			Config: config,
-			Descriptor: types.Descriptor{
-				Created: &created,
+		BaseModel: partial.BaseModel{
+			ModelConfigFile: types.ConfigFile{
+				Config: config,
+				Descriptor: types.Descriptor{
+					Created: &created,
+				},
+				RootFS: v1.RootFS{
+					Type:    "rootfs",
+					DiffIDs: diffIDs,
+				},
 			},
-			RootFS: v1.RootFS{
-				Type:    "rootfs",
-				DiffIDs: diffIDs,
-			},
+			LayerList: layers,
 		},
-		layers: layers,
 	}, nil
 }
 

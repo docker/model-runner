@@ -25,7 +25,7 @@ func newRequestsCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 

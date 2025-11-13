@@ -19,22 +19,3 @@ var (
 	ErrUnsupportedFormat = errors.New("safetensors models are not currently supported - this runner only supports GGUF format models")
 	ErrConflict          = errors.New("resource conflict")
 )
-
-// ReferenceError represents an error related to an invalid model reference
-type ReferenceError struct {
-	Reference string
-	Err       error
-}
-
-func (e *ReferenceError) Error() string {
-	return fmt.Sprintf("invalid model reference %q: %v", e.Reference, e.Err)
-}
-
-func (e *ReferenceError) Unwrap() error {
-	return e.Err
-}
-
-// Is implements error matching for ReferenceError
-func (e *ReferenceError) Is(target error) bool {
-	return target == ErrInvalidReference
-}

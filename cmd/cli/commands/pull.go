@@ -17,18 +17,9 @@ func newPullCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "pull MODEL",
 		Short: "Pull a model from Docker Hub or HuggingFace to your local environment",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return fmt.Errorf(
-					"'docker model pull' requires 1 argument.\n\n" +
-						"Usage:  docker model pull MODEL\n\n" +
-						"See 'docker model pull --help' for more information",
-				)
-			}
-			return nil
-		},
+		Args: requireExactArgs(1, "pull", "MODEL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 			return pullModel(cmd, desktopClient, args[0], ignoreRuntimeMemoryCheck)

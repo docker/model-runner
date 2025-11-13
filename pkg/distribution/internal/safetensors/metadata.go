@@ -183,13 +183,14 @@ func (h *Header) ExtractMetadata() map[string]string {
 	return metadata
 }
 
-// formatParameters converts parameter count to human-readable format matching GGUF style
-// Returns format like "361.82 M" or "1.5 B" (space before unit, base 1000, where B = Billion)
+// formatParameters converts parameter count to human-readable format
+// Returns format like "361.82M" or "1.5B" (no space before unit, base 1000, where B = Billion)
 func formatParameters(params int64) string {
-	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", " K", " M", " B", " T"})
+	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", "K", "M", "B", "T"})
 }
 
-// formatSize converts bytes to human-readable format
+// formatSize converts bytes to human-readable format matching Docker's style
+// Returns format like "256MB" (decimal units, no space, matching `docker images`)
 func formatSize(bytes int64) string {
-	return units.HumanSizeWithPrecision(float64(bytes), 2)
+	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }

@@ -35,13 +35,8 @@ func newPackagedCmd() *cobra.Command {
 			"When packaging a Safetensors model, --safetensors-dir should point to a directory containing .safetensors files and config files (*.json, merges.txt). All files will be auto-discovered and config files will be packaged into a tar archive.\n" +
 			"When packaging from an existing model using --from, you can modify properties like context size to create a variant of the original model.",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return fmt.Errorf(
-					"'docker model package' requires 1 argument.\n\n"+
-						"Usage:  docker model %s\n\n"+
-						"See 'docker model package --help' for more information",
-					cmd.Use,
-				)
+			if err := requireExactArgs(1, "package", "MODEL")(cmd, args); err != nil {
+				return err
 			}
 
 			// Validate that exactly one of --gguf, --safetensors-dir, or --from is provided (mutually exclusive)

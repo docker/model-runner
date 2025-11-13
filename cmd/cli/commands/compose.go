@@ -51,7 +51,7 @@ func newUpCommand() *cobra.Command {
 
 			sendInfo("Initializing model runner...")
 			kind := modelRunner.EngineKind()
-			standalone, err := ensureStandaloneRunnerAvailable(cmd.Context(), nil)
+			standalone, err := ensureStandaloneRunnerAvailable(cmd.Context(), nil, false)
 			if err != nil {
 				_ = sendErrorf("Failed to initialize standalone model runner: %v", err)
 				return fmt.Errorf("Failed to initialize standalone model runner: %w", err)

@@ -5,24 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
-	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
-	"github.com/docker/model-runner/pkg/sandbox"
-	"github.com/docker/model-runner/pkg/tailbuffer"
 )
 
 const (
@@ -118,11 +113,6 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		}
 	}
 
-	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		v.log.Warnf("failed to remove socket file %s: %v\n", socket, err)
-		v.log.Warnln("vLLM may not be able to start")
-	}
-
 	args, err := v.config.GetArgs(bundle, socket, mode, backendConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get vLLM arguments: %w", err)
@@ -151,74 +141,16 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 
 	args = append(args, "--served-model-name", model, modelRef)
 
-	// Sanitize args for safe logging
-	sanitizedArgs := make([]string, len(args))
-	for i, arg := range args {
-		sanitizedArgs[i] = utils.SanitizeForLog(arg)
-	}
-	v.log.Infof("vLLM args: %v", sanitizedArgs)
-	tailBuf := tailbuffer.NewTailBuffer(1024)
-	serverLogStream := v.serverLog.Writer()
-	out := io.MultiWriter(serverLogStream, tailBuf)
-	vllmSandbox, err := sandbox.Create(
-		ctx,
-		"",
-		func(command *exec.Cmd) {
-			command.Cancel = func() error {
-				if runtime.GOOS == "windows" {
-					return command.Process.Kill()
-				}
-				return command.Process.Signal(os.Interrupt)
-			}
-			command.Stdout = serverLogStream
-			command.Stderr = out
-		},
-		vllmDir,
-		v.binaryPath(),
-		args...,
-	)
-	if err != nil {
-		return fmt.Errorf("unable to start vLLM: %w", err)
-	}
-	defer vllmSandbox.Close()
-
-	vllmErrors := make(chan error, 1)
-	go func() {
-		vllmErr := vllmSandbox.Command().Wait()
-		serverLogStream.Close()
-
-		errOutput := new(strings.Builder)
-		if _, err := io.Copy(errOutput, tailBuf); err != nil {
-			v.log.Warnf("failed to read server output tail: %v", err)
-		}
-
-		if len(errOutput.String()) != 0 {
-			vllmErr = fmt.Errorf("vLLM exit status: %w\nwith output: %s", vllmErr, errOutput.String())
-		} else {
-			vllmErr = fmt.Errorf("vLLM exit status: %w", vllmErr)
-		}
-
-		vllmErrors <- vllmErr
-		close(vllmErrors)
-		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			v.log.Warnf("failed to remove socket file %s on exit: %v\n", socket, err)
-		}
-	}()
-	defer func() {
-		<-vllmErrors
-	}()
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case vllmErr := <-vllmErrors:
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		return fmt.Errorf("vLLM terminated unexpectedly: %w", vllmErr)
-	}
+	return backends.RunBackend(ctx, backends.RunnerConfig{
+		BackendName:     "vLLM",
+		Socket:          socket,
+		BinaryPath:      v.binaryPath(),
+		SandboxPath:     vllmDir,
+		SandboxConfig:   "",
+		Args:            args,
+		Logger:          v.log,
+		ServerLogWriter: v.serverLog.Writer(),
+	})
 }
 
 func (v *vLLM) Status() string {

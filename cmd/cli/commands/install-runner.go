@@ -78,7 +78,7 @@ func inspectStandaloneRunner(container container.Summary) *standaloneRunner {
 // ensureStandaloneRunnerAvailable is a utility function that other commands can
 // use to initialize a default standalone model runner. It is a no-op in
 // unsupported contexts or if automatic installs have been disabled.
-func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.StatusPrinter) (*standaloneRunner, error) {
+func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.StatusPrinter, debug bool) (*standaloneRunner, error) {
 	// If we're not in a supported model runner context, then don't do anything.
 	engineKind := modelRunner.EngineKind()
 	standaloneSupported := engineKind == types.ModelRunnerEngineKindMoby ||
@@ -138,7 +138,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind); err != nil {
+if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -175,7 +175,7 @@ type runnerOptions struct {
 }
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
-func runInstallOrStart(cmd *cobra.Command, opts runnerOptions) error {
+func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error {
 	// Ensure that we're running in a supported model runner context.
 	engineKind := modelRunner.EngineKind()
 	if engineKind == types.ModelRunnerEngineKindDesktop {
@@ -282,7 +282,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions) error {
 		return fmt.Errorf("unable to initialize standalone model storage: %w", err)
 	}
 	// Create the model runner container.
-	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind); err != nil {
+	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind, debug); err != nil {
 		return fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -296,6 +296,7 @@ func newInstallRunner() *cobra.Command {
 	var gpuMode string
 	var backend string
 	var doNotTrack bool
+	var debug bool
 	c := &cobra.Command{
 		Use:   "install-runner",
 		Short: "Install Docker Model Runner (Docker Engine only)",
@@ -308,15 +309,17 @@ func newInstallRunner() *cobra.Command {
 				doNotTrack:      doNotTrack,
 				pullImage:       true,
 				pruneContainers: false,
-			})
+			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
-	c.Flags().Uint16Var(&port, "port", 0,
-		"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
-	c.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
-	c.Flags().StringVar(&gpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|rocm|musa|cann)")
-	c.Flags().StringVar(&backend, "backend", "", backendUsage)
-	c.Flags().BoolVar(&doNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
+	addRunnerFlags(c, runnerFlagOptions{
+		Port:       &port,
+		Host:       &host,
+		GpuMode:    &gpuMode,
+		Backend:    &backend,
+		DoNotTrack: &doNotTrack,
+		Debug:      &debug,
+	})
 	return c
 }

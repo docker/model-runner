@@ -32,8 +32,8 @@ func TestGGUF(t *testing.T) {
 			if cfg.Quantization != "Unknown" { // todo: testdata with a real value
 				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
 			}
-			if cfg.Size != "864 B" {
-				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
+			if cfg.Size != "864B" {
+				t.Fatalf("Unexpected size: got %s expected %s", cfg.Size, "864B")
 			}
 
 			// Test GGUF metadata
@@ -118,8 +118,8 @@ func TestGGUFShards(t *testing.T) {
 			if cfg.Quantization != "Unknown" { // todo: testdata with a real value
 				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
 			}
-			if cfg.Size != "864 B" {
-				t.Fatalf("Unexpected quantization: got %s expected %s", cfg.Quantization, "Unknown")
+			if cfg.Size != "864B" {
+				t.Fatalf("Unexpected size: got %s expected %s", cfg.Size, "864B")
 			}
 
 			// Test GGUF metadata

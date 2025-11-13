@@ -6,10 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -23,12 +20,11 @@ import (
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
-	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/sandbox"
-	"github.com/docker/model-runner/pkg/tailbuffer"
 )
 
 const (
@@ -149,11 +145,6 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		}
 	}
 
-	if err := os.RemoveAll(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		l.log.Warnf("failed to remove socket file %s: %w\n", socket, err)
-		l.log.Warnln("llama.cpp may not be able to start")
-	}
-
 	binPath := l.vendoredServerStoragePath
 	if l.updatedLlamaCpp {
 		binPath = l.updatedServerStoragePath
@@ -177,74 +168,16 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		}
 	}
 
-	// Sanitize args for safe logging
-	sanitizedArgs := make([]string, len(args))
-	for i, arg := range args {
-		sanitizedArgs[i] = utils.SanitizeForLog(arg)
-	}
-	l.log.Infof("llamaCppArgs: %v", sanitizedArgs)
-	tailBuf := tailbuffer.NewTailBuffer(1024)
-	serverLogStream := l.serverLog.Writer()
-	out := io.MultiWriter(serverLogStream, tailBuf)
-	llamaCppSandbox, err := sandbox.Create(
-		ctx,
-		sandbox.ConfigurationLlamaCpp,
-		func(command *exec.Cmd) {
-			command.Cancel = func() error {
-				if runtime.GOOS == "windows" {
-					return command.Process.Kill()
-				}
-				return command.Process.Signal(os.Interrupt)
-			}
-			command.Stdout = serverLogStream
-			command.Stderr = out
-		},
-		binPath,
-		filepath.Join(binPath, "com.docker.llama-server"),
-		args...,
-	)
-	if err != nil {
-		return fmt.Errorf("unable to start llama.cpp: %w", err)
-	}
-	defer llamaCppSandbox.Close()
-
-	llamaCppErrors := make(chan error, 1)
-	go func() {
-		llamaCppErr := llamaCppSandbox.Command().Wait()
-		serverLogStream.Close()
-
-		errOutput := new(strings.Builder)
-		if _, err := io.Copy(errOutput, tailBuf); err != nil {
-			l.log.Warnf("failed to read server output tail: %w", err)
-		}
-
-		if len(errOutput.String()) != 0 {
-			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w\nwith output: %s", llamaCppErr, errOutput.String())
-		} else {
-			llamaCppErr = fmt.Errorf("llama.cpp exit status: %w", llamaCppErr)
-		}
-
-		llamaCppErrors <- llamaCppErr
-		close(llamaCppErrors)
-		if err := os.Remove(socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			l.log.Warnf("failed to remove socket file %s on exit: %w\n", socket, err)
-		}
-	}()
-	defer func() {
-		<-llamaCppErrors
-	}()
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case llamaCppErr := <-llamaCppErrors:
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		return fmt.Errorf("llama.cpp terminated unexpectedly: %w", llamaCppErr)
-	}
+	return backends.RunBackend(ctx, backends.RunnerConfig{
+		BackendName:     "llama.cpp",
+		Socket:          socket,
+		BinaryPath:      filepath.Join(binPath, "com.docker.llama-server"),
+		SandboxPath:     binPath,
+		SandboxConfig:   sandbox.ConfigurationLlamaCpp,
+		Args:            args,
+		Logger:          l.log,
+		ServerLogWriter: l.serverLog.Writer(),
+	})
 }
 
 func (l *llamaCpp) Status() string {

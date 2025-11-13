@@ -15,6 +15,16 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: debug
+      value_type: bool
+      default_value: "false"
+      description: Enable debug logging
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: do-not-track
       value_type: bool
       default_value: "false"
