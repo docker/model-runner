@@ -8,7 +8,7 @@ const CONFIG = {
   projectRoot: path.resolve(__dirname, '../..'),
   embeddingsAPI: 'http://localhost:12434/engines/llama.cpp/v1/embeddings',
   model: 'ai/qwen3-embedding:0.6B-F16',
-  maxChunkSize: 100, // tokens (approximate by characters/4)
+  maxChunkSize: 300, // Max tokens per chunk
   outputFile: path.join(__dirname, 'embeddings-index.json'),
   batchSize: 5, // Process N files at a time to avoid overwhelming API
   fileExtensions: ['.go'], // Only index Go files

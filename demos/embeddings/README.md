@@ -26,7 +26,7 @@ npm start
 
 The server will automatically:
 1. Check if an embeddings index exists locally
-2. If not found, download the pre-generated index from the Gist (~15 MB)
+2. If not found, download the pre-generated index from the Gist
 3. Load the index and start the server
 4. Open your browser to http://localhost:3000
 

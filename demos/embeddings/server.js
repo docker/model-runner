@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Configuration
-const PREGENERATED_INDEX_URL = 'https://gist.githubusercontent.com/ilopezluna/92d9ef10f6a1129167c0b50a46891e26/raw/9b985b5e14cb01a6e565ef43277a17062a214fce/gistfile1.txt';
+const PREGENERATED_INDEX_URL = 'https://gist.githubusercontent.com/ilopezluna/235518ab315c23275c90c5cddb1375b8/raw/df541734b3f4843f99b8ce34f4cee240addde08f/embeddings-index.json';
 const INDEX_PATH = path.join(__dirname, 'embeddings-index.json');
 
 // Middleware
