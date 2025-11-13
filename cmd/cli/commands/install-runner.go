@@ -21,7 +21,7 @@ import (
 const (
 	// installWaitTries controls how many times the automatic installation will
 	// try to reach the model runner while waiting for it to be ready.
-	installWaitTries = 20
+	installWaitTries = 60
 	// installWaitRetryInterval controls the interval at which automatic
 	// installation will try to reach the model runner while waiting for it to
 	// be ready.
@@ -138,7 +138,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug); err != nil {
+	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
