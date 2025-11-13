@@ -16,18 +16,9 @@ func newInspectCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "inspect MODEL",
 		Short: "Display detailed information on one model",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return fmt.Errorf(
-					"'docker model inspect' requires 1 argument.\n\n" +
-						"Usage:  docker model inspect MODEL\n\n" +
-						"See 'docker model inspect --help' for more information",
-				)
-			}
-			return nil
-		},
+		Args: requireExactArgs(1, "inspect", "MODEL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 			if openai && remote {

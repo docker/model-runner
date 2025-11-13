@@ -12,7 +12,7 @@ plink: docker_model.yaml
 options:
     - option: color
       value_type: string
-      default_value: auto
+      default_value: "no"
       description: Use colored output (auto|yes|no)
       deprecated: false
       hidden: false

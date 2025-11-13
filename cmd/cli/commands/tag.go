@@ -15,18 +15,9 @@ func newTagCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "tag SOURCE TARGET",
 		Short: "Tag a model",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return fmt.Errorf(
-					"'docker model tag' requires 2 arguments.\n\n" +
-						"Usage:  docker model tag SOURCE TARGET\n\n" +
-						"See 'docker model tag --help' for more information",
-				)
-			}
-			return nil
-		},
+		Args: requireExactArgs(2, "tag", "SOURCE TARGET"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 			return tagModel(cmd, desktopClient, args[0], args[1])

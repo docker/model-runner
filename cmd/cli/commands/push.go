@@ -13,18 +13,9 @@ func newPushCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "push MODEL",
 		Short: "Push a model to Docker Hub",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return fmt.Errorf(
-					"'docker model push' requires 1 argument.\n\n" +
-						"Usage:  docker model push MODEL\n\n" +
-						"See 'docker model push --help' for more information",
-				)
-			}
-			return nil
-		},
+		Args: requireExactArgs(1, "push", "MODEL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 			return pushModel(cmd, desktopClient, args[0])
@@ -35,7 +26,8 @@ func newPushCmd() *cobra.Command {
 }
 
 func pushModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
-	response, progressShown, err := desktopClient.Push(model, TUIProgress)
+	printer := asPrinter(cmd)
+	response, progressShown, err := desktopClient.Push(model, printer)
 
 	// Add a newline before any output (success or error) if progress was shown.
 	if progressShown {

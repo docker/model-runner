@@ -700,9 +700,9 @@ func TestIntegration_PushModel(t *testing.T) {
 
 				// Push the tagged model
 				t.Logf("Pushing model to custom registry with reference: %s", tc.ref)
-				_, _, err = env.client.Push(tc.ref, func(msg string) {
+				_, _, err = env.client.Push(tc.ref, desktop.NewSimplePrinter(func(msg string) {
 					t.Logf("Progress: %s", msg)
-				})
+				}))
 				require.NoError(t, err, "Failed to push model to custom registry")
 				t.Logf("✓ Successfully pushed model to custom registry: %s", tc.ref)
 			})
@@ -742,9 +742,9 @@ func TestIntegration_PushModel(t *testing.T) {
 
 				// Push the tagged model
 				t.Logf("Pushing model to custom registry with reference: %s", tc.targetRef)
-				_, _, err = env.client.Push(tc.targetRef, func(msg string) {
+				_, _, err = env.client.Push(tc.targetRef, desktop.NewSimplePrinter(func(msg string) {
 					t.Logf("Progress: %s", msg)
-				})
+				}))
 				require.NoError(t, err, "Failed to push model to custom registry")
 				t.Logf("✓ Successfully pushed model to custom registry: %s", tc.targetRef)
 			})
@@ -754,13 +754,13 @@ func TestIntegration_PushModel(t *testing.T) {
 	// Test 3: Error cases
 	t.Run("error cases", func(t *testing.T) {
 		t.Run("push non-existent model", func(t *testing.T) {
-			_, _, err := env.client.Push("non-existent-model:v1", func(msg string) {})
+			_, _, err := env.client.Push("non-existent-model:v1", desktop.NewSimplePrinter(func(msg string) {}))
 			require.Error(t, err, "Should fail when pushing non-existent model")
 			t.Logf("✓ Correctly failed to push non-existent model: %v", err)
 		})
 
 		t.Run("push with invalid reference", func(t *testing.T) {
-			_, _, err := env.client.Push("", func(msg string) {})
+			_, _, err := env.client.Push("", desktop.NewSimplePrinter(func(msg string) {}))
 			require.Error(t, err, "Should fail with empty reference")
 			t.Logf("✓ Correctly failed to push with invalid reference: %v", err)
 		})

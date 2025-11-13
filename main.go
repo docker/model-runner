@@ -4,14 +4,12 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
 
-	"github.com/docker/model-runner/pkg/distribution/transport/resumable"
 	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -21,32 +19,12 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/docker/model-runner/pkg/middleware"
 	"github.com/docker/model-runner/pkg/routing"
 	"github.com/sirupsen/logrus"
 )
 
 var log = logrus.New()
-
-// V1AliasHandler provides an alias from /v1/ to /engines/v1/ paths
-type V1AliasHandler struct {
-	scheduler http.Handler
-}
-
-func (h *V1AliasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Modify the URL path to prepend /engines/ before /v1/
-	originalPath := r.URL.Path
-	newPath := inference.InferencePrefix + originalPath // originalPath is like "/v1/models", so result is "/engines/v1/models"
-
-	// Create a clone of the request with the modified path
-	r2 := new(http.Request)
-	*r2 = *r
-	r2.URL = new(url.URL)
-	*r2.URL = *r.URL
-	r2.URL.Path = newPath
-
-	// Pass the modified request to the scheduler
-	h.scheduler.ServeHTTP(w, r2)
-}
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -108,7 +86,7 @@ func main() {
 		models.ClientConfig{
 			StoreRootPath: modelPath,
 			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			Transport:     resumable.New(baseTransport),
+			Transport:     baseTransport,
 		},
 		nil,
 		memEstimator,
@@ -177,7 +155,7 @@ func main() {
 	router.Handle(inference.ModelsPrefix+"/", modelManager)
 	router.Handle(inference.InferencePrefix+"/", scheduler)
 	// Add /v1 as an alias for /engines/v1
-	router.Handle("/v1/", &V1AliasHandler{scheduler: scheduler})
+	router.Handle("/v1/", &middleware.V1AliasHandler{Handler: scheduler})
 
 	// Add metrics endpoint if enabled
 	if os.Getenv("DISABLE_METRICS") != "1" {

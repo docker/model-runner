@@ -2,6 +2,7 @@ package gguf
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,17 +35,19 @@ func NewModel(path string) (*Model, error) {
 
 	created := time.Now()
 	return &Model{
-		configFile: types.ConfigFile{
-			Config: configFromFile(path),
-			Descriptor: types.Descriptor{
-				Created: &created,
+		BaseModel: partial.BaseModel{
+			ModelConfigFile: types.ConfigFile{
+				Config: configFromFile(path),
+				Descriptor: types.Descriptor{
+					Created: &created,
+				},
+				RootFS: v1.RootFS{
+					Type:    "rootfs",
+					DiffIDs: diffIDs,
+				},
 			},
-			RootFS: v1.RootFS{
-				Type:    "rootfs",
-				DiffIDs: diffIDs,
-			},
+			LayerList: layers,
 		},
-		layers: layers,
 	}, nil
 }
 
@@ -55,10 +58,29 @@ func configFromFile(path string) types.Config {
 	}
 	return types.Config{
 		Format:       types.FormatGGUF,
-		Parameters:   strings.TrimSpace(gguf.Metadata().Parameters.String()),
+		Parameters:   normalizeUnitString(gguf.Metadata().Parameters.String()),
 		Architecture: strings.TrimSpace(gguf.Metadata().Architecture),
 		Quantization: strings.TrimSpace(gguf.Metadata().FileType.String()),
-		Size:         strings.TrimSpace(gguf.Metadata().Size.String()),
+		Size:         normalizeUnitString(gguf.Metadata().Size.String()),
 		GGUF:         extractGGUFMetadata(&gguf.Header),
 	}
+}
+
+var (
+	// spaceBeforeUnitRegex matches one or more spaces between a valid number and a letter (unit)
+	// Used to remove spaces between numbers and units (e.g., "16.78 M" -> "16.78M")
+	// Pattern: integer or decimal number, then whitespace, then letters (unit)
+	spaceBeforeUnitRegex = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)\s+([A-Za-z]+)`)
+)
+
+// normalizeUnitString removes spaces between numbers and units for consistent formatting
+// Examples: "16.78 M" -> "16.78M", "256.35 MiB" -> "256.35MiB", "409M" -> "409M"
+func normalizeUnitString(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return s
+	}
+	// Remove space(s) between numbers/decimals and unit letters using regex
+	// Pattern matches: number(s) or decimal, then whitespace, then letters (unit)
+	return spaceBeforeUnitRegex.ReplaceAllString(s, "$1$2")
 }

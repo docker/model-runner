@@ -24,9 +24,9 @@ on:
         required: false
         type: string
         default: "0.11.0"
-      # This can be removed once we have llama.cpp built for MUSA.
-      buildMusa:
-        description: 'Build MUSA image'
+      # This can be removed once we have llama.cpp built for MUSA and CANN.
+      buildMusaCann:
+        description: 'Build MUSA and CANN images'
         required: false
         type: boolean
         default: false
@@ -86,6 +86,12 @@ jobs:
           echo "docker/model-runner:${{ inputs.releaseTag }}-musa" >> "$GITHUB_OUTPUT"
           if [ "${{ inputs.pushLatest }}" == "true" ]; then
             echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
+          fi
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+          echo "cann<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:${{ inputs.releaseTag }}-cann" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+            echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
 
@@ -165,7 +171,7 @@ jobs:
           tags: ${{ steps.tags.outputs.rocm }}
 
       - name: Build MUSA image
-        if: ${{ inputs.buildMusa }}
+        if: ${{ inputs.buildMusaCann }}
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
@@ -181,6 +187,7 @@ jobs:
           tags: ${{ steps.tags.outputs.musa }}
 
       - name: Build CANN image
+        if: ${{ inputs.buildMusaCann }}
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile

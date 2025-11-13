@@ -233,7 +233,7 @@ func isRootless(ctx context.Context, dockerClient *client.Client) bool {
 }
 
 // Check whether the host Ascend driver path exists. If so, create the corresponding mount configuration.
-func tryGetBindAscendMounts(printer StatusPrinter) []mount.Mount {
+func tryGetBindAscendMounts(printer StatusPrinter, debug bool) []mount.Mount {
 	hostPaths := []string{
 		"/usr/local/dcmi",
 		"/usr/local/bin/npu-smi",
@@ -258,7 +258,7 @@ func tryGetBindAscendMounts(printer StatusPrinter) []mount.Mount {
 			}
 			newMounts = append(newMounts, newMount)
 		} else {
-			if os.Getenv("DEBUG") == "1" {
+			if debug {
 				printer.Printf("[NOT FOUND] Ascend driver path does not exist, skipping: %s\n", hostPath)
 			}
 		}
@@ -268,7 +268,7 @@ func tryGetBindAscendMounts(printer StatusPrinter) []mount.Mount {
 }
 
 // CreateControllerContainer creates and starts a controller container.
-func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind) error {
+func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool) error {
 	imageName := controllerImageName(gpu, backend)
 
 	// Set up the container configuration.
@@ -311,7 +311,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			Name: "always",
 		},
 	}
-	ascendMounts := tryGetBindAscendMounts(printer)
+	ascendMounts := tryGetBindAscendMounts(printer, debug)
 	if len(ascendMounts) > 0 {
 		hostConfig.Mounts = append(hostConfig.Mounts, ascendMounts...)
 	}

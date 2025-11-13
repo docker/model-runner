@@ -145,7 +145,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	}
 
 	// Check for supported type
-	if err := checkCompat(remoteModel); err != nil {
+	if err := checkCompat(remoteModel, c.log, reference); err != nil {
 		return err
 	}
 
@@ -417,7 +417,7 @@ func GetSupportedFormats() []types.Format {
 	return []types.Format{types.FormatGGUF}
 }
 
-func checkCompat(image types.ModelArtifact) error {
+func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string) error {
 	manifest, err := image.Manifest()
 	if err != nil {
 		return err
@@ -432,7 +432,10 @@ func checkCompat(image types.ModelArtifact) error {
 		return fmt.Errorf("reading model config: %w", err)
 	}
 
-	if !slices.Contains(GetSupportedFormats(), config.Format) {
+	if config.Format == "" {
+		log.Warnf("Model format field is empty for %s, unable to verify format compatibility",
+			utils.SanitizeForLog(reference))
+	} else if !slices.Contains(GetSupportedFormats(), config.Format) {
 		return ErrUnsupportedFormat
 	}
 

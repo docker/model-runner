@@ -92,7 +92,7 @@ func TestNewModel_WithMetadata(t *testing.T) {
 	}
 
 	// Verify parameters (4096*4096 + 4096 = 16781312)
-	expectedParams := "16.78 M"
+	expectedParams := "16.78M"
 	if config.Parameters != expectedParams {
 		t.Errorf("Config.Parameters = %v, want %v", config.Parameters, expectedParams)
 	}
@@ -118,6 +118,51 @@ func TestNewModel_WithMetadata(t *testing.T) {
 
 	if config.Safetensors["tensor_count"] != "2" {
 		t.Errorf("Config.Safetensors[tensor_count] = %v, want %v", config.Safetensors["tensor_count"], "2")
+	}
+
+	// Test annotations
+	manifest, err := model.Manifest()
+	if err != nil {
+		t.Fatalf("Manifest() error = %v", err)
+	}
+
+	if len(manifest.Layers) != 1 {
+		t.Fatalf("Expected 1 layer, got %d", len(manifest.Layers))
+	}
+
+	layer := manifest.Layers[0]
+	if layer.Annotations == nil {
+		t.Fatal("Expected annotations to be present")
+	}
+
+	// Check for required annotation keys
+	if _, ok := layer.Annotations[types.AnnotationFilePath]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationFilePath)
+	}
+
+	if _, ok := layer.Annotations[types.AnnotationFileMetadata]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationFileMetadata)
+	}
+
+	if val, ok := layer.Annotations[types.AnnotationMediaTypeUntested]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationMediaTypeUntested)
+	} else if val != "false" {
+		t.Errorf("Expected annotation %s to be 'false', got '%s'", types.AnnotationMediaTypeUntested, val)
+	}
+
+	// Verify file metadata can be unmarshaled
+	metadataJSON := layer.Annotations[types.AnnotationFileMetadata]
+	var metadata types.FileMetadata
+	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+		t.Fatalf("Failed to unmarshal file metadata: %v", err)
+	}
+
+	// Verify metadata fields
+	if metadata.Name != "test.safetensors" {
+		t.Errorf("Expected file name 'test.safetensors', got '%s'", metadata.Name)
+	}
+	if metadata.Size == 0 {
+		t.Error("Expected file size to be non-zero")
 	}
 }
 
@@ -220,7 +265,7 @@ func TestNewModel_NoMetadata(t *testing.T) {
 	}
 
 	// Verify parameters (100*200 = 20000)
-	expectedParams := "20.00 K"
+	expectedParams := "20.00K"
 	if config.Parameters != expectedParams {
 		t.Errorf("Config.Parameters = %v, want %v", config.Parameters, expectedParams)
 	}
@@ -242,5 +287,50 @@ func TestNewModel_NoMetadata(t *testing.T) {
 
 	if config.Safetensors["tensor_count"] != "1" {
 		t.Errorf("Config.Safetensors[tensor_count] = %v, want %v", config.Safetensors["tensor_count"], "1")
+	}
+
+	// Test annotations
+	manifest, err := model.Manifest()
+	if err != nil {
+		t.Fatalf("Manifest() error = %v", err)
+	}
+
+	if len(manifest.Layers) != 1 {
+		t.Fatalf("Expected 1 layer, got %d", len(manifest.Layers))
+	}
+
+	layer := manifest.Layers[0]
+	if layer.Annotations == nil {
+		t.Fatal("Expected annotations to be present")
+	}
+
+	// Check for required annotation keys
+	if _, ok := layer.Annotations[types.AnnotationFilePath]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationFilePath)
+	}
+
+	if _, ok := layer.Annotations[types.AnnotationFileMetadata]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationFileMetadata)
+	}
+
+	if val, ok := layer.Annotations[types.AnnotationMediaTypeUntested]; !ok {
+		t.Errorf("Expected annotation %s to be present", types.AnnotationMediaTypeUntested)
+	} else if val != "false" {
+		t.Errorf("Expected annotation %s to be 'false', got '%s'", types.AnnotationMediaTypeUntested, val)
+	}
+
+	// Verify file metadata can be unmarshaled
+	metadataJSON := layer.Annotations[types.AnnotationFileMetadata]
+	var metadata types.FileMetadata
+	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+		t.Fatalf("Failed to unmarshal file metadata: %v", err)
+	}
+
+	// Verify metadata fields
+	if metadata.Name != "test.safetensors" {
+		t.Errorf("Expected file name 'test.safetensors', got '%s'", metadata.Name)
+	}
+	if metadata.Size == 0 {
+		t.Error("Expected file size to be non-zero")
 	}
 }

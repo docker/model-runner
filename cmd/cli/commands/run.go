@@ -676,7 +676,7 @@ func newRunCmd() *cobra.Command {
 				return nil
 			}
 
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd)); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), debug); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 
@@ -730,21 +730,11 @@ func newRunCmd() *cobra.Command {
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, 1),
 	}
-	c.Args = func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf(
-				"'docker model run' requires at least 1 argument.\n\n" +
-					"Usage:  docker model run " + cmdArgs + "\n\n" +
-					"See 'docker model run --help' for more information",
-			)
-		}
-
-		return nil
-	}
+	c.Args = requireMinArgs(1, "run", cmdArgs)
 
 	c.Flags().BoolVar(&debug, "debug", false, "Enable debug logging")
 	c.Flags().BoolVar(&ignoreRuntimeMemoryCheck, "ignore-runtime-memory-check", false, "Do not block pull if estimated runtime memory for model exceeds system resources.")
-	c.Flags().StringVar(&colorMode, "color", "auto", "Use colored output (auto|yes|no)")
+	c.Flags().StringVar(&colorMode, "color", "no", "Use colored output (auto|yes|no)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 
 	return c

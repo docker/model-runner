@@ -151,3 +151,66 @@ func stripDefaultsFromModelName(model string) string {
 	// For other cases (ai/ with custom tag, custom org with :latest, etc.), keep as-is
 	return model
 }
+
+// requireExactArgs returns a cobra.PositionalArgs validator that ensures exactly n arguments are provided
+func requireExactArgs(n int, cmdName string, usageArgs string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return fmt.Errorf(
+				"'docker model %s' requires %d argument(s).\n\n"+
+					"Usage:  docker model %s %s\n\n"+
+					"See 'docker model %s --help' for more information",
+				cmdName, n, cmdName, usageArgs, cmdName,
+			)
+		}
+		return nil
+	}
+}
+
+// requireMinArgs returns a cobra.PositionalArgs validator that ensures at least n arguments are provided
+func requireMinArgs(n int, cmdName string, usageArgs string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < n {
+			return fmt.Errorf(
+				"'docker model %s' requires at least %d argument(s).\n\n"+
+					"Usage:  docker model %s %s\n\n"+
+					"See 'docker model %s --help' for more information",
+				cmdName, n, cmdName, usageArgs, cmdName,
+			)
+		}
+		return nil
+	}
+}
+
+// runnerOptions holds common runner configuration options
+type runnerFlagOptions struct {
+	Port       *uint16
+	Host       *string
+	GpuMode    *string
+	Backend    *string
+	DoNotTrack *bool
+	Debug      *bool
+}
+
+// addRunnerFlags adds common runner flags to a command
+func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
+	if opts.Port != nil {
+		cmd.Flags().Uint16Var(opts.Port, "port", 0,
+			"Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode)")
+	}
+	if opts.Host != nil {
+		cmd.Flags().StringVar(opts.Host, "host", "127.0.0.1", "Host address to bind Docker Model Runner")
+	}
+	if opts.GpuMode != nil {
+		cmd.Flags().StringVar(opts.GpuMode, "gpu", "auto", "Specify GPU support (none|auto|cuda|rocm|musa|cann)")
+	}
+	if opts.Backend != nil {
+		cmd.Flags().StringVar(opts.Backend, "backend", "", backendUsage)
+	}
+	if opts.DoNotTrack != nil {
+		cmd.Flags().BoolVar(opts.DoNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
+	}
+        if opts.Debug != nil {
+                cmd.Flags().BoolVar(opts.Debug, "debug", false, "Enable debug logging")
+        }
+}

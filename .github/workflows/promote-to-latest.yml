@@ -1,0 +1,68 @@
+name: Promote docker/model-runner to latest
+run-name: Promote docker/model-runner version ${{ inputs.version }} to latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'version'
+        required: true
+        type: string
+
+jobs:
+  release:
+    if: github.actor == 'doringeman' || github.actor == 'xenoscopic' || github.actor == 'ericcurtin' || github.actor == 'ilopezluna'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Crane
+        run: |
+          curl -LO https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz
+          tar -xzvf go-containerregistry_Linux_x86_64.tar.gz crane
+          sudo mv crane /usr/local/bin/
+          crane version
+
+      - name: Log in to DockerHub
+        env:
+          DOCKERHUB_USERNAME: "docker"
+          DOCKERHUB_TOKEN: ${{ secrets.ORG_ACCESS_TOKEN }}
+        run: crane auth login index.docker.io -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+
+      - name: Promote CPU images
+        run: |
+          echo "Promoting CPU images"
+          crane tag "docker/model-runner:${{ inputs.version }}" "latest"
+
+      - name: Promote CUDA images
+        run: |
+          echo "Promoting CUDA images"
+          crane tag "docker/model-runner:${{ inputs.version }}-cuda" "latest-cuda"
+
+      - name: Promote vLLM CUDA images
+        run: |
+          echo "Promoting vLLM CUDA images"
+          crane tag "docker/model-runner:${{ inputs.version }}-vllm-cuda" "latest-vllm-cuda"
+
+      - name: Promote ROCm images
+        run: |
+          echo "Promoting ROCm images"
+          crane tag "docker/model-runner:${{ inputs.version }}-rocm" "latest-rocm"
+
+      - name: Promote MUSA images
+        run: |
+          echo "Checking if MUSA image exists"
+          if crane manifest "docker/model-runner:${{ inputs.version }}-musa" > /dev/null 2>&1; then
+            echo "Promoting MUSA images"
+            crane tag "docker/model-runner:${{ inputs.version }}-musa" "latest-musa"
+          else
+            echo "MUSA image does not exist, skipping"
+          fi
+
+      - name: Promote CANN images
+        run: |
+          echo "Checking if CANN image exists"
+          if crane manifest "docker/model-runner:${{ inputs.version }}-cann" > /dev/null 2>&1; then
+            echo "Promoting CANN images"
+            crane tag "docker/model-runner:${{ inputs.version }}-cann" "latest-cann"
+          else
+            echo "CANN image does not exist, skipping"
+          fi
