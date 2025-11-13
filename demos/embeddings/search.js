@@ -56,7 +56,8 @@ class SemanticSearch {
 
   cosineSimilarity(vecA, vecB) {
     if (vecA.length !== vecB.length) {
-      throw new Error('Vectors must have the same length');
+      console.warn('cosineSimilarity: Vectors must have the same length. Skipping invalid result.');
+      return null;
     }
 
     // Validate that all elements are finite numbers
