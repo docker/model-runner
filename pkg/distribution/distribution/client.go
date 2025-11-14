@@ -17,6 +17,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
 	"github.com/docker/model-runner/pkg/inference/platform"
 )
 
@@ -140,9 +141,55 @@ func NewClient(opts ...Option) (*Client, error) {
 func (c *Client) PullModel(ctx context.Context, reference string, progressWriter io.Writer) error {
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
+	// First, fetch the remote model to get the manifest
 	remoteModel, err := c.registry.Model(ctx, reference)
 	if err != nil {
 		return fmt.Errorf("reading model from registry: %w", err)
+	}
+
+	// Check for incomplete downloads and prepare resume offsets
+	layers, err := remoteModel.Layers()
+	if err != nil {
+		return fmt.Errorf("getting layers: %w", err)
+	}
+
+	// Build a map of digest -> resume offset for layers with incomplete downloads
+	resumeOffsets := make(map[string]int64)
+	for _, layer := range layers {
+		digest, err := layer.Digest()
+		if err != nil {
+			c.log.Warnf("Failed to get layer digest: %v", err)
+			continue
+		}
+
+		// Check if there's an incomplete download for this layer (use DiffID for uncompressed models)
+		diffID, err := layer.DiffID()
+		if err != nil {
+			c.log.Warnf("Failed to get layer diffID: %v", err)
+			continue
+		}
+
+		incompleteSize, err := c.store.GetIncompleteSize(diffID)
+		if err != nil {
+			c.log.Warnf("Failed to check incomplete size for layer %s: %v", digest, err)
+			continue
+		}
+
+		if incompleteSize > 0 {
+			c.log.Infof("Found incomplete download for layer %s: %d bytes", digest, incompleteSize)
+			resumeOffsets[digest.String()] = incompleteSize
+		}
+	}
+
+	// If we have any incomplete downloads, create a new context with resume offsets
+	if len(resumeOffsets) > 0 {
+		c.log.Infof("Resuming %d interrupted layer download(s)", len(resumeOffsets))
+		ctx = remote.WithResumeOffsets(ctx, resumeOffsets)
+		// Re-fetch the model with the updated context
+		remoteModel, err = c.registry.Model(ctx, reference)
+		if err != nil {
+			return fmt.Errorf("reading model from registry with resume context: %w", err)
+		}
 	}
 
 	// Check for supported type

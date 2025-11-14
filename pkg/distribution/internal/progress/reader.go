@@ -24,6 +24,19 @@ func NewReader(r io.Reader, updates chan<- v1.Update) io.Reader {
 	}
 }
 
+// NewReaderWithOffset returns a reader that reports progress starting from an initial offset.
+// This is useful for resuming interrupted downloads.
+func NewReaderWithOffset(r io.Reader, updates chan<- v1.Update, initialOffset int64) io.Reader {
+	if updates == nil {
+		return r
+	}
+	return &Reader{
+		Reader:       r,
+		ProgressChan: updates,
+		Total:        initialOffset,
+	}
+}
+
 func (pr *Reader) Read(p []byte) (int, error) {
 	n, err := pr.Reader.Read(p)
 	pr.Total += int64(n)

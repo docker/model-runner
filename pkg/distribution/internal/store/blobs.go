@@ -78,6 +78,27 @@ type blob interface {
 	Uncompressed() (io.ReadCloser, error)
 }
 
+// layerWithDigest extends blob to include the Digest method
+type layerWithDigest interface {
+	blob
+	Digest() (v1.Hash, error)
+}
+
+// resumableLayer wraps a layer to add resume support
+type resumableLayer struct {
+	v1.Layer
+	store *LocalStore
+}
+
+func (rl *resumableLayer) Uncompressed() (io.ReadCloser, error) {
+	// For resumable downloads, we need to check for incomplete downloads
+	// and wrap the layer to inject the resume offset into the context.
+	// However, since the HTTP request happens inside the layer's Compressed() call,
+	// we can't easily intercept it here without modifying the layer interface.
+	// For now, we'll rely on the WriteBlob append logic and fetcher Range support.
+	return rl.Layer.Uncompressed()
+}
+
 // writeLayer writes the layer blob to the store.
 // It returns true when a new blob was created and the blob's DiffID.
 func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.Hash, error) {
@@ -94,13 +115,28 @@ func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.
 		return false, hash, nil
 	}
 
+	// Check if we're resuming an incomplete download
+	incompleteSize, err := s.GetIncompleteSize(hash)
+	if err != nil {
+		return false, v1.Hash{}, fmt.Errorf("check incomplete size: %w", err)
+	}
+
 	lr, err := layer.Uncompressed()
 	if err != nil {
 		return false, v1.Hash{}, fmt.Errorf("get blob contents: %w", err)
 	}
 	defer lr.Close()
-	r := progress.NewReader(lr, updates)
 
+	// Wrap the reader with progress reporting, accounting for already downloaded bytes
+	var r io.Reader
+	if incompleteSize > 0 {
+		r = progress.NewReaderWithOffset(lr, updates, incompleteSize)
+	} else {
+		r = progress.NewReader(lr, updates)
+	}
+
+	// WriteBlob will handle appending to incomplete files
+	// The HTTP layer will handle resuming via Range headers
 	if err := s.WriteBlob(hash, r); err != nil {
 		return false, hash, err
 	}
@@ -109,6 +145,7 @@ func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.
 
 // WriteBlob writes the blob to the store, reporting progress to the given channel.
 // If the blob is already in the store, it is a no-op and the blob is not consumed from the reader.
+// If an incomplete download exists, it will be resumed by appending to the existing file.
 func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 	hasBlob, err := s.hasBlob(diffID)
 	if err != nil {
@@ -122,21 +159,61 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("get blob path: %w", err)
 	}
-	f, err := createFile(incompletePath(path))
-	if err != nil {
-		return fmt.Errorf("create blob file: %w", err)
+
+	incompletePath := incompletePath(path)
+
+	// Check if we're resuming a partial download
+	var f *os.File
+	var isResume bool
+	if _, err := os.Stat(incompletePath); err == nil {
+		// Resume: open file in append mode
+		isResume = true
+		f, err = os.OpenFile(incompletePath, os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			return fmt.Errorf("open incomplete blob file for resume: %w", err)
+		}
+	} else {
+		// New download: create file
+		f, err = createFile(incompletePath)
+		if err != nil {
+			return fmt.Errorf("create blob file: %w", err)
+		}
 	}
-	defer os.Remove(incompletePath(path))
 	defer f.Close()
 
 	if _, err := io.Copy(f, r); err != nil {
+		// Don't delete the incomplete file on error - we want to resume later
 		return fmt.Errorf("copy blob %q to store: %w", diffID.String(), err)
 	}
 
 	f.Close() // Rename will fail on Windows if the file is still open.
-	if err := os.Rename(incompletePath(path), path); err != nil {
+
+	// For resumed downloads, verify the complete file's hash before finalizing
+	// (For new downloads, the stream was already verified during download)
+	if isResume {
+		completeFile, err := os.Open(incompletePath)
+		if err != nil {
+			return fmt.Errorf("open completed file for verification: %w", err)
+		}
+		defer completeFile.Close()
+
+		computedHash, _, err := v1.SHA256(completeFile)
+		if err != nil {
+			return fmt.Errorf("compute hash of completed file: %w", err)
+		}
+
+		if computedHash.String() != diffID.String() {
+			return fmt.Errorf("hash mismatch after download: got %s, want %s", computedHash, diffID)
+		}
+	}
+
+	if err := os.Rename(incompletePath, path); err != nil {
 		return fmt.Errorf("rename blob file: %w", err)
 	}
+
+	// Only remove incomplete file if rename succeeded (though rename should have moved it)
+	// This is a safety cleanup in case rename didn't remove the source
+	os.Remove(incompletePath)
 	return nil
 }
 
@@ -158,6 +235,25 @@ func (s *LocalStore) hasBlob(hash v1.Hash) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// GetIncompleteSize returns the size of an incomplete blob if it exists, or 0 if it doesn't.
+func (s *LocalStore) GetIncompleteSize(hash v1.Hash) (int64, error) {
+	path, err := s.blobPath(hash)
+	if err != nil {
+		return 0, fmt.Errorf("get blob path: %w", err)
+	}
+
+	incompletePath := incompletePath(path)
+	stat, err := os.Stat(incompletePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("stat incomplete file: %w", err)
+	}
+
+	return stat.Size(), nil
 }
 
 // createFile is a wrapper around os.Create that creates any parent directories as needed.
