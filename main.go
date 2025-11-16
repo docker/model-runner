@@ -191,6 +191,21 @@ func main() {
 		w.Write([]byte("Docker Model Runner is running"))
 	})
 
+	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
+	ollamaHandler := ollama.NewHandler(log, modelManager, scheduler, nil)
+	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
+
+	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only respond to exact root path
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Docker Model Runner is running"))
+	})
+
 	// Add metrics endpoint if enabled
 	if os.Getenv("DISABLE_METRICS") != "1" {
 		metricsHandler := metrics.NewAggregatedMetricsHandler(
