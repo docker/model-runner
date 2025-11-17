@@ -378,6 +378,16 @@ func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+// UnloadModels unloads the specified models from the backend.
+// Returns the number of unloaded runners.
+func (s *Scheduler) UnloadModels(ctx context.Context, models []string, backend string) int {
+	unloadRequest := UnloadRequest{
+		Models:  models,
+		Backend: backend,
+	}
+	return s.loader.Unload(ctx, unloadRequest)
+}
+
 // Unload unloads the specified runners (backend, model) from the backend.
 // Currently, this doesn't work for runners that are handling an OpenAI request.
 func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {

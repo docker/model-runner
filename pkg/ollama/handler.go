@@ -145,10 +145,11 @@ type GenerateRequest struct {
 
 // GenerateResponse is the response for /api/generate
 type GenerateResponse struct {
-	Model     string    `json:"model"`
-	CreatedAt time.Time `json:"created_at"`
-	Response  string    `json:"response,omitempty"`
-	Done      bool      `json:"done"`
+	Model      string    `json:"model"`
+	CreatedAt  time.Time `json:"created_at"`
+	Response   string    `json:"response,omitempty"`
+	Done       bool      `json:"done"`
+	DoneReason string    `json:"done_reason,omitempty"`
 }
 
 // DeleteRequest is the request for DELETE /api/delete
@@ -485,53 +486,22 @@ func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelN
 	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
 	h.log.Infof("unloadModel: unloading model %s", sanitizedModelName)
 
-	// Create an unload request for the scheduler
-	unloadReq := map[string]interface{}{
-		"models": []string{modelName},
+	// Unload the model directly via the scheduler
+	unloadedCount := h.scheduler.UnloadModels(ctx, []string{modelName}, "")
+	h.log.Infof("unloadModel: unloaded %d runner(s) for model %s", unloadedCount, sanitizedModelName)
+
+	// Return Ollama-style response
+	response := GenerateResponse{
+		Model:      modelName,
+		CreatedAt:  time.Now(),
+		Response:   "",
+		Done:       true,
+		DoneReason: "unload",
 	}
 
-	// Marshal the unload request
-	reqBody, err := json.Marshal(unloadReq)
-	if err != nil {
-		h.log.Errorf("unloadModel: failed to marshal request: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to marshal request: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Sanitize the user-provided request body before logging to avoid log injection
-	safeReqBody := strings.ReplaceAll(string(reqBody), "\n", "")
-	safeReqBody = strings.ReplaceAll(safeReqBody, "\r", "")
-	h.log.Infof("unloadModel: sending POST /engines/unload with body: %s", safeReqBody)
-
-	// Create a new request to the scheduler
-	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/unload", strings.NewReader(string(reqBody)))
-	if err != nil {
-		h.log.Errorf("unloadModel: failed to create request: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to create request: %v", err), http.StatusInternalServerError)
-		return
-	}
-	newReq.Header.Set("Content-Type", "application/json")
-
-	// Use a custom response writer to capture the response
-	respRecorder := &responseRecorder{
-		statusCode: http.StatusOK,
-		headers:    make(http.Header),
-		body:       &strings.Builder{},
-	}
-
-	// Forward to scheduler
-	h.scheduler.ServeHTTP(respRecorder, newReq)
-
-	h.log.Infof("unloadModel: scheduler response status=%d, body=%s", respRecorder.statusCode, respRecorder.body.String())
-
-	// Return the response status
-	w.WriteHeader(respRecorder.statusCode)
-	if respRecorder.statusCode == http.StatusOK {
-		// Return empty JSON object for success
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("{}"))
-	} else {
-		w.Write([]byte(respRecorder.body.String()))
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.log.Errorf("Failed to encode response: %v", err)
 	}
 }
 
