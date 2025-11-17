@@ -953,3 +953,88 @@ func (c *Client) LoadModel(ctx context.Context, r io.Reader) error {
 	}
 	return nil
 }
+
+// LoadIntoMemory loads a model into memory using the Ollama-compatible API
+func (c *Client) LoadIntoMemory(model string) error {
+	model = normalizeHuggingFaceModelName(model)
+
+	// Create request body with empty prompt to load model
+	reqBody := map[string]interface{}{
+		"model": model,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	// Use /api/generate endpoint with empty prompt to load model
+	generatePath := "/api/generate"
+	resp, err := c.doRequest(http.MethodPost, generatePath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, generatePath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("loading %s failed with status %s: %s", model, resp.Status, string(body))
+	}
+
+	// Read the response to ensure it's valid
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Parse response to verify success
+	var response map[string]interface{}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return nil
+}
+
+// UnloadFromMemory unloads a model from memory using the Ollama-compatible API
+func (c *Client) UnloadFromMemory(model string) error {
+	model = normalizeHuggingFaceModelName(model)
+
+	// Create request body with empty prompt and keep_alive: 0
+	reqBody := map[string]interface{}{
+		"model":      model,
+		"keep_alive": 0,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	// Use /api/generate endpoint with keep_alive: 0 to unload model
+	generatePath := "/api/generate"
+	resp, err := c.doRequest(http.MethodPost, generatePath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, generatePath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unloading %s failed with status %s: %s", model, resp.Status, string(body))
+	}
+
+	// Read the response to ensure it's valid
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Parse response to verify unload
+	var response map[string]interface{}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return nil
+}
