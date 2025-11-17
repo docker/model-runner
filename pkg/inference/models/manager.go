@@ -343,10 +343,18 @@ func (m *Manager) ResolveModelID(modelRef string) string {
 	sanitizedModelRef := strings.ReplaceAll(modelRef, "\n", "")
 	sanitizedModelRef = strings.ReplaceAll(sanitizedModelRef, "\r", "")
 
-	model, err := m.GetModel(sanitizedModelRef)
+	// Normalize the model reference to add defaults (e.g., "gemma3" -> "ai/gemma3:latest")
+	normalizedRef := NormalizeModelName(sanitizedModelRef)
+
+	// Try with normalized reference first
+	model, err := m.GetModel(normalizedRef)
 	if err != nil {
-		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
-		return sanitizedModelRef
+		// If normalized lookup fails, try with the original sanitized reference
+		model, err = m.GetModel(sanitizedModelRef)
+		if err != nil {
+			m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
+			return sanitizedModelRef
+		}
 	}
 
 	modelID, err := model.ID()
