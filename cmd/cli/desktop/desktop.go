@@ -733,34 +733,36 @@ type UnloadResponse struct {
 }
 
 func (c *Client) Unload(req UnloadRequest) (UnloadResponse, error) {
-	unloadPath := inference.InferencePrefix + "/unload"
-	jsonData, err := json.Marshal(req)
-	if err != nil {
-		return UnloadResponse{}, fmt.Errorf("error marshaling request: %w", err)
+	var modelsToUnload []string
+
+	// If All is true, get all running models first
+	if req.All {
+		backends, err := c.PS()
+		if err != nil {
+			return UnloadResponse{}, fmt.Errorf("failed to get running models: %w", err)
+		}
+		for _, backend := range backends {
+			// Filter by backend if specified
+			if req.Backend == "" || backend.BackendName == req.Backend {
+				modelsToUnload = append(modelsToUnload, backend.ModelName)
+			}
+		}
+	} else {
+		modelsToUnload = req.Models
 	}
 
-	resp, err := c.doRequest(http.MethodPost, unloadPath, bytes.NewReader(jsonData))
-	if err != nil {
-		return UnloadResponse{}, c.handleQueryError(err, unloadPath)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return UnloadResponse{}, fmt.Errorf("unloading failed with status %s: %s", resp.Status, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return UnloadResponse{}, fmt.Errorf("failed to read response body: %w", err)
+	// Unload each model using /api/generate with keep_alive: 0
+	unloadedCount := 0
+	for _, model := range modelsToUnload {
+		if err := c.UnloadFromMemory(model); err != nil {
+			// Continue unloading other models even if one fails
+			// This matches the previous behavior where partial unloads were possible
+			continue
+		}
+		unloadedCount++
 	}
 
-	var unloadResp UnloadResponse
-	if err := json.Unmarshal(body, &unloadResp); err != nil {
-		return UnloadResponse{}, fmt.Errorf("failed to unmarshal response body: %w", err)
-	}
-
-	return unloadResp, nil
+	return UnloadResponse{UnloadedRunners: unloadedCount}, nil
 }
 
 func (c *Client) ConfigureBackend(request scheduling.ConfigureRequest) error {
@@ -1000,10 +1002,10 @@ func (c *Client) LoadIntoMemory(model string) error {
 func (c *Client) UnloadFromMemory(model string) error {
 	model = normalizeHuggingFaceModelName(model)
 
-	// Create request body with empty prompt and keep_alive: 0
+	// Create request body with empty prompt and keep_alive: "0"
 	reqBody := map[string]interface{}{
 		"model":      model,
-		"keep_alive": 0,
+		"keep_alive": "0",
 	}
 
 	jsonData, err := json.Marshal(reqBody)

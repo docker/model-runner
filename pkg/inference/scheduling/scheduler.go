@@ -130,7 +130,6 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
-	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
 	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = s.Configure
 	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
 	m["GET "+inference.InferencePrefix+"/requests"] = s.openAIRecorder.GetRecordsHandler()
@@ -388,32 +387,6 @@ func (s *Scheduler) UnloadModels(ctx context.Context, models []string, backend s
 	return s.loader.Unload(ctx, unloadRequest)
 }
 
-// Unload unloads the specified runners (backend, model) from the backend.
-// Currently, this doesn't work for runners that are handling an OpenAI request.
-func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "unknown error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	var unloadRequest UnloadRequest
-	if err := json.Unmarshal(body, &unloadRequest); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
-	unloadedRunners := UnloadResponse{s.loader.Unload(r.Context(), unloadRequest)}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(unloadedRunners); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
 
 func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
