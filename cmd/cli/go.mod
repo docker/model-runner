@@ -11,7 +11,7 @@ require (
 	github.com/docker/go-connections v0.6.0
 	github.com/docker/go-units v0.5.0
 	github.com/docker/model-runner v0.0.0
-	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121141035-eaaf35c7cbe2
+	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
 	github.com/fatih/color v1.18.0
 	github.com/mattn/go-runewidth v0.0.16
