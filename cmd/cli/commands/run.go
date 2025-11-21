@@ -15,6 +15,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/readline"
+	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/muesli/termenv"
 
 	"github.com/fatih/color"
@@ -675,6 +676,8 @@ func newRunCmd() *cobra.Command {
 				cmd.Println()
 				return nil
 			}
+
+			model = dmrm.NormalizeModelName(model)
 
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), debug); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
