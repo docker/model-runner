@@ -6,7 +6,7 @@ require (
 	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containerd/platforms v1.0.0-rc.1
 	github.com/docker/go-units v0.5.0
-	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-00010101000000-000000000000
+	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121141035-eaaf35c7cbe2
 	github.com/elastic/go-sysinfo v1.15.4
 	github.com/gpustack/gguf-parser-go v0.22.1
 	github.com/jaypipes/ghw v0.19.1
@@ -72,5 +72,3 @@ require (
 )
 
 replace github.com/kolesnikovae/go-winjob => github.com/docker/go-winjob v0.0.0-20250829235554-57b487ebcbc5
-
-replace github.com/docker/model-runner/pkg/go-containerregistry => ./pkg/go-containerregistry
