@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/context/docker"
 	clientpkg "github.com/docker/docker/client"
@@ -131,8 +132,59 @@ func NewContextForTest(endpoint string, client DockerHttpClient) (*ModelRunnerCo
 	}, nil
 }
 
+// wakeUpCloudIfIdle checks if the Docker Cloud context is idle and wakes it up if needed.
+func wakeUpCloudIfIdle(ctx context.Context, cli *command.DockerCli) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	info, err := cli.Client().Info(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get Docker info: %w", err)
+	}
+
+	// Check if the cloud.docker.run.engine label is set to "idle".
+	isIdle := false
+	for _, label := range info.Labels {
+		if label == "cloud.docker.run.engine=idle" {
+			isIdle = true
+			break
+		}
+	}
+	if !isIdle {
+		return nil
+	}
+
+	// Wake up Docker Cloud by triggering an empty ContainerCreate call.
+	dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+
+	// The call is expected to fail with a client error due to nil arguments, but it triggers
+	// Docker Cloud to wake up from idle. Only return unexpected failures (network issues,
+	// server errors) so they're logged as warnings.
+	_, err = dockerClient.ContainerCreate(ctx, nil, nil, nil, nil, "")
+	if err != nil && !errdefs.IsInvalidArgument(err) {
+		return fmt.Errorf("failed to wake up Docker Cloud: %w", err)
+	}
+
+	// Verify Docker Cloud is no longer idle.
+	info, err = cli.Client().Info(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to verify Docker Cloud wake-up: %w", err)
+	}
+
+	for _, label := range info.Labels {
+		if label == "cloud.docker.run.engine=idle" {
+			return fmt.Errorf("failed to wake up Docker Cloud from idle state")
+		}
+	}
+
+	return nil
+}
+
 // DetectContext determines the current Docker Model Runner context.
-func DetectContext(ctx context.Context, cli *command.DockerCli) (*ModelRunnerContext, error) {
+func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalone.StatusPrinter) (*ModelRunnerContext, error) {
 	// Check for an explicit endpoint setting.
 	modelRunnerHost := os.Getenv("MODEL_RUNNER_HOST")
 
@@ -151,6 +203,13 @@ func DetectContext(ctx context.Context, cli *command.DockerCli) (*ModelRunnerCon
 		}
 	} else if isCloudContext(cli) {
 		kind = types.ModelRunnerEngineKindCloud
+		// Wake up Docker Cloud if it's idle.
+		if err := wakeUpCloudIfIdle(ctx, cli); err != nil {
+			// Log the error as a warning but don't fail - we'll try to use Docker Cloud anyway.
+			// The downside is that the wrong docker/model-runner image might be automatically
+			// pulled on docker install-runner because the runtime can't be properly verified.
+			printer.Printf("Warning: %v\n", err)
+		}
 	}
 
 	// Compute the URL prefix based on the associated engine kind.

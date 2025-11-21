@@ -66,7 +66,7 @@ func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 
 			// Detect the model runner context and create a client for it.
 			var err error
-			modelRunner, err = desktop.DetectContext(cmd.Context(), dockerCLI)
+			modelRunner, err = desktop.DetectContext(cmd.Context(), dockerCLI, asPrinter(cmd))
 			if err != nil {
 				return fmt.Errorf("unable to detect model runner context: %w", err)
 			}
