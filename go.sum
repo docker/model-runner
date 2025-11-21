@@ -40,6 +40,8 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/docker/go-winjob v0.0.0-20250829235554-57b487ebcbc5 h1:dxSFEb0EEmvceIawSFNDMrvKakRz2t+2WYpY3dFAT04=
 github.com/docker/go-winjob v0.0.0-20250829235554-57b487ebcbc5/go.mod h1:ICOGmIXdwhfid7rQP+tLvDJqVg0lHdEk3pI5nsapTtg=
+github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121145743-8846041bd600 h1:ESBwyHBhONziKYzS9GBLrjcFPaWBSceI/zJXlD6NpVU=
+github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121145743-8846041bd600/go.mod h1:gbdiY0X8gr0J88OfUuRD29JXCWT9jgHzPmrqTlO15BM=
 github.com/elastic/go-sysinfo v1.15.4 h1:A3zQcunCxik14MgXu39cXFXcIw2sFXZ0zL886eyiv1Q=
 github.com/elastic/go-sysinfo v1.15.4/go.mod h1:ZBVXmqS368dOn/jvijV/zHLfakWTYHBZPk3G244lHrU=
 github.com/elastic/go-windows v1.0.2 h1:yoLLsAsV5cfg9FLhZ9EXZ2n2sQFKeDYrHenkcivY4vI=

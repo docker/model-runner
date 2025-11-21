@@ -3,4 +3,5 @@ go 1.24.0
 use (
 	.
 	cmd/cli
+	pkg/go-containerregistry
 )

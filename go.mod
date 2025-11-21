@@ -6,7 +6,7 @@ require (
 	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containerd/platforms v1.0.0-rc.1
 	github.com/docker/go-units v0.5.0
-	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-00010101000000-000000000000
+	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121145743-8846041bd600
 	github.com/elastic/go-sysinfo v1.15.4
 	github.com/gpustack/gguf-parser-go v0.22.1
 	github.com/jaypipes/ghw v0.19.1
@@ -64,13 +64,9 @@ require (
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	gonum.org/v1/gonum v0.15.1 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250414145226-207652e42e2e // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gotest.tools/v3 v3.5.2 // indirect
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9 // indirect
 )
 
 replace github.com/kolesnikovae/go-winjob => github.com/docker/go-winjob v0.0.0-20250829235554-57b487ebcbc5
-
-replace github.com/docker/model-runner/pkg/go-containerregistry => ./pkg/go-containerregistry

@@ -11,7 +11,7 @@ require (
 	github.com/docker/go-connections v0.6.0
 	github.com/docker/go-units v0.5.0
 	github.com/docker/model-runner v0.0.0
-	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-00010101000000-000000000000
+	github.com/docker/model-runner/pkg/go-containerregistry v0.0.0-20251121145743-8846041bd600
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
 	github.com/fatih/color v1.18.0
 	github.com/mattn/go-runewidth v0.0.16
@@ -139,7 +139,6 @@ require (
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
-	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	gonum.org/v1/gonum v0.15.1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250219182151-9fdb1cabc7b2 // indirect
