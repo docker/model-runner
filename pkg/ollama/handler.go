@@ -199,6 +199,15 @@ type openAICompletionStreamChunk struct {
 	} `json:"choices"`
 }
 
+// openAIErrorResponse represents the OpenAI error response format
+type openAIErrorResponse struct {
+	Error struct {
+		Message string      `json:"message"`
+		Type    string      `json:"type"`
+		Code    interface{} `json:"code"` // Can be int, string, or null
+	} `json:"error"`
+}
+
 // handleVersion handles GET /api/version
 func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{
@@ -1018,10 +1027,20 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 
 // convertChatResponse converts OpenAI chat completion response to Ollama format
 func (h *Handler) convertChatResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
-	// Copy error responses as-is
+	// Handle error responses by converting OpenAI format to Ollama format
 	if respRecorder.statusCode != http.StatusOK {
 		w.WriteHeader(respRecorder.statusCode)
-		w.Write([]byte(respRecorder.body.String()))
+
+		// Try to parse OpenAI error format
+		var openAIErr openAIErrorResponse
+		if err := json.Unmarshal([]byte(respRecorder.body.String()), &openAIErr); err == nil && openAIErr.Error.Message != "" {
+			// Convert to Ollama error format (simple string)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"error": openAIErr.Error.Message})
+		} else {
+			// Fallback: return raw error body
+			w.Write([]byte(respRecorder.body.String()))
+		}
 		return
 	}
 
@@ -1058,10 +1077,20 @@ func (h *Handler) convertChatResponse(w http.ResponseWriter, respRecorder *respo
 
 // convertGenerateResponse converts OpenAI chat completion response to Ollama generate format
 func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
-	// Copy error responses as-is
+	// Handle error responses by converting OpenAI format to Ollama format
 	if respRecorder.statusCode != http.StatusOK {
 		w.WriteHeader(respRecorder.statusCode)
-		w.Write([]byte(respRecorder.body.String()))
+
+		// Try to parse OpenAI error format
+		var openAIErr openAIErrorResponse
+		if err := json.Unmarshal([]byte(respRecorder.body.String()), &openAIErr); err == nil && openAIErr.Error.Message != "" {
+			// Convert to Ollama error format (simple string)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"error": openAIErr.Error.Message})
+		} else {
+			// Fallback: return raw error body
+			w.Write([]byte(respRecorder.body.String()))
+		}
 		return
 	}
 
