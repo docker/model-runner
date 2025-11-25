@@ -460,8 +460,10 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to OpenAI format completion request
 	openAIReq := map[string]interface{}{
-		"model":  modelName,
-		"prompt": req.Prompt,
+		"model": modelName,
+		"messages": convertMessages([]Message{
+			{Role: "user", Content: req.Prompt},
+		}),
 		"stream": req.Stream != nil && *req.Stream,
 	}
 
@@ -660,7 +662,7 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 	}
 
 	// Create a new request to the scheduler
-	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/v1/completions", strings.NewReader(string(reqBody)))
+	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/v1/chat/completions", strings.NewReader(string(reqBody)))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create request: %v", err), http.StatusInternalServerError)
 		return
@@ -889,23 +891,23 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 		}
 
 		// Parse OpenAI chunk using proper struct
-		var chunk openAICompletionStreamChunk
+		var chunk openAIChatStreamChunk
 		if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
-			s.log.Warnf("Failed to parse OpenAI completion stream chunk: %v", err)
+			s.log.Warnf("Failed to parse OpenAI chat stream chunk: %v", err)
 			continue
 		}
 
-		// Extract text from structured response
-		var text string
+		// Extract content from structured response
+		var content string
 		if len(chunk.Choices) > 0 {
-			text = chunk.Choices[0].Text
+			content = chunk.Choices[0].Delta.Content
 		}
 
-		// Build Ollama chunk
+		// Build Ollama generate chunk
 		ollamaChunk := GenerateResponse{
 			Model:     s.modelName,
 			CreatedAt: time.Now(),
-			Response:  text,
+			Response:  content,
 			Done:      false,
 		}
 
@@ -963,7 +965,7 @@ func (h *Handler) convertChatResponse(w http.ResponseWriter, respRecorder *respo
 	}
 }
 
-// convertGenerateResponse converts OpenAI completion response to Ollama format
+// convertGenerateResponse converts OpenAI chat completion response to Ollama generate format
 func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
 	// Copy error responses as-is
 	if respRecorder.statusCode != http.StatusOK {
@@ -972,25 +974,25 @@ func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *r
 		return
 	}
 
-	// Parse OpenAI response using proper struct
-	var openAIResp openAICompletionResponse
+	// Parse OpenAI chat response (since we're now using chat completions endpoint)
+	var openAIResp openAIChatResponse
 	if err := json.Unmarshal([]byte(respRecorder.body.String()), &openAIResp); err != nil {
-		h.log.Errorf("Failed to parse OpenAI response: %v", err)
+		h.log.Errorf("Failed to parse OpenAI chat response: %v", err)
 		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
 		return
 	}
 
-	// Extract the text content from structured response
-	var text string
+	// Extract the message content from structured response
+	var content string
 	if len(openAIResp.Choices) > 0 {
-		text = openAIResp.Choices[0].Text
+		content = openAIResp.Choices[0].Message.Content
 	}
 
-	// Build Ollama response
+	// Build Ollama generate response
 	response := GenerateResponse{
 		Model:     modelName,
 		CreatedAt: time.Now(),
-		Response:  text,
+		Response:  content,
 		Done:      true,
 	}
 
