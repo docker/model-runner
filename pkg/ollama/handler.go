@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
 )
@@ -50,8 +51,8 @@ func NewHandler(log logging.Logger, modelManager *models.Manager, scheduler *sch
 
 // ServeHTTP implements the http.Handler interface
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	safeMethod := strings.ReplaceAll(strings.ReplaceAll(r.Method, "\n", ""), "\r", "")
-	safePath := strings.ReplaceAll(strings.ReplaceAll(r.URL.Path, "\n", ""), "\r", "")
+	safeMethod := utils.SanitizeForLog(r.Method, -1)
+	safePath := utils.SanitizeForLog(r.URL.Path, -1)
 	h.log.Infof("Ollama API request: %s %s", safeMethod, safePath)
 	h.httpHandler.ServeHTTP(w, r)
 }
@@ -406,8 +407,8 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	modelName = models.NormalizeModelName(modelName)
 
 	// Check if keep_alive is 0 (unload model)
-	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
-	sanitizedKeepAlive := strings.ReplaceAll(strings.ReplaceAll(req.KeepAlive, "\n", ""), "\r", "")
+	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
+	sanitizedKeepAlive := utils.SanitizeForLog(req.KeepAlive, -1)
 	h.log.Infof("handleChat: model=%s, keep_alive=%v", sanitizedModelName, sanitizedKeepAlive)
 	if req.KeepAlive == "0" || req.KeepAlive == "0s" || req.KeepAlive == "0m" {
 		h.log.Infof("handleChat: unloading model %s due to keep_alive=%s", sanitizedModelName, sanitizedKeepAlive)
@@ -419,7 +420,8 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if req.Options != nil {
 		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
 			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
-				h.log.Infof("handleChat: configuring context size %d for model %s", numCtx, sanitizedModelName)
+				sanitizedNumCtx := utils.SanitizeForLog(fmt.Sprintf("%d", numCtx), -1)
+				h.log.Infof("handleChat: configuring context size %s for model %s", sanitizedNumCtx, sanitizedModelName)
 				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
 					// Log the error but continue with the request
 					h.log.Warnf("handleChat: failed to configure context size for model %s: %v", sanitizedModelName, err)
@@ -471,8 +473,8 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Check if keep_alive is 0 (unload model)
 	// Sanitize user input before logging to prevent log injection
-	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
-	sanitizedKeepAlive := strings.ReplaceAll(strings.ReplaceAll(req.KeepAlive, "\n", ""), "\r", "")
+	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
+	sanitizedKeepAlive := utils.SanitizeForLog(req.KeepAlive, -1)
 	h.log.Infof("handleGenerate: model=%s, keep_alive=%v", sanitizedModelName, sanitizedKeepAlive)
 	if req.KeepAlive == "0" || req.KeepAlive == "0s" || req.KeepAlive == "0m" {
 		h.log.Infof("handleGenerate: unloading model %s due to keep_alive=%s", sanitizedModelName, sanitizedKeepAlive)
@@ -484,7 +486,8 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if req.Options != nil {
 		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
 			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
-				h.log.Infof("handleGenerate: configuring context size %d for model %s", numCtx, sanitizedModelName)
+				sanitizedNumCtx := utils.SanitizeForLog(fmt.Sprintf("%d", numCtx), -1)
+				h.log.Infof("handleGenerate: configuring context size %s for model %s", sanitizedNumCtx, sanitizedModelName)
 				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
 					// Log the error but continue with the request
 					h.log.Warnf("handleGenerate: failed to configure context size for model %s: %v", sanitizedModelName, err)
@@ -519,8 +522,9 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 // configureContextSize configures the context size for a model by calling the scheduler's configure endpoint
 func (h *Handler) configureContextSize(ctx context.Context, modelName string, contextSize int64) error {
 	// Sanitize user input before logging to prevent log injection
-	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
-	h.log.Infof("configureContextSize: configuring model %s with context size %d", sanitizedModelName, contextSize)
+	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
+	sanitizedContextSize := utils.SanitizeForLog(fmt.Sprintf("%d", contextSize), -1)
+	h.log.Infof("configureContextSize: configuring model %s with context size %s", sanitizedModelName, sanitizedContextSize)
 
 	// Create a configure request for the scheduler
 	configureReq := map[string]interface{}{
@@ -562,7 +566,7 @@ func (h *Handler) configureContextSize(ctx context.Context, modelName string, co
 // unloadModel unloads a model from memory
 func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelName string) {
 	// Sanitize user input before logging to prevent log injection
-	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
+	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
 	h.log.Infof("unloadModel: unloading model %s", sanitizedModelName)
 
 	// Create an unload request for the scheduler
@@ -579,8 +583,7 @@ func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelN
 	}
 
 	// Sanitize the user-provided request body before logging to avoid log injection
-	safeReqBody := strings.ReplaceAll(string(reqBody), "\n", "")
-	safeReqBody = strings.ReplaceAll(safeReqBody, "\r", "")
+	safeReqBody := utils.SanitizeForLog(string(reqBody), -1)
 	h.log.Infof("unloadModel: sending POST /engines/unload with body: %s", safeReqBody)
 
 	// Create a new request to the scheduler
@@ -699,10 +702,11 @@ func convertToInt64(v interface{}) int64 {
 	case float32:
 		return int64(val)
 	case string:
-		// Try to parse string as int64
-		if num, err := fmt.Sscanf(val, "%d", new(int64)); err == nil && num == 1 {
+		// Sanitize string to remove newline/carriage return before parsing
+		safeVal := utils.SanitizeForLog(val, -1)
+		if num, err := fmt.Sscanf(safeVal, "%d", new(int64)); err == nil && num == 1 {
 			var result int64
-			fmt.Sscanf(val, "%d", &result)
+			fmt.Sscanf(safeVal, "%d", &result)
 			return result
 		}
 	}
