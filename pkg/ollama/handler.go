@@ -773,7 +773,7 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 	}
 	newReq.Header.Set("Content-Type", "application/json")
 
-	if openAIReq["stream"].(bool) {
+	if stream, ok := openAIReq["stream"].(bool); ok && stream {
 		// Use streaming response writer that processes SSE on the fly
 		streamWriter := &streamingGenerateResponseWriter{
 			w:         w,
