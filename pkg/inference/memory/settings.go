@@ -1,18 +1,28 @@
 package memory
 
-import "sync"
+import "sync/atomic"
 
-var runtimeMemoryCheck bool
-var runtimeMemoryCheckLock sync.Mutex
+var runtimeMemoryCheck atomic.Bool
 
 func SetRuntimeMemoryCheck(enabled bool) {
-	runtimeMemoryCheckLock.Lock()
-	defer runtimeMemoryCheckLock.Unlock()
-	runtimeMemoryCheck = enabled
+	runtimeMemoryCheck.Store(enabled)
 }
 
 func RuntimeMemoryCheckEnabled() bool {
-	runtimeMemoryCheckLock.Lock()
-	defer runtimeMemoryCheckLock.Unlock()
-	return runtimeMemoryCheck
+	return runtimeMemoryCheck.Load()
+}
+
+var runtimeLoaderMemoryCheck atomic.Bool
+
+func init() {
+	// Loader memory checks are enabled by default to prevent OOM errors.
+	runtimeLoaderMemoryCheck.Store(true)
+}
+
+func SetRuntimeLoaderMemoryCheck(enabled bool) {
+	runtimeLoaderMemoryCheck.Store(enabled)
+}
+
+func RuntimeLoaderMemoryCheckEnabled() bool {
+	return runtimeLoaderMemoryCheck.Load()
 }

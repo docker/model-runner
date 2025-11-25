@@ -1,7 +1,7 @@
 command: docker model configure
-short: Configure runtime options for a model
-long: Configure runtime options for a model
-usage: docker model configure [--context-size=<n>] [--speculative-draft-model=<model>] MODEL [-- <runtime-flags...>]
+short: Configure runtime options globally or for a specific model
+long: Configure runtime options globally or for a specific model
+usage: docker model configure [--disable-loader-memory-check] [MODEL [--context-size=<n>] [--speculative-draft-model=<model>] [-- <runtime-flags...>]]
 pname: docker model
 plink: docker_model.yaml
 options:
@@ -9,6 +9,16 @@ options:
       value_type: int64
       default_value: "-1"
       description: context size (in tokens)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: disable-loader-memory-check
+      value_type: bool
+      default_value: "false"
+      description: disable memory checks in the model loader
       deprecated: false
       hidden: false
       experimental: false

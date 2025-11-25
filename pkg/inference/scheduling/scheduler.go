@@ -435,6 +435,18 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+
+	// Handle loader memory check configuration (global setting)
+	if configureRequest.DisableLoaderMemoryCheck {
+		s.log.Infoln("Disabling loader memory checks")
+		memory.SetRuntimeLoaderMemoryCheck(false)
+		// If this is a global-only request (no model specified), return early
+		if configureRequest.Model == "" {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+	}
+
 	var runtimeFlags []string
 	if len(configureRequest.RuntimeFlags) > 0 {
 		runtimeFlags = configureRequest.RuntimeFlags
