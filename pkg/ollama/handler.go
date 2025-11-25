@@ -406,6 +406,19 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle num_ctx option for context size configuration
+	if req.Options != nil {
+		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
+			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
+				h.log.Infof("handleChat: configuring context size %d for model %s", numCtx, sanitizedModelName)
+				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
+					// Log the error but continue with the request
+					h.log.Warnf("handleChat: failed to configure context size for model %s: %v", sanitizedModelName, err)
+				}
+			}
+		}
+	}
+
 	// Convert to OpenAI format chat completion request
 	openAIReq := map[string]interface{}{
 		"model":    modelName,
@@ -458,6 +471,19 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle num_ctx option for context size configuration
+	if req.Options != nil {
+		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
+			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
+				h.log.Infof("handleGenerate: configuring context size %d for model %s", numCtx, sanitizedModelName)
+				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
+					// Log the error but continue with the request
+					h.log.Warnf("handleGenerate: failed to configure context size for model %s: %v", sanitizedModelName, err)
+				}
+			}
+		}
+	}
+
 	// Convert to OpenAI format completion request
 	openAIReq := map[string]interface{}{
 		"model": modelName,
@@ -479,6 +505,49 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Make request to scheduler
 	h.proxyToCompletions(ctx, w, r, openAIReq, modelName)
+}
+
+// configureContextSize configures the context size for a model by calling the scheduler's configure endpoint
+func (h *Handler) configureContextSize(ctx context.Context, modelName string, contextSize int64) error {
+	// Sanitize user input before logging to prevent log injection
+	sanitizedModelName := strings.ReplaceAll(strings.ReplaceAll(modelName, "\n", ""), "\r", "")
+	h.log.Infof("configureContextSize: configuring model %s with context size %d", sanitizedModelName, contextSize)
+
+	// Create a configure request for the scheduler
+	configureReq := map[string]interface{}{
+		"model":        modelName,
+		"context-size": contextSize,
+	}
+
+	// Marshal the configure request
+	reqBody, err := json.Marshal(configureReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configure request: %w", err)
+	}
+
+	// Create a new request to the scheduler
+	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/_configure", strings.NewReader(string(reqBody)))
+	if err != nil {
+		return fmt.Errorf("failed to create configure request: %w", err)
+	}
+	newReq.Header.Set("Content-Type", "application/json")
+
+	// Use a custom response writer to capture the response
+	respRecorder := &responseRecorder{
+		statusCode: http.StatusOK,
+		headers:    make(http.Header),
+		body:       &strings.Builder{},
+	}
+
+	// Forward to scheduler
+	h.scheduler.ServeHTTP(respRecorder, newReq)
+
+	if respRecorder.statusCode != http.StatusOK {
+		return fmt.Errorf("configure request failed with status %d: %s", respRecorder.statusCode, respRecorder.body.String())
+	}
+
+	h.log.Infof("configureContextSize: successfully configured context size for model %s", sanitizedModelName)
+	return nil
 }
 
 // unloadModel unloads a model from memory
@@ -607,6 +676,28 @@ func convertMessages(messages []Message) []map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// convertToInt64 converts various numeric types to int64
+func convertToInt64(v interface{}) int64 {
+	switch val := v.(type) {
+	case int:
+		return int64(val)
+	case int64:
+		return val
+	case float64:
+		return int64(val)
+	case float32:
+		return int64(val)
+	case string:
+		// Try to parse string as int64
+		if num, err := fmt.Sscanf(val, "%d", new(int64)); err == nil && num == 1 {
+			var result int64
+			fmt.Sscanf(val, "%d", &result)
+			return result
+		}
+	}
+	return 0
 }
 
 // proxyToChatCompletions proxies the request to the OpenAI chat completions endpoint
