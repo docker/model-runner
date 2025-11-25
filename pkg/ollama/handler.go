@@ -432,7 +432,7 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	openAIReq := map[string]interface{}{
 		"model":    modelName,
 		"messages": convertMessages(req.Messages),
-		"stream":   req.Stream != nil && *req.Stream,
+		"stream":   req.Stream == nil || *req.Stream,
 	}
 
 	// Add options if present
@@ -446,7 +446,7 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Make request to scheduler
-	h.proxyToChatCompletions(ctx, w, r, openAIReq, modelName, req.Stream != nil && *req.Stream)
+	h.proxyToChatCompletions(ctx, w, r, openAIReq, modelName, req.Stream == nil || *req.Stream)
 }
 
 // handleGenerate handles POST /api/generate
@@ -499,7 +499,7 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		"messages": convertMessages([]Message{
 			{Role: "user", Content: req.Prompt},
 		}),
-		"stream": req.Stream != nil && *req.Stream,
+		"stream": req.Stream == nil || *req.Stream,
 	}
 
 	// Add options if present
