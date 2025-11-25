@@ -77,26 +77,26 @@ type ListResponse struct {
 
 // ModelResponse represents a single model in the list
 type ModelResponse struct {
-	Name       string        `json:"name"`
-	ModifiedAt time.Time     `json:"modified_at"`
-	Size       int64         `json:"size"`
-	Digest     string        `json:"digest"`
-	Details    ModelDetails  `json:"details"`
+	Name       string       `json:"name"`
+	ModifiedAt time.Time    `json:"modified_at"`
+	Size       int64        `json:"size"`
+	Digest     string       `json:"digest"`
+	Details    ModelDetails `json:"details"`
 }
 
 // ModelDetails contains model metadata
 type ModelDetails struct {
-	Format           string   `json:"format"`
-	Family           string   `json:"family"`
-	Families         []string `json:"families"`
-	ParameterSize    string   `json:"parameter_size"`
-	QuantizationLevel string  `json:"quantization_level"`
+	Format            string   `json:"format"`
+	Family            string   `json:"family"`
+	Families          []string `json:"families"`
+	ParameterSize     string   `json:"parameter_size"`
+	QuantizationLevel string   `json:"quantization_level"`
 }
 
 // ShowRequest is the request for /api/show
 type ShowRequest struct {
-	Name    string `json:"name"`    // Ollama uses 'name' field
-	Model   string `json:"model"`   // Also accept 'model' for compatibility
+	Name    string `json:"name"`  // Ollama uses 'name' field
+	Model   string `json:"model"` // Also accept 'model' for compatibility
 	Verbose bool   `json:"verbose,omitempty"`
 }
 
@@ -111,8 +111,8 @@ type ShowResponse struct {
 
 // ChatRequest is the request for /api/chat
 type ChatRequest struct {
-	Name      string                 `json:"name"`       // Ollama uses 'name' field
-	Model     string                 `json:"model"`      // Also accept 'model' for compatibility
+	Name      string                 `json:"name"`  // Ollama uses 'name' field
+	Model     string                 `json:"model"` // Also accept 'model' for compatibility
 	Messages  []Message              `json:"messages"`
 	Stream    *bool                  `json:"stream,omitempty"`
 	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
@@ -135,8 +135,8 @@ type ChatResponse struct {
 
 // GenerateRequest is the request for /api/generate
 type GenerateRequest struct {
-	Name      string                 `json:"name"`       // Ollama uses 'name' field
-	Model     string                 `json:"model"`      // Also accept 'model' for compatibility
+	Name      string                 `json:"name"`  // Ollama uses 'name' field
+	Model     string                 `json:"model"` // Also accept 'model' for compatibility
 	Prompt    string                 `json:"prompt"`
 	Stream    *bool                  `json:"stream,omitempty"`
 	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
@@ -159,8 +159,8 @@ type DeleteRequest struct {
 
 // PullRequest is the request for POST /api/pull
 type PullRequest struct {
-	Name     string `json:"name"`     // Ollama uses 'name' field
-	Model    string `json:"model"`    // Also accept 'model' for compatibility
+	Name     string `json:"name"`  // Ollama uses 'name' field
+	Model    string `json:"model"` // Also accept 'model' for compatibility
 	Insecure bool   `json:"insecure,omitempty"`
 	Stream   *bool  `json:"stream,omitempty"`
 }
@@ -217,7 +217,7 @@ func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	modelsList, err := h.modelManager.GetModels()
 	if err != nil {
 		h.log.Errorf("Failed to list models: %v", err)
- 		http.Error(w, "Failed to list models", http.StatusInternalServerError)
+		http.Error(w, "Failed to list models", http.StatusInternalServerError)
 		return
 	}
 
@@ -229,10 +229,10 @@ func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	for _, model := range modelsList {
 		// Extract details from the model
 		details := ModelDetails{
-			Format:           "gguf", // Default to gguf for now
-			Family:           model.Config.Architecture,
-			Families:         []string{model.Config.Architecture},
-			ParameterSize:    model.Config.Parameters,
+			Format:            "gguf", // Default to gguf for now
+			Family:            model.Config.Architecture,
+			Families:          []string{model.Config.Architecture},
+			ParameterSize:     model.Config.Parameters,
 			QuantizationLevel: model.Config.Quantization,
 		}
 
@@ -363,10 +363,10 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	// Build response
 	response := ShowResponse{
 		Details: ModelDetails{
-			Format:           "gguf",
-			Family:           config.Architecture,
-			Families:         []string{config.Architecture},
-			ParameterSize:    config.Parameters,
+			Format:            "gguf",
+			Family:            config.Architecture,
+			Families:          []string{config.Architecture},
+			ParameterSize:     config.Parameters,
 			QuantizationLevel: config.Quantization,
 		},
 	}
@@ -408,9 +408,9 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to OpenAI format chat completion request
 	openAIReq := map[string]interface{}{
-		"model":  modelName,
+		"model":    modelName,
 		"messages": convertMessages(req.Messages),
-		"stream": req.Stream != nil && *req.Stream,
+		"stream":   req.Stream != nil && *req.Stream,
 	}
 
 	// Add options if present
@@ -476,7 +476,7 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Make request to scheduler
-	h.proxyToCompletions(ctx, w, r, openAIReq, modelName, req.Stream != nil && *req.Stream)
+	h.proxyToCompletions(ctx, w, r, openAIReq, modelName)
 }
 
 // unloadModel unloads a model from memory
@@ -651,7 +651,7 @@ func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWri
 }
 
 // proxyToCompletions proxies the request to the OpenAI completions endpoint
-func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string, stream bool) {
+func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string) {
 	// Marshal the OpenAI request
 	reqBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -667,7 +667,7 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 	}
 	newReq.Header.Set("Content-Type", "application/json")
 
-	if stream {
+	if openAIReq["stream"].(bool) {
 		// Use streaming response writer that processes SSE on the fly
 		streamWriter := &streamingGenerateResponseWriter{
 			w:         w,
@@ -999,4 +999,3 @@ func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *r
 		h.log.Errorf("Failed to encode response: %v", err)
 	}
 }
-
