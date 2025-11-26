@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/internal/utils"
@@ -663,7 +664,7 @@ func (h *Handler) configureContextSize(ctx context.Context, modelName string, co
 	}
 
 	// Create a new request to the scheduler
-	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/_configure", strings.NewReader(string(reqBody)))
+	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, inference.InferencePrefix+"/_configure", strings.NewReader(string(reqBody)))
 	if err != nil {
 		return fmt.Errorf("failed to create configure request: %w", err)
 	}
