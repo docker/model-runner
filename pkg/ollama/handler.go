@@ -712,9 +712,23 @@ func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
 	// Call the model manager's PullModel method with the wrapped writer
 	if err := h.modelManager.PullModel(modelName, "", r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %v", err)
-		// Only write error if headers haven't been sent yet
+
+		// Send error in Ollama JSON format
+		errorResponse := ollamaPullStatus{
+			Error: fmt.Sprintf("Failed to pull model: %v", err),
+		}
+
 		if !ollamaWriter.headersSent {
-			http.Error(w, fmt.Sprintf("Failed to pull model: %v", err), http.StatusInternalServerError)
+			// Headers not sent yet - we can still use http.Error
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(errorResponse)
+		} else {
+			// Headers already sent - write error as JSON line
+			if data, marshalErr := json.Marshal(errorResponse); marshalErr == nil {
+				w.Write(data)
+				w.Write([]byte("\n"))
+			}
 		}
 	}
 }
