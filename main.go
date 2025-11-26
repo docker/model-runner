@@ -89,6 +89,12 @@ func main() {
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 		Transport:     baseTransport,
 	}
+	modelHandler := models.NewHandler(
+		log,
+		clientConfig,
+		nil,
+		memEstimator,
+	)
 	modelService := models.NewService(log.WithFields(logrus.Fields{"component": "model-service"}), clientConfig)
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
@@ -146,6 +152,7 @@ func main() {
 			mlx.Name:      mlxBackend,
 		},
 		llamaCppBackend,
+		modelHandler,
 		modelService,
 		http.DefaultClient,
 		nil,
@@ -159,12 +166,6 @@ func main() {
 	)
 
 	router := routing.NewNormalizedServeMux()
-	modelHandler := models.NewHandler(
-		log,
-		clientConfig,
-		nil,
-		memEstimator,
-	)
 
 	// Register path prefixes to forward all HTTP methods (including OPTIONS) to components
 	// Components handle method routing internally

@@ -39,7 +39,7 @@ type Service struct {
 	pullTokens chan struct{}
 }
 
-// NewService creates a new model service with the provided clients.
+// NewService creates a new model models with the provided clients.
 func NewService(log logging.Logger, c ClientConfig) *Service {
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
@@ -75,9 +75,9 @@ func NewService(log logging.Logger, c ClientConfig) *Service {
 	}
 }
 
-// GetModel returns a single model by reference.
+// GetLocal returns a single model by reference.
 // This is the core business logic for retrieving a model from the distribution client.
-func (s *Service) GetModel(ref string) (types.Model, error) {
+func (s *Service) GetLocal(ref string) (types.Model, error) {
 	if s.distributionClient == nil {
 		return nil, fmt.Errorf("model distribution service unavailable")
 	}
@@ -98,11 +98,11 @@ func (s *Service) GetModel(ref string) (types.Model, error) {
 	return model, nil
 }
 
-// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
-func (s *Service) ResolveModelID(modelRef string) string {
+// ResolveID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
+func (s *Service) ResolveID(modelRef string) string {
 	// Sanitize modelRef to prevent log forgery
 	sanitizedModelRef := utils.SanitizeForLog(modelRef, -1)
-	model, err := s.GetModel(sanitizedModelRef)
+	model, err := s.GetLocal(sanitizedModelRef)
 	if err != nil {
 		s.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
 		return sanitizedModelRef
@@ -129,8 +129,8 @@ func (s *Service) GetDiskUsage() (int64, error) {
 	return size, nil
 }
 
-// GetRemoteModel returns a single remote model.
-func (s *Service) GetRemoteModel(ctx context.Context, ref string) (types.ModelArtifact, error) {
+// GetRemote returns a single remote model.
+func (s *Service) GetRemote(ctx context.Context, ref string) (types.ModelArtifact, error) {
 	if s.registryClient == nil {
 		return nil, fmt.Errorf("model registry service unavailable")
 	}
@@ -142,8 +142,8 @@ func (s *Service) GetRemoteModel(ctx context.Context, ref string) (types.ModelAr
 	return model, nil
 }
 
-// GetRemoteModelBlobURL returns the URL of a given model blob.
-func (s *Service) GetRemoteModelBlobURL(ref string, digest v1.Hash) (string, error) {
+// GetRemoteBlobURL returns the URL of a given model blob.
+func (s *Service) GetRemoteBlobURL(ref string, digest v1.Hash) (string, error) {
 	blobURL, err := s.registryClient.BlobURL(ref, digest)
 	if err != nil {
 		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
@@ -169,14 +169,14 @@ func (s *Service) GetBundle(ref string) (types.ModelBundle, error) {
 	return bundle, nil
 }
 
-// IsModelInStore checks if a given model is in the local store.
-func (s *Service) IsModelInStore(ref string) (bool, error) {
+// InStore checks if a given model is in the local store.
+func (s *Service) InStore(ref string) (bool, error) {
 	return s.distributionClient.IsModelInStore(ref)
 }
 
-// GetModels returns all models.
-func (s *Service) GetModels() ([]*Model, error) {
-	models, err := s.GetRawModels()
+// List returns all models.
+func (s *Service) List() ([]*Model, error) {
+	models, err := s.RawList()
 	if err != nil {
 		return nil, err
 	}
@@ -194,9 +194,9 @@ func (s *Service) GetModels() ([]*Model, error) {
 	return apiModels, nil
 }
 
-func (s *Service) GetRawModels() ([]types.Model, error) {
+func (s *Service) RawList() ([]types.Model, error) {
 	if s.distributionClient == nil {
-		return nil, fmt.Errorf("model distribution service unavailable")
+		return nil, fmt.Errorf("model distribution models unavailable")
 	}
 	models, err := s.distributionClient.ListModels()
 	if err != nil {
@@ -205,8 +205,8 @@ func (s *Service) GetRawModels() ([]types.Model, error) {
 	return models, nil
 }
 
-// DeleteModel deletes a model from storage and returns the delete response
-func (s *Service) DeleteModel(reference string, force bool) (*distribution.DeleteModelResponse, error) {
+// Delete deletes a model from storage and returns the delete response
+func (s *Service) Delete(reference string, force bool) (*distribution.DeleteModelResponse, error) {
 	if s.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
 	}
@@ -218,9 +218,9 @@ func (s *Service) DeleteModel(reference string, force bool) (*distribution.Delet
 	return resp, nil
 }
 
-// PullModel pulls a model to local storage. Any error it returns is suitable
+// Pull pulls a model to local storage. Any error it returns is suitable
 // for writing back to the client.
-func (s *Service) PullModel(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
+func (s *Service) Pull(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
 	// Restrict model pull concurrency.
 	select {
 	case <-s.pullTokens:
@@ -304,7 +304,7 @@ func (s *Service) Tag(ref, target string) error {
 
 		// If it looks like an ID, try to find the model by ID
 		if strings.HasPrefix(ref, "sha256:") || len(ref) == 12 { // 12-char short ID
-			// Get all models and find the one matching this ID
+			// GetLocal all models and find the one matching this ID
 			models, listErr := s.distributionClient.ListModels()
 			if listErr != nil {
 				return fmt.Errorf("error listing models: %w", listErr)
@@ -346,7 +346,7 @@ func (s *Service) Tag(ref, target string) error {
 						tagWithoutVersion = tagStr[:idx]
 					}
 
-					// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
+					// GetLocal just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
 					namePart := tagWithoutVersion
 					if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
 						namePart = tagWithoutVersion[idx+1:]
@@ -381,8 +381,8 @@ func (s *Service) Tag(ref, target string) error {
 	return nil
 }
 
-// PushModel pushes a model from the store to the registry.
-func (s *Service) PushModel(model string, r *http.Request, w http.ResponseWriter) error {
+// Push pushes a model from the store to the registry.
+func (s *Service) Push(model string, r *http.Request, w http.ResponseWriter) error {
 	// Set up response headers for streaming
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -446,7 +446,7 @@ func (s *Service) Package(ref string, tag string, contextSize uint64) error {
 		bldr = bldr.WithContextSize(contextSize)
 	}
 
-	// Get the built model artifact
+	// GetLocal the built model artifact
 	builtModel := bldr.Model()
 
 	// Check if we can use lightweight repackaging (config-only changes from existing model)

@@ -208,7 +208,7 @@ func (r *OpenAIRecorder) SetConfigForModel(model string, config *inference.Backe
 		return
 	}
 
-	modelID := r.modelService.ResolveModelID(model)
+	modelID := r.modelService.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -224,7 +224,7 @@ func (r *OpenAIRecorder) SetConfigForModel(model string, config *inference.Backe
 }
 
 func (r *OpenAIRecorder) RecordRequest(model string, req *http.Request, body []byte) string {
-	modelID := r.modelService.ResolveModelID(model)
+	modelID := r.modelService.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -354,7 +354,7 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 		response = responseBody
 	}
 
-	modelID := r.modelService.ResolveModelID(model)
+	modelID := r.modelService.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -653,7 +653,7 @@ func (r *OpenAIRecorder) getAllRecords() []ModelRecordsResponse {
 }
 
 func (r *OpenAIRecorder) getRecordsByModel(model string) []ModelRecordsResponse {
-	modelID := r.modelService.ResolveModelID(model)
+	modelID := r.modelService.ResolveID(model)
 
 	r.m.RLock()
 	defer r.m.RUnlock()
@@ -725,7 +725,7 @@ func (r *OpenAIRecorder) sendExistingRecords(w http.ResponseWriter, model string
 }
 
 func (r *OpenAIRecorder) RemoveModel(model string) {
-	modelID := r.modelService.ResolveModelID(model)
+	modelID := r.modelService.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()

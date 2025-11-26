@@ -301,7 +301,7 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 			return l.evict(false)
 		} else {
 			for _, model := range unload.Models {
-				modelID := l.modelService.ResolveModelID(model)
+				modelID := l.modelService.ResolveID(model)
 				// Delete all runner configs for this model (including with different draft models)
 				for key := range l.runnerConfigs {
 					if key.backend == unload.Backend && key.modelID == modelID {
@@ -448,14 +448,14 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, mode)]; ok {
 		runnerConfig = &rc
 		if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-			draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
+			draftModelID = l.modelService.ResolveID(runnerConfig.Speculative.DraftModel)
 		}
 	} else if mode == inference.BackendModeReranking {
 		// For reranking mode, fallback to completion config if specific config is not found.
 		if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, inference.BackendModeCompletion)]; ok {
 			runnerConfig = &rc
 			if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-				draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
+				draftModelID = l.modelService.ResolveID(runnerConfig.Speculative.DraftModel)
 			}
 		}
 	}
@@ -691,7 +691,7 @@ func (l *loader) setRunnerConfig(ctx context.Context, backendName, modelID strin
 	// Determine the draftModelID from the config to find any existing runner
 	draftModelID := ""
 	if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-		draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
+		draftModelID = l.modelService.ResolveID(runnerConfig.Speculative.DraftModel)
 	}
 	rKey := makeRunnerKey(backendName, modelID, draftModelID, mode)
 

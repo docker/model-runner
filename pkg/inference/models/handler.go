@@ -40,8 +40,8 @@ type Handler struct {
 	lock sync.RWMutex
 	// memoryEstimator is used to calculate runtime memory requirements for models.
 	memoryEstimator memory.MemoryEstimator
-	// service handles business logic for model operations.
-	service *Service
+	// models handles business logic for model operations.
+	models *Service
 }
 
 type ClientConfig struct {
@@ -57,15 +57,12 @@ type ClientConfig struct {
 
 // NewHandler creates a new model's handler.
 func NewHandler(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Handler {
-	// Create the service layer for business logic.
-	service := NewService(log.WithFields(logrus.Fields{"component": "model-service"}), c)
-
 	// Create the manager.
 	m := &Handler{
 		log:             log,
 		router:          http.NewServeMux(),
 		memoryEstimator: memoryEstimator,
-		service:         service,
+		models:          NewService(log.WithFields(logrus.Fields{"component": "service"}), c),
 	}
 
 	// Register routes.
@@ -183,7 +180,7 @@ func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := m.service.PullModel(request.From, request.BearerToken, r, w); err != nil {
+	if err := m.models.Pull(request.From, request.BearerToken, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)
 			return
@@ -212,7 +209,7 @@ func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 // handleLoadModel handles POST <inference-prefix>/models/load requests.
 func (m *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
-	err := m.service.Load(r.Body, w)
+	err := m.models.Load(r.Body, w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -221,7 +218,7 @@ func (m *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModels handles GET <inference-prefix>/models requests.
 func (m *Handler) handleGetModels(w http.ResponseWriter, r *http.Request) {
-	apiModels, err := m.service.GetModels()
+	apiModels, err := m.models.List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -273,7 +270,7 @@ func (m *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Handler) getRemoteAPIModel(ctx context.Context, modelRef string) (*Model, error) {
-	model, err := m.service.GetRemoteModel(ctx, modelRef)
+	model, err := m.models.GetRemote(ctx, modelRef)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +278,7 @@ func (m *Handler) getRemoteAPIModel(ctx context.Context, modelRef string) (*Mode
 }
 
 func (m *Handler) getLocalAPIModel(modelRef string) (*Model, error) {
-	model, err := m.service.GetModel(modelRef)
+	model, err := m.models.GetLocal(modelRef)
 	if err != nil {
 		// If not found locally, try partial name matching
 		if errors.Is(err, distribution.ErrModelNotFound) {
@@ -307,7 +304,7 @@ func (m *Handler) writeModelError(w http.ResponseWriter, err error) {
 // against model tags using partial name matching (e.g., "smollm2" matches "ai/smollm2:latest")
 func findModelByPartialName(m *Handler, modelRef string) (*Model, error) {
 	// Get all models to search through their tags
-	models, err := m.service.GetRawModels()
+	models, err := m.models.RawList()
 	if err != nil {
 		return nil, err
 	}
@@ -362,12 +359,12 @@ func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// First try to delete without normalization (as ID), then with normalization if not found
-	resp, err := m.service.DeleteModel(modelRef, force)
+	resp, err := m.models.Delete(modelRef, force)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// If not found as-is, try with normalization
 		normalizedRef := NormalizeModelName(modelRef)
 		if normalizedRef != modelRef { // only try normalized if it's different
-			resp, err = m.service.DeleteModel(normalizedRef, force)
+			resp, err = m.models.Delete(normalizedRef, force)
 		}
 	}
 
@@ -395,7 +392,7 @@ func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 // GET /<inference-prefix>/v1/models requests.
 func (m *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
 	// Query models.
-	available, err := m.service.GetRawModels()
+	available, err := m.models.RawList()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -418,7 +415,7 @@ func (m *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) 
 // and GET <inference-prefix>/v1/models/{name} requests.
 func (m *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
-	model, err := m.service.GetModel(modelRef)
+	model, err := m.models.GetLocal(modelRef)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -479,7 +476,7 @@ func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 	target := fmt.Sprintf("%s:%s", repo, tag)
 
 	// First try to tag using the provided model reference as-is
-	err := m.service.Tag(model, target)
+	err := m.models.Tag(model, target)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -504,8 +501,7 @@ func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
 func (m *Handler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
-	// Call the PushModel method on the distribution client.
-	if err := m.service.PushModel(model, r, w); err != nil {
+	if err := m.models.Push(model, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", model, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
@@ -545,7 +541,7 @@ func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 	// Normalize the source model name
 	normalized := NormalizeModelName(request.From)
 
-	err := m.service.Package(normalized, request.Tag, request.ContextSize)
+	err := m.models.Package(normalized, request.Tag, request.ContextSize)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			m.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized), err)
@@ -569,7 +565,7 @@ func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 
 // handlePurge handles DELETE <inference-prefix>/models/purge requests.
 func (m *Handler) handlePurge(w http.ResponseWriter, _ *http.Request) {
-	err := m.service.Purge()
+	err := m.models.Purge()
 	if err != nil {
 		m.log.Warnf("Failed to purge models: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

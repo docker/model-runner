@@ -36,8 +36,8 @@ type Scheduler struct {
 	backends map[string]inference.Backend
 	// defaultBackend is the default inference backend. It may be nil.
 	defaultBackend inference.Backend
-	// modelManager is the shared model manager.
-	modelManager *models.Handler
+	// modelHandler is the shared model handler.
+	modelHandler *models.Handler
 	// modelService is the shared model service.
 	modelService *models.Service
 	// installer is the backend installer.
@@ -62,22 +62,24 @@ func NewScheduler(
 	log logging.Logger,
 	backends map[string]inference.Backend,
 	defaultBackend inference.Backend,
-	modelService *models.Service,
+	handler *models.Handler,
+	service *models.Service,
 	httpClient *http.Client,
 	allowedOrigins []string,
 	tracker *metrics.Tracker,
 	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
-	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelService)
+	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), service)
 
 	// Create the scheduler.
 	s := &Scheduler{
 		log:            log,
 		backends:       backends,
 		defaultBackend: defaultBackend,
-		modelService:   modelService,
+		modelHandler:   handler,
+		modelService:   service,
 		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelService, openAIRecorder, sysMemInfo),
+		loader:         newLoader(log, backends, service, openAIRecorder, sysMemInfo),
 		router:         http.NewServeMux(),
 		tracker:        tracker,
 		openAIRecorder: openAIRecorder,
@@ -236,7 +238,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		model, err := s.modelService.GetModel(request.Model)
+		model, err := s.modelService.GetLocal(request.Model)
 		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
@@ -274,7 +276,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	modelID := s.modelService.ResolveModelID(request.Model)
+	modelID := s.modelService.ResolveID(request.Model)
 
 	// Request a runner to execute the request and defer its release.
 	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
@@ -469,14 +471,14 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		mode = inference.BackendModeEmbedding
 	}
 
-	if model, err := s.modelService.GetModel(configureRequest.Model); err == nil {
+	if model, err := s.modelService.GetLocal(configureRequest.Model); err == nil {
 		// Configure is called by compose for each model.
 		s.tracker.TrackModel(model, r.UserAgent(), "configure/"+mode.String())
 
 		// Automatically identify models for vLLM.
 		backend = s.selectBackendForModel(model, backend, configureRequest.Model)
 	}
-	modelID := s.modelService.ResolveModelID(configureRequest.Model)
+	modelID := s.modelService.ResolveID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
 		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {
@@ -568,7 +570,7 @@ func parseBackendMode(mode string) inference.BackendMode {
 // handleModels handles GET /engines/{backend}/v1/models* requests
 // by delegating to the model manager
 func (s *Scheduler) handleModels(w http.ResponseWriter, r *http.Request) {
-	s.modelManager.ServeHTTP(w, r)
+	s.modelHandler.ServeHTTP(w, r)
 }
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.
