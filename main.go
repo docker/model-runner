@@ -84,16 +84,18 @@ func main() {
 	}
 	baseTransport.Proxy = http.ProxyFromEnvironment
 
+	clientConfig := models.ClientConfig{
+		StoreRootPath: modelPath,
+		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+		Transport:     baseTransport,
+	}
 	modelManager := models.NewManager(
 		log,
-		models.ClientConfig{
-			StoreRootPath: modelPath,
-			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			Transport:     baseTransport,
-		},
+		clientConfig,
 		nil,
 		memEstimator,
 	)
+	modelService := models.NewService(log.WithFields(logrus.Fields{"component": "model-service"}), clientConfig)
 
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
@@ -151,7 +153,7 @@ func main() {
 			mlx.Name:      mlxBackend,
 		},
 		llamaCppBackend,
-		modelManager,
+		modelService,
 		http.DefaultClient,
 		nil,
 		metrics.NewTracker(
@@ -178,7 +180,7 @@ func main() {
 	router.Handle("/score", aliasHandler)
 
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHandler(log, modelManager, scheduler, nil)
+	ollamaHandler := ollama.NewHandler(log, modelManager, scheduler, nil, modelService)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns

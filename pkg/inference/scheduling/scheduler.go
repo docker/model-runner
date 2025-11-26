@@ -38,6 +38,8 @@ type Scheduler struct {
 	defaultBackend inference.Backend
 	// modelManager is the shared model manager.
 	modelManager *models.Manager
+	// modelService is the shared model service.
+	modelService *models.Service
 	// installer is the backend installer.
 	installer *installer
 	// loader is the backend loader.
@@ -60,22 +62,22 @@ func NewScheduler(
 	log logging.Logger,
 	backends map[string]inference.Backend,
 	defaultBackend inference.Backend,
-	modelManager *models.Manager,
+	modelService *models.Service,
 	httpClient *http.Client,
 	allowedOrigins []string,
 	tracker *metrics.Tracker,
 	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
-	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
+	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelService)
 
 	// Create the scheduler.
 	s := &Scheduler{
 		log:            log,
 		backends:       backends,
 		defaultBackend: defaultBackend,
-		modelManager:   modelManager,
+		modelService:   modelService,
 		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),
+		loader:         newLoader(log, backends, modelService, openAIRecorder, sysMemInfo),
 		router:         http.NewServeMux(),
 		tracker:        tracker,
 		openAIRecorder: openAIRecorder,
@@ -234,7 +236,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		model, err := s.modelManager.GetModel(request.Model)
+		model, err := s.modelService.GetModel(request.Model)
 		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
@@ -272,7 +274,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	modelID := s.modelManager.ResolveModelID(request.Model)
+	modelID := s.modelService.ResolveModelID(request.Model)
 
 	// Request a runner to execute the request and defer its release.
 	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
@@ -365,9 +367,9 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 }
 
 func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
-	modelsDiskUsage, httpCode, err := s.modelManager.GetDiskUsage()
+	modelsDiskUsage, err := s.modelService.GetDiskUsage()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get models disk usage: %v", err), httpCode)
+		http.Error(w, fmt.Sprintf("Failed to get models disk usage: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -467,14 +469,14 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		mode = inference.BackendModeEmbedding
 	}
 
-	if model, err := s.modelManager.GetModel(configureRequest.Model); err == nil {
+	if model, err := s.modelService.GetModel(configureRequest.Model); err == nil {
 		// Configure is called by compose for each model.
 		s.tracker.TrackModel(model, r.UserAgent(), "configure/"+mode.String())
 
 		// Automatically identify models for vLLM.
 		backend = s.selectBackendForModel(model, backend, configureRequest.Model)
 	}
-	modelID := s.modelManager.ResolveModelID(configureRequest.Model)
+	modelID := s.modelService.ResolveModelID(configureRequest.Model)
 	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
 		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
 		if errors.Is(err, errRunnerAlreadyActive) {

@@ -23,20 +23,22 @@ const (
 
 // Handler implements the Ollama API compatibility layer
 type Handler struct {
-	log          logging.Logger
-	router       *http.ServeMux
-	httpHandler  http.Handler
-	modelManager *models.Manager
-	scheduler    *scheduling.Scheduler
+	log           logging.Logger
+	router        *http.ServeMux
+	httpHandler   http.Handler
+	modelManager  *models.Manager
+	modelsService *models.Service
+	scheduler     *scheduling.Scheduler
 }
 
 // NewHandler creates a new Ollama API handler
-func NewHandler(log logging.Logger, modelManager *models.Manager, scheduler *scheduling.Scheduler, allowedOrigins []string) *Handler {
+func NewHandler(log logging.Logger, modelManager *models.Manager, scheduler *scheduling.Scheduler, allowedOrigins []string, service *models.Service) *Handler {
 	h := &Handler{
-		log:          log,
-		router:       http.NewServeMux(),
-		modelManager: modelManager,
-		scheduler:    scheduler,
+		log:           log,
+		router:        http.NewServeMux(),
+		modelManager:  modelManager,
+		scheduler:     scheduler,
+		modelsService: service,
 	}
 
 	// Register routes

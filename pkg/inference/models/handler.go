@@ -53,6 +53,8 @@ type Manager struct {
 	lock sync.RWMutex
 	// memoryEstimator is used to calculate runtime memory requirements for models.
 	memoryEstimator memory.MemoryEstimator
+	// service handles business logic for model operations.
+	service *Service
 }
 
 type ClientConfig struct {
@@ -87,6 +89,9 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 		registry.WithUserAgent(c.UserAgent),
 	)
 
+	// Create the service layer for business logic.
+	service := NewService(log.WithFields(logrus.Fields{"component": "model-service"}), c)
+
 	// Create the manager.
 	m := &Manager{
 		log:                log,
@@ -95,6 +100,7 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 		distributionClient: distributionClient,
 		registryClient:     registryClient,
 		memoryEstimator:    memoryEstimator,
+		service:            service,
 	}
 
 	// Register routes.
@@ -337,34 +343,13 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ResolveModelID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
-func (m *Manager) ResolveModelID(modelRef string) string {
-	// Sanitize modelRef to prevent log forgery
-	sanitizedModelRef := strings.ReplaceAll(modelRef, "\n", "")
-	sanitizedModelRef = strings.ReplaceAll(sanitizedModelRef, "\r", "")
-
-	model, err := m.GetModel(sanitizedModelRef)
-	if err != nil {
-		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
-		return sanitizedModelRef
-	}
-
-	modelID, err := model.ID()
-	if err != nil {
-		m.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
-		return sanitizedModelRef
-	}
-
-	return modelID
-}
-
 func getLocalModel(m *Manager, name string) (*Model, error) {
 	if m.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
 	}
 
 	// Query the model.
-	model, err := m.GetModel(name)
+	model, err := m.service.GetModel(name)
 	if err != nil {
 		return nil, err
 	}
@@ -532,23 +517,8 @@ func (m *Manager) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) 
 // handleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
 // and GET <inference-prefix>/v1/models/{name} requests.
 func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
 	modelRef := r.PathValue("name")
-
-	// Query the model - first try without normalization (as ID), then with normalization
-	model, err := m.GetModel(modelRef)
-	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-		// If not found as-is, try with normalization
-		normalizedRef := NormalizeModelName(modelRef)
-		if normalizedRef != modelRef { // only try normalized if it's different
-			model, err = m.GetModel(normalizedRef)
-		}
-	}
-
+	model, err := m.service.GetModel(modelRef)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -894,13 +864,9 @@ func (m *Manager) GetModels() ([]*Model, error) {
 	return apiModels, nil
 }
 
-// GetModel returns a single model.
+// GetModel returns a single model by delegating to the service layer.
 func (m *Manager) GetModel(ref string) (types.Model, error) {
-	model, err := m.distributionClient.GetModel(ref)
-	if err != nil {
-		return nil, fmt.Errorf("error while getting model: %w", err)
-	}
-	return model, err
+	return m.service.GetModel(ref)
 }
 
 // GetRemoteModel returns a single remote model.

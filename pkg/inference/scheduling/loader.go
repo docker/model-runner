@@ -93,8 +93,8 @@ type loader struct {
 	log logging.Logger
 	// backends are the supported inference backends.
 	backends map[string]inference.Backend
-	// modelManager is the shared model manager.
-	modelManager *models.Manager
+	// modelService is the shared model service.
+	modelService *models.Service
 	// runnerIdleTimeout is the loader-specific default runner idle timeout.
 	runnerIdleTimeout time.Duration
 	// totalMemory is the total system memory allocated to the loader.
@@ -136,7 +136,7 @@ type loader struct {
 func newLoader(
 	log logging.Logger,
 	backends map[string]inference.Backend,
-	modelManager *models.Manager,
+	modelService *models.Service,
 	openAIRecorder *metrics.OpenAIRecorder,
 	sysMemInfo memory.SystemMemoryInfo,
 ) *loader {
@@ -166,7 +166,7 @@ func newLoader(
 	l := &loader{
 		log:               log,
 		backends:          backends,
-		modelManager:      modelManager,
+		modelService:      modelService,
 		runnerIdleTimeout: runnerIdleTimeout,
 		totalMemory:       totalMemory,
 		idleCheck:         make(chan struct{}, 1),
@@ -301,7 +301,7 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 			return l.evict(false)
 		} else {
 			for _, model := range unload.Models {
-				modelID := l.modelManager.ResolveModelID(model)
+				modelID := l.modelService.ResolveModelID(model)
 				// Delete all runner configs for this model (including with different draft models)
 				for key := range l.runnerConfigs {
 					if key.backend == unload.Backend && key.modelID == modelID {
@@ -448,14 +448,14 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, mode)]; ok {
 		runnerConfig = &rc
 		if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-			draftModelID = l.modelManager.ResolveModelID(runnerConfig.Speculative.DraftModel)
+			draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
 		}
 	} else if mode == inference.BackendModeReranking {
 		// For reranking mode, fallback to completion config if specific config is not found.
 		if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, inference.BackendModeCompletion)]; ok {
 			runnerConfig = &rc
 			if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-				draftModelID = l.modelManager.ResolveModelID(runnerConfig.Speculative.DraftModel)
+				draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
 			}
 		}
 	}
@@ -691,7 +691,7 @@ func (l *loader) setRunnerConfig(ctx context.Context, backendName, modelID strin
 	// Determine the draftModelID from the config to find any existing runner
 	draftModelID := ""
 	if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
-		draftModelID = l.modelManager.ResolveModelID(runnerConfig.Speculative.DraftModel)
+		draftModelID = l.modelService.ResolveModelID(runnerConfig.Speculative.DraftModel)
 	}
 	rKey := makeRunnerKey(backendName, modelID, draftModelID, mode)
 
