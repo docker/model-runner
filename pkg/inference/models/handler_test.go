@@ -124,7 +124,7 @@ func TestPullModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			m := NewManager(log, ClientConfig{
+			m := NewHandler(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 			}, nil, memEstimator)
@@ -135,7 +135,7 @@ func TestPullModel(t *testing.T) {
 			}
 
 			w := httptest.NewRecorder()
-			err = m.PullModel(tag, "", r, w)
+			err = m.service.PullModel(tag, "", r, w)
 			if err != nil {
 				t.Fatalf("Failed to pull model: %v", err)
 			}
@@ -235,7 +235,7 @@ func TestHandleGetModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			m := NewManager(log, ClientConfig{
+			m := NewHandler(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 				Transport:     http.DefaultTransport,
@@ -246,7 +246,7 @@ func TestHandleGetModel(t *testing.T) {
 			if !tt.remote && !strings.Contains(tt.modelName, "nonexistent") {
 				r := httptest.NewRequest(http.MethodPost, "/models/create", strings.NewReader(`{"from": "`+tt.modelName+`"}`))
 				w := httptest.NewRecorder()
-				err = m.PullModel(tt.modelName, "", r, w)
+				err = m.service.PullModel(tt.modelName, "", r, w)
 				if err != nil {
 					t.Fatalf("Failed to pull model: %v", err)
 				}
@@ -319,7 +319,7 @@ func TestCors(t *testing.T) {
 			discard := logrus.New()
 			discard.SetOutput(io.Discard)
 			log := logrus.NewEntry(discard)
-			m := NewManager(log, ClientConfig{}, []string{"*"}, memEstimator)
+			m := NewHandler(log, ClientConfig{}, []string{"*"}, memEstimator)
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)
 			req.Header.Set("Origin", "docker.com")
 			w := httptest.NewRecorder()

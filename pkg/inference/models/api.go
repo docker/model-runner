@@ -125,32 +125,3 @@ type Model struct {
 	// Config describes the model.
 	Config types.Config `json:"config"`
 }
-
-func ToModel(m types.Model) (*Model, error) {
-	desc, err := m.Descriptor()
-	if err != nil {
-		return nil, fmt.Errorf("get descriptor: %w", err)
-	}
-
-	id, err := m.ID()
-	if err != nil {
-		return nil, fmt.Errorf("get id: %w", err)
-	}
-
-	cfg, err := m.Config()
-	if err != nil {
-		return nil, fmt.Errorf("get config: %w", err)
-	}
-
-	created := int64(0)
-	if desc.Created != nil {
-		created = desc.Created.Unix()
-	}
-
-	return &Model{
-		ID:      id,
-		Tags:    m.Tags(),
-		Created: created,
-		Config:  cfg,
-	}, nil
-}

@@ -37,7 +37,7 @@ type Scheduler struct {
 	// defaultBackend is the default inference backend. It may be nil.
 	defaultBackend inference.Backend
 	// modelManager is the shared model manager.
-	modelManager *models.Manager
+	modelManager *models.Handler
 	// modelService is the shared model service.
 	modelService *models.Service
 	// installer is the backend installer.

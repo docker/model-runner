@@ -89,14 +89,7 @@ func main() {
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 		Transport:     baseTransport,
 	}
-	modelManager := models.NewManager(
-		log,
-		clientConfig,
-		nil,
-		memEstimator,
-	)
 	modelService := models.NewService(log.WithFields(logrus.Fields{"component": "model-service"}), clientConfig)
-
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
 	// Create llama.cpp configuration from environment variables
@@ -166,12 +159,18 @@ func main() {
 	)
 
 	router := routing.NewNormalizedServeMux()
+	modelHandler := models.NewHandler(
+		log,
+		clientConfig,
+		nil,
+		memEstimator,
+	)
 
 	// Register path prefixes to forward all HTTP methods (including OPTIONS) to components
 	// Components handle method routing internally
 	// Register both with and without trailing slash to avoid redirects
-	router.Handle(inference.ModelsPrefix, modelManager)
-	router.Handle(inference.ModelsPrefix+"/", modelManager)
+	router.Handle(inference.ModelsPrefix, modelHandler)
+	router.Handle(inference.ModelsPrefix+"/", modelHandler)
 	router.Handle(inference.InferencePrefix+"/", scheduler)
 	// Add path aliases: /v1 -> /engines/v1, /rerank -> /engines/rerank, /score -> /engines/score.
 	aliasHandler := &middleware.AliasHandler{Handler: scheduler}
@@ -180,7 +179,7 @@ func main() {
 	router.Handle("/score", aliasHandler)
 
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHandler(log, modelManager, scheduler, nil, modelService)
+	ollamaHandler := ollama.NewHandler(log, scheduler, nil, modelService)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns

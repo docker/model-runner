@@ -12,42 +12,30 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/docker/model-runner/pkg/diskusage"
-	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
-	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/memory"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	// maximumConcurrentModelPulls is the maximum number of concurrent model
-	// pulls that a model manager will allow.
-	maximumConcurrentModelPulls = 2
-	defaultOrg                  = "ai"
-	defaultTag                  = "latest"
+	defaultOrg = "ai"
+	defaultTag = "latest"
 )
 
-// Manager manages inference model pulls and storage.
-type Manager struct {
+// Handler manages inference model pulls and storage.
+type Handler struct {
 	// log is the associated logger.
 	log logging.Logger
-	// pullTokens is a semaphore used to restrict the maximum number of
-	// concurrent pull requests.
-	pullTokens chan struct{}
 	// router is the HTTP request router.
 	router *http.ServeMux
 	// httpHandler is the HTTP request handler, which wraps router with
 	// the server-level middleware.
 	httpHandler http.Handler
-	// distributionClient is the client for model distribution.
-	distributionClient *distribution.Client
-	// registryClient is the client for model registry.
-	registryClient *registry.Client
 	// lock is used to synchronize access to the models manager's router.
 	lock sync.RWMutex
 	// memoryEstimator is used to calculate runtime memory requirements for models.
@@ -67,39 +55,17 @@ type ClientConfig struct {
 	UserAgent string
 }
 
-// NewManager creates a new model's manager.
-func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Manager {
-	// Create the model distribution client.
-	distributionClient, err := distribution.NewClient(
-		distribution.WithStoreRootPath(c.StoreRootPath),
-		distribution.WithLogger(c.Logger),
-		distribution.WithTransport(c.Transport),
-		distribution.WithUserAgent(c.UserAgent),
-	)
-	if err != nil {
-		log.Errorf("Failed to create distribution client: %v", err)
-		// Continue without distribution client. The model manager will still
-		// respond to requests, but may return errors if the client is required.
-	}
-
-	// Create the model registry client.
-	registryClient := registry.NewClient(
-		registry.WithTransport(c.Transport),
-		registry.WithUserAgent(c.UserAgent),
-	)
-
+// NewHandler creates a new model's handler.
+func NewHandler(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *Handler {
 	// Create the service layer for business logic.
 	service := NewService(log.WithFields(logrus.Fields{"component": "model-service"}), c)
 
 	// Create the manager.
-	m := &Manager{
-		log:                log,
-		pullTokens:         make(chan struct{}, maximumConcurrentModelPulls),
-		router:             http.NewServeMux(),
-		distributionClient: distributionClient,
-		registryClient:     registryClient,
-		memoryEstimator:    memoryEstimator,
-		service:            service,
+	m := &Handler{
+		log:             log,
+		router:          http.NewServeMux(),
+		memoryEstimator: memoryEstimator,
+		service:         service,
 	}
 
 	// Register routes.
@@ -113,16 +79,11 @@ func NewManager(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 
 	m.RebuildRoutes(allowedOrigins)
 
-	// Populate the pull concurrency semaphore.
-	for i := 0; i < maximumConcurrentModelPulls; i++ {
-		m.pullTokens <- struct{}{}
-	}
-
-	// Manager successfully initialized.
+	// Handler successfully initialized.
 	return m
 }
 
-func (m *Manager) RebuildRoutes(allowedOrigins []string) {
+func (m *Handler) RebuildRoutes(allowedOrigins []string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	// Update handlers that depend on the allowed origins.
@@ -176,7 +137,7 @@ func NormalizeModelName(model string) string {
 	return nameWithOrg + ":" + tag
 }
 
-func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
+func (m *Handler) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
 		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
@@ -194,12 +155,7 @@ func (m *Manager) routeHandlers() map[string]http.HandlerFunc {
 }
 
 // handleCreateModel handles POST <inference-prefix>/models/create requests.
-func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
+func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	// Decode the request.
 	var request ModelCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -227,7 +183,7 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := m.PullModel(request.From, request.BearerToken, r, w); err != nil {
+	if err := m.service.PullModel(request.From, request.BearerToken, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)
 			return
@@ -255,21 +211,17 @@ func (m *Manager) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLoadModel handles POST <inference-prefix>/models/load requests.
-func (m *Manager) handleLoadModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	if _, err := m.distributionClient.LoadModel(r.Body, w); err != nil {
+func (m *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
+	err := m.service.Load(r.Body, w)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
 // handleGetModels handles GET <inference-prefix>/models requests.
-func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
-	apiModels, err := m.GetModels()
+func (m *Handler) handleGetModels(w http.ResponseWriter, r *http.Request) {
+	apiModels, err := m.service.GetModels()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -283,55 +235,33 @@ func (m *Manager) handleGetModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
-func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
+func (m *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
 
 	// Parse remote query parameter
 	remote := false
 	if r.URL.Query().Has("remote") {
-		if val, err := strconv.ParseBool(r.URL.Query().Get("remote")); err != nil {
+		val, err := strconv.ParseBool(r.URL.Query().Get("remote"))
+		if err != nil {
 			m.log.Warnln("Error while parsing remote query parameter:", err)
 		} else {
 			remote = val
 		}
 	}
 
-	if remote && m.registryClient == nil {
-		http.Error(w, "registry client unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	var apiModel *Model
-	var err error
+	var (
+		apiModel *Model
+		err      error
+	)
 
 	if remote {
-		// For remote lookups, always normalize the reference
-		normalizedRef := NormalizeModelName(modelRef)
-		apiModel, err = getRemoteModel(r.Context(), m, normalizedRef)
+		apiModel, err = m.getRemoteAPIModel(r.Context(), modelRef)
 	} else {
-		// For local lookups, first try without normalization (as ID), then with normalization
-		apiModel, err = getLocalModel(m, modelRef)
-		if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-			// If not found as-is, try with normalization
-			normalizedRef := NormalizeModelName(modelRef)
-			if normalizedRef != modelRef { // only try normalized if it's different
-				apiModel, err = getLocalModel(m, normalizedRef)
-			}
-		}
-
-		// If still not found, try partial name matching (e.g., "smollm2" for "ai/smollm2:latest")
-		if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-			apiModel, err = findModelByPartialName(m, modelRef)
-		}
+		apiModel, err = m.getLocalAPIModel(modelRef)
 	}
 
 	if err != nil {
-		if errors.Is(err, distribution.ErrModelNotFound) || errors.Is(err, registry.ErrModelNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		m.writeModelError(w, err)
 		return
 	}
 
@@ -342,61 +272,42 @@ func (m *Manager) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getLocalModel(m *Manager, name string) (*Model, error) {
-	if m.distributionClient == nil {
-		return nil, errors.New("model distribution service unavailable")
-	}
-
-	// Query the model.
-	model, err := m.service.GetModel(name)
+func (m *Handler) getRemoteAPIModel(ctx context.Context, modelRef string) (*Model, error) {
+	model, err := m.service.GetRemoteModel(ctx, modelRef)
 	if err != nil {
+		return nil, err
+	}
+	return ToModelFromArtifact(model)
+}
+
+func (m *Handler) getLocalAPIModel(modelRef string) (*Model, error) {
+	model, err := m.service.GetModel(modelRef)
+	if err != nil {
+		// If not found locally, try partial name matching
+		if errors.Is(err, distribution.ErrModelNotFound) {
+			// e.g., "smollm2" for "ai/smollm2:latest"
+			return findModelByPartialName(m, modelRef)
+		}
 		return nil, err
 	}
 
 	return ToModel(model)
 }
 
-func getRemoteModel(ctx context.Context, m *Manager, name string) (*Model, error) {
-	if m.registryClient == nil {
-		return nil, errors.New("registry client unavailable")
+func (m *Handler) writeModelError(w http.ResponseWriter, err error) {
+	if errors.Is(err, distribution.ErrModelNotFound) || errors.Is(err, registry.ErrModelNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
 
-	m.log.Infoln("Getting remote model:", name)
-	model, err := m.registryClient.Model(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-
-	id, err := model.ID()
-	if err != nil {
-		return nil, err
-	}
-
-	descriptor, err := model.Descriptor()
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := model.Config()
-	if err != nil {
-		return nil, err
-	}
-
-	apiModel := &Model{
-		ID:      id,
-		Tags:    nil,
-		Created: descriptor.Created.Unix(),
-		Config:  config,
-	}
-
-	return apiModel, nil
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 // findModelByPartialName looks for a model by matching the provided reference
 // against model tags using partial name matching (e.g., "smollm2" matches "ai/smollm2:latest")
-func findModelByPartialName(m *Manager, modelRef string) (*Model, error) {
+func findModelByPartialName(m *Handler, modelRef string) (*Model, error) {
 	// Get all models to search through their tags
-	models, err := m.distributionClient.ListModels()
+	models, err := m.service.GetRawModels()
 	if err != nil {
 		return nil, err
 	}
@@ -429,12 +340,7 @@ func findModelByPartialName(m *Manager, modelRef string) (*Model, error) {
 // handleDeleteModel handles DELETE <inference-prefix>/models/{name} requests.
 // query params:
 // - force: if true, delete the model even if it has multiple tags
-func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
+func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// TODO: We probably want the manager to have a lock / unlock mechanism for
 	// models so that active runners can retain / release a model, analogous to
 	// a container blocking the release of an image. However, unlike containers,
@@ -456,12 +362,12 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// First try to delete without normalization (as ID), then with normalization if not found
-	resp, err := m.DeleteModel(modelRef, force)
+	resp, err := m.service.DeleteModel(modelRef, force)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// If not found as-is, try with normalization
 		normalizedRef := NormalizeModelName(modelRef)
 		if normalizedRef != modelRef { // only try normalized if it's different
-			resp, err = m.DeleteModel(normalizedRef, force)
+			resp, err = m.service.DeleteModel(normalizedRef, force)
 		}
 	}
 
@@ -487,14 +393,9 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 // handleOpenAIGetModels handles GET <inference-prefix>/<backend>/v1/models and
 // GET /<inference-prefix>/v1/models requests.
-func (m *Manager) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
+func (m *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
 	// Query models.
-	available, err := m.distributionClient.ListModels()
+	available, err := m.service.GetRawModels()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -515,7 +416,7 @@ func (m *Manager) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) 
 
 // handleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
 // and GET <inference-prefix>/v1/models/{name} requests.
-func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
+func (m *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
 	model, err := m.service.GetModel(modelRef)
 	if err != nil {
@@ -543,7 +444,7 @@ func (m *Manager) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 // Action is one of:
 // - tag: tag the model with a repository and tag (e.g. POST <inference-prefix>/models/my-org/my-repo:latest/tag})
 // - push: pushes a tagged model to the registry
-func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
+func (m *Handler) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
 
@@ -563,12 +464,7 @@ func (m *Manager) handleModelAction(w http.ResponseWriter, r *http.Request) {
 // The query parameters are:
 // - repo: the repository to tag the model with (required)
 // - tag: the tag to apply to the model (required)
-func (m *Manager) handleTagModel(w http.ResponseWriter, r *http.Request, model string) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
+func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model string) {
 	// Extract query parameters.
 	repo := r.URL.Query().Get("repo")
 	tag := r.URL.Query().Get("tag")
@@ -583,90 +479,12 @@ func (m *Manager) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 	target := fmt.Sprintf("%s:%s", repo, tag)
 
 	// First try to tag using the provided model reference as-is
-	err := m.distributionClient.Tag(model, target)
-	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-		// Check if the model parameter is a model ID (starts with sha256:) or is a partial name
-		var foundModelRef string
-		found := false
-
-		// If it looks like an ID, try to find the model by ID
-		if strings.HasPrefix(model, "sha256:") || len(model) == 12 { // 12-char short ID
-			// Get all models and find the one matching this ID
-			models, listErr := m.distributionClient.ListModels()
-			if listErr != nil {
-				http.Error(w, fmt.Sprintf("error listing models: %v", listErr), http.StatusInternalServerError)
-				return
-			}
-
-			for _, mModel := range models {
-				modelID, idErr := mModel.ID()
-				if idErr != nil {
-					m.log.Warnf("Failed to get model ID: %v", idErr)
-					continue
-				}
-
-				// Check if the model ID matches (can be full or short ID)
-				if modelID == model || strings.HasPrefix(modelID, model) {
-					// Use the first tag of this model as the source reference
-					tags := mModel.Tags()
-					if len(tags) > 0 {
-						foundModelRef = tags[0]
-						found = true
-						break
-					}
-				}
-			}
-		}
-
-		// If not found by ID, try partial name matching (similar to inspect)
-		if !found {
-			models, listErr := m.distributionClient.ListModels()
-			if listErr != nil {
-				http.Error(w, fmt.Sprintf("error listing models: %v", listErr), http.StatusInternalServerError)
-				return
-			}
-
-			// Look for a model whose tags match the provided reference
-			for _, mModel := range models {
-				for _, tagStr := range mModel.Tags() {
-					// Extract the model name without tag part (e.g., from "ai/smollm2:latest" get "ai/smollm2")
-					tagWithoutVersion := tagStr
-					if idx := strings.LastIndex(tagStr, ":"); idx != -1 {
-						tagWithoutVersion = tagStr[:idx]
-					}
-
-					// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
-					namePart := tagWithoutVersion
-					if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
-						namePart = tagWithoutVersion[idx+1:]
-					}
-
-					// Check if the provided model matches the name part
-					if namePart == model {
-						// Found a match - use the tag string that matched as the source reference
-						foundModelRef = tagStr
-						found = true
-						break
-					}
-				}
-				if found {
-					break
-				}
-			}
-		}
-
-		if !found {
+	err := m.service.Tag(model, target)
+	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-
-		// Now tag using the found model reference (the matching tag)
-		if tagErr := m.distributionClient.Tag(foundModelRef, target); tagErr != nil {
-			m.log.Warnf("Failed to apply tag %q to resolved model %q: %v", target, foundModelRef, tagErr)
-			http.Error(w, tagErr.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else if err != nil {
 		// If there's an error other than not found, return it
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -685,14 +503,9 @@ func (m *Manager) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 }
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
-func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
+func (m *Handler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
 	// Call the PushModel method on the distribution client.
-	if err := m.PushModel(model, r, w); err != nil {
+	if err := m.service.PushModel(model, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
 			m.log.Warnf("Invalid model reference %q: %v", model, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
@@ -714,11 +527,7 @@ func (m *Manager) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 }
 
 // handlePackageModel handles POST <inference-prefix>/models/package requests.
-func (m *Manager) handlePackageModel(w http.ResponseWriter, r *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
+func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 
 	// Decode the request
 	var request ModelPackageRequest
@@ -734,55 +543,16 @@ func (m *Manager) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Normalize the source model name
-	request.From = NormalizeModelName(request.From)
+	normalized := NormalizeModelName(request.From)
 
-	// Create a builder from an existing model by getting the bundle first
-	// Since ModelArtifact interface is needed to work with the builder
-	bundle, err := m.distributionClient.GetBundle(request.From)
+	err := m.service.Package(normalized, request.Tag, request.ContextSize)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			http.Error(w, fmt.Sprintf("source model not found: %s", request.From), http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("error getting source model bundle %s: %v", request.From, err), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Create a builder from the existing model artifact (from the bundle)
-	modelArtifact, ok := bundle.(types.ModelArtifact)
-	if !ok {
-		http.Error(w, "source model does not implement ModelArtifact interface", http.StatusInternalServerError)
-		return
-	}
-
-	// Create a builder from the existing model
-	bldr, err := builder.FromModel(modelArtifact)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error creating builder from model: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Apply context size if specified
-	if request.ContextSize > 0 {
-		bldr = bldr.WithContextSize(request.ContextSize)
-	}
-
-	// Get the built model artifact
-	builtModel := bldr.Model()
-
-	// Check if we can use lightweight repackaging (config-only changes from existing model)
-	useLightweight := bldr.HasOnlyConfigChanges()
-
-	if useLightweight {
-		// Use the lightweight method to avoid re-transferring layers
-		if err := m.distributionClient.WriteLightweightModel(builtModel, []string{request.Tag}); err != nil {
-			http.Error(w, fmt.Sprintf("error creating lightweight model: %v", err), http.StatusInternalServerError)
+			m.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized), err)
+			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
-	} else {
-		// If there are layer changes, we need a different approach (this shouldn't happen with context size only)
-		// For now, return an error if we can't use lightweight
-		http.Error(w, "only config-only changes are supported for repackaging", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -798,178 +568,20 @@ func (m *Manager) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePurge handles DELETE <inference-prefix>/models/purge requests.
-func (m *Manager) handlePurge(w http.ResponseWriter, _ *http.Request) {
-	if m.distributionClient == nil {
-		http.Error(w, "model distribution service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	if err := m.distributionClient.ResetStore(); err != nil {
+func (m *Handler) handlePurge(w http.ResponseWriter, _ *http.Request) {
+	err := m.service.Purge()
+	if err != nil {
 		m.log.Warnf("Failed to purge models: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-// GetDiskUsage returns the disk usage of the model store.
-func (m *Manager) GetDiskUsage() (int64, int, error) {
-	if m.distributionClient == nil {
-		return 0, http.StatusServiceUnavailable, errors.New("model distribution service unavailable")
-	}
-
-	storePath := m.distributionClient.GetStorePath()
-	size, err := diskusage.Size(storePath)
-	if err != nil {
-		return 0, http.StatusInternalServerError, fmt.Errorf("error while getting store size: %w", err)
-	}
-
-	return size, http.StatusOK, nil
-}
-
 // ServeHTTP implement net/http.Handler.ServeHTTP.
-func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 	m.httpHandler.ServeHTTP(w, r)
-}
-
-// GetModels returns all models.
-func (m *Manager) GetModels() ([]*Model, error) {
-	if m.distributionClient == nil {
-		return nil, fmt.Errorf("model distribution service unavailable")
-	}
-
-	// Query models.
-	models, err := m.distributionClient.ListModels()
-	if err != nil {
-		return nil, fmt.Errorf("error while listing models: %w", err)
-	}
-
-	apiModels := make([]*Model, 0, len(models))
-	for _, model := range models {
-		apiModel, err := ToModel(model)
-		if err != nil {
-			m.log.Warnf("error while converting model, skipping: %v", err)
-			continue
-		}
-		apiModels = append(apiModels, apiModel)
-	}
-
-	return apiModels, nil
-}
-
-// PullModel pulls a model to local storage. Any error it returns is suitable
-// for writing back to the client.
-func (m *Manager) PullModel(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
-	// Restrict model pull concurrency.
-	select {
-	case <-m.pullTokens:
-	case <-r.Context().Done():
-		return context.Canceled
-	}
-	defer func() {
-		m.pullTokens <- struct{}{}
-	}()
-
-	// Set up response headers for streaming
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	// Check Accept header to determine content type
-	acceptHeader := r.Header.Get("Accept")
-	isJSON := acceptHeader == "application/json"
-
-	if isJSON {
-		w.Header().Set("Content-Type", "application/json")
-	} else {
-		// Defaults to text/plain
-		w.Header().Set("Content-Type", "text/plain")
-	}
-
-	// Create a flusher to ensure chunks are sent immediately
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return fmt.Errorf("streaming not supported")
-	}
-
-	// Create a progress writer that writes to the response
-	progressWriter := &progressResponseWriter{
-		writer:  w,
-		flusher: flusher,
-		isJSON:  isJSON,
-	}
-
-	// Pull the model using the Docker model distribution client
-	m.log.Infoln("Pulling model:", model)
-
-	// Use bearer token if provided
-	var err error
-	if bearerToken != "" {
-		m.log.Infoln("Using provided bearer token for authentication")
-		err = m.distributionClient.PullModel(r.Context(), model, progressWriter, bearerToken)
-	} else {
-		err = m.distributionClient.PullModel(r.Context(), model, progressWriter)
-	}
-
-	if err != nil {
-		return fmt.Errorf("error while pulling model: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteModel deletes a model from storage and returns the delete response
-func (m *Manager) DeleteModel(reference string, force bool) (*distribution.DeleteModelResponse, error) {
-	if m.distributionClient == nil {
-		return nil, errors.New("model distribution service unavailable")
-	}
-
-	resp, err := m.distributionClient.DeleteModel(reference, force)
-	if err != nil {
-		return nil, fmt.Errorf("error while deleting model: %w", err)
-	}
-	return resp, nil
-}
-
-// PushModel pushes a model from the store to the registry.
-func (m *Manager) PushModel(model string, r *http.Request, w http.ResponseWriter) error {
-	// Set up response headers for streaming
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	// Check Accept header to determine content type
-	acceptHeader := r.Header.Get("Accept")
-	isJSON := acceptHeader == "application/json"
-
-	if isJSON {
-		w.Header().Set("Content-Type", "application/json")
-	} else {
-		w.Header().Set("Content-Type", "text/plain")
-	}
-
-	// Create a flusher to ensure chunks are sent immediately
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return errors.New("streaming not supported")
-	}
-
-	// Create a progress writer that writes to the response
-	progressWriter := &progressResponseWriter{
-		writer:  w,
-		flusher: flusher,
-		isJSON:  isJSON,
-	}
-
-	// Pull the model using the Docker model distribution client
-	m.log.Infoln("Pushing model:", model)
-	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
-	if err != nil {
-		return fmt.Errorf("error while pushing model: %w", err)
-	}
-
-	return nil
 }
 
 // progressResponseWriter implements io.Writer to write progress updates to the HTTP response

@@ -26,17 +26,15 @@ type Handler struct {
 	log           logging.Logger
 	router        *http.ServeMux
 	httpHandler   http.Handler
-	modelManager  *models.Manager
 	modelsService *models.Service
 	scheduler     *scheduling.Scheduler
 }
 
 // NewHandler creates a new Ollama API handler
-func NewHandler(log logging.Logger, modelManager *models.Manager, scheduler *scheduling.Scheduler, allowedOrigins []string, service *models.Service) *Handler {
+func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, allowedOrigins []string, service *models.Service) *Handler {
 	h := &Handler{
 		log:           log,
 		router:        http.NewServeMux(),
-		modelManager:  modelManager,
 		scheduler:     scheduler,
 		modelsService: service,
 	}
@@ -337,7 +335,7 @@ func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
 // handleListModels handles GET /api/tags
 func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	// Get models from the model manager
-	modelsList, err := h.modelManager.GetModels()
+	modelsList, err := h.modelsService.GetModels()
 	if err != nil {
 		h.log.Errorf("Failed to list models: %v", err)
 		http.Error(w, "Failed to list models", http.StatusInternalServerError)
@@ -800,7 +798,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Then delete the model from storage
-	if _, err := h.modelManager.DeleteModel(modelName, false); err != nil {
+	if _, err := h.modelsService.DeleteModel(modelName, false); err != nil {
 		sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
 		h.log.Errorf("handleDelete: failed to delete model %s: %v", sanitizedModelName, sanitizedErr)
 		http.Error(w, fmt.Sprintf("Failed to delete model: %v", sanitizedErr), http.StatusInternalServerError)
@@ -843,7 +841,7 @@ func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the model manager's PullModel method with the wrapped writer
-	if err := h.modelManager.PullModel(modelName, "", r, ollamaWriter); err != nil {
+	if err := h.modelsService.PullModel(modelName, "", r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %v", err)
 
 		// Send error in Ollama JSON format
