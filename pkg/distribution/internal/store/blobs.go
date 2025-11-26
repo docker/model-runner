@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -185,8 +187,10 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 	defer f.Close()
 
 	if _, err := io.Copy(f, r); err != nil {
-		// If we were resuming and copy failed, the incomplete file might be corrupt
-		if isResume {
+		// If we were resuming and copy failed, only delete the incomplete file if it's
+		// not a context cancellation. Context cancellation is a normal interruption and
+		// the file should be preserved for future resume attempts.
+		if isResume && !(errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 			_ = os.Remove(incompletePath)
 		}
 		return fmt.Errorf("copy blob %q to store: %w", diffID.String(), err)
