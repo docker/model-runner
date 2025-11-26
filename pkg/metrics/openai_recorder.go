@@ -99,7 +99,7 @@ type ModelRecordsResponse struct {
 type OpenAIRecorder struct {
 	log          logging.Logger
 	records      map[string]*ModelData // key is model ID
-	modelService *models.Service       // for resolving model tags to IDs
+	modelManager *models.Manager       // for resolving model tags to IDs
 	m            sync.RWMutex
 
 	// streaming
@@ -107,10 +107,10 @@ type OpenAIRecorder struct {
 	subMutex    sync.RWMutex
 }
 
-func NewOpenAIRecorder(log logging.Logger, modelService *models.Service) *OpenAIRecorder {
+func NewOpenAIRecorder(log logging.Logger, modelManager *models.Manager) *OpenAIRecorder {
 	return &OpenAIRecorder{
 		log:          log,
-		modelService: modelService,
+		modelManager: modelManager,
 		records:      make(map[string]*ModelData),
 		subscribers:  make(map[string]chan []ModelRecordsResponse),
 	}
@@ -208,7 +208,7 @@ func (r *OpenAIRecorder) SetConfigForModel(model string, config *inference.Backe
 		return
 	}
 
-	modelID := r.modelService.ResolveID(model)
+	modelID := r.modelManager.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -224,7 +224,7 @@ func (r *OpenAIRecorder) SetConfigForModel(model string, config *inference.Backe
 }
 
 func (r *OpenAIRecorder) RecordRequest(model string, req *http.Request, body []byte) string {
-	modelID := r.modelService.ResolveID(model)
+	modelID := r.modelManager.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -354,7 +354,7 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 		response = responseBody
 	}
 
-	modelID := r.modelService.ResolveID(model)
+	modelID := r.modelManager.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -653,7 +653,7 @@ func (r *OpenAIRecorder) getAllRecords() []ModelRecordsResponse {
 }
 
 func (r *OpenAIRecorder) getRecordsByModel(model string) []ModelRecordsResponse {
-	modelID := r.modelService.ResolveID(model)
+	modelID := r.modelManager.ResolveID(model)
 
 	r.m.RLock()
 	defer r.m.RUnlock()
@@ -725,7 +725,7 @@ func (r *OpenAIRecorder) sendExistingRecords(w http.ResponseWriter, model string
 }
 
 func (r *OpenAIRecorder) RemoveModel(model string) {
-	modelID := r.modelService.ResolveID(model)
+	modelID := r.modelManager.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()

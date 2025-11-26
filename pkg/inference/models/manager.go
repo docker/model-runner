@@ -24,10 +24,8 @@ const (
 	maximumConcurrentModelPulls = 2
 )
 
-// Service handles the business logic for model management operations.
-// It is separate from HTTP handling concerns and can be used by multiple
-// interfaces (HTTP, CLI, gRPC, etc.).
-type Service struct {
+// Manager handles the business logic for model management operations.
+type Manager struct {
 	// log is the associated logger.
 	log logging.Logger
 	// distributionClient is the client for model distribution.
@@ -39,8 +37,8 @@ type Service struct {
 	pullTokens chan struct{}
 }
 
-// NewService creates a new model models with the provided clients.
-func NewService(log logging.Logger, c ClientConfig) *Service {
+// NewManager creates a new model models with the provided clients.
+func NewManager(log logging.Logger, c ClientConfig) *Manager {
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
@@ -67,7 +65,7 @@ func NewService(log logging.Logger, c ClientConfig) *Service {
 		tokens <- struct{}{}
 	}
 
-	return &Service{
+	return &Manager{
 		log:                log,
 		distributionClient: distributionClient,
 		registryClient:     registryClient,
@@ -77,18 +75,18 @@ func NewService(log logging.Logger, c ClientConfig) *Service {
 
 // GetLocal returns a single model by reference.
 // This is the core business logic for retrieving a model from the distribution client.
-func (s *Service) GetLocal(ref string) (types.Model, error) {
-	if s.distributionClient == nil {
+func (m *Manager) GetLocal(ref string) (types.Model, error) {
+	if m.distributionClient == nil {
 		return nil, fmt.Errorf("model distribution service unavailable")
 	}
 
 	// Query the model - first try without normalization (as ID), then with normalization
-	model, err := s.distributionClient.GetModel(ref)
+	model, err := m.distributionClient.GetModel(ref)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// If not found as-is, try with normalization
 		normalizedRef := NormalizeModelName(ref)
 		if normalizedRef != ref { // only try normalized if it's different
-			model, err = s.distributionClient.GetModel(normalizedRef)
+			model, err = m.distributionClient.GetModel(normalizedRef)
 		}
 	}
 
@@ -99,29 +97,29 @@ func (s *Service) GetLocal(ref string) (types.Model, error) {
 }
 
 // ResolveID resolves a model reference to a model ID. If resolution fails, it returns the original ref.
-func (s *Service) ResolveID(modelRef string) string {
+func (m *Manager) ResolveID(modelRef string) string {
 	// Sanitize modelRef to prevent log forgery
 	sanitizedModelRef := utils.SanitizeForLog(modelRef, -1)
-	model, err := s.GetLocal(sanitizedModelRef)
+	model, err := m.GetLocal(sanitizedModelRef)
 	if err != nil {
-		s.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
+		m.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
 		return sanitizedModelRef
 	}
 
 	modelID, err := model.ID()
 	if err != nil {
-		s.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
+		m.log.Warnf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err)
 		return sanitizedModelRef
 	}
 
 	return modelID
 }
 
-func (s *Service) GetDiskUsage() (int64, error) {
-	if s.distributionClient == nil {
+func (m *Manager) GetDiskUsage() (int64, error) {
+	if m.distributionClient == nil {
 		return 0, errors.New("model distribution service unavailable")
 	}
-	storePath := s.distributionClient.GetStorePath()
+	storePath := m.distributionClient.GetStorePath()
 	size, err := diskusage.Size(storePath)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %w", err)
@@ -130,12 +128,12 @@ func (s *Service) GetDiskUsage() (int64, error) {
 }
 
 // GetRemote returns a single remote model.
-func (s *Service) GetRemote(ctx context.Context, ref string) (types.ModelArtifact, error) {
-	if s.registryClient == nil {
+func (m *Manager) GetRemote(ctx context.Context, ref string) (types.ModelArtifact, error) {
+	if m.registryClient == nil {
 		return nil, fmt.Errorf("model registry service unavailable")
 	}
 	normalizedRef := NormalizeModelName(ref)
-	model, err := s.registryClient.Model(ctx, normalizedRef)
+	model, err := m.registryClient.Model(ctx, normalizedRef)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting remote model: %w", err)
 	}
@@ -143,8 +141,8 @@ func (s *Service) GetRemote(ctx context.Context, ref string) (types.ModelArtifac
 }
 
 // GetRemoteBlobURL returns the URL of a given model blob.
-func (s *Service) GetRemoteBlobURL(ref string, digest v1.Hash) (string, error) {
-	blobURL, err := s.registryClient.BlobURL(ref, digest)
+func (m *Manager) GetRemoteBlobURL(ref string, digest v1.Hash) (string, error) {
+	blobURL, err := m.registryClient.BlobURL(ref, digest)
 	if err != nil {
 		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
 	}
@@ -152,8 +150,8 @@ func (s *Service) GetRemoteBlobURL(ref string, digest v1.Hash) (string, error) {
 }
 
 // BearerTokenForModel returns the bearer token needed to pull a given model.
-func (s *Service) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
-	tok, err := s.registryClient.BearerToken(ctx, ref)
+func (m *Manager) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
+	tok, err := m.registryClient.BearerToken(ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("error while getting bearer token for model: %w", err)
 	}
@@ -161,8 +159,8 @@ func (s *Service) BearerTokenForModel(ctx context.Context, ref string) (string, 
 }
 
 // GetBundle returns model bundle.
-func (s *Service) GetBundle(ref string) (types.ModelBundle, error) {
-	bundle, err := s.distributionClient.GetBundle(ref)
+func (m *Manager) GetBundle(ref string) (types.ModelBundle, error) {
+	bundle, err := m.distributionClient.GetBundle(ref)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting model bundle: %w", err)
 	}
@@ -170,13 +168,13 @@ func (s *Service) GetBundle(ref string) (types.ModelBundle, error) {
 }
 
 // InStore checks if a given model is in the local store.
-func (s *Service) InStore(ref string) (bool, error) {
-	return s.distributionClient.IsModelInStore(ref)
+func (m *Manager) InStore(ref string) (bool, error) {
+	return m.distributionClient.IsModelInStore(ref)
 }
 
 // List returns all models.
-func (s *Service) List() ([]*Model, error) {
-	models, err := s.RawList()
+func (m *Manager) List() ([]*Model, error) {
+	models, err := m.RawList()
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +183,7 @@ func (s *Service) List() ([]*Model, error) {
 	for _, model := range models {
 		apiModel, err := ToModel(model)
 		if err != nil {
-			s.log.Warnf("error while converting model, skipping: %v", err)
+			m.log.Warnf("error while converting model, skipping: %v", err)
 			continue
 		}
 		apiModels = append(apiModels, apiModel)
@@ -194,11 +192,11 @@ func (s *Service) List() ([]*Model, error) {
 	return apiModels, nil
 }
 
-func (s *Service) RawList() ([]types.Model, error) {
-	if s.distributionClient == nil {
+func (m *Manager) RawList() ([]types.Model, error) {
+	if m.distributionClient == nil {
 		return nil, fmt.Errorf("model distribution models unavailable")
 	}
-	models, err := s.distributionClient.ListModels()
+	models, err := m.distributionClient.ListModels()
 	if err != nil {
 		return nil, fmt.Errorf("error while listing models: %w", err)
 	}
@@ -206,12 +204,12 @@ func (s *Service) RawList() ([]types.Model, error) {
 }
 
 // Delete deletes a model from storage and returns the delete response
-func (s *Service) Delete(reference string, force bool) (*distribution.DeleteModelResponse, error) {
-	if s.distributionClient == nil {
+func (m *Manager) Delete(reference string, force bool) (*distribution.DeleteModelResponse, error) {
+	if m.distributionClient == nil {
 		return nil, errors.New("model distribution service unavailable")
 	}
 
-	resp, err := s.distributionClient.DeleteModel(reference, force)
+	resp, err := m.distributionClient.DeleteModel(reference, force)
 	if err != nil {
 		return nil, fmt.Errorf("error while deleting model: %w", err)
 	}
@@ -220,15 +218,15 @@ func (s *Service) Delete(reference string, force bool) (*distribution.DeleteMode
 
 // Pull pulls a model to local storage. Any error it returns is suitable
 // for writing back to the client.
-func (s *Service) Pull(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
+func (m *Manager) Pull(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
 	// Restrict model pull concurrency.
 	select {
-	case <-s.pullTokens:
+	case <-m.pullTokens:
 	case <-r.Context().Done():
 		return context.Canceled
 	}
 	defer func() {
-		s.pullTokens <- struct{}{}
+		m.pullTokens <- struct{}{}
 	}()
 
 	// Set up response headers for streaming
@@ -261,15 +259,15 @@ func (s *Service) Pull(model string, bearerToken string, r *http.Request, w http
 	}
 
 	// Pull the model using the Docker model distribution client
-	s.log.Infoln("Pulling model:", utils.SanitizeForLog(model, -1))
+	m.log.Infoln("Pulling model:", utils.SanitizeForLog(model, -1))
 
 	// Use bearer token if provided
 	var err error
 	if bearerToken != "" {
-		s.log.Infoln("Using provided bearer token for authentication")
-		err = s.distributionClient.PullModel(r.Context(), model, progressWriter, bearerToken)
+		m.log.Infoln("Using provided bearer token for authentication")
+		err = m.distributionClient.PullModel(r.Context(), model, progressWriter, bearerToken)
 	} else {
-		err = s.distributionClient.PullModel(r.Context(), model, progressWriter)
+		err = m.distributionClient.PullModel(r.Context(), model, progressWriter)
 	}
 
 	if err != nil {
@@ -279,24 +277,24 @@ func (s *Service) Pull(model string, bearerToken string, r *http.Request, w http
 	return nil
 }
 
-func (s *Service) Load(r io.Reader, progressWriter io.Writer) error {
-	if s.distributionClient == nil {
+func (m *Manager) Load(r io.Reader, progressWriter io.Writer) error {
+	if m.distributionClient == nil {
 		return fmt.Errorf("model distribution service unavailable")
 	}
-	_, err := s.distributionClient.LoadModel(r, progressWriter)
+	_, err := m.distributionClient.LoadModel(r, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while loading model: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) Tag(ref, target string) error {
-	if s.distributionClient == nil {
+func (m *Manager) Tag(ref, target string) error {
+	if m.distributionClient == nil {
 		return fmt.Errorf("model distribution service unavailable")
 	}
 
 	// First try to tag using the provided model reference as-is
-	err := s.distributionClient.Tag(ref, target)
+	err := m.distributionClient.Tag(ref, target)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// Check if the model parameter is a model ID (starts with sha256:) or is a partial name
 		var foundModelRef string
@@ -305,7 +303,7 @@ func (s *Service) Tag(ref, target string) error {
 		// If it looks like an ID, try to find the model by ID
 		if strings.HasPrefix(ref, "sha256:") || len(ref) == 12 { // 12-char short ID
 			// GetLocal all models and find the one matching this ID
-			models, listErr := s.distributionClient.ListModels()
+			models, listErr := m.distributionClient.ListModels()
 			if listErr != nil {
 				return fmt.Errorf("error listing models: %w", listErr)
 			}
@@ -313,7 +311,7 @@ func (s *Service) Tag(ref, target string) error {
 			for _, mModel := range models {
 				modelID, idErr := mModel.ID()
 				if idErr != nil {
-					s.log.Warnf("Failed to get model ID: %v", idErr)
+					m.log.Warnf("Failed to get model ID: %v", idErr)
 					continue
 				}
 
@@ -332,7 +330,7 @@ func (s *Service) Tag(ref, target string) error {
 
 		// If not found by ID, try partial name matching (similar to inspect)
 		if !found {
-			models, listErr := s.distributionClient.ListModels()
+			models, listErr := m.distributionClient.ListModels()
 			if listErr != nil {
 				return fmt.Errorf("error listing models: %w", listErr)
 			}
@@ -371,8 +369,8 @@ func (s *Service) Tag(ref, target string) error {
 		}
 
 		// Now tag using the found model reference (the matching tag)
-		if tagErr := s.distributionClient.Tag(foundModelRef, target); tagErr != nil {
-			s.log.Warnf("Failed to apply tag %q to resolved model %q: %v", target, foundModelRef, tagErr)
+		if tagErr := m.distributionClient.Tag(foundModelRef, target); tagErr != nil {
+			m.log.Warnf("Failed to apply tag %q to resolved model %q: %v", target, foundModelRef, tagErr)
 			return fmt.Errorf("error while tagging model: %w", tagErr)
 		}
 	} else if err != nil {
@@ -382,7 +380,7 @@ func (s *Service) Tag(ref, target string) error {
 }
 
 // Push pushes a model from the store to the registry.
-func (s *Service) Push(model string, r *http.Request, w http.ResponseWriter) error {
+func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) error {
 	// Set up response headers for streaming
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -412,8 +410,8 @@ func (s *Service) Push(model string, r *http.Request, w http.ResponseWriter) err
 	}
 
 	// Pull the model using the Docker model distribution client
-	s.log.Infoln("Pushing model:", model)
-	err := s.distributionClient.PushModel(r.Context(), model, progressWriter)
+	m.log.Infoln("Pushing model:", model)
+	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)
 	}
@@ -421,10 +419,10 @@ func (s *Service) Push(model string, r *http.Request, w http.ResponseWriter) err
 	return nil
 }
 
-func (s *Service) Package(ref string, tag string, contextSize uint64) error {
+func (m *Manager) Package(ref string, tag string, contextSize uint64) error {
 	// Create a builder from an existing model by getting the bundle first
 	// Since ModelArtifact interface is needed to work with the builder
-	bundle, err := s.distributionClient.GetBundle(ref)
+	bundle, err := m.distributionClient.GetBundle(ref)
 	if err != nil {
 		return fmt.Errorf("error while getting model bundle: %w", err)
 	}
@@ -454,7 +452,7 @@ func (s *Service) Package(ref string, tag string, contextSize uint64) error {
 
 	if useLightweight {
 		// Use the lightweight method to avoid re-transferring layers
-		if err := s.distributionClient.WriteLightweightModel(builtModel, []string{tag}); err != nil {
+		if err := m.distributionClient.WriteLightweightModel(builtModel, []string{tag}); err != nil {
 			return fmt.Errorf("error writing model: %w", err)
 		}
 	} else {
@@ -463,12 +461,12 @@ func (s *Service) Package(ref string, tag string, contextSize uint64) error {
 	return nil
 }
 
-func (s *Service) Purge() error {
-	if s.distributionClient == nil {
+func (m *Manager) Purge() error {
+	if m.distributionClient == nil {
 		return fmt.Errorf("model distribution service unavailable")
 	}
-	if err := s.distributionClient.ResetStore(); err != nil {
-		s.log.Warnf("Failed to purge models: %v", err)
+	if err := m.distributionClient.ResetStore(); err != nil {
+		m.log.Warnf("Failed to purge models: %v", err)
 		return fmt.Errorf("error while purging models: %w", err)
 	}
 	return nil

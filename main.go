@@ -95,7 +95,7 @@ func main() {
 		nil,
 		memEstimator,
 	)
-	modelService := models.NewService(log.WithFields(logrus.Fields{"component": "model-service"}), clientConfig)
+	modelManager := models.NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), clientConfig)
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
 	// Create llama.cpp configuration from environment variables
@@ -103,7 +103,7 @@ func main() {
 
 	llamaCppBackend, err := llamacpp.New(
 		log,
-		modelService,
+		modelManager,
 		log.WithFields(logrus.Fields{"component": llamacpp.Name}),
 		llamaServerPath,
 		func() string {
@@ -126,7 +126,7 @@ func main() {
 
 	vllmBackend, err := vllm.New(
 		log,
-		modelService,
+		modelManager,
 		log.WithFields(logrus.Fields{"component": vllm.Name}),
 		nil,
 	)
@@ -136,7 +136,7 @@ func main() {
 
 	mlxBackend, err := mlx.New(
 		log,
-		modelService,
+		modelManager,
 		log.WithFields(logrus.Fields{"component": mlx.Name}),
 		nil,
 	)
@@ -153,7 +153,7 @@ func main() {
 		},
 		llamaCppBackend,
 		modelHandler,
-		modelService,
+		modelManager,
 		http.DefaultClient,
 		nil,
 		metrics.NewTracker(
@@ -180,7 +180,7 @@ func main() {
 	router.Handle("/score", aliasHandler)
 
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHandler(log, scheduler, nil, modelService)
+	ollamaHandler := ollama.NewHandler(log, scheduler, nil, modelManager)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns

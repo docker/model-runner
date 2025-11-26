@@ -23,20 +23,20 @@ const (
 
 // Handler implements the Ollama API compatibility layer
 type Handler struct {
-	log           logging.Logger
-	router        *http.ServeMux
-	httpHandler   http.Handler
-	modelsService *models.Service
-	scheduler     *scheduling.Scheduler
+	log          logging.Logger
+	router       *http.ServeMux
+	httpHandler  http.Handler
+	modelManager *models.Manager
+	scheduler    *scheduling.Scheduler
 }
 
 // NewHandler creates a new Ollama API handler
-func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, allowedOrigins []string, service *models.Service) *Handler {
+func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, allowedOrigins []string, modelManager *models.Manager) *Handler {
 	h := &Handler{
-		log:           log,
-		router:        http.NewServeMux(),
-		scheduler:     scheduler,
-		modelsService: service,
+		log:          log,
+		router:       http.NewServeMux(),
+		scheduler:    scheduler,
+		modelManager: modelManager,
 	}
 
 	// Register routes
@@ -335,7 +335,7 @@ func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
 // handleListModels handles GET /api/tags
 func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	// GetLocal models from the model manager
-	modelsList, err := h.modelsService.List()
+	modelsList, err := h.modelManager.List()
 	if err != nil {
 		h.log.Errorf("Failed to list models: %v", err)
 		http.Error(w, "Failed to list models", http.StatusInternalServerError)
@@ -403,7 +403,7 @@ func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
 	models := make([]PSModel, 0, len(runningBackends))
 	for _, backend := range runningBackends {
 		// GetLocal model details to populate additional fields
-		model, err := h.modelsService.GetLocal(backend.ModelName)
+		model, err := h.modelManager.GetLocal(backend.ModelName)
 		if err != nil {
 			h.log.Warnf("Failed to get model details for %s: %v", backend.ModelName, err)
 			// Still add the model with basic info
@@ -466,7 +466,7 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	modelName = models.NormalizeModelName(modelName)
 
 	// GetLocal model details
-	model, err := h.modelsService.GetLocal(modelName)
+	model, err := h.modelManager.GetLocal(modelName)
 	if err != nil {
 		h.log.Errorf("Failed to get model: %v", err)
 		http.Error(w, fmt.Sprintf("Model not found: %v", err), http.StatusNotFound)
@@ -798,7 +798,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Then delete the model from storage
-	if _, err := h.modelsService.Delete(modelName, false); err != nil {
+	if _, err := h.modelManager.Delete(modelName, false); err != nil {
 		sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
 		h.log.Errorf("handleDelete: failed to delete model %s: %v", sanitizedModelName, sanitizedErr)
 		http.Error(w, fmt.Sprintf("Failed to delete model: %v", sanitizedErr), http.StatusInternalServerError)
@@ -841,7 +841,7 @@ func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the model manager's Pull method with the wrapped writer
-	if err := h.modelsService.Pull(modelName, "", r, ollamaWriter); err != nil {
+	if err := h.modelManager.Pull(modelName, "", r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %v", err)
 
 		// Send error in Ollama JSON format

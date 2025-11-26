@@ -11,8 +11,8 @@ import (
 func TestTruncateMediaFields(t *testing.T) {
 	// Create a mock logger and model manager
 	logger := logrus.New()
-	modelService := &models.Service{}
-	recorder := NewOpenAIRecorder(logger, modelService)
+	modelManager := &models.Manager{}
+	recorder := NewOpenAIRecorder(logger, modelManager)
 
 	tests := []struct {
 		name     string
@@ -160,8 +160,8 @@ func TestTruncateMediaFields(t *testing.T) {
 
 func TestTruncateBase64Data(t *testing.T) {
 	logger := logrus.New()
-	modelService := &models.Service{}
-	recorder := NewOpenAIRecorder(logger, modelService)
+	modelManager := &models.Manager{}
+	recorder := NewOpenAIRecorder(logger, modelManager)
 
 	tests := []struct {
 		name     string

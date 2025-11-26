@@ -40,8 +40,8 @@ type Handler struct {
 	lock sync.RWMutex
 	// memoryEstimator is used to calculate runtime memory requirements for models.
 	memoryEstimator memory.MemoryEstimator
-	// models handles business logic for model operations.
-	models *Service
+	// manager handles business logic for model operations.
+	manager *Manager
 }
 
 type ClientConfig struct {
@@ -62,7 +62,7 @@ func NewHandler(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 		log:             log,
 		router:          http.NewServeMux(),
 		memoryEstimator: memoryEstimator,
-		models:          NewService(log.WithFields(logrus.Fields{"component": "service"}), c),
+		manager:         NewManager(log.WithFields(logrus.Fields{"component": "service"}), c),
 	}
 
 	// Register routes.
@@ -80,11 +80,11 @@ func NewHandler(log logging.Logger, c ClientConfig, allowedOrigins []string, mem
 	return m
 }
 
-func (m *Handler) RebuildRoutes(allowedOrigins []string) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
+func (h *Handler) RebuildRoutes(allowedOrigins []string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	// Update handlers that depend on the allowed origins.
-	m.httpHandler = middleware.CorsMiddleware(allowedOrigins, m.router)
+	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 }
 
 // NormalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
@@ -134,25 +134,25 @@ func NormalizeModelName(model string) string {
 	return nameWithOrg + ":" + tag
 }
 
-func (m *Handler) routeHandlers() map[string]http.HandlerFunc {
+func (h *Handler) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
-		"POST " + inference.ModelsPrefix + "/create":                          m.handleCreateModel,
-		"POST " + inference.ModelsPrefix + "/load":                            m.handleLoadModel,
-		"POST " + inference.ModelsPrefix + "/package":                         m.handlePackageModel,
-		"GET " + inference.ModelsPrefix:                                       m.handleGetModels,
-		"GET " + inference.ModelsPrefix + "/{name...}":                        m.handleGetModel,
-		"DELETE " + inference.ModelsPrefix + "/{name...}":                     m.handleDeleteModel,
-		"POST " + inference.ModelsPrefix + "/{nameAndAction...}":              m.handleModelAction,
-		"DELETE " + inference.ModelsPrefix + "/purge":                         m.handlePurge,
-		"GET " + inference.InferencePrefix + "/{backend}/v1/models":           m.handleOpenAIGetModels,
-		"GET " + inference.InferencePrefix + "/{backend}/v1/models/{name...}": m.handleOpenAIGetModel,
-		"GET " + inference.InferencePrefix + "/v1/models":                     m.handleOpenAIGetModels,
-		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           m.handleOpenAIGetModel,
+		"POST " + inference.ModelsPrefix + "/create":                          h.handleCreateModel,
+		"POST " + inference.ModelsPrefix + "/load":                            h.handleLoadModel,
+		"POST " + inference.ModelsPrefix + "/package":                         h.handlePackageModel,
+		"GET " + inference.ModelsPrefix:                                       h.handleGetModels,
+		"GET " + inference.ModelsPrefix + "/{name...}":                        h.handleGetModel,
+		"DELETE " + inference.ModelsPrefix + "/{name...}":                     h.handleDeleteModel,
+		"POST " + inference.ModelsPrefix + "/{nameAndAction...}":              h.handleModelAction,
+		"DELETE " + inference.ModelsPrefix + "/purge":                         h.handlePurge,
+		"GET " + inference.InferencePrefix + "/{backend}/v1/models":           h.handleOpenAIGetModels,
+		"GET " + inference.InferencePrefix + "/{backend}/v1/models/{name...}": h.handleOpenAIGetModel,
+		"GET " + inference.InferencePrefix + "/v1/models":                     h.handleOpenAIGetModels,
+		"GET " + inference.InferencePrefix + "/v1/models/{name...}":           h.handleOpenAIGetModel,
 	}
 }
 
 // handleCreateModel handles POST <inference-prefix>/models/create requests.
-func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	// Decode the request.
 	var request ModelCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -166,37 +166,37 @@ func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	// Pull the model. In the future, we may support additional operations here
 	// besides pulling (such as model building).
 	if memory.RuntimeMemoryCheckEnabled() && !request.IgnoreRuntimeMemoryCheck {
-		m.log.Infof("Will estimate memory required for %q", request.From)
-		proceed, req, totalMem, err := m.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
+		h.log.Infof("Will estimate memory required for %q", request.From)
+		proceed, req, totalMem, err := h.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
 		if err != nil {
-			m.log.Warnf("Failed to validate sufficient system memory for model %q: %s", request.From, err)
+			h.log.Warnf("Failed to validate sufficient system memory for model %q: %s", request.From, err)
 			// Prefer staying functional in case of unexpected estimation errors.
 			proceed = true
 		}
 		if !proceed {
 			errstr := fmt.Sprintf("Runtime memory requirement for model %q exceeds total system memory: required %d RAM %d VRAM, system %d RAM %d VRAM", request.From, req.RAM, req.VRAM, totalMem.RAM, totalMem.VRAM)
-			m.log.Warnf(errstr)
+			h.log.Warnf(errstr)
 			http.Error(w, errstr, http.StatusInsufficientStorage)
 			return
 		}
 	}
-	if err := m.models.Pull(request.From, request.BearerToken, r, w); err != nil {
+	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			m.log.Infof("Request canceled/timed out while pulling model %q", request.From)
+			h.log.Infof("Request canceled/timed out while pulling model %q", request.From)
 			return
 		}
 		if errors.Is(err, registry.ErrInvalidReference) {
-			m.log.Warnf("Invalid model reference %q: %v", request.From, err)
+			h.log.Warnf("Invalid model reference %q: %v", request.From, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			m.log.Warnf("Unauthorized to pull model %q: %v", request.From, err)
+			h.log.Warnf("Unauthorized to pull model %q: %v", request.From, err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		if errors.Is(err, registry.ErrModelNotFound) {
-			m.log.Warnf("Failed to pull model %q: %v", request.From, err)
+			h.log.Warnf("Failed to pull model %q: %v", request.From, err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
@@ -208,8 +208,8 @@ func (m *Handler) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLoadModel handles POST <inference-prefix>/models/load requests.
-func (m *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
-	err := m.models.Load(r.Body, w)
+func (h *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
+	err := h.manager.Load(r.Body, w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -217,8 +217,8 @@ func (m *Handler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetModels handles GET <inference-prefix>/models requests.
-func (m *Handler) handleGetModels(w http.ResponseWriter, r *http.Request) {
-	apiModels, err := m.models.List()
+func (h *Handler) handleGetModels(w http.ResponseWriter, r *http.Request) {
+	apiModels, err := h.manager.List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -227,12 +227,12 @@ func (m *Handler) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(apiModels); err != nil {
-		m.log.Warnln("Error while encoding model listing response:", err)
+		h.log.Warnln("Error while encoding model listing response:", err)
 	}
 }
 
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
-func (m *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
 
 	// Parse remote query parameter
@@ -240,7 +240,7 @@ func (m *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Has("remote") {
 		val, err := strconv.ParseBool(r.URL.Query().Get("remote"))
 		if err != nil {
-			m.log.Warnln("Error while parsing remote query parameter:", err)
+			h.log.Warnln("Error while parsing remote query parameter:", err)
 		} else {
 			remote = val
 		}
@@ -252,38 +252,38 @@ func (m *Handler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if remote {
-		apiModel, err = m.getRemoteAPIModel(r.Context(), modelRef)
+		apiModel, err = h.getRemoteAPIModel(r.Context(), modelRef)
 	} else {
-		apiModel, err = m.getLocalAPIModel(modelRef)
+		apiModel, err = h.getLocalAPIModel(modelRef)
 	}
 
 	if err != nil {
-		m.writeModelError(w, err)
+		h.writeModelError(w, err)
 		return
 	}
 
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(apiModel); err != nil {
-		m.log.Warnln("Error while encoding model response:", err)
+		h.log.Warnln("Error while encoding model response:", err)
 	}
 }
 
-func (m *Handler) getRemoteAPIModel(ctx context.Context, modelRef string) (*Model, error) {
-	model, err := m.models.GetRemote(ctx, modelRef)
+func (h *Handler) getRemoteAPIModel(ctx context.Context, modelRef string) (*Model, error) {
+	model, err := h.manager.GetRemote(ctx, modelRef)
 	if err != nil {
 		return nil, err
 	}
 	return ToModelFromArtifact(model)
 }
 
-func (m *Handler) getLocalAPIModel(modelRef string) (*Model, error) {
-	model, err := m.models.GetLocal(modelRef)
+func (h *Handler) getLocalAPIModel(modelRef string) (*Model, error) {
+	model, err := h.manager.GetLocal(modelRef)
 	if err != nil {
 		// If not found locally, try partial name matching
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			// e.g., "smollm2" for "ai/smollm2:latest"
-			return findModelByPartialName(m, modelRef)
+			return findModelByPartialName(h, modelRef)
 		}
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func (m *Handler) getLocalAPIModel(modelRef string) (*Model, error) {
 	return ToModel(model)
 }
 
-func (m *Handler) writeModelError(w http.ResponseWriter, err error) {
+func (h *Handler) writeModelError(w http.ResponseWriter, err error) {
 	if errors.Is(err, distribution.ErrModelNotFound) || errors.Is(err, registry.ErrModelNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -302,9 +302,9 @@ func (m *Handler) writeModelError(w http.ResponseWriter, err error) {
 
 // findModelByPartialName looks for a model by matching the provided reference
 // against model tags using partial name matching (e.g., "smollm2" matches "ai/smollm2:latest")
-func findModelByPartialName(m *Handler, modelRef string) (*Model, error) {
+func findModelByPartialName(h *Handler, modelRef string) (*Model, error) {
 	// Get all models to search through their tags
-	models, err := m.models.RawList()
+	models, err := h.manager.RawList()
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +337,7 @@ func findModelByPartialName(m *Handler, modelRef string) (*Model, error) {
 // handleDeleteModel handles DELETE <inference-prefix>/models/{name} requests.
 // query params:
 // - force: if true, delete the model even if it has multiple tags
-func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	// TODO: We probably want the manager to have a lock / unlock mechanism for
 	// models so that active runners can retain / release a model, analogous to
 	// a container blocking the release of an image. However, unlike containers,
@@ -352,19 +352,19 @@ func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	var force bool
 	if r.URL.Query().Has("force") {
 		if val, err := strconv.ParseBool(r.URL.Query().Get("force")); err != nil {
-			m.log.Warnln("Error while parsing force query parameter:", err)
+			h.log.Warnln("Error while parsing force query parameter:", err)
 		} else {
 			force = val
 		}
 	}
 
 	// First try to delete without normalization (as ID), then with normalization if not found
-	resp, err := m.models.Delete(modelRef, force)
+	resp, err := h.manager.Delete(modelRef, force)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// If not found as-is, try with normalization
 		normalizedRef := NormalizeModelName(modelRef)
 		if normalizedRef != modelRef { // only try normalized if it's different
-			resp, err = m.models.Delete(normalizedRef, force)
+			resp, err = h.manager.Delete(normalizedRef, force)
 		}
 	}
 
@@ -377,7 +377,7 @@ func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-		m.log.Warnln("Error while deleting model:", err)
+		h.log.Warnln("Error while deleting model:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -390,9 +390,9 @@ func (m *Handler) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 // handleOpenAIGetModels handles GET <inference-prefix>/<backend>/v1/models and
 // GET /<inference-prefix>/v1/models requests.
-func (m *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) {
 	// Query models.
-	available, err := m.models.RawList()
+	available, err := h.manager.RawList()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -407,15 +407,15 @@ func (m *Handler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Request) 
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(models); err != nil {
-		m.log.Warnln("Error while encoding OpenAI model listing response:", err)
+		h.log.Warnln("Error while encoding OpenAI model listing response:", err)
 	}
 }
 
 // handleOpenAIGetModel handles GET <inference-prefix>/<backend>/v1/models/{name}
 // and GET <inference-prefix>/v1/models/{name} requests.
-func (m *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
-	model, err := m.models.GetLocal(modelRef)
+	model, err := h.manager.GetLocal(modelRef)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -433,7 +433,7 @@ func (m *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := json.NewEncoder(w).Encode(openaiModel); err != nil {
-		m.log.Warnln("Error while encoding OpenAI model response:", err)
+		h.log.Warnln("Error while encoding OpenAI model response:", err)
 	}
 }
 
@@ -441,7 +441,7 @@ func (m *Handler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Request) {
 // Action is one of:
 // - tag: tag the model with a repository and tag (e.g. POST <inference-prefix>/models/my-org/my-repo:latest/tag})
 // - push: pushes a tagged model to the registry
-func (m *Handler) handleModelAction(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
 
@@ -449,9 +449,9 @@ func (m *Handler) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	case "tag":
 		// For tag actions, we likely expect model references rather than IDs,
 		// so normalize the model name, but we'll handle both cases in the handlers
-		m.handleTagModel(w, r, NormalizeModelName(model))
+		h.handleTagModel(w, r, NormalizeModelName(model))
 	case "push":
-		m.handlePushModel(w, r, model)
+		h.handlePushModel(w, r, model)
 	default:
 		http.Error(w, fmt.Sprintf("unknown action %q", action), http.StatusNotFound)
 	}
@@ -461,7 +461,7 @@ func (m *Handler) handleModelAction(w http.ResponseWriter, r *http.Request) {
 // The query parameters are:
 // - repo: the repository to tag the model with (required)
 // - tag: the tag to apply to the model (required)
-func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model string) {
+func (h *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model string) {
 	// Extract query parameters.
 	repo := r.URL.Query().Get("repo")
 	tag := r.URL.Query().Get("tag")
@@ -476,7 +476,7 @@ func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 	target := fmt.Sprintf("%s:%s", repo, tag)
 
 	// First try to tag using the provided model reference as-is
-	err := m.models.Tag(model, target)
+	err := h.manager.Tag(model, target)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -495,25 +495,25 @@ func (m *Handler) handleTagModel(w http.ResponseWriter, r *http.Request, model s
 		"target":  target,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.log.Warnln("Error while encoding tag response:", err)
+		h.log.Warnln("Error while encoding tag response:", err)
 	}
 }
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
-func (m *Handler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
-	if err := m.models.Push(model, r, w); err != nil {
+func (h *Handler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
+	if err := h.manager.Push(model, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
-			m.log.Warnf("Invalid model reference %q: %v", model, err)
+			h.log.Warnf("Invalid model reference %q: %v", model, err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			m.log.Warnf("Failed to push model %q: %v", model, err)
+			h.log.Warnf("Failed to push model %q: %v", model, err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			m.log.Warnf("Unauthorized to push model %q: %v", model, err)
+			h.log.Warnf("Unauthorized to push model %q: %v", model, err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -523,7 +523,7 @@ func (m *Handler) handlePushModel(w http.ResponseWriter, r *http.Request, model 
 }
 
 // handlePackageModel handles POST <inference-prefix>/models/package requests.
-func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 
 	// Decode the request
 	var request ModelPackageRequest
@@ -541,10 +541,10 @@ func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 	// Normalize the source model name
 	normalized := NormalizeModelName(request.From)
 
-	err := m.models.Package(normalized, request.Tag, request.ContextSize)
+	err := h.manager.Package(normalized, request.Tag, request.ContextSize)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			m.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized), err)
+			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized), err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
@@ -559,25 +559,25 @@ func (m *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 		"model":   request.Tag,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.log.Warnln("Error while encoding package response:", err)
+		h.log.Warnln("Error while encoding package response:", err)
 	}
 }
 
 // handlePurge handles DELETE <inference-prefix>/models/purge requests.
-func (m *Handler) handlePurge(w http.ResponseWriter, _ *http.Request) {
-	err := m.models.Purge()
+func (h *Handler) handlePurge(w http.ResponseWriter, _ *http.Request) {
+	err := h.manager.Purge()
 	if err != nil {
-		m.log.Warnf("Failed to purge models: %v", err)
+		h.log.Warnf("Failed to purge models: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
 // ServeHTTP implement net/http.Handler.ServeHTTP.
-func (m *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-	m.httpHandler.ServeHTTP(w, r)
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+	h.httpHandler.ServeHTTP(w, r)
 }
 
 // progressResponseWriter implements io.Writer to write progress updates to the HTTP response
