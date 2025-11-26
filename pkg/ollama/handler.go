@@ -166,6 +166,130 @@ type PullRequest struct {
 	Stream   *bool  `json:"stream,omitempty"`
 }
 
+// progressMessage represents the internal progress format from distribution client
+type progressMessage struct {
+	Type    string        `json:"type"`
+	Message string        `json:"message"`
+	Total   uint64        `json:"total"`
+	Pulled  uint64        `json:"pulled"`
+	Layer   progressLayer `json:"layer"`
+}
+
+// progressLayer represents layer information in progress messages
+type progressLayer struct {
+	ID      string `json:"id"`
+	Size    uint64 `json:"size"`
+	Current uint64 `json:"current"`
+}
+
+// ollamaPullStatus represents the Ollama pull status response format
+type ollamaPullStatus struct {
+	Status    string `json:"status,omitempty"`
+	Digest    string `json:"digest,omitempty"`
+	Total     uint64 `json:"total,omitempty"`
+	Completed uint64 `json:"completed,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ollamaProgressWriter wraps an http.ResponseWriter and translates
+// internal progress format to ollama-compatible format
+type ollamaProgressWriter struct {
+	writer      http.ResponseWriter
+	log         logging.Logger
+	headersSent bool
+}
+
+func (w *ollamaProgressWriter) Header() http.Header {
+	return w.writer.Header()
+}
+
+func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
+	// Ensure headers are sent with correct content type
+	if !w.headersSent {
+		w.writer.Header().Set("Content-Type", "application/x-ndjson")
+		w.writer.WriteHeader(http.StatusOK)
+		w.headersSent = true
+	}
+
+	// Try to parse as progress message
+	var msg progressMessage
+	if parseErr := json.Unmarshal(p, &msg); parseErr != nil {
+		// If not JSON or doesn't match format, pass through
+		return w.writer.Write(p)
+	}
+
+	// Convert to ollama format using typed struct
+	var ollamaMsg ollamaPullStatus
+
+	switch msg.Type {
+	case "progress":
+		// Ollama progress format for layer download
+		ollamaMsg.Status = "pulling manifest"
+		if msg.Layer.ID != "" {
+			// Shorten digest for display (ollama uses short form)
+			digest := msg.Layer.ID
+			const sha256Prefix = "sha256:"
+			const shortDigestLength = 12
+			if len(digest) >= len(sha256Prefix)+shortDigestLength && strings.HasPrefix(digest, sha256Prefix) {
+				digest = digest[len(sha256Prefix) : len(sha256Prefix)+shortDigestLength]
+			}
+			ollamaMsg.Status = fmt.Sprintf("pulling %s", digest)
+			ollamaMsg.Digest = msg.Layer.ID
+		}
+		ollamaMsg.Total = msg.Layer.Size
+		ollamaMsg.Completed = msg.Layer.Current
+
+	case "success":
+		ollamaMsg.Status = "success"
+
+	case "error":
+		ollamaMsg.Error = msg.Message
+
+	case "warning":
+		// Pass warnings through with a status field
+		ollamaMsg.Status = msg.Message
+
+	default:
+		// Unknown message type - pass through original payload
+		if msg.Type == "" {
+			// Empty type, pass through
+			return w.writer.Write(p)
+		}
+		// Unrecognized type, pass through to avoid losing information
+		w.log.Warnf("Unknown progress message type: %s", msg.Type)
+		return w.writer.Write(p)
+	}
+
+	// Marshal and write ollama format
+	data, err := json.Marshal(ollamaMsg)
+	if err != nil {
+		w.log.Warnf("Failed to marshal ollama progress: %v", err)
+		return w.writer.Write(p)
+	}
+
+	// Write with newline
+	data = append(data, '\n')
+	n, err = w.writer.Write(data)
+
+	// Flush after each write for real-time progress
+	w.Flush()
+
+	return n, err
+}
+
+func (w *ollamaProgressWriter) WriteHeader(statusCode int) {
+	if !w.headersSent {
+		w.writer.WriteHeader(statusCode)
+		w.headersSent = true
+	}
+}
+
+func (w *ollamaProgressWriter) Flush() {
+	if flusher, ok := w.writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // OpenAI API response types for type-safe parsing
 
 // openAIChatResponse represents the OpenAI chat completion response
@@ -622,21 +746,35 @@ func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
 	// Set Accept header for JSON response (Ollama expects JSON streaming)
 	r.Header.Set("Accept", "application/json")
 
-	// Call the model manager's PullModel method
-	if err := h.modelManager.PullModel(modelName, "", r, w); err != nil {
+	// Wrap the response writer with ollama progress adapter
+	ollamaWriter := &ollamaProgressWriter{
+		writer:      w,
+		log:         h.log,
+		headersSent: false,
+	}
+
+	// Call the model manager's PullModel method with the wrapped writer
+	if err := h.modelManager.PullModel(modelName, "", r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %v", err)
-		// Only write error if headers haven't been sent yet
-		if !isHeadersSent(w) {
-			http.Error(w, fmt.Sprintf("Failed to pull model: %v", err), http.StatusInternalServerError)
+
+		// Send error in Ollama JSON format
+		errorResponse := ollamaPullStatus{
+			Error: fmt.Sprintf("Failed to pull model: %v", err),
+		}
+
+		if !ollamaWriter.headersSent {
+			// Headers not sent yet - we can still use http.Error
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(errorResponse)
+		} else {
+			// Headers already sent - write error as JSON line
+			if data, marshalErr := json.Marshal(errorResponse); marshalErr == nil {
+				w.Write(data)
+				w.Write([]byte("\n"))
+			}
 		}
 	}
-}
-
-// isHeadersSent checks if headers have already been sent
-func isHeadersSent(w http.ResponseWriter) bool {
-	// This is a best-effort check
-	// If WriteHeader or Write has been called, we can't send error headers
-	return false // Conservative approach: assume we can still write headers
 }
 
 // convertMessages converts Ollama messages to OpenAI format
