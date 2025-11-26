@@ -473,12 +473,12 @@ func (m *Manager) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// First try to delete without normalization (as ID), then with normalization if not found
-	resp, err := m.distributionClient.DeleteModel(modelRef, force)
+	resp, err := m.DeleteModel(modelRef, force)
 	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
 		// If not found as-is, try with normalization
 		normalizedRef := NormalizeModelName(modelRef)
 		if normalizedRef != modelRef { // only try normalized if it's different
-			resp, err = m.distributionClient.DeleteModel(normalizedRef, force)
+			resp, err = m.DeleteModel(normalizedRef, force)
 		}
 	}
 
@@ -999,6 +999,19 @@ func (m *Manager) PullModel(model string, bearerToken string, r *http.Request, w
 	}
 
 	return nil
+}
+
+// DeleteModel deletes a model from storage and returns the delete response
+func (m *Manager) DeleteModel(reference string, force bool) (*distribution.DeleteModelResponse, error) {
+	if m.distributionClient == nil {
+		return nil, errors.New("model distribution service unavailable")
+	}
+
+	resp, err := m.distributionClient.DeleteModel(reference, force)
+	if err != nil {
+		return nil, fmt.Errorf("error while deleting model: %w", err)
+	}
+	return resp, nil
 }
 
 // PushModel pushes a model from the store to the registry.
