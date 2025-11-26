@@ -32,8 +32,8 @@ var ErrorNotFound = errors.New("vLLM binary not found")
 type vLLM struct {
 	// log is the associated logger.
 	log logging.Logger
-	// modelManager is the shared model manager.
-	modelManager *models.Manager
+	// modelService is the shared model service.
+	modelService *models.Service
 	// serverLog is the logger to use for the vLLM server process.
 	serverLog logging.Logger
 	// config is the configuration for the vLLM backend.
@@ -43,7 +43,7 @@ type vLLM struct {
 }
 
 // New creates a new vLLM-based backend.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config) (inference.Backend, error) {
+func New(log logging.Logger, modelService *models.Service, serverLog logging.Logger, conf *Config) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultVLLMConfig()
@@ -51,7 +51,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 
 	return &vLLM{
 		log:          log,
-		modelManager: modelManager,
+		modelService: modelService,
 		serverLog:    serverLog,
 		config:       conf,
 		status:       "not installed",
@@ -100,14 +100,14 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		return errors.New("not implemented")
 	}
 
-	bundle, err := v.modelManager.GetBundle(model)
+	bundle, err := v.modelService.GetBundle(model)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
 	var draftBundle types.ModelBundle
 	if backendConfig != nil && backendConfig.Speculative != nil && backendConfig.Speculative.DraftModel != "" {
-		draftBundle, err = v.modelManager.GetBundle(backendConfig.Speculative.DraftModel)
+		draftBundle, err = v.modelService.GetBundle(backendConfig.Speculative.DraftModel)
 		if err != nil {
 			return fmt.Errorf("failed to get draft model: %w", err)
 		}

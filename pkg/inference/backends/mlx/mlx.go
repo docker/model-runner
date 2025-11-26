@@ -26,8 +26,8 @@ var ErrStatusNotFound = errors.New("Python or mlx-lm not found")
 type mlx struct {
 	// log is the associated logger.
 	log logging.Logger
-	// modelManager is the shared model manager.
-	modelManager *models.Manager
+	// modelService is the shared model service.
+	modelService *models.Service
 	// serverLog is the logger to use for the MLX server process.
 	serverLog logging.Logger
 	// config is the configuration for the MLX backend.
@@ -39,7 +39,7 @@ type mlx struct {
 }
 
 // New creates a new MLX-based backend.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config) (inference.Backend, error) {
+func New(log logging.Logger, modelService *models.Service, serverLog logging.Logger, conf *Config) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultMLXConfig()
@@ -47,7 +47,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 
 	return &mlx{
 		log:          log,
-		modelManager: modelManager,
+		modelService: modelService,
 		serverLog:    serverLog,
 		config:       conf,
 		status:       "not installed",
@@ -104,7 +104,7 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 
 // Run implements inference.Backend.Run.
 func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
-	bundle, err := m.modelManager.GetBundle(model)
+	bundle, err := m.modelService.GetBundle(model)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
 	}

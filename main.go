@@ -104,7 +104,7 @@ func main() {
 
 	llamaCppBackend, err := llamacpp.New(
 		log,
-		modelManager,
+		modelService,
 		log.WithFields(logrus.Fields{"component": llamacpp.Name}),
 		llamaServerPath,
 		func() string {
@@ -127,7 +127,7 @@ func main() {
 
 	vllmBackend, err := vllm.New(
 		log,
-		modelManager,
+		modelService,
 		log.WithFields(logrus.Fields{"component": vllm.Name}),
 		nil,
 	)
@@ -137,7 +137,7 @@ func main() {
 
 	mlxBackend, err := mlx.New(
 		log,
-		modelManager,
+		modelService,
 		log.WithFields(logrus.Fields{"component": mlx.Name}),
 		nil,
 	)

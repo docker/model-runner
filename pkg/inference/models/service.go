@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 )
@@ -78,7 +80,6 @@ func (s *Service) GetModel(ref string) (types.Model, error) {
 func (s *Service) ResolveModelID(modelRef string) string {
 	// Sanitize modelRef to prevent log forgery
 	sanitizedModelRef := utils.SanitizeForLog(modelRef, -1)
-
 	model, err := s.GetModel(sanitizedModelRef)
 	if err != nil {
 		s.log.Warnf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err)
@@ -98,12 +99,51 @@ func (s *Service) GetDiskUsage() (int64, error) {
 	if s.distributionClient == nil {
 		return 0, errors.New("model distribution service unavailable")
 	}
-
 	storePath := s.distributionClient.GetStorePath()
 	size, err := diskusage.Size(storePath)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %w", err)
 	}
-
 	return size, nil
+}
+
+// GetRemoteModel returns a single remote model.
+func (s *Service) GetRemoteModel(ctx context.Context, ref string) (types.ModelArtifact, error) {
+	model, err := s.registryClient.Model(ctx, ref)
+	if err != nil {
+		return nil, fmt.Errorf("error while getting remote model: %w", err)
+	}
+	return model, nil
+}
+
+// GetRemoteModelBlobURL returns the URL of a given model blob.
+func (s *Service) GetRemoteModelBlobURL(ref string, digest v1.Hash) (string, error) {
+	blobURL, err := s.registryClient.BlobURL(ref, digest)
+	if err != nil {
+		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
+	}
+	return blobURL, nil
+}
+
+// BearerTokenForModel returns the bearer token needed to pull a given model.
+func (s *Service) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
+	tok, err := s.registryClient.BearerToken(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("error while getting bearer token for model: %w", err)
+	}
+	return tok, nil
+}
+
+// GetBundle returns model bundle.
+func (s *Service) GetBundle(ref string) (types.ModelBundle, error) {
+	bundle, err := s.distributionClient.GetBundle(ref)
+	if err != nil {
+		return nil, fmt.Errorf("error while getting model bundle: %w", err)
+	}
+	return bundle, nil
+}
+
+// IsModelInStore checks if a given model is in the local store.
+func (s *Service) IsModelInStore(ref string) (bool, error) {
+	return s.distributionClient.IsModelInStore(ref)
 }

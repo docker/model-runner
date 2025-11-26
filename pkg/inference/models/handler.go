@@ -17,7 +17,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/logging"
@@ -834,11 +833,6 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.httpHandler.ServeHTTP(w, r)
 }
 
-// IsModelInStore checks if a given model is in the local store.
-func (m *Manager) IsModelInStore(ref string) (bool, error) {
-	return m.distributionClient.IsModelInStore(ref)
-}
-
 // GetModels returns all models.
 func (m *Manager) GetModels() ([]*Model, error) {
 	if m.distributionClient == nil {
@@ -862,47 +856,6 @@ func (m *Manager) GetModels() ([]*Model, error) {
 	}
 
 	return apiModels, nil
-}
-
-// GetModel returns a single model by delegating to the service layer.
-func (m *Manager) GetModel(ref string) (types.Model, error) {
-	return m.service.GetModel(ref)
-}
-
-// GetRemoteModel returns a single remote model.
-func (m *Manager) GetRemoteModel(ctx context.Context, ref string) (types.ModelArtifact, error) {
-	model, err := m.registryClient.Model(ctx, ref)
-	if err != nil {
-		return nil, fmt.Errorf("error while getting remote model: %w", err)
-	}
-	return model, nil
-}
-
-// GetRemoteModelBlobURL returns the URL of a given model blob.
-func (m *Manager) GetRemoteModelBlobURL(ref string, digest v1.Hash) (string, error) {
-	blobURL, err := m.registryClient.BlobURL(ref, digest)
-	if err != nil {
-		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
-	}
-	return blobURL, nil
-}
-
-// BearerTokenForModel returns the bearer token needed to pull a given model.
-func (m *Manager) BearerTokenForModel(ctx context.Context, ref string) (string, error) {
-	tok, err := m.registryClient.BearerToken(ctx, ref)
-	if err != nil {
-		return "", fmt.Errorf("error while getting bearer token for model: %w", err)
-	}
-	return tok, nil
-}
-
-// GetBundle returns model bundle.
-func (m *Manager) GetBundle(ref string) (types.ModelBundle, error) {
-	bundle, err := m.distributionClient.GetBundle(ref)
-	if err != nil {
-		return nil, fmt.Errorf("error while getting model bundle: %w", err)
-	}
-	return bundle, err
 }
 
 // PullModel pulls a model to local storage. Any error it returns is suitable

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// Ollama API prefix
+	// APIPrefix Ollama API prefix
 	APIPrefix = "/api"
 )
 
@@ -405,7 +405,7 @@ func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
 	models := make([]PSModel, 0, len(runningBackends))
 	for _, backend := range runningBackends {
 		// Get model details to populate additional fields
-		model, err := h.modelManager.GetModel(backend.ModelName)
+		model, err := h.modelsService.GetModel(backend.ModelName)
 		if err != nil {
 			h.log.Warnf("Failed to get model details for %s: %v", backend.ModelName, err)
 			// Still add the model with basic info
@@ -468,7 +468,7 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	modelName = models.NormalizeModelName(modelName)
 
 	// Get model details
-	model, err := h.modelManager.GetModel(modelName)
+	model, err := h.modelsService.GetModel(modelName)
 	if err != nil {
 		h.log.Errorf("Failed to get model: %v", err)
 		http.Error(w, fmt.Sprintf("Model not found: %v", err), http.StatusNotFound)

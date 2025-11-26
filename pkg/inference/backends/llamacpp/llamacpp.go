@@ -36,8 +36,8 @@ const (
 type llamaCpp struct {
 	// log is the associated logger.
 	log logging.Logger
-	// modelManager is the shared model manager.
-	modelManager *models.Manager
+	// modelService is the shared model service.
+	modelService *models.Service
 	// serverLog is the logger to use for the llama.cpp server process.
 	serverLog       logging.Logger
 	updatedLlamaCpp bool
@@ -57,7 +57,7 @@ type llamaCpp struct {
 // New creates a new llama.cpp-based backend.
 func New(
 	log logging.Logger,
-	modelManager *models.Manager,
+	modelService *models.Service,
 	serverLog logging.Logger,
 	vendoredServerStoragePath string,
 	updatedServerStoragePath string,
@@ -70,7 +70,7 @@ func New(
 
 	return &llamaCpp{
 		log:                       log,
-		modelManager:              modelManager,
+		modelService:              modelService,
 		serverLog:                 serverLog,
 		vendoredServerStoragePath: vendoredServerStoragePath,
 		updatedServerStoragePath:  updatedServerStoragePath,
@@ -132,14 +132,14 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 
 // Run implements inference.Backend.Run.
 func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode inference.BackendMode, config *inference.BackendConfiguration) error {
-	bundle, err := l.modelManager.GetBundle(model)
+	bundle, err := l.modelService.GetBundle(model)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
 	var draftBundle types.ModelBundle
 	if config != nil && config.Speculative != nil && config.Speculative.DraftModel != "" {
-		draftBundle, err = l.modelManager.GetBundle(config.Speculative.DraftModel)
+		draftBundle, err = l.modelService.GetBundle(config.Speculative.DraftModel)
 		if err != nil {
 			return fmt.Errorf("failed to get draft model: %w", err)
 		}
@@ -229,7 +229,7 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 
 // parseModel parses a model (local or remote) and returns the GGUF file and config.
 func (l *llamaCpp) parseModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
-	inStore, err := l.modelManager.IsModelInStore(model)
+	inStore, err := l.modelService.IsModelInStore(model)
 	if err != nil {
 		return nil, types.Config{}, fmt.Errorf("checking if model is in local store: %w", err)
 	}
@@ -259,7 +259,7 @@ func (l *llamaCpp) estimateMemoryFromGGUF(ggufFile *parser.GGUFFile, contextSize
 }
 
 func (l *llamaCpp) parseLocalModel(model string) (*parser.GGUFFile, types.Config, error) {
-	bundle, err := l.modelManager.GetBundle(model)
+	bundle, err := l.modelService.GetBundle(model)
 	if err != nil {
 		return nil, types.Config{}, fmt.Errorf("getting model(%s): %w", model, err)
 	}
@@ -271,7 +271,7 @@ func (l *llamaCpp) parseLocalModel(model string) (*parser.GGUFFile, types.Config
 }
 
 func (l *llamaCpp) parseRemoteModel(ctx context.Context, model string) (*parser.GGUFFile, types.Config, error) {
-	mdl, err := l.modelManager.GetRemoteModel(ctx, model)
+	mdl, err := l.modelService.GetRemoteModel(ctx, model)
 	if err != nil {
 		return nil, types.Config{}, fmt.Errorf("getting remote model(%s): %w", model, err)
 	}
@@ -292,11 +292,11 @@ func (l *llamaCpp) parseRemoteModel(ctx context.Context, model string) (*parser.
 	if ggufDigest.String() == "" {
 		return nil, types.Config{}, fmt.Errorf("model(%s) has no GGUF layer", model)
 	}
-	blobURL, err := l.modelManager.GetRemoteModelBlobURL(model, ggufDigest)
+	blobURL, err := l.modelService.GetRemoteModelBlobURL(model, ggufDigest)
 	if err != nil {
 		return nil, types.Config{}, fmt.Errorf("getting GGUF blob URL for model(%s): %w", model, err)
 	}
-	tok, err := l.modelManager.BearerTokenForModel(ctx, model)
+	tok, err := l.modelService.BearerTokenForModel(ctx, model)
 	if err != nil {
 		return nil, types.Config{}, fmt.Errorf("getting bearer token for model(%s): %w", model, err)
 	}
