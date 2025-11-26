@@ -694,7 +694,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newReq, err := http.NewRequestWithContext(ctx, "POST", "/engines/unload", strings.NewReader(string(reqBody)))
+	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/engines/unload", strings.NewReader(string(reqBody)))
 	if err != nil {
 		h.log.Errorf("handleDelete: failed to create unload request: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to create request: %v", err), http.StatusInternalServerError)
@@ -711,10 +711,28 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	h.scheduler.ServeHTTP(respRecorder, newReq)
 	h.log.Infof("handleDelete: unload response status=%d", respRecorder.statusCode)
 
+	// Check if unload succeeded before deleting from storage
+	if respRecorder.statusCode < 200 || respRecorder.statusCode >= 300 {
+		sanitizedBody := utils.SanitizeForLog(respRecorder.body.String(), -1)
+		h.log.Errorf(
+			"handleDelete: unload failed for model %s with status=%d, body=%q",
+			sanitizedModelName,
+			respRecorder.statusCode,
+			sanitizedBody,
+		)
+		http.Error(
+			w,
+			fmt.Sprintf("Failed to unload model: scheduler returned status %d", respRecorder.statusCode),
+			respRecorder.statusCode,
+		)
+		return
+	}
+
 	// Then delete the model from storage
 	if _, err := h.modelManager.DeleteModel(modelName, false); err != nil {
-		h.log.Errorf("handleDelete: failed to delete model %s: %v", sanitizedModelName, err)
-		http.Error(w, fmt.Sprintf("Failed to delete model: %v", err), http.StatusInternalServerError)
+		sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
+		h.log.Errorf("handleDelete: failed to delete model %s: %v", sanitizedModelName, sanitizedErr)
+		http.Error(w, fmt.Sprintf("Failed to delete model: %v", sanitizedErr), http.StatusInternalServerError)
 		return
 	}
 
