@@ -77,26 +77,26 @@ type ListResponse struct {
 
 // ModelResponse represents a single model in the list
 type ModelResponse struct {
-	Name       string        `json:"name"`
-	ModifiedAt time.Time     `json:"modified_at"`
-	Size       int64         `json:"size"`
-	Digest     string        `json:"digest"`
-	Details    ModelDetails  `json:"details"`
+	Name       string       `json:"name"`
+	ModifiedAt time.Time    `json:"modified_at"`
+	Size       int64        `json:"size"`
+	Digest     string       `json:"digest"`
+	Details    ModelDetails `json:"details"`
 }
 
 // ModelDetails contains model metadata
 type ModelDetails struct {
-	Format           string   `json:"format"`
-	Family           string   `json:"family"`
-	Families         []string `json:"families"`
-	ParameterSize    string   `json:"parameter_size"`
-	QuantizationLevel string  `json:"quantization_level"`
+	Format            string   `json:"format"`
+	Family            string   `json:"family"`
+	Families          []string `json:"families"`
+	ParameterSize     string   `json:"parameter_size"`
+	QuantizationLevel string   `json:"quantization_level"`
 }
 
 // ShowRequest is the request for /api/show
 type ShowRequest struct {
-	Name    string `json:"name"`    // Ollama uses 'name' field
-	Model   string `json:"model"`   // Also accept 'model' for compatibility
+	Name    string `json:"name"`  // Ollama uses 'name' field
+	Model   string `json:"model"` // Also accept 'model' for compatibility
 	Verbose bool   `json:"verbose,omitempty"`
 }
 
@@ -111,8 +111,8 @@ type ShowResponse struct {
 
 // ChatRequest is the request for /api/chat
 type ChatRequest struct {
-	Name      string                 `json:"name"`       // Ollama uses 'name' field
-	Model     string                 `json:"model"`      // Also accept 'model' for compatibility
+	Name      string                 `json:"name"`  // Ollama uses 'name' field
+	Model     string                 `json:"model"` // Also accept 'model' for compatibility
 	Messages  []Message              `json:"messages"`
 	Stream    *bool                  `json:"stream,omitempty"`
 	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
@@ -135,8 +135,8 @@ type ChatResponse struct {
 
 // GenerateRequest is the request for /api/generate
 type GenerateRequest struct {
-	Name      string                 `json:"name"`       // Ollama uses 'name' field
-	Model     string                 `json:"model"`      // Also accept 'model' for compatibility
+	Name      string                 `json:"name"`  // Ollama uses 'name' field
+	Model     string                 `json:"model"` // Also accept 'model' for compatibility
 	Prompt    string                 `json:"prompt"`
 	Stream    *bool                  `json:"stream,omitempty"`
 	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
@@ -159,10 +159,97 @@ type DeleteRequest struct {
 
 // PullRequest is the request for POST /api/pull
 type PullRequest struct {
-	Name     string `json:"name"`     // Ollama uses 'name' field
-	Model    string `json:"model"`    // Also accept 'model' for compatibility
+	Name     string `json:"name"`  // Ollama uses 'name' field
+	Model    string `json:"model"` // Also accept 'model' for compatibility
 	Insecure bool   `json:"insecure,omitempty"`
 	Stream   *bool  `json:"stream,omitempty"`
+}
+
+// progressMessage represents the internal progress format from distribution client
+type progressMessage struct {
+	Type    string        `json:"type"`
+	Message string        `json:"message"`
+	Total   uint64        `json:"total"`
+	Pulled  uint64        `json:"pulled"`
+	Layer   progressLayer `json:"layer"`
+}
+
+// progressLayer represents layer information in progress messages
+type progressLayer struct {
+	ID      string `json:"id"`
+	Size    uint64 `json:"size"`
+	Current uint64 `json:"current"`
+}
+
+// ollamaProgressWriter wraps an http.ResponseWriter and translates
+// internal progress format to ollama-compatible format
+type ollamaProgressWriter struct {
+	writer http.ResponseWriter
+	log    logging.Logger
+}
+
+func (w *ollamaProgressWriter) Header() http.Header {
+	return w.writer.Header()
+}
+
+func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
+	// Try to parse as progress message
+	var msg progressMessage
+	if parseErr := json.Unmarshal(p, &msg); parseErr != nil {
+		// If not JSON or doesn't match format, pass through
+		return w.writer.Write(p)
+	}
+
+	// Convert to ollama format
+	ollamaMsg := make(map[string]interface{})
+
+	switch msg.Type {
+	case "progress":
+		// Ollama progress format for layer download
+		ollamaMsg["status"] = "pulling manifest"
+		if msg.Layer.ID != "" {
+			// Shorten digest for display (ollama uses short form)
+			digest := msg.Layer.ID
+			if len(digest) > 19 && strings.HasPrefix(digest, "sha256:") {
+				digest = digest[7:19] // Take first 12 chars after "sha256:"
+			}
+			ollamaMsg["status"] = fmt.Sprintf("pulling %s", digest)
+			ollamaMsg["digest"] = msg.Layer.ID
+		}
+		ollamaMsg["total"] = msg.Layer.Size
+		ollamaMsg["completed"] = msg.Layer.Current
+
+	case "success":
+		ollamaMsg["status"] = "success"
+
+	case "error":
+		ollamaMsg["error"] = msg.Message
+
+	case "warning":
+		// Pass warnings through with a status field
+		ollamaMsg["status"] = msg.Message
+	}
+
+	// Marshal and write ollama format
+	data, err := json.Marshal(ollamaMsg)
+	if err != nil {
+		w.log.Warnf("Failed to marshal ollama progress: %v", err)
+		return w.writer.Write(p)
+	}
+
+	// Write with newline
+	data = append(data, '\n')
+	return w.writer.Write(data)
+}
+
+func (w *ollamaProgressWriter) WriteHeader(statusCode int) {
+	w.writer.WriteHeader(statusCode)
+}
+
+func (w *ollamaProgressWriter) Flush() {
+	if flusher, ok := w.writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // OpenAI API response types for type-safe parsing
@@ -217,7 +304,7 @@ func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	modelsList, err := h.modelManager.GetModels()
 	if err != nil {
 		h.log.Errorf("Failed to list models: %v", err)
- 		http.Error(w, "Failed to list models", http.StatusInternalServerError)
+		http.Error(w, "Failed to list models", http.StatusInternalServerError)
 		return
 	}
 
@@ -229,10 +316,10 @@ func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	for _, model := range modelsList {
 		// Extract details from the model
 		details := ModelDetails{
-			Format:           "gguf", // Default to gguf for now
-			Family:           model.Config.Architecture,
-			Families:         []string{model.Config.Architecture},
-			ParameterSize:    model.Config.Parameters,
+			Format:            "gguf", // Default to gguf for now
+			Family:            model.Config.Architecture,
+			Families:          []string{model.Config.Architecture},
+			ParameterSize:     model.Config.Parameters,
 			QuantizationLevel: model.Config.Quantization,
 		}
 
@@ -363,10 +450,10 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	// Build response
 	response := ShowResponse{
 		Details: ModelDetails{
-			Format:           "gguf",
-			Family:           config.Architecture,
-			Families:         []string{config.Architecture},
-			ParameterSize:    config.Parameters,
+			Format:            "gguf",
+			Family:            config.Architecture,
+			Families:          []string{config.Architecture},
+			ParameterSize:     config.Parameters,
 			QuantizationLevel: config.Quantization,
 		},
 	}
@@ -408,9 +495,9 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to OpenAI format chat completion request
 	openAIReq := map[string]interface{}{
-		"model":  modelName,
+		"model":    modelName,
 		"messages": convertMessages(req.Messages),
-		"stream": req.Stream != nil && *req.Stream,
+		"stream":   req.Stream != nil && *req.Stream,
 	}
 
 	// Add options if present
@@ -578,8 +665,14 @@ func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
 	// Set Accept header for JSON response (Ollama expects JSON streaming)
 	r.Header.Set("Accept", "application/json")
 
-	// Call the model manager's PullModel method
-	if err := h.modelManager.PullModel(modelName, "", r, w); err != nil {
+	// Wrap the response writer with ollama progress adapter
+	ollamaWriter := &ollamaProgressWriter{
+		writer: w,
+		log:    h.log,
+	}
+
+	// Call the model manager's PullModel method with the wrapped writer
+	if err := h.modelManager.PullModel(modelName, "", r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %v", err)
 		// Only write error if headers haven't been sent yet
 		if !isHeadersSent(w) {
@@ -999,4 +1092,3 @@ func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *r
 		h.log.Errorf("Failed to encode response: %v", err)
 	}
 }
-
