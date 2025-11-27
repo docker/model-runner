@@ -917,7 +917,7 @@ func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWri
 		return
 	}
 	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("X-Request-Origin", "ollama/completions")
+	newReq.Header.Set(inference.RequestOriginHeader, inference.OriginOllamaCompletion)
 
 	if stream {
 		// Use streaming response writer that processes SSE on the fly
@@ -961,7 +961,7 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 		return
 	}
 	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("X-Request-Origin", "ollama/completions")
+	newReq.Header.Set(inference.RequestOriginHeader, inference.OriginOllamaCompletion)
 
 	if stream, ok := openAIReq["stream"].(bool); ok && stream {
 		// Use streaming response writer that processes SSE on the fly

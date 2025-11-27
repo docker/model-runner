@@ -246,8 +246,14 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		// Determine the action for tracking
 		action := "inference/" + backendMode.String()
 		// Check if there's a request origin header to provide more specific tracking
-		if origin := r.Header.Get("X-Request-Origin"); origin != "" {
-			action = origin
+		// Only trust whitelisted values to prevent header spoofing
+		if origin := r.Header.Get(inference.RequestOriginHeader); origin != "" {
+			switch origin {
+			case inference.OriginOllamaCompletion:
+				action = origin
+				// If an unknown origin is provided, ignore it and use the default action
+				// This prevents untrusted clients from spoofing tracking data
+			}
 		}
 
 		// Non-blocking call to track the model usage.

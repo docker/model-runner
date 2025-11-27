@@ -10,3 +10,14 @@ var InferencePrefix = "/engines"
 
 // ModelsPrefix is the prefix for all model manager related routes.
 var ModelsPrefix = "/models"
+
+// RequestOriginHeader is the HTTP header used to track the origin of inference requests.
+// This header is set internally by proxy handlers (e.g., Ollama compatibility layer)
+// to provide more granular tracking of model usage by source.
+const RequestOriginHeader = "X-Request-Origin"
+
+// Valid origin values for the RequestOriginHeader.
+const (
+	// OriginOllamaCompletion indicates the request came from the Ollama /api/chat or /api/generate endpoints
+	OriginOllamaCompletion = "ollama/completion"
+)
