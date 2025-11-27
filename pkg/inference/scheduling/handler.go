@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/middleware"
-	"github.com/mattn/go-shellwords"
 )
 
 // ServeHTTP implements net/http.Handler.ServeHTTP.
@@ -315,38 +313,9 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	var runtimeFlags []string
-	if len(configureRequest.RuntimeFlags) > 0 {
-		runtimeFlags = configureRequest.RuntimeFlags
-	} else {
-		rawFlags, err := shellwords.Parse(configureRequest.RawRuntimeFlags)
-		if err != nil {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-		runtimeFlags = rawFlags
-	}
 
-	var runnerConfig inference.BackendConfiguration
-	runnerConfig.ContextSize = configureRequest.ContextSize
-	runnerConfig.RuntimeFlags = runtimeFlags
-	runnerConfig.Speculative = configureRequest.Speculative
-
-	mode := inference.BackendModeCompletion
-	if slices.Contains(runnerConfig.RuntimeFlags, "--embeddings") {
-		mode = inference.BackendModeEmbedding
-	}
-
-	if model, err := s.modelManager.GetLocal(configureRequest.Model); err == nil {
-		// Configure is called by compose for each model.
-		s.tracker.TrackModel(model, r.UserAgent(), "configure/"+mode.String())
-
-		// Automatically identify models for vLLM.
-		backend = s.selectBackendForModel(model, backend, configureRequest.Model)
-	}
-	modelID := s.modelManager.ResolveID(configureRequest.Model)
-	if err := s.loader.setRunnerConfig(r.Context(), backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), configureRequest.Model, modelID, err)
+	_, err = s.ConfigureRunner(r.Context(), backend, configureRequest, r.UserAgent())
+	if err != nil {
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {

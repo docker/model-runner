@@ -3,7 +3,9 @@ package scheduling
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -248,4 +251,53 @@ func parseBackendMode(mode string) inference.BackendMode {
 	default:
 		return inference.BackendModeCompletion
 	}
+}
+
+// ConfigureRunner configures a runner for a specific model and backend.
+// It handles all the business logic of configuration including parsing flags,
+// determining mode, selecting backend, and setting runner configuration.
+func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backend, req ConfigureRequest, userAgent string) (inference.Backend, error) {
+	// Parse runtime flags from either array or raw string
+	var runtimeFlags []string
+	if len(req.RuntimeFlags) > 0 {
+		runtimeFlags = req.RuntimeFlags
+	} else if req.RawRuntimeFlags != "" {
+		var err error
+		runtimeFlags, err = shellwords.Parse(req.RawRuntimeFlags)
+		if err != nil {
+			return nil, fmt.Errorf("invalid runtime flags: %w", err)
+		}
+	}
+
+	// Build runner configuration
+	var runnerConfig inference.BackendConfiguration
+	runnerConfig.ContextSize = req.ContextSize
+	runnerConfig.RuntimeFlags = runtimeFlags
+	runnerConfig.Speculative = req.Speculative
+
+	// Determine mode from flags
+	mode := inference.BackendModeCompletion
+	if slices.Contains(runnerConfig.RuntimeFlags, "--embeddings") {
+		mode = inference.BackendModeEmbedding
+	}
+
+	// Get model, track usage, and select appropriate backend
+	if model, err := s.modelManager.GetLocal(req.Model); err == nil {
+		// Configure is called by compose for each model
+		s.tracker.TrackModel(model, userAgent, "configure/"+mode.String())
+
+		// Automatically identify models for vLLM
+		backend = s.selectBackendForModel(model, backend, req.Model)
+	}
+
+	// Resolve model ID
+	modelID := s.modelManager.ResolveID(req.Model)
+
+	// Set the runner configuration
+	if err := s.loader.setRunnerConfig(ctx, backend.Name(), modelID, mode, runnerConfig); err != nil {
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), req.Model, modelID, err)
+		return nil, err
+	}
+
+	return backend, nil
 }
