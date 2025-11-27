@@ -334,7 +334,7 @@ func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 // handleListModels handles GET /api/tags
 func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
-	// GetLocal models from the model manager
+	// Get models from the model manager
 	modelsList, err := h.modelManager.List()
 	if err != nil {
 		h.log.Errorf("Failed to list models: %v", err)
@@ -357,7 +357,7 @@ func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
 			QuantizationLevel: model.Config.Quantization,
 		}
 
-		// GetLocal the first tag as the name, or use ID if no tags
+		// Get the first tag as the name, or use ID if no tags
 		name := model.ID
 		if len(model.Tags) > 0 {
 			name = model.Tags[0]
@@ -396,13 +396,13 @@ type PSModel struct {
 func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// GetLocal running backends from scheduler
+	// Get running backends from scheduler
 	runningBackends := h.scheduler.GetRunningBackendsInfo(ctx)
 
 	// Convert to Ollama format
 	models := make([]PSModel, 0, len(runningBackends))
 	for _, backend := range runningBackends {
-		// GetLocal model details to populate additional fields
+		// Get model details to populate additional fields
 		model, err := h.modelManager.GetLocal(backend.ModelName)
 		if err != nil {
 			h.log.Warnf("Failed to get model details for %s: %v", backend.ModelName, err)
@@ -415,7 +415,7 @@ func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// GetLocal the first tag as the name
+		// Get the first tag as the name
 		name := backend.ModelName
 		tags := model.Tags()
 		if len(tags) > 0 {
@@ -465,7 +465,7 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	// Normalize model name
 	modelName = models.NormalizeModelName(modelName)
 
-	// GetLocal model details
+	// Get model details
 	model, err := h.modelManager.GetLocal(modelName)
 	if err != nil {
 		h.log.Errorf("Failed to get model: %v", err)
@@ -473,7 +473,7 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// GetLocal config
+	// Get config
 	config, err := model.Config()
 	if err != nil {
 		h.log.Errorf("Failed to get model config: %v", err)

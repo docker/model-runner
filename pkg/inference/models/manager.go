@@ -302,7 +302,7 @@ func (m *Manager) Tag(ref, target string) error {
 
 		// If it looks like an ID, try to find the model by ID
 		if strings.HasPrefix(ref, "sha256:") || len(ref) == 12 { // 12-char short ID
-			// GetLocal all models and find the one matching this ID
+			// Get all models and find the one matching this ID
 			models, listErr := m.distributionClient.ListModels()
 			if listErr != nil {
 				return fmt.Errorf("error listing models: %w", listErr)
@@ -344,7 +344,7 @@ func (m *Manager) Tag(ref, target string) error {
 						tagWithoutVersion = tagStr[:idx]
 					}
 
-					// GetLocal just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
+					// Get just the name part without organization (e.g., from "ai/smollm2" get "smollm2")
 					namePart := tagWithoutVersion
 					if idx := strings.LastIndex(tagWithoutVersion, "/"); idx != -1 {
 						namePart = tagWithoutVersion[idx+1:]
@@ -444,7 +444,7 @@ func (m *Manager) Package(ref string, tag string, contextSize uint64) error {
 		bldr = bldr.WithContextSize(contextSize)
 	}
 
-	// GetLocal the built model artifact
+	// Get the built model artifact
 	builtModel := bldr.Model()
 
 	// Check if we can use lightweight repackaging (config-only changes from existing model)
