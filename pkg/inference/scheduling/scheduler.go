@@ -243,8 +243,15 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 			}
 			return
 		}
+		// Determine the action for tracking
+		action := "inference/" + backendMode.String()
+		// Check if there's a request origin header to provide more specific tracking
+		if origin := r.Header.Get("X-Request-Origin"); origin != "" {
+			action = origin
+		}
+
 		// Non-blocking call to track the model usage.
-		s.tracker.TrackModel(model, r.UserAgent(), "inference/"+backendMode.String())
+		s.tracker.TrackModel(model, r.UserAgent(), action)
 
 		// Automatically identify models for vLLM.
 		backend = s.selectBackendForModel(model, backend, request.Model)
