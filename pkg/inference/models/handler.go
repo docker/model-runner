@@ -544,7 +544,7 @@ func (h *Handler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
 	err := h.manager.Package(normalized, request.Tag, request.ContextSize)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized), err)
+			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized, -1), err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
