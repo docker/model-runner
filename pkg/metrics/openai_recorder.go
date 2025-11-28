@@ -469,6 +469,11 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string,
 		return streamingBody, nil
 	}
 
+	// Initialize lastChoice if it's nil to prevent nil map panics
+	if lastChoice == nil {
+		lastChoice = make(map[string]interface{})
+	}
+
 	finalResponse := make(map[string]interface{})
 
 	for key, value := range lastChunk {
