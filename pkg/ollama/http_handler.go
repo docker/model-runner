@@ -376,14 +376,7 @@ func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Handle num_ctx option for context size configuration
 	if req.Options != nil {
 		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
-			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
-				sanitizedNumCtx := utils.SanitizeForLog(fmt.Sprintf("%d", numCtx), -1)
-				h.log.Infof("handleChat: configuring context size %s for model %s", sanitizedNumCtx, sanitizedModelName)
-				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
-					// Log the error but continue with the request
-					h.log.Warnf("handleChat: failed to configure context size for model %s: %v", sanitizedModelName, err)
-				}
-			}
+			h.configure(r.Context(), numCtxRaw, sanitizedModelName, modelName, r.UserAgent())
 		}
 	}
 
@@ -406,6 +399,23 @@ func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Make request to scheduler
 	h.proxyToChatCompletions(ctx, w, r, openAIReq, modelName, req.Stream == nil || *req.Stream)
+}
+
+func (h *HTTPHandler) configure(ctx context.Context, numCtxRaw, raw interface{}, modelName, userAgent string) {
+	if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
+		sanitizedNumCtx := utils.SanitizeForLog(fmt.Sprintf("%d", numCtx), -1)
+		sanitizedModelName := utils.SanitizeForLog(modelName, -1)
+		h.log.Infof("handleChat: configuring context size %s for model %s", sanitizedNumCtx, sanitizedModelName)
+		configureRequest := scheduling.ConfigureRequest{
+			Model:       modelName,
+			ContextSize: numCtx,
+		}
+		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent+" (Ollama API)")
+		if err != nil {
+			// Log the error but continue with the request
+			h.log.Warnf("handleChat: failed to configure context size for model %s: %v", sanitizedModelName, err)
+		}
+	}
 }
 
 // handleGenerate handles POST /api/generate
@@ -442,14 +452,7 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	// Handle num_ctx option for context size configuration
 	if req.Options != nil {
 		if numCtxRaw, ok := req.Options["num_ctx"]; ok {
-			if numCtx := convertToInt64(numCtxRaw); numCtx > 0 {
-				sanitizedNumCtx := utils.SanitizeForLog(fmt.Sprintf("%d", numCtx), -1)
-				h.log.Infof("handleGenerate: configuring context size %s for model %s", sanitizedNumCtx, sanitizedModelName)
-				if err := h.configureContextSize(ctx, modelName, numCtx); err != nil {
-					// Log the error but continue with the request
-					h.log.Warnf("handleGenerate: failed to configure context size for model %s: %v", sanitizedModelName, err)
-				}
-			}
+			h.configure(r.Context(), numCtxRaw, sanitizedModelName, modelName, r.UserAgent())
 		}
 	}
 
@@ -474,50 +477,6 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Make request to scheduler
 	h.proxyToCompletions(ctx, w, r, openAIReq, modelName)
-}
-
-// configureContextSize configures the context size for a model by calling the scheduler's configure endpoint
-func (h *HTTPHandler) configureContextSize(ctx context.Context, modelName string, contextSize int64) error {
-	// Sanitize user input before logging to prevent log injection
-	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-	sanitizedContextSize := utils.SanitizeForLog(fmt.Sprintf("%d", contextSize), -1)
-	h.log.Infof("configureContextSize: configuring model %s with context size %s", sanitizedModelName, sanitizedContextSize)
-
-	// Create a configure request for the scheduler
-	configureReq := map[string]interface{}{
-		"model":        modelName,
-		"context-size": contextSize,
-	}
-
-	// Marshal the configure request
-	reqBody, err := json.Marshal(configureReq)
-	if err != nil {
-		return fmt.Errorf("failed to marshal configure request: %w", err)
-	}
-
-	// Create a new request to the scheduler
-	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, inference.InferencePrefix+"/_configure", strings.NewReader(string(reqBody)))
-	if err != nil {
-		return fmt.Errorf("failed to create configure request: %w", err)
-	}
-	newReq.Header.Set("Content-Type", "application/json")
-
-	// Use a custom response writer to capture the response
-	respRecorder := &responseRecorder{
-		statusCode: http.StatusOK,
-		headers:    make(http.Header),
-		body:       &strings.Builder{},
-	}
-
-	// Forward to scheduler HTTP handler
-	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
-
-	if respRecorder.statusCode != http.StatusOK {
-		return fmt.Errorf("configure request failed with status %d: %s", respRecorder.statusCode, respRecorder.body.String())
-	}
-
-	h.log.Infof("configureContextSize: successfully configured context size for model %s", sanitizedModelName)
-	return nil
 }
 
 // unloadModel unloads a model from memory

@@ -232,6 +232,10 @@ func parseBackendMode(mode string) inference.BackendMode {
 // It handles all the business logic of configuration including parsing flags,
 // determining mode, selecting backend, and setting runner configuration.
 func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backend, req ConfigureRequest, userAgent string) (inference.Backend, error) {
+	if backend == nil {
+		backend = s.defaultBackend
+	}
+
 	// Parse runtime flags from either array or raw string
 	var runtimeFlags []string
 	if len(req.RuntimeFlags) > 0 {
