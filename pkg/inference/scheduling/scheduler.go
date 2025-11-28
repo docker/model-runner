@@ -270,7 +270,7 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Set the runner configuration
 	if err := s.loader.setRunnerConfig(ctx, backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), req.Model, modelID, err)
+		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), utils.SanitizeForLog(req.Model, -1), modelID, err)
 		return nil, err
 	}
 
