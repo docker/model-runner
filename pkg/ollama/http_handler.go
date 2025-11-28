@@ -362,24 +362,29 @@ func (h *HTTPHandler) handleListModels(w http.ResponseWriter, r *http.Request) {
 			QuantizationLevel: model.Config.Quantization,
 		}
 
-		// Get the first tag as the name, or use ID if no tags
-		name := model.ID
-		if len(model.Tags) > 0 {
-			name = model.Tags[0]
-		}
-
 		// Parse size from config string to int64
 		size := int64(0)
 		// TODO: Parse size from model.Config.Size if needed
 
-		response.Models = append(response.Models, ModelResponse{
-			Name:       name,
-			Model:      name,
-			ModifiedAt: time.Unix(model.Created, 0),
-			Size:       size,
-			Digest:     model.ID,
-			Details:    details,
-		})
+		// Get tags, or use ID if no tags exist
+		tags := model.Tags
+		if len(tags) == 0 {
+			tags = []string{model.ID}
+		}
+
+		// Create a response entry for each tag to match Ollama's behavior
+		// This ensures that models with multiple tags (e.g., mymodel:latest and mymodel:v1.0)
+		// are listed separately, allowing clients like OpenWebUI to see all available tags
+		for _, tag := range tags {
+			response.Models = append(response.Models, ModelResponse{
+				Name:       tag,
+				Model:      tag,
+				ModifiedAt: time.Unix(model.Created, 0),
+				Size:       size,
+				Digest:     model.ID,
+				Details:    details,
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
