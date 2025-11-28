@@ -23,8 +23,8 @@ const (
 	APIPrefix = "/api"
 )
 
-// Handler implements the Ollama API compatibility layer
-type Handler struct {
+// HTTPHandler implements the Ollama API compatibility layer
+type HTTPHandler struct {
 	log           logging.Logger
 	router        *http.ServeMux
 	httpHandler   http.Handler
@@ -33,9 +33,9 @@ type Handler struct {
 	schedulerHTTP http.Handler
 }
 
-// NewHandler creates a new Ollama API handler
-func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, schedulerHTTP http.Handler, allowedOrigins []string, modelManager *models.Manager) *Handler {
-	h := &Handler{
+// NewHTTPHandler creates a new Ollama API handler
+func NewHTTPHandler(log logging.Logger, scheduler *scheduling.Scheduler, schedulerHTTP http.Handler, allowedOrigins []string, modelManager *models.Manager) *HTTPHandler {
+	h := &HTTPHandler{
 		log:           log,
 		router:        http.NewServeMux(),
 		scheduler:     scheduler,
@@ -55,7 +55,7 @@ func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, schedulerHT
 }
 
 // ServeHTTP implements the http.Handler interface
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	safeMethod := utils.SanitizeForLog(r.Method, -1)
 	safePath := utils.SanitizeForLog(r.URL.Path, -1)
 	h.log.Infof("Ollama API request: %s %s", safeMethod, safePath)
@@ -63,7 +63,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // routeHandlers returns the mapping of routes to their handlers
-func (h *Handler) routeHandlers() map[string]http.HandlerFunc {
+func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"GET " + APIPrefix + "/version":   h.handleVersion,
 		"GET " + APIPrefix + "/tags":      h.handleListModels,
@@ -325,7 +325,7 @@ type openAIErrorResponse struct {
 }
 
 // handleVersion handles GET /api/version
-func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleVersion(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{
 		"version": "0.1.0",
 	}
@@ -337,7 +337,7 @@ func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListModels handles GET /api/tags
-func (h *Handler) handleListModels(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	// Get models from the model manager
 	modelsList, err := h.modelManager.List()
 	if err != nil {
@@ -397,7 +397,7 @@ type PSModel struct {
 }
 
 // handlePS handles GET /api/ps (list running models)
-func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handlePS(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get running backends from scheduler
@@ -453,7 +453,7 @@ func (h *Handler) handlePS(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleShowModel handles POST /api/show
-func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	var req ShowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
@@ -503,7 +503,7 @@ func (h *Handler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleChat handles POST /api/chat
-func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req ChatRequest
@@ -567,7 +567,7 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGenerate handles POST /api/generate
-func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req GenerateRequest
@@ -635,7 +635,7 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 }
 
 // configureContextSize configures the context size for a model by calling the scheduler's configure endpoint
-func (h *Handler) configureContextSize(ctx context.Context, modelName string, contextSize int64) error {
+func (h *HTTPHandler) configureContextSize(ctx context.Context, modelName string, contextSize int64) error {
 	// Sanitize user input before logging to prevent log injection
 	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
 	sanitizedContextSize := utils.SanitizeForLog(fmt.Sprintf("%d", contextSize), -1)
@@ -679,7 +679,7 @@ func (h *Handler) configureContextSize(ctx context.Context, modelName string, co
 }
 
 // unloadModel unloads a model from memory
-func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelName string) {
+func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, modelName string) {
 	// Sanitize user input before logging to prevent log injection
 	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
 	h.log.Infof("unloadModel: unloading model %s", sanitizedModelName)
@@ -734,7 +734,7 @@ func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelN
 }
 
 // handleDelete handles DELETE /api/delete
-func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req DeleteRequest
@@ -818,7 +818,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePull handles POST /api/pull
-func (h *Handler) handlePull(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 	var req PullRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
@@ -906,7 +906,7 @@ func convertToInt64(v interface{}) int64 {
 }
 
 // proxyToChatCompletions proxies the request to the OpenAI chat completions endpoint
-func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string, stream bool) {
+func (h *HTTPHandler) proxyToChatCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string, stream bool) {
 	// Marshal the OpenAI request
 	reqBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -949,7 +949,7 @@ func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWri
 }
 
 // proxyToCompletions proxies the request to the OpenAI completions endpoint
-func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string) {
+func (h *HTTPHandler) proxyToCompletions(ctx context.Context, w http.ResponseWriter, r *http.Request, openAIReq map[string]interface{}, modelName string) {
 	// Marshal the OpenAI request
 	reqBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -1222,7 +1222,7 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 }
 
 // convertChatResponse converts OpenAI chat completion response to Ollama format
-func (h *Handler) convertChatResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
+func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
 	// Handle error responses by converting OpenAI format to Ollama format
 	if respRecorder.statusCode != http.StatusOK {
 		w.WriteHeader(respRecorder.statusCode)
@@ -1274,7 +1274,7 @@ func (h *Handler) convertChatResponse(w http.ResponseWriter, respRecorder *respo
 }
 
 // convertGenerateResponse converts OpenAI chat completion response to Ollama generate format
-func (h *Handler) convertGenerateResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
+func (h *HTTPHandler) convertGenerateResponse(w http.ResponseWriter, respRecorder *responseRecorder, modelName string) {
 	// Handle error responses by converting OpenAI format to Ollama format
 	if respRecorder.statusCode != http.StatusOK {
 		w.WriteHeader(respRecorder.statusCode)

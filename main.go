@@ -89,7 +89,7 @@ func main() {
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 		Transport:     baseTransport,
 	}
-	modelHandler := models.NewHandler(
+	modelHandler := models.NewHTTPHandler(
 		log,
 		clientConfig,
 		nil,
@@ -183,7 +183,7 @@ func main() {
 	router.Handle("/score", aliasHandler)
 
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHandler(log, scheduler, schedulerHTTP, nil, modelManager)
+	ollamaHandler := ollama.NewHTTPHandler(log, scheduler, schedulerHTTP, nil, modelManager)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns

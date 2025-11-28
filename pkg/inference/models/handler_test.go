@@ -124,7 +124,7 @@ func TestPullModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			handler := NewHandler(log, ClientConfig{
+			handler := NewHTTPHandler(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 			}, nil, memEstimator)
@@ -235,7 +235,7 @@ func TestHandleGetModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			handler := NewHandler(log, ClientConfig{
+			handler := NewHTTPHandler(log, ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 				Transport:     http.DefaultTransport,
@@ -319,7 +319,7 @@ func TestCors(t *testing.T) {
 			discard := logrus.New()
 			discard.SetOutput(io.Discard)
 			log := logrus.NewEntry(discard)
-			m := NewHandler(log, ClientConfig{}, []string{"*"}, memEstimator)
+			m := NewHTTPHandler(log, ClientConfig{}, []string{"*"}, memEstimator)
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)
 			req.Header.Set("Origin", "docker.com")
 			w := httptest.NewRecorder()
