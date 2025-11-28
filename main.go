@@ -165,6 +165,9 @@ func main() {
 		sysMemInfo,
 	)
 
+	// Create the HTTP handler for the scheduler
+	schedulerHTTP := scheduling.NewHTTPHandler(scheduler, nil)
+
 	router := routing.NewNormalizedServeMux()
 
 	// Register path prefixes to forward all HTTP methods (including OPTIONS) to components
@@ -172,15 +175,15 @@ func main() {
 	// Register both with and without trailing slash to avoid redirects
 	router.Handle(inference.ModelsPrefix, modelHandler)
 	router.Handle(inference.ModelsPrefix+"/", modelHandler)
-	router.Handle(inference.InferencePrefix+"/", scheduler)
+	router.Handle(inference.InferencePrefix+"/", schedulerHTTP)
 	// Add path aliases: /v1 -> /engines/v1, /rerank -> /engines/rerank, /score -> /engines/score.
-	aliasHandler := &middleware.AliasHandler{Handler: scheduler}
+	aliasHandler := &middleware.AliasHandler{Handler: schedulerHTTP}
 	router.Handle("/v1/", aliasHandler)
 	router.Handle("/rerank", aliasHandler)
 	router.Handle("/score", aliasHandler)
 
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHandler(log, scheduler, nil, modelManager)
+	ollamaHandler := ollama.NewHandler(log, scheduler, schedulerHTTP, nil, modelManager)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
@@ -198,7 +201,7 @@ func main() {
 	if os.Getenv("DISABLE_METRICS") != "1" {
 		metricsHandler := metrics.NewAggregatedMetricsHandler(
 			log.WithField("component", "metrics"),
-			scheduler,
+			schedulerHTTP,
 		)
 		router.Handle("/metrics", metricsHandler)
 		log.Info("Metrics endpoint enabled at /metrics")

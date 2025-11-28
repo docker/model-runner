@@ -25,20 +25,22 @@ const (
 
 // Handler implements the Ollama API compatibility layer
 type Handler struct {
-	log          logging.Logger
-	router       *http.ServeMux
-	httpHandler  http.Handler
-	modelManager *models.Manager
-	scheduler    *scheduling.Scheduler
+	log           logging.Logger
+	router        *http.ServeMux
+	httpHandler   http.Handler
+	modelManager  *models.Manager
+	scheduler     *scheduling.Scheduler
+	schedulerHTTP http.Handler
 }
 
 // NewHandler creates a new Ollama API handler
-func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, allowedOrigins []string, modelManager *models.Manager) *Handler {
+func NewHandler(log logging.Logger, scheduler *scheduling.Scheduler, schedulerHTTP http.Handler, allowedOrigins []string, modelManager *models.Manager) *Handler {
 	h := &Handler{
-		log:          log,
-		router:       http.NewServeMux(),
-		scheduler:    scheduler,
-		modelManager: modelManager,
+		log:           log,
+		router:        http.NewServeMux(),
+		scheduler:     scheduler,
+		schedulerHTTP: schedulerHTTP,
+		modelManager:  modelManager,
 	}
 
 	// Register routes
@@ -665,8 +667,8 @@ func (h *Handler) configureContextSize(ctx context.Context, modelName string, co
 		body:       &strings.Builder{},
 	}
 
-	// Forward to scheduler
-	h.scheduler.ServeHTTP(respRecorder, newReq)
+	// Forward to scheduler HTTP handler
+	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 
 	if respRecorder.statusCode != http.StatusOK {
 		return fmt.Errorf("configure request failed with status %d: %s", respRecorder.statusCode, respRecorder.body.String())
@@ -715,8 +717,8 @@ func (h *Handler) unloadModel(ctx context.Context, w http.ResponseWriter, modelN
 		body:       &strings.Builder{},
 	}
 
-	// Forward to scheduler
-	h.scheduler.ServeHTTP(respRecorder, newReq)
+	// Forward to scheduler HTTP handler
+	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 
 	h.log.Infof("unloadModel: scheduler response status=%d, body=%s", respRecorder.statusCode, respRecorder.body.String())
 
@@ -779,7 +781,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		body:       &strings.Builder{},
 	}
 
-	h.scheduler.ServeHTTP(respRecorder, newReq)
+	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 	h.log.Infof("handleDelete: unload response status=%d", respRecorder.statusCode)
 
 	// Check if unload succeeded before deleting from storage
@@ -927,8 +929,8 @@ func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWri
 			modelName: modelName,
 			log:       h.log,
 		}
-		// Forward to scheduler with streaming writer
-		h.scheduler.ServeHTTP(streamWriter, newReq)
+		// Forward to scheduler HTTP handler with streaming writer
+		h.schedulerHTTP.ServeHTTP(streamWriter, newReq)
 		return
 	}
 
@@ -939,8 +941,8 @@ func (h *Handler) proxyToChatCompletions(ctx context.Context, w http.ResponseWri
 		body:       &strings.Builder{},
 	}
 
-	// Forward to scheduler
-	h.scheduler.ServeHTTP(respRecorder, newReq)
+	// Forward to scheduler HTTP handler
+	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 
 	// Convert non-streaming response
 	h.convertChatResponse(w, respRecorder, modelName)
@@ -970,8 +972,8 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 			modelName: modelName,
 			log:       h.log,
 		}
-		// Forward to scheduler with streaming writer
-		h.scheduler.ServeHTTP(streamWriter, newReq)
+		// Forward to scheduler HTTP handler with streaming writer
+		h.schedulerHTTP.ServeHTTP(streamWriter, newReq)
 		return
 	}
 
@@ -982,8 +984,8 @@ func (h *Handler) proxyToCompletions(ctx context.Context, w http.ResponseWriter,
 		body:       &strings.Builder{},
 	}
 
-	// Forward to scheduler
-	h.scheduler.ServeHTTP(respRecorder, newReq)
+	// Forward to scheduler HTTP handler
+	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 
 	// Convert non-streaming response
 	h.convertGenerateResponse(w, respRecorder, modelName)

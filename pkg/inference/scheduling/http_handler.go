@@ -8,30 +8,48 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/middleware"
 )
 
-// ServeHTTP implements net/http.Handler.ServeHTTP.
-func (s *Scheduler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	s.httpHandler.ServeHTTP(w, r)
+// HTTPHandler handles HTTP requests for the scheduler.
+// It wraps the Scheduler to provide HTTP endpoint functionality without
+// coupling the core scheduling logic to HTTP concerns.
+type HTTPHandler struct {
+	scheduler   *Scheduler
+	router      *http.ServeMux
+	httpHandler http.Handler
+	lock        sync.RWMutex
 }
 
-// RebuildRoutes updates the HTTP routes with new allowed origins.
-func (s *Scheduler) RebuildRoutes(allowedOrigins []string) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	// Update handlers that depend on the allowed origins.
-	s.httpHandler = middleware.CorsMiddleware(allowedOrigins, s.router)
+// NewHTTPHandler creates a new HTTP handler that wraps the scheduler.
+// This is the primary HTTP interface for the scheduling package.
+func NewHTTPHandler(s *Scheduler, allowedOrigins []string) *HTTPHandler {
+	h := &HTTPHandler{
+		scheduler: s,
+		router:    http.NewServeMux(),
+	}
+
+	// Register routes
+	h.router.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	for route, handler := range h.routeHandlers() {
+		h.router.HandleFunc(route, handler)
+	}
+
+	h.RebuildRoutes(allowedOrigins)
+
+	return h
 }
 
 // routeHandlers returns a map of HTTP routes to their handler functions.
-func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
+func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	openAIRoutes := []string{
 		"POST " + inference.InferencePrefix + "/{backend}/v1/chat/completions",
 		"POST " + inference.InferencePrefix + "/{backend}/v1/completions",
@@ -46,22 +64,22 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 	}
 	m := make(map[string]http.HandlerFunc)
 	for _, route := range openAIRoutes {
-		m[route] = s.handleOpenAIInference
+		m[route] = h.handleOpenAIInference
 	}
 
 	// Register /v1/models routes - these delegate to the model manager
-	m["GET "+inference.InferencePrefix+"/{backend}/v1/models"] = s.handleModels
-	m["GET "+inference.InferencePrefix+"/{backend}/v1/models/{name...}"] = s.handleModels
-	m["GET "+inference.InferencePrefix+"/v1/models"] = s.handleModels
-	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = s.handleModels
+	m["GET "+inference.InferencePrefix+"/{backend}/v1/models"] = h.handleModels
+	m["GET "+inference.InferencePrefix+"/{backend}/v1/models/{name...}"] = h.handleModels
+	m["GET "+inference.InferencePrefix+"/v1/models"] = h.handleModels
+	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = h.handleModels
 
-	m["GET "+inference.InferencePrefix+"/status"] = s.GetBackendStatus
-	m["GET "+inference.InferencePrefix+"/ps"] = s.GetRunningBackends
-	m["GET "+inference.InferencePrefix+"/df"] = s.GetDiskUsage
-	m["POST "+inference.InferencePrefix+"/unload"] = s.Unload
-	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = s.Configure
-	m["POST "+inference.InferencePrefix+"/_configure"] = s.Configure
-	m["GET "+inference.InferencePrefix+"/requests"] = s.openAIRecorder.GetRecordsHandler()
+	m["GET "+inference.InferencePrefix+"/status"] = h.GetBackendStatus
+	m["GET "+inference.InferencePrefix+"/ps"] = h.GetRunningBackends
+	m["GET "+inference.InferencePrefix+"/df"] = h.GetDiskUsage
+	m["POST "+inference.InferencePrefix+"/unload"] = h.Unload
+	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = h.Configure
+	m["POST "+inference.InferencePrefix+"/_configure"] = h.Configure
+	m["GET "+inference.InferencePrefix+"/requests"] = h.scheduler.openAIRecorder.GetRecordsHandler()
 	return m
 }
 
@@ -73,13 +91,13 @@ func (s *Scheduler) routeHandlers() map[string]http.HandlerFunc {
 // and 2 extras:
 // - POST <inference-prefix>/{backend}/rerank
 // - POST <inference-prefix>/{backend}/score
-func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
 	var backend inference.Backend
 	if b := r.PathValue("backend"); b == "" {
-		backend = s.defaultBackend
+		backend = h.scheduler.defaultBackend
 	} else {
-		backend = s.backends[b]
+		backend = h.scheduler.backends[b]
 	}
 	if backend == nil {
 		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
@@ -119,7 +137,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		model, err := s.modelManager.GetLocal(request.Model)
+		model, err := h.scheduler.modelManager.GetLocal(request.Model)
 		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
@@ -142,16 +160,16 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		}
 
 		// Non-blocking call to track the model usage.
-		s.tracker.TrackModel(model, r.UserAgent(), action)
+		h.scheduler.tracker.TrackModel(model, r.UserAgent(), action)
 
 		// Automatically identify models for vLLM.
-		backend = s.selectBackendForModel(model, backend, request.Model)
+		backend = h.scheduler.selectBackendForModel(model, backend, request.Model)
 	}
 
 	// Wait for the corresponding backend installation to complete or fail. We
 	// don't allow any requests to be scheduled for a backend until it has
 	// completed installation.
-	if err := s.installer.wait(r.Context(), backend.Name()); err != nil {
+	if err := h.scheduler.installer.wait(r.Context(), backend.Name()); err != nil {
 		if errors.Is(err, ErrBackendNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else if errors.Is(err, errInstallerNotStarted) {
@@ -162,7 +180,7 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 			// shutting down (since that will also cancel the request context).
 			// Either way, provide a response, even if it's ignored.
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-		} else if errors.Is(err, vllm.ErrorNotFound) {
+		} else if err.Error() == "vLLM binary not found" {
 			http.Error(w, err.Error(), http.StatusPreconditionFailed)
 		} else {
 			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
@@ -170,22 +188,22 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	modelID := s.modelManager.ResolveID(request.Model)
+	modelID := h.scheduler.modelManager.ResolveID(request.Model)
 
 	// Request a runner to execute the request and defer its release.
-	runner, err := s.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
+	runner, err := h.scheduler.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
 	}
-	defer s.loader.release(runner)
+	defer h.scheduler.loader.release(runner)
 
 	// Record the request in the OpenAI recorder.
-	recordID := s.openAIRecorder.RecordRequest(request.Model, r, body)
-	w = s.openAIRecorder.NewResponseRecorder(w)
+	recordID := h.scheduler.openAIRecorder.RecordRequest(request.Model, r, body)
+	w = h.scheduler.openAIRecorder.NewResponseRecorder(w)
 	defer func() {
 		// Record the response in the OpenAI recorder.
-		s.openAIRecorder.RecordResponse(recordID, request.Model, w)
+		h.scheduler.openAIRecorder.RecordResponse(recordID, request.Model, w)
 	}()
 
 	// Create a request with the body replaced for forwarding upstream.
@@ -198,14 +216,14 @@ func (s *Scheduler) handleOpenAIInference(w http.ResponseWriter, r *http.Request
 
 // handleModels handles GET /engines/{backend}/v1/models* requests
 // by delegating to the model manager
-func (s *Scheduler) handleModels(w http.ResponseWriter, r *http.Request) {
-	s.modelHandler.ServeHTTP(w, r)
+func (h *HTTPHandler) handleModels(w http.ResponseWriter, r *http.Request) {
+	h.scheduler.modelHandler.ServeHTTP(w, r)
 }
 
 // GetBackendStatus returns the status of all backends.
-func (s *Scheduler) GetBackendStatus(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetBackendStatus(w http.ResponseWriter, r *http.Request) {
 	status := make(map[string]string)
-	for backendName, backend := range s.backends {
+	for backendName, backend := range h.scheduler.backends {
 		status[backendName] = backend.Status()
 	}
 
@@ -220,8 +238,8 @@ func (s *Scheduler) GetBackendStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetRunningBackends returns information about all running backends
-func (s *Scheduler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
-	runningBackends := s.getLoaderStatus(r.Context())
+func (h *HTTPHandler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
+	runningBackends := h.scheduler.getLoaderStatus(r.Context())
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(runningBackends); err != nil {
@@ -231,17 +249,17 @@ func (s *Scheduler) GetRunningBackends(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDiskUsage returns disk usage information for models and backends.
-func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
-	modelsDiskUsage, err := s.modelManager.GetDiskUsage()
+func (h *HTTPHandler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
+	modelsDiskUsage, err := h.scheduler.modelManager.GetDiskUsage()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get models disk usage: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// TODO: Get disk usage for each backend once the backends are implemented.
-	defaultBackendDiskUsage, err := s.defaultBackend.GetDiskUsage()
+	defaultBackendDiskUsage, err := h.scheduler.defaultBackend.GetDiskUsage()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get disk usage for %s: %v", s.defaultBackend.Name(), err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get disk usage for %s: %v", h.scheduler.defaultBackend.Name(), err), http.StatusInternalServerError)
 		return
 	}
 
@@ -255,7 +273,7 @@ func (s *Scheduler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
 
 // Unload unloads the specified runners (backend, model) from the backend.
 // Currently, this doesn't work for runners that are handling an OpenAI request.
-func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
 	if err != nil {
 		var maxBytesError *http.MaxBytesError
@@ -273,7 +291,7 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	unloadedRunners := UnloadResponse{s.loader.Unload(r.Context(), unloadRequest)}
+	unloadedRunners := UnloadResponse{h.scheduler.loader.Unload(r.Context(), unloadRequest)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(unloadedRunners); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
@@ -282,13 +300,13 @@ func (s *Scheduler) Unload(w http.ResponseWriter, r *http.Request) {
 }
 
 // Configure handles POST <inference-prefix>/{backend}/_configure requests.
-func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
 	var backend inference.Backend
 	if b := r.PathValue("backend"); b == "" {
-		backend = s.defaultBackend
+		backend = h.scheduler.defaultBackend
 	} else {
-		backend = s.backends[b]
+		backend = h.scheduler.backends[b]
 	}
 	if backend == nil {
 		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
@@ -314,7 +332,7 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.ConfigureRunner(r.Context(), backend, configureRequest, r.UserAgent())
+	_, err = h.scheduler.ConfigureRunner(r.Context(), backend, configureRequest, r.UserAgent())
 	if err != nil {
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -325,4 +343,31 @@ func (s *Scheduler) Configure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// ServeHTTP implements net/http.Handler.ServeHTTP.
+func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+	h.httpHandler.ServeHTTP(w, r)
+}
+
+// RebuildRoutes updates the HTTP routes with new allowed origins.
+func (h *HTTPHandler) RebuildRoutes(allowedOrigins []string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	// Update handlers that depend on the allowed origins.
+	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
+}
+
+// GetLlamaCppSocket delegates to the scheduler's business logic.
+// Required by metrics.SchedulerInterface.
+func (h *HTTPHandler) GetLlamaCppSocket() (string, error) {
+	return h.scheduler.GetLlamaCppSocket()
+}
+
+// GetAllActiveRunners delegates to the scheduler's business logic.
+// Required by metrics.SchedulerInterface.
+func (h *HTTPHandler) GetAllActiveRunners() []metrics.ActiveRunner {
+	return h.scheduler.GetAllActiveRunners()
 }

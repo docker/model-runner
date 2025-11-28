@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -39,17 +38,10 @@ type Scheduler struct {
 	installer *installer
 	// loader is the backend loader.
 	loader *loader
-	// router is the HTTP request router.
-	router *http.ServeMux
-	// httpHandler is the HTTP request handler, which wraps router with
-	// the server-level middleware.
-	httpHandler http.Handler
 	// tracker is the metrics tracker.
 	tracker *metrics.Tracker
 	// openAIRecorder is used to record OpenAI API inference requests and responses.
 	openAIRecorder *metrics.OpenAIRecorder
-	// lock is used to synchronize access to the scheduler's router.
-	lock sync.RWMutex
 }
 
 // NewScheduler creates a new inference scheduler.
@@ -75,21 +67,9 @@ func NewScheduler(
 		modelManager:   modelManager,
 		installer:      newInstaller(log, backends, httpClient),
 		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),
-		router:         http.NewServeMux(),
 		tracker:        tracker,
 		openAIRecorder: openAIRecorder,
 	}
-
-	// Register routes.
-	s.router.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	})
-
-	for route, handler := range s.routeHandlers() {
-		s.router.HandleFunc(route, handler)
-	}
-
-	s.RebuildRoutes(allowedOrigins)
 
 	// Scheduler successfully initialized.
 	return s
