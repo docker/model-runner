@@ -82,7 +82,9 @@ ENTRYPOINT ["/app/model-runner"]
 # --- vLLM variant ---
 FROM llamacpp AS vllm
 
-ARG VLLM_VERSION=0.11.0
+ARG VLLM_VERSION=v0.11.2
+
+# DGX Spark requires cu130
 ARG VLLM_CUDA_VERSION=cu129
 ARG VLLM_PYTHON_TAG=cp38-abi3
 ARG TARGETARCH
@@ -96,15 +98,14 @@ RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
 USER modelrunner
 
 # Install uv and vLLM as modelrunner user
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
- && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
- && if [ "$TARGETARCH" = "amd64" ]; then \
-      WHEEL_ARCH="manylinux1_x86_64"; \
-      WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
-      ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
-    else \
-      ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"; \
-    fi
+RUN curl -LsSf https://astral.sh/uv/0.9.10/install.sh | sh \
+ && export PATH="~/.local/bin:$PATH" \
+ && uv venv --python 3.12 /opt/vllm-env \
+ && source /opt/vllm-env/bin/activate \
+ && if [ "$TARGETARCH" = "arm64" ]; then \
+      uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130; \
+    fi \
+ && uv pip install "vllm==${VLLM_VERSION}" --torch-backend=auto
 
 RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
