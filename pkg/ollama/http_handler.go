@@ -84,6 +84,7 @@ type ListResponse struct {
 // ModelResponse represents a single model in the list
 type ModelResponse struct {
 	Name       string       `json:"name"`
+	Model      string       `json:"model"`
 	ModifiedAt time.Time    `json:"modified_at"`
 	Size       int64        `json:"size"`
 	Digest     string       `json:"digest"`
@@ -373,6 +374,7 @@ func (h *HTTPHandler) handleListModels(w http.ResponseWriter, r *http.Request) {
 
 		response.Models = append(response.Models, ModelResponse{
 			Name:       name,
+			Model:      name,
 			ModifiedAt: time.Unix(model.Created, 0),
 			Size:       size,
 			Digest:     model.ID,
