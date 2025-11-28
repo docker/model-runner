@@ -30,8 +30,6 @@ type Scheduler struct {
 	backends map[string]inference.Backend
 	// defaultBackend is the default inference backend. It may be nil.
 	defaultBackend inference.Backend
-	// modelHandler is the shared model handler.
-	modelHandler *models.HTTPHandler
 	// modelManager is the shared model manager.
 	modelManager *models.Manager
 	// installer is the backend installer.
@@ -49,10 +47,8 @@ func NewScheduler(
 	log logging.Logger,
 	backends map[string]inference.Backend,
 	defaultBackend inference.Backend,
-	handler *models.HTTPHandler,
 	modelManager *models.Manager,
 	httpClient *http.Client,
-	allowedOrigins []string,
 	tracker *metrics.Tracker,
 	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
@@ -63,7 +59,6 @@ func NewScheduler(
 		log:            log,
 		backends:       backends,
 		defaultBackend: defaultBackend,
-		modelHandler:   handler,
 		modelManager:   modelManager,
 		installer:      newInstaller(log, backends, httpClient),
 		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),

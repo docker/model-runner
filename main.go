@@ -152,10 +152,8 @@ func main() {
 			mlx.Name:      mlxBackend,
 		},
 		llamaCppBackend,
-		modelHandler,
 		modelManager,
 		http.DefaultClient,
-		nil,
 		metrics.NewTracker(
 			http.DefaultClient,
 			log.WithField("component", "metrics"),
@@ -166,7 +164,7 @@ func main() {
 	)
 
 	// Create the HTTP handler for the scheduler
-	schedulerHTTP := scheduling.NewHTTPHandler(scheduler, nil)
+	schedulerHTTP := scheduling.NewHTTPHandler(scheduler, modelHandler, nil)
 
 	router := routing.NewNormalizedServeMux()
 

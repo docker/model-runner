@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/middleware"
 )
@@ -23,15 +24,18 @@ type HTTPHandler struct {
 	scheduler   *Scheduler
 	router      *http.ServeMux
 	httpHandler http.Handler
-	lock        sync.RWMutex
+	// modelHandler is the shared model handler.
+	modelHandler *models.HTTPHandler
+	lock         sync.RWMutex
 }
 
 // NewHTTPHandler creates a new HTTP handler that wraps the scheduler.
 // This is the primary HTTP interface for the scheduling package.
-func NewHTTPHandler(s *Scheduler, allowedOrigins []string) *HTTPHandler {
+func NewHTTPHandler(s *Scheduler, modelHandler *models.HTTPHandler, allowedOrigins []string) *HTTPHandler {
 	h := &HTTPHandler{
-		scheduler: s,
-		router:    http.NewServeMux(),
+		scheduler:    s,
+		modelHandler: modelHandler,
+		router:       http.NewServeMux(),
 	}
 
 	// Register routes
@@ -217,7 +221,7 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 // handleModels handles GET /engines/{backend}/v1/models* requests
 // by delegating to the model manager
 func (h *HTTPHandler) handleModels(w http.ResponseWriter, r *http.Request) {
-	h.scheduler.modelHandler.ServeHTTP(w, r)
+	h.modelHandler.ServeHTTP(w, r)
 }
 
 // GetBackendStatus returns the status of all backends.
