@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/middleware"
@@ -184,7 +185,7 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 			// shutting down (since that will also cancel the request context).
 			// Either way, provide a response, even if it's ignored.
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-		} else if err.Error() == "vLLM binary not found" {
+		} else if errors.Is(err, vllm.ErrorNotFound) {
 			http.Error(w, err.Error(), http.StatusPreconditionFailed)
 		} else {
 			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
