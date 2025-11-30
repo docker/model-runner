@@ -643,7 +643,7 @@ func newRunCmd() *cobra.Command {
 					scanner := bufio.NewScanner(os.Stdin)
 					cmd.Println("Interactive chat mode started. Type '/bye' to exit.")
 
-					var messages []Message // Declare messages slice for NIM interactive mode
+					var messages []desktop.OpenAIChatMessage // Declare messages slice for NIM interactive mode
 
 					for {
 						userInput, err := readMultilineInput(cmd, scanner)
@@ -677,7 +677,7 @@ func newRunCmd() *cobra.Command {
 
 				// Single prompt mode
 				// Declare messages slice for NIM single prompt mode
-				var messages []Message
+				var messages []desktop.OpenAIChatMessage
 				if err := chatWithNIM(cmd, model, &messages, prompt); err != nil {
 					return fmt.Errorf("failed to chat with NIM: %w", err)
 				}

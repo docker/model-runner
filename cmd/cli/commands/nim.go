@@ -1,4 +1,3 @@
-package commands
 
 import (
 	"bufio"
@@ -20,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/docker/model-runner/cmd/cli/desktop"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
 	"github.com/spf13/cobra"
 )
@@ -37,12 +37,6 @@ var (
 	// nimDefaultPort is the default port for NIM containers
 	nimDefaultPort = 8000
 )
-
-// Message represents a single message in the chat conversation
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
 
 // isNIMImage checks if the given model reference is an NVIDIA NIM image
 func isNIMImage(model string) bool {
@@ -399,7 +393,7 @@ func runNIMModel(ctx context.Context, dockerClient *client.Client, model string,
 }
 
 // chatWithNIM sends chat requests to a NIM container
-func chatWithNIM(cmd *cobra.Command, model string, messages *[]Message, prompt string) error {
+func chatWithNIM(cmd *cobra.Command, model string, messages *[]desktop.OpenAIChatMessage, prompt string) error {
 	// Use the desktop client to chat with the NIM through its OpenAI-compatible API
 	// The NIM container runs on localhost:8000 and provides an OpenAI-compatible API
 
@@ -415,12 +409,12 @@ func chatWithNIM(cmd *cobra.Command, model string, messages *[]Message, prompt s
 	}
 
 	// Append user message to history
-	*messages = append(*messages, Message{Role: "user", Content: prompt})
+	*messages = append(*messages, desktop.OpenAIChatMessage{Role: "user", Content: prompt})
 
 	requestPayload := struct {
-		Model    string    `json:"model"`
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
+		Model    string                      `json:"model"`
+		Messages []desktop.OpenAIChatMessage `json:"messages"`
+		Stream   bool                        `json:"stream"`
 	}{
 		Model:    modelName,
 		Messages: *messages,
@@ -491,8 +485,7 @@ func chatWithNIM(cmd *cobra.Command, model string, messages *[]Message, prompt s
 	}
 
 	// Append assistant message to history
-	*messages = append(*messages, Message{Role: "assistant", Content: assistantResponse.String()})
+	*messages = append(*messages, desktop.OpenAIChatMessage{Role: "assistant", Content: assistantResponse.String()})
 
 	return nil
 }
-

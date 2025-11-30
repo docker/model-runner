@@ -311,8 +311,8 @@ func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(
 }
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
-// If messages is provided, it will be used as conversation history and the new user message will be appended.
-// The function returns the updated messages slice including the assistant's response.
+// If messages is provided, it will be used as conversation history. The function updates
+// the provided messages slice to include the new user message and the assistant's response.
 func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imageURLs []string, messages *[]OpenAIChatMessage, outputFunc func(string), shouldUseMarkdown bool) error {
 	model = normalizeHuggingFaceModelName(model)
 	if !strings.Contains(strings.Trim(model, "/"), "/") {
@@ -353,26 +353,19 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 	}
 
 	// Prepare messages for the request
-	var requestMessages []OpenAIChatMessage
-	if messages != nil && len(*messages) > 0 {
-		// Use existing conversation history
-		requestMessages = make([]OpenAIChatMessage, len(*messages))
-		copy(requestMessages, *messages)
-	} else {
-		// Start a new conversation
-		requestMessages = make([]OpenAIChatMessage, 0, 1)
-	}
-
-	// Append the new user message
 	userMessage := OpenAIChatMessage{
 		Role:    "user",
 		Content: messageContent,
 	}
-	requestMessages = append(requestMessages, userMessage)
 
-	// Update the messages slice if provided
+	var requestMessages []OpenAIChatMessage
 	if messages != nil {
+		// For a conversation, append the new message and use the full history for the request.
 		*messages = append(*messages, userMessage)
+		requestMessages = *messages
+	} else {
+		// For a single-shot chat, just send the new user message.
+		requestMessages = []OpenAIChatMessage{userMessage}
 	}
 
 	reqBody := OpenAIChatRequest{
