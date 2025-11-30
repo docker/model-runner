@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/docker/model-runner/cmd/cli/desktop" // Add this import
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ func TestChatWithNIM_Context(t *testing.T) {
 
 	// Track received messages
 	var receivedPayloads []struct {
-		Messages []Message `json:"messages"`
+		Messages []desktop.OpenAIChatMessage `json:"messages"`
 	}
 
 	// Setup Mock Server
@@ -36,7 +37,7 @@ func TestChatWithNIM_Context(t *testing.T) {
 		}
 
 		var payload struct {
-			Messages []Message `json:"messages"`
+			Messages []desktop.OpenAIChatMessage `json:"messages"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Fatalf("Failed to unmarshal request body: %v", err)
@@ -65,7 +66,7 @@ func TestChatWithNIM_Context(t *testing.T) {
 	nimDefaultPort = port
 
 	// Initialize messages slice
-	var messages []Message
+	var messages []desktop.OpenAIChatMessage
 	cmd := &cobra.Command{}
 
 	// First interaction
