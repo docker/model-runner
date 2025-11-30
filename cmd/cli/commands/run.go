@@ -155,6 +155,8 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 
 	var sb strings.Builder
 	var multiline bool
+	// Maintain conversation history
+	var messages []desktop.OpenAIChatMessage
 
 	// Add a helper function to handle file inclusion when @ is pressed
 	// We'll implement a basic version here that shows a message when @ is pressed
@@ -246,7 +248,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 				}
 			}()
 
-			err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput)
+			err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput, &messages)
 
 			// Clean up signal handler
 			signal.Stop(sigChan)
@@ -273,6 +275,8 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 // generateInteractiveBasic provides a basic interactive mode (fallback)
 func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	scanner := bufio.NewScanner(os.Stdin)
+	// Maintain conversation history
+	var messages []desktop.OpenAIChatMessage
 	for {
 		userInput, err := readMultilineInput(cmd, scanner)
 		if err != nil {
@@ -307,7 +311,7 @@ func generateInteractiveBasic(cmd *cobra.Command, desktopClient *desktop.Client,
 			}
 		}()
 
-		err = chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput)
+		err = chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput, &messages)
 
 		cancelChat()
 		signal.Stop(sigChan)
@@ -509,12 +513,12 @@ func renderMarkdown(content string) (string, error) {
 }
 
 // chatWithMarkdown performs chat and streams the response with selective markdown rendering.
-func chatWithMarkdown(cmd *cobra.Command, client *desktop.Client, model, prompt string) error {
-	return chatWithMarkdownContext(cmd.Context(), cmd, client, model, prompt)
+func chatWithMarkdown(cmd *cobra.Command, client *desktop.Client, model, prompt string, messages *[]desktop.OpenAIChatMessage) error {
+	return chatWithMarkdownContext(cmd.Context(), cmd, client, model, prompt, messages)
 }
 
 // chatWithMarkdownContext performs chat with context support and streams the response with selective markdown rendering.
-func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *desktop.Client, model, prompt string) error {
+func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *desktop.Client, model, prompt string, messages *[]desktop.OpenAIChatMessage) error {
 	colorMode, _ := cmd.Flags().GetString("color")
 	useMarkdown := shouldUseMarkdown(colorMode)
 	debug, _ := cmd.Flags().GetBool("debug")
@@ -535,7 +539,7 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 
 	if !useMarkdown {
 		// Simple case: just stream as plain text
-		return client.ChatWithContext(ctx, model, prompt, imageURLs, func(content string) {
+		return client.ChatWithContext(ctx, model, prompt, imageURLs, messages, func(content string) {
 			cmd.Print(content)
 		}, false)
 	}
@@ -543,7 +547,7 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 	// For markdown: use streaming buffer to render code blocks as they complete
 	markdownBuffer := NewStreamingMarkdownBuffer()
 
-	err = client.ChatWithContext(ctx, model, prompt, imageURLs, func(content string) {
+	err = client.ChatWithContext(ctx, model, prompt, imageURLs, messages, func(content string) {
 		// Use the streaming markdown buffer to intelligently render content
 		rendered, err := markdownBuffer.AddContent(content, true)
 		if err != nil {
@@ -639,6 +643,8 @@ func newRunCmd() *cobra.Command {
 					scanner := bufio.NewScanner(os.Stdin)
 					cmd.Println("Interactive chat mode started. Type '/bye' to exit.")
 
+					var messages []Message // Declare messages slice for NIM interactive mode
+
 					for {
 						userInput, err := readMultilineInput(cmd, scanner)
 						if err != nil {
@@ -658,7 +664,8 @@ func newRunCmd() *cobra.Command {
 							continue
 						}
 
-						if err := chatWithNIM(cmd, model, userInput); err != nil {
+						// Pass the address of the messages slice
+						if err := chatWithNIM(cmd, model, &messages, userInput); err != nil {
 							cmd.PrintErr(fmt.Errorf("failed to chat with NIM: %w", err))
 							continue
 						}
@@ -669,7 +676,9 @@ func newRunCmd() *cobra.Command {
 				}
 
 				// Single prompt mode
-				if err := chatWithNIM(cmd, model, prompt); err != nil {
+				// Declare messages slice for NIM single prompt mode
+				var messages []Message
+				if err := chatWithNIM(cmd, model, &messages, prompt); err != nil {
 					return fmt.Errorf("failed to chat with NIM: %w", err)
 				}
 				cmd.Println()
@@ -707,7 +716,7 @@ func newRunCmd() *cobra.Command {
 			}
 
 			if prompt != "" {
-				if err := chatWithMarkdown(cmd, desktopClient, model, prompt); err != nil {
+				if err := chatWithMarkdown(cmd, desktopClient, model, prompt, nil); err != nil {
 					return handleClientError(err, "Failed to generate a response")
 				}
 				cmd.Println()

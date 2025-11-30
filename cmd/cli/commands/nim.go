@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -28,11 +29,20 @@ const (
 	nimPrefix = "nvcr.io/nim/"
 	// nimContainerPrefix is the prefix for NIM container names
 	nimContainerPrefix = "docker-model-nim-"
-	// nimDefaultPort is the default port for NIM containers
-	nimDefaultPort = 8000
 	// nimDefaultShmSize is the default shared memory size for NIM containers (16GB)
 	nimDefaultShmSize = 17179869184
 )
+
+var (
+	// nimDefaultPort is the default port for NIM containers
+	nimDefaultPort = 8000
+)
+
+// Message represents a single message in the chat conversation
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
 
 // isNIMImage checks if the given model reference is an NVIDIA NIM image
 func isNIMImage(model string) bool {
@@ -389,7 +399,7 @@ func runNIMModel(ctx context.Context, dockerClient *client.Client, model string,
 }
 
 // chatWithNIM sends chat requests to a NIM container
-func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
+func chatWithNIM(cmd *cobra.Command, model string, messages *[]Message, prompt string) error {
 	// Use the desktop client to chat with the NIM through its OpenAI-compatible API
 	// The NIM container runs on localhost:8000 and provides an OpenAI-compatible API
 
@@ -404,15 +414,25 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 		modelName = modelName[:idx]
 	}
 
-	reqBody := fmt.Sprintf(`{
-		"model": "%s",
-		"messages": [
-			{"role": "user", "content": %q}
-		],
-		"stream": true
-	}`, modelName, prompt)
+	// Append user message to history
+	*messages = append(*messages, Message{Role: "user", Content: prompt})
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", nimDefaultPort), strings.NewReader(reqBody))
+	requestPayload := struct {
+		Model    string    `json:"model"`
+		Messages []Message `json:"messages"`
+		Stream   bool      `json:"stream"`
+	}{
+		Model:    modelName,
+		Messages: *messages,
+		Stream:   true,
+	}
+
+	reqBodyBytes, err := json.Marshal(requestPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request payload: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", nimDefaultPort), bytes.NewReader(reqBodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -431,6 +451,7 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 	}
 
 	// Stream the response - parse SSE events
+	var assistantResponse strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -445,21 +466,20 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 			}
 
 			// Parse the JSON and extract the content
-			// For simplicity, we'll use basic string parsing
-			// In production, we'd use proper JSON parsing
-			if strings.Contains(data, `"content"`) {
-				// Extract content field - simple approach
-				contentStart := strings.Index(data, `"content":"`)
-				if contentStart != -1 {
-					contentStart += len(`"content":"`)
-					contentEnd := strings.Index(data[contentStart:], `"`)
-					if contentEnd != -1 {
-						content := data[contentStart : contentStart+contentEnd]
-						// Unescape basic JSON escapes
-						content = strings.ReplaceAll(content, `\n`, "\n")
-						content = strings.ReplaceAll(content, `\t`, "\t")
-						content = strings.ReplaceAll(content, `\"`, `"`)
+			var chatCompletion struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &chatCompletion); err == nil {
+				if len(chatCompletion.Choices) > 0 {
+					content := chatCompletion.Choices[0].Delta.Content
+					if content != "" {
 						cmd.Print(content)
+						assistantResponse.WriteString(content)
 					}
 				}
 			}
@@ -470,5 +490,9 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 		return fmt.Errorf("error reading response: %w", err)
 	}
 
+	// Append assistant message to history
+	*messages = append(*messages, Message{Role: "assistant", Content: assistantResponse.String()})
+
 	return nil
 }
+
