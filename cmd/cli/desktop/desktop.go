@@ -417,11 +417,13 @@ func (c *Client) fullModelID(id string) (string, error) {
 
 // Chat performs a chat request and streams the response content with selective markdown rendering.
 func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
-	return c.ChatWithContext(context.Background(), model, prompt, imageURLs, outputFunc, shouldUseMarkdown)
+	return c.ChatWithContext(context.Background(), model, prompt, imageURLs, nil, outputFunc, shouldUseMarkdown)
 }
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
-func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
+// If messages is provided, it will be used as conversation history. The function updates
+// the provided messages slice to include the new user message and the assistant's response.
+func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imageURLs []string, messages *[]OpenAIChatMessage, outputFunc func(string), shouldUseMarkdown bool) error {
 	model = normalizeHuggingFaceModelName(model)
 	if !strings.Contains(strings.Trim(model, "/"), "/") {
 		// Do an extra API call to check if the model parameter isn't a model ID.
@@ -460,15 +462,26 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 		messageContent = prompt
 	}
 
+	// Prepare messages for the request
+	userMessage := OpenAIChatMessage{
+		Role:    "user",
+		Content: messageContent,
+	}
+
+	var requestMessages []OpenAIChatMessage
+	if messages != nil {
+		// For a conversation, append the new message and use the full history for the request.
+		*messages = append(*messages, userMessage)
+		requestMessages = *messages
+	} else {
+		// For a single-shot chat, just send the new user message.
+		requestMessages = []OpenAIChatMessage{userMessage}
+	}
+
 	reqBody := OpenAIChatRequest{
-		Model: model,
-		Messages: []OpenAIChatMessage{
-			{
-				Role:    "user",
-				Content: messageContent,
-			},
-		},
-		Stream: true,
+		Model:    model,
+		Messages: requestMessages,
+		Stream:   true,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -509,6 +522,9 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 		PromptTokens     int `json:"prompt_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	}
+
+	// Accumulate assistant response for conversation history
+	var assistantResponse strings.Builder
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -563,6 +579,7 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 				} else {
 					outputFunc(chunk)
 				}
+				// Note: reasoning content is not included in the assistant message content
 			}
 			if streamResp.Choices[0].Delta.Content != "" {
 				chunk := streamResp.Choices[0].Delta.Content
@@ -571,12 +588,23 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 				}
 				printerState = chatPrinterContent
 				outputFunc(chunk)
+				// Accumulate the assistant's content for conversation history
+				assistantResponse.WriteString(chunk)
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error reading response stream: %w", err)
+	}
+
+	// Append assistant message to conversation history
+	if messages != nil && assistantResponse.Len() > 0 {
+		assistantMessage := OpenAIChatMessage{
+			Role:    "assistant",
+			Content: assistantResponse.String(),
+		}
+		*messages = append(*messages, assistantMessage)
 	}
 
 	if finalUsage != nil {
