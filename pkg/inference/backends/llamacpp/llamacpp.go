@@ -95,8 +95,8 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 
 	// We don't currently support this backend on Windows. We'll likely
 	// never support it on Intel Macs.
-	if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") ||
-		(runtime.GOOS == "windows" && !(runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64")) {
+	// We don't currently support this backend on Windows.
+	if (runtime.GOOS == "windows" && !(runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64")) {
 		return errors.New("platform not supported")
 	}
 
