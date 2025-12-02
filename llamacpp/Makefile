@@ -1,14 +1,4 @@
-ifeq ($(OS),Windows_NT)
-    DETECTED_OS := Windows
-else
-    UNAME_S := $(shell uname -s)
-    ifeq ($(UNAME_S),Linux)
-        DETECTED_OS := Linux
-    endif
-    ifeq ($(UNAME_S),Darwin)
-        DETECTED_OS := macOS
-    endif
-endif
+include ../Makefile.common
 
 BUILD_DIR := build
 INSTALL_DIR := install
