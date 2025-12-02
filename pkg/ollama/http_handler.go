@@ -686,29 +686,6 @@ func (h *HTTPHandler) mapOllamaOptionsToOpenAI(ollamaOpts map[string]interface{}
 		openAIReq["frequency_penalty"] = val
 	}
 
-	// Backend-specific options that may not be supported by all OpenAI-compatible backends
-	// We'll pass these through and let the backend decide whether to use them
-	backendSpecificOptions := []string{
-		"repeat_last_n",
-		"typical_p",
-		"min_p",
-		"num_keep",
-		"num_batch",
-		"num_gpu",
-		"main_gpu",
-		"use_mmap",
-		"num_thread",
-	}
-
-	for _, optName := range backendSpecificOptions {
-		if val, ok := ollamaOpts[optName]; ok {
-			// Pass through as-is, backend may support it
-			openAIReq[optName] = val
-			// Log that we're passing through a backend-specific option
-			h.log.Debugf("Passing through backend-specific option: %s", optName)
-		}
-	}
-
 	// Note: num_ctx is handled separately in the configure() function
 	// as it requires a special ConfigureRunner call
 }
