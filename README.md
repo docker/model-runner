@@ -242,7 +242,7 @@ To build a Docker image with vLLM support:
 
 ```sh
 # Build with default settings (vLLM 0.12.0)
-make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.0-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
+make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
 
 # Build for specific architecture
 docker buildx build \
