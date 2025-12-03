@@ -11,6 +11,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -102,10 +103,15 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 	}
 
 	if config.Format == types.FormatSafetensors {
+		// Prefer vLLM for safetensors models
 		if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
 			return vllmBackend
 		}
-		s.log.Warnf("Model %s is in safetensors format but vLLM backend is not available. "+
+		// Fall back to SGLang if vLLM is not available
+		if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
+			return sglangBackend
+		}
+		s.log.Warnf("Model %s is in safetensors format but vLLM and SGLang backends are not available. "+
 			"Backend %s may not support this format and could fail at runtime.",
 			utils.SanitizeForLog(modelRef), backend.Name())
 	}

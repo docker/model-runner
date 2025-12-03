@@ -12,3 +12,8 @@ func SupportsVLLM() bool {
 func SupportsMLX() bool {
 	return runtime.GOOS == "darwin" && runtime.GOARCH == "arm64"
 }
+
+// SupportsSGLang returns true if SGLang is supported on the current platform.
+func SupportsSGLang() bool {
+	return runtime.GOOS == "linux"
+}

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
@@ -26,6 +27,10 @@ const (
 	// readinessRetryInterval is the interval at which a runner will retry
 	// readiness checks for a backend.
 	readinessRetryInterval = 500 * time.Millisecond
+	// tcpBackendBasePort is the base port number for TCP-based backends.
+	// Each slot gets a unique port: basePort + slot (e.g., 30000, 30001, 30002).
+	// Port 30000+ is used to avoid conflicts with common services.
+	tcpBackendBasePort = 30000
 )
 
 // errBackendNotReadyInTime indicates that an inference backend took too
@@ -83,14 +88,22 @@ func run(
 	openAIRecorder *metrics.OpenAIRecorder,
 ) (*runner, error) {
 	// Create a dialer / transport that target backend on the specified slot.
-	socket, err := RunnerSocketPath(slot)
-	if err != nil {
-		return nil, fmt.Errorf("unable to determine runner socket path: %w", err)
+	network := "tcp"
+	socket := net.JoinHostPort("127.0.0.1", strconv.Itoa(tcpBackendBasePort+slot))
+
+	if !backend.UsesTCP() {
+		var err error
+		socket, err = RunnerSocketPath(slot)
+		if err != nil {
+			return nil, fmt.Errorf("unable to determine runner socket path: %w", err)
+		}
+		network = "unix"
 	}
+
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socket)
+			return dialer.DialContext(ctx, network, socket)
 		},
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,

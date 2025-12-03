@@ -47,6 +47,10 @@ func (m *mockBackend) UsesExternalModelManagement() bool {
 	return m.usesExternalModelMgmt
 }
 
+func (m *mockBackend) UsesTCP() bool {
+	return false
+}
+
 // fastFailBackend is a backend that immediately fails on Run to short-circuit wait()
 type fastFailBackend struct{ mockBackend }
 

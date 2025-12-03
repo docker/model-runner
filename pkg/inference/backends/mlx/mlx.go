@@ -65,6 +65,11 @@ func (m *mlx) UsesExternalModelManagement() bool {
 	return false
 }
 
+// UsesTCP implements inference.Backend.UsesTCP.
+func (m *mlx) UsesTCP() bool {
+	return false
+}
+
 // Install implements inference.Backend.Install.
 func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 	if !platform.SupportsMLX() {

@@ -72,6 +72,10 @@ type Backend interface {
 	// external model management system and false if the backend uses the shared
 	// model manager.
 	UsesExternalModelManagement() bool
+	// UsesTCP returns true if the backend uses TCP for communication instead
+	// of Unix sockets. When true, the scheduler will create a TCP transport
+	// and pass a "host:port" address to Run instead of a Unix socket path.
+	UsesTCP() bool
 	// Install ensures that the backend is installed. It should return a nil
 	// error if installation succeeds or if the backend is already installed.
 	// The provided HTTP client should be used for any HTTP operations.
