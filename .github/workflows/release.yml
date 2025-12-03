@@ -23,7 +23,7 @@ on:
         description: 'vLLM version'
         required: false
         type: string
-        default: "0.11.0"
+        default: "0.12.0"
       # This can be removed once we have llama.cpp built for MUSA and CANN.
       buildMusaCann:
         description: 'Build MUSA and CANN images'
@@ -146,9 +146,9 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "VLLM_VERSION=${{ inputs.vllmVersion }}"
-            "VLLM_CUDA_VERSION=cu129"
+            "VLLM_CUDA_VERSION=cu130"
             "VLLM_PYTHON_TAG=cp38-abi3"
           push: true
           sbom: true
