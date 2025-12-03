@@ -248,7 +248,7 @@ make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.2-runtime
 docker buildx build \
   --platform linux/amd64 \
   --target final-vllm \
-  --build-arg BASE_IMAGE=nvidia/cuda:13.0.0-runtime-ubuntu24.04 \
+  --build-arg BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
   --build-arg VLLM_VERSION=0.12.0 \
   -t docker/model-runner:vllm .
