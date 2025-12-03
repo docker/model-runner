@@ -241,16 +241,16 @@ The Docker image also supports vLLM as an alternative inference backend.
 To build a Docker image with vLLM support:
 
 ```sh
-# Build with default settings (vLLM 0.11.0)
-make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
+# Build with default settings (vLLM 0.12.0)
+make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.0-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
 
 # Build for specific architecture
 docker buildx build \
   --platform linux/amd64 \
   --target final-vllm \
-  --build-arg BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04 \
+  --build-arg BASE_IMAGE=nvidia/cuda:13.0.0-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
-  --build-arg VLLM_VERSION=0.11.0 \
+  --build-arg VLLM_VERSION=0.12.0 \
   -t docker/model-runner:vllm .
 ```
 
@@ -258,8 +258,8 @@ docker buildx build \
 
 The vLLM variant supports the following build arguments:
 
-- **VLLM_VERSION**: The vLLM version to install (default: `0.11.0`)
-- **VLLM_CUDA_VERSION**: The CUDA version suffix for the wheel (default: `cu129`)
+- **VLLM_VERSION**: The vLLM version to install (default: `0.12.0`)
+- **VLLM_CUDA_VERSION**: The CUDA version suffix for the wheel (default: `cu130`)
 - **VLLM_PYTHON_TAG**: The Python compatibility tag (default: `cp38-abi3`, compatible with Python 3.8+)
 
 #### Multi-Architecture Support

@@ -82,8 +82,8 @@ ENTRYPOINT ["/app/model-runner"]
 # --- vLLM variant ---
 FROM llamacpp AS vllm
 
-ARG VLLM_VERSION=0.11.0
-ARG VLLM_CUDA_VERSION=cu129
+ARG VLLM_VERSION=0.12.0
+ARG VLLM_CUDA_VERSION=cu130
 ARG VLLM_PYTHON_TAG=cp38-abi3
 ARG TARGETARCH
 
@@ -99,7 +99,7 @@ USER modelrunner
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
  && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
  && if [ "$TARGETARCH" = "amd64" ]; then \
-      WHEEL_ARCH="manylinux1_x86_64"; \
+      WHEEL_ARCH="manylinux_2_31_x86_64"; \
       WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
       ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
     else \
