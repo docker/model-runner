@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'version'
+        description: "version"
         required: true
         type: string
 
@@ -41,6 +41,11 @@ jobs:
         run: |
           echo "Promoting vLLM CUDA images"
           crane tag "docker/model-runner:${{ inputs.version }}-vllm-cuda" "latest-vllm-cuda"
+
+      - name: Promote SGLang CUDA images
+        run: |
+          echo "Promoting SGLang CUDA images"
+          crane tag "docker/model-runner:${{ inputs.version }}-sglang-cuda" "latest-sglang-cuda"
 
       - name: Promote ROCm images
         run: |
