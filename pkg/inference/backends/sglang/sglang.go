@@ -21,15 +21,15 @@ import (
 
 const (
 	// Name is the backend name.
-	Name      = "sglang"
-	sglangDir = "/opt/sglang-env/bin"
+	Name              = "sglang"
+	sglangDir         = "/opt/sglang-env"
 	sglangVersionFile = "/opt/sglang-env/version"
 )
 
 var (
 	ErrNotImplemented = errors.New("not implemented")
-	ErrSGLangNotFound  = errors.New("sglang package not installed")
-	ErrPythonNotFound  = errors.New("python3 not found in PATH")
+	ErrSGLangNotFound = errors.New("sglang package not installed")
+	ErrPythonNotFound = errors.New("python3 not found in PATH")
 )
 
 // sglang is the SGLang-based backend implementation.
@@ -85,14 +85,18 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	}
 
 	if err := s.initFromDocker(); err == nil {
+		s.log.Infof("installed sglang from docker: %s", s.status)
 		return nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("failed to check SGLang binary: %w", err)
 	}
 
-	return s.initFromHost()
+	if err := s.initFromHost(); err != nil {
+		return err
+	}
+	s.log.Infof("installed sglang from host: %s", s.status)
+	return nil
 }
-
 
 func (s *sglang) initFromDocker() error {
 	sglangBinaryPath := s.binaryPath()
@@ -116,12 +120,17 @@ func (s *sglang) initFromDocker() error {
 	return nil
 }
 
-
 func (s *sglang) initFromHost() error {
-	pythonPath, err := exec.LookPath("python3")
-	if err != nil {
-		s.status = ErrPythonNotFound.Error()
-		return ErrPythonNotFound
+	venvPython := filepath.Join(sglangDir, "bin", "python3")
+	pythonPath := venvPython
+
+	if _, err := os.Stat(venvPython); err != nil {
+		systemPython, err := exec.LookPath("python3")
+		if err != nil {
+			s.status = ErrPythonNotFound.Error()
+			return ErrPythonNotFound
+		}
+		pythonPath = systemPython
 	}
 
 	s.pythonPath = pythonPath
