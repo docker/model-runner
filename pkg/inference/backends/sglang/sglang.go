@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,9 +20,8 @@ import (
 
 const (
 	// Name is the backend name.
-	Name              = "sglang"
-	sglangDir         = "/opt/sglang-env"
-	sglangVersionFile = "/opt/sglang-env/version"
+	Name      = "sglang"
+	sglangDir = "/opt/sglang-env"
 )
 
 var (
@@ -84,47 +82,11 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 		return ErrNotImplemented
 	}
 
-	if err := s.initFromDocker(); err == nil {
-		s.log.Infof("installed sglang from docker: %s", s.status)
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("failed to check SGLang binary: %w", err)
-	}
-
-	if err := s.initFromHost(); err != nil {
-		return err
-	}
-	s.log.Infof("installed sglang from host: %s", s.status)
-	return nil
-}
-
-func (s *sglang) initFromDocker() error {
-	sglangBinaryPath := s.binaryPath()
-
-	if _, err := os.Stat(sglangBinaryPath); err != nil {
-		return err
-	}
-
-	versionBytes, err := os.ReadFile(sglangVersionFile)
-	if err != nil {
-		s.log.Warnf("could not get sglang version: %v", err)
-		s.status = "running sglang version: unknown"
-		return nil
-	}
-
-	s.status = fmt.Sprintf(
-		"running sglang version: %s",
-		strings.TrimSpace(string(versionBytes)),
-	)
-
-	return nil
-}
-
-func (s *sglang) initFromHost() error {
 	venvPython := filepath.Join(sglangDir, "bin", "python3")
 	pythonPath := venvPython
 
 	if _, err := os.Stat(venvPython); err != nil {
+		// Fall back to system Python
 		systemPython, err := exec.LookPath("python3")
 		if err != nil {
 			s.status = ErrPythonNotFound.Error()
@@ -135,20 +97,21 @@ func (s *sglang) initFromHost() error {
 
 	s.pythonPath = pythonPath
 
+	// Check if sglang is installed
 	if err := exec.Command(pythonPath, "-c", "import sglang").Run(); err != nil {
 		s.status = "sglang package not installed"
 		s.log.Warnf("sglang package not found. Install with: uv pip install sglang[all]")
 		return ErrSGLangNotFound
 	}
 
+	// Get version
 	output, err := exec.Command(pythonPath, "-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
 		s.log.Warnf("could not get sglang version: %v", err)
 		s.status = "running sglang version: unknown"
-		return nil
+	} else {
+		s.status = fmt.Sprintf("running sglang version: %s", strings.TrimSpace(string(output)))
 	}
-
-	s.status = fmt.Sprintf("running sglang version: %s", strings.TrimSpace(string(output)))
 
 	return nil
 }
@@ -177,22 +140,19 @@ func (s *sglang) Run(ctx context.Context, socket, model string, modelRef string,
 		args = append(args, "--weight-version", modelRef)
 	}
 
-	// Determine binary path - use Docker installation if available, otherwise use Python
-	binaryPath := s.binaryPath()
-	sandboxPath := sglangDir
-	if _, err := os.Stat(binaryPath); errors.Is(err, fs.ErrNotExist) {
-		// Use Python installation
-		if s.pythonPath == "" {
-			return fmt.Errorf("sglang: no docker binary at %s and no python runtime configured; did you forget to call Install?", binaryPath)
-		}
-		binaryPath = s.pythonPath
-		sandboxPath = ""
+	if s.pythonPath == "" {
+		return fmt.Errorf("sglang: python runtime not configured; did you forget to call Install?")
+	}
+
+	sandboxPath := ""
+	if _, err := os.Stat(sglangDir); err == nil {
+		sandboxPath = sglangDir
 	}
 
 	return backends.RunBackend(ctx, backends.RunnerConfig{
 		BackendName:     "SGLang",
 		Socket:          socket,
-		BinaryPath:      binaryPath,
+		BinaryPath:      s.pythonPath,
 		SandboxPath:     sandboxPath,
 		SandboxConfig:   "",
 		Args:            args,
@@ -220,16 +180,8 @@ func (s *sglang) GetDiskUsage() (int64, error) {
 }
 
 func (s *sglang) GetRequiredMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (inference.RequiredMemory, error) {
-	if !platform.SupportsSGLang() {
-		return inference.RequiredMemory{}, ErrNotImplemented
-	}
-
-	return inference.RequiredMemory{
-		RAM:  1,
-		VRAM: 1,
-	}, nil
-}
-
-func (s *sglang) binaryPath() string {
-	return filepath.Join(sglangDir, "sglang")
+	// TODO: Implement accurate memory estimation based on model size and SGLang's memory requirements.
+	// Returning an error prevents the scheduler from making incorrect decisions based
+	// on placeholder values.
+	return inference.RequiredMemory{}, ErrNotImplemented
 }
