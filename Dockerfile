@@ -33,7 +33,13 @@ COPY --link . .
 # Build the Go binary (static build)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner ./main.go
+    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner .
+
+# Build the Go binary for SGLang (without vLLM)
+FROM builder AS builder-sglang
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w" -o model-runner .
 
 # --- Get llama.cpp binary ---
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
@@ -137,5 +143,5 @@ FROM vllm AS final-vllm
 COPY --from=builder /app/model-runner /app/model-runner
 
 FROM sglang AS final-sglang
-# Copy the built binary from builder
-COPY --from=builder /app/model-runner /app/model-runner
+# Copy the built binary from builder-sglang (without vLLM)
+COPY --from=builder-sglang /app/model-runner /app/model-runner

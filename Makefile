@@ -7,6 +7,8 @@ BASE_IMAGE := ubuntu:24.04
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
+DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
+DOCKER_IMAGE_SGLANG_CUDA := docker/model-runner:latest-sglang-cuda
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 MODELS_PATH := $(shell pwd)/models-store
@@ -31,13 +33,13 @@ LICENSE ?=
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-run-impl help validate lint model-distribution-tool
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-build-sglang-cuda docker-run-sglang-cuda docker-run-impl help validate lint model-distribution-tool
 # Default target
 .DEFAULT_GOAL := build
 
 # Build the Go application
 build:
-	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) ./main.go
+	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
 
 # Build model-distribution-tool
 model-distribution-tool:
@@ -116,6 +118,30 @@ docker-build-vllm:
 docker-run-vllm: docker-build-vllm
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
 
+# Build SGLang Docker image (CPU variant)
+docker-build-sglang:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-sglang \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG) \
+		LLAMA_SERVER_VARIANT=cpu \
+		BASE_IMAGE=$(BASE_IMAGE)
+
+# Run SGLang Docker container (CPU variant) with TCP port access and mounted model storage
+docker-run-sglang: docker-build-sglang
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
+
+# Build SGLang Docker image (CUDA variant)
+docker-build-sglang-cuda:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-sglang \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG_CUDA) \
+		LLAMA_SERVER_VARIANT=cuda \
+		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+
+# Run SGLang Docker container (CUDA variant) with TCP port access and mounted model storage
+docker-run-sglang-cuda: docker-build-sglang-cuda
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG_CUDA)
+
 # Common implementation for running Docker container
 docker-run-impl:
 	@echo ""
@@ -178,6 +204,10 @@ help:
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
 	@echo "  docker-build-vllm		- Build vLLM Docker image"
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
+	@echo "  docker-build-sglang		- Build SGLang Docker image (CPU)"
+	@echo "  docker-run-sglang		- Run SGLang Docker container (CPU)"
+	@echo "  docker-build-sglang-cuda	- Build SGLang Docker image (CUDA)"
+	@echo "  docker-run-sglang-cuda	- Run SGLang Docker container (CUDA)"
 	@echo "  help				- Show this help message"
 	@echo ""
 	@echo "Model distribution tool targets:"
