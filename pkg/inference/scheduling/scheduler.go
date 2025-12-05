@@ -240,6 +240,12 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Set vLLM-specific configuration if provided
 	if req.VLLM != nil {
+		// Validate HFOverrides to prevent injection attacks (security requirement)
+		if req.VLLM.HFOverrides != nil {
+			if err := req.VLLM.HFOverrides.Validate(); err != nil {
+				return nil, err
+			}
+		}
 		runnerConfig.VLLM = &inference.VLLMConfig{
 			HFOverrides: req.VLLM.HFOverrides,
 		}

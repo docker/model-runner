@@ -193,6 +193,98 @@ func TestGetArgs(t *testing.T) {
 				"--mmproj", "/path/to/model.mmproj",
 			),
 		},
+		{
+			name: "reasoning budget from backend config",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				LlamaCpp: &inference.LlamaCppConfig{
+					ReasoningBudget: int64ptr(1024),
+				},
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--reasoning-budget", "1024",
+				"--ctx-size", "4096",
+				"--jinja",
+			),
+		},
+		{
+			name: "reasoning budget with negative value (unlimited)",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				LlamaCpp: &inference.LlamaCppConfig{
+					ReasoningBudget: int64ptr(-1),
+				},
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--reasoning-budget", "-1",
+				"--ctx-size", "4096",
+				"--jinja",
+			),
+		},
+		{
+			name: "nil LlamaCpp config (no reasoning budget)",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				LlamaCpp: nil,
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--ctx-size", "4096",
+				"--jinja",
+			),
+		},
+		{
+			name: "LlamaCpp config with nil reasoning budget",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				LlamaCpp: &inference.LlamaCppConfig{
+					ReasoningBudget: nil,
+				},
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--ctx-size", "4096",
+				"--jinja",
+			),
+		},
+		{
+			name: "reasoning budget with context size",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: 8192,
+				LlamaCpp: &inference.LlamaCppConfig{
+					ReasoningBudget: int64ptr(2048),
+				},
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--reasoning-budget", "2048",
+				"--ctx-size", "8192",
+				"--jinja",
+			),
+		},
 	}
 
 	for _, tt := range tests {
@@ -304,5 +396,9 @@ func (f *fakeBundle) RuntimeConfig() types.Config {
 }
 
 func uint64ptr(n uint64) *uint64 {
+	return &n
+}
+
+func int64ptr(n int64) *int64 {
 	return &n
 }

@@ -103,6 +103,106 @@ func TestGetArgs(t *testing.T) {
 				"16384",
 			},
 		},
+		{
+			name: "with simple HFOverrides",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"architectures": []interface{}{"Qwen3ForSequenceClassification"},
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--hf-overrides",
+				`{"architectures":["Qwen3ForSequenceClassification"]}`,
+			},
+		},
+		{
+			name: "with complex HFOverrides (boolean and number)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"is_original_qwen3_reranker": true,
+						"num_labels":                 float64(2),
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--hf-overrides",
+				`{"is_original_qwen3_reranker":true,"num_labels":2}`,
+			},
+			expectError: false,
+		},
+		{
+			name: "with nil VLLM config (no hf-overrides)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: nil,
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+			},
+		},
+		{
+			name: "with empty HFOverrides (no hf-overrides)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+			},
+		},
+		{
+			name: "with HFOverrides and context size",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: 4096,
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"model_type": "bert",
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--max-model-len",
+				"4096",
+				"--hf-overrides",
+				`{"model_type":"bert"}`,
+			},
+		},
 	}
 
 	for _, tt := range tests {

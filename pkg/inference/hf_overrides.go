@@ -37,8 +37,10 @@ func (h HFOverrides) Validate() error {
 // Validation is recursive for nested objects and arrays.
 func validateHFOverridesValue(key string, value interface{}) error {
 	switch v := value.(type) {
-	case string, bool, float64, nil:
-		// Primitives are OK (JSON numbers decode as float64)
+	case string, bool, float64, nil,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64:
+		// Primitives are OK (JSON numbers decode as float64, but programmatic construction may use int types)
 		return nil
 	case []interface{}:
 		// Arrays are OK if all elements are valid (primitives, objects, or nested arrays)
