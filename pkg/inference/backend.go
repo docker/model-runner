@@ -51,6 +51,7 @@ type BackendConfiguration struct {
 	RuntimeFlags    []string                   `json:"runtime-flags,omitempty"`
 	Speculative     *SpeculativeDecodingConfig `json:"speculative,omitempty"`
 	ReasoningBudget *int64                     `json:"reasoning-budget,omitempty"`
+	HFOverrides     HFOverrides                `json:"hf-overrides,omitempty"`
 }
 
 type RequiredMemory struct {

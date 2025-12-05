@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
@@ -15,9 +16,10 @@ func newConfigureCmd() *cobra.Command {
 	var draftModel string
 	var numTokens int
 	var minAcceptanceRate float64
+	var hfOverrides string
 
 	c := &cobra.Command{
-		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] MODEL [-- <runtime-flags...>]",
+		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] MODEL [-- <runtime-flags...>]",
 		Short:  "Configure runtime options for a model",
 		Hidden: true,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -52,6 +54,18 @@ func newConfigureCmd() *cobra.Command {
 					MinAcceptanceRate: minAcceptanceRate,
 				}
 			}
+			// Parse and validate HuggingFace overrides if provided
+			if hfOverrides != "" {
+				var hfo inference.HFOverrides
+				if err := json.Unmarshal([]byte(hfOverrides), &hfo); err != nil {
+					return fmt.Errorf("invalid --hf_overrides JSON: %w", err)
+				}
+				// Validate the overrides to prevent command injection
+				if err := hfo.Validate(); err != nil {
+					return err
+				}
+				opts.HFOverrides = hfo
+			}
 			return desktopClient.ConfigureBackend(opts)
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, -1),
@@ -61,5 +75,6 @@ func newConfigureCmd() *cobra.Command {
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
+	c.Flags().StringVar(&hfOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON)")
 	return c
 }

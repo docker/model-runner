@@ -254,6 +254,7 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 	runnerConfig.RuntimeFlags = runtimeFlags
 	runnerConfig.Speculative = req.Speculative
 	runnerConfig.ReasoningBudget = req.ReasoningBudget
+	runnerConfig.HFOverrides = req.HFOverrides
 
 	// Determine mode from flags
 	mode := inference.BackendModeCompletion

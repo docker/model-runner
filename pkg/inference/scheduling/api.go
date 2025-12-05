@@ -99,4 +99,5 @@ type ConfigureRequest struct {
 	RuntimeFlags    []string                             `json:"runtime-flags,omitempty"`
 	RawRuntimeFlags string                               `json:"raw-runtime-flags,omitempty"`
 	Speculative     *inference.SpeculativeDecodingConfig `json:"speculative,omitempty"`
+	HFOverrides     inference.HFOverrides                `json:"hf-overrides,omitempty"`
 }

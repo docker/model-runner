@@ -1,6 +1,7 @@
 package vllm
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -60,6 +61,15 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	// Add arguments from backend config
 	if config != nil {
 		args = append(args, config.RuntimeFlags...)
+
+		// Add HuggingFace overrides if specified
+		if len(config.HFOverrides) > 0 {
+			hfOverridesJSON, err := json.Marshal(config.HFOverrides)
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize hf-overrides: %w", err)
+			}
+			args = append(args, "--hf-overrides", string(hfOverridesJSON))
+		}
 	}
 
 	return args, nil
