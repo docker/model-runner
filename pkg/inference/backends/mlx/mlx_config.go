@@ -58,11 +58,6 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, "--max-tokens", strconv.FormatUint(*maxLen, 10))
 	}
 
-	// Add arguments from backend config
-	if config != nil {
-		args = append(args, config.RuntimeFlags...)
-	}
-
 	return args, nil
 }
 

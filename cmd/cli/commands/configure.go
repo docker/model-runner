@@ -17,32 +17,20 @@ func newConfigureCmd() *cobra.Command {
 	var numTokens int
 	var minAcceptanceRate float64
 	var hfOverrides string
+	var reasoningBudget int64
 
 	c := &cobra.Command{
-		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] MODEL [-- <runtime-flags...>]",
+		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--reasoning-budget=<n>] MODEL",
 		Short:  "Configure runtime options for a model",
 		Hidden: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			argsBeforeDash := cmd.ArgsLenAtDash()
-			if argsBeforeDash == -1 {
-				// No "--" used, so we need exactly 1 total argument.
-				if len(args) != 1 {
-					return fmt.Errorf(
-						"Exactly one model must be specified, got %d: %v\n\n"+
-							"See 'docker model configure --help' for more information",
-						len(args), args)
-				}
-			} else {
-				// Has "--", so we need exactly 1 argument before it.
-				if argsBeforeDash != 1 {
-					return fmt.Errorf(
-						"Exactly one model must be specified before --, got %d\n\n"+
-							"See 'docker model configure --help' for more information",
-						argsBeforeDash)
-				}
+			if len(args) != 1 {
+				return fmt.Errorf(
+					"Exactly one model must be specified, got %d: %v\n\n"+
+						"See 'docker model configure --help' for more information",
+					len(args), args)
 			}
 			opts.Model = args[0]
-			opts.RuntimeFlags = args[1:]
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,7 +42,7 @@ func newConfigureCmd() *cobra.Command {
 					MinAcceptanceRate: minAcceptanceRate,
 				}
 			}
-			// Parse and validate HuggingFace overrides if provided
+			// Parse and validate HuggingFace overrides if provided (vLLM-specific)
 			if hfOverrides != "" {
 				var hfo inference.HFOverrides
 				if err := json.Unmarshal([]byte(hfOverrides), &hfo); err != nil {
@@ -64,7 +52,19 @@ func newConfigureCmd() *cobra.Command {
 				if err := hfo.Validate(); err != nil {
 					return err
 				}
-				opts.HFOverrides = hfo
+				if opts.VLLM == nil {
+					opts.VLLM = &inference.VLLMConfig{}
+				}
+				opts.VLLM.HFOverrides = hfo
+			}
+			// Set llama.cpp-specific reasoning budget if explicitly provided
+			// Note: We check if flag was changed rather than checking value > 0
+			// because 0 is a valid value (disables reasoning) and -1 means unlimited
+			if cmd.Flags().Changed("reasoning-budget") {
+				if opts.LlamaCpp == nil {
+					opts.LlamaCpp = &inference.LlamaCppConfig{}
+				}
+				opts.LlamaCpp.ReasoningBudget = &reasoningBudget
 			}
 			return desktopClient.ConfigureBackend(opts)
 		},
@@ -75,6 +75,7 @@ func newConfigureCmd() *cobra.Command {
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
-	c.Flags().StringVar(&hfOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON)")
+	c.Flags().StringVar(&hfOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
+	c.Flags().Int64Var(&reasoningBudget, "reasoning-budget", 0, "reasoning budget for reasoning models - llama.cpp only")
 	return c
 }

@@ -88,24 +88,6 @@ func TestGetArgs(t *testing.T) {
 			},
 		},
 		{
-			name: "with runtime flags",
-			bundle: &mockModelBundle{
-				safetensorsPath: "/path/to/model",
-			},
-			config: &inference.BackendConfiguration{
-				RuntimeFlags: []string{"--trust-remote-code"},
-			},
-			expected: []string{
-				"-m",
-				"mlx_lm.server",
-				"--model",
-				"/path/to",
-				"--host",
-				"/tmp/socket",
-				"--trust-remote-code",
-			},
-		},
-		{
 			name: "with model context size (takes precedence)",
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model",

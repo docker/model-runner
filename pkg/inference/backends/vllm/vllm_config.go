@@ -58,13 +58,11 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	}
 	// If nil, vLLM will automatically derive from the model config
 
-	// Add arguments from backend config
-	if config != nil {
-		args = append(args, config.RuntimeFlags...)
-
+	// Add vLLM-specific arguments from backend config
+	if config != nil && config.VLLM != nil {
 		// Add HuggingFace overrides if specified
-		if len(config.HFOverrides) > 0 {
-			hfOverridesJSON, err := json.Marshal(config.HFOverrides)
+		if len(config.VLLM.HFOverrides) > 0 {
+			hfOverridesJSON, err := json.Marshal(config.VLLM.HFOverrides)
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize hf-overrides: %w", err)
 			}

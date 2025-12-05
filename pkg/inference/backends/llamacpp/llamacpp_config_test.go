@@ -180,24 +180,6 @@ func TestGetArgs(t *testing.T) {
 			),
 		},
 		{
-			name: "raw flags from backend config",
-			mode: inference.BackendModeEmbedding,
-			bundle: &fakeBundle{
-				ggufPath: modelPath,
-			},
-			config: &inference.BackendConfiguration{
-				RuntimeFlags: []string{"--some", "flag"},
-			},
-			expected: append(slices.Clone(baseArgs),
-				"--model", modelPath,
-				"--host", socket,
-				"--embeddings",
-				"--ctx-size", "4096",
-				"--some", "flag",
-				"--jinja",
-			),
-		},
-		{
 			name: "multimodal projector removes jinja",
 			mode: inference.BackendModeCompletion,
 			bundle: &fakeBundle{

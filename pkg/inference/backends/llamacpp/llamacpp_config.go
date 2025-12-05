@@ -74,11 +74,6 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	// Add context size from model config or backend config
 	args = append(args, "--ctx-size", strconv.FormatUint(GetContextSize(bundle.RuntimeConfig(), config), 10))
 
-	// Add arguments from backend config
-	if config != nil {
-		args = append(args, config.RuntimeFlags...)
-	}
-
 	// Add arguments for Multimodal projector or jinja (they are mutually exclusive)
 	if path := bundle.MMPROJPath(); path != "" {
 		args = append(args, "--mmproj", path)
@@ -103,8 +98,8 @@ func GetContextSize(modelCfg types.Config, backendCfg *inference.BackendConfigur
 }
 
 func GetReasoningBudget(backendCfg *inference.BackendConfiguration) *int64 {
-	if backendCfg != nil && backendCfg.ReasoningBudget != nil {
-		return backendCfg.ReasoningBudget
+	if backendCfg != nil && backendCfg.LlamaCpp != nil && backendCfg.LlamaCpp.ReasoningBudget != nil {
+		return backendCfg.LlamaCpp.ReasoningBudget
 	}
 	return nil
 }

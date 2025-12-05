@@ -436,12 +436,17 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 			sanitizedModelName, sanitizedContextSize, hasContextSize, budgetStr)
 
 		configureRequest := scheduling.ConfigureRequest{
-			Model:           modelName,
-			ReasoningBudget: reasoningBudget,
+			Model: modelName,
 		}
 		// Only include ContextSize if explicitly defined
 		if hasContextSize {
 			configureRequest.ContextSize = contextSize
+		}
+		// Set llama.cpp-specific reasoning budget if provided
+		if reasoningBudget != nil {
+			configureRequest.LlamaCpp = &inference.LlamaCppConfig{
+				ReasoningBudget: reasoningBudget,
+			}
 		}
 		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent)
 		if err != nil {

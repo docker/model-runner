@@ -3,9 +3,7 @@ package scheduling
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -17,7 +15,6 @@ import (
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
-	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -236,30 +233,29 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 		backend = s.defaultBackend
 	}
 
-	// Parse runtime flags from either array or raw string
-	var runtimeFlags []string
-	if len(req.RuntimeFlags) > 0 {
-		runtimeFlags = req.RuntimeFlags
-	} else if req.RawRuntimeFlags != "" {
-		var err error
-		runtimeFlags, err = shellwords.Parse(req.RawRuntimeFlags)
-		if err != nil {
-			return nil, fmt.Errorf("invalid runtime flags: %w", err)
+	// Build runner configuration with shared settings
+	var runnerConfig inference.BackendConfiguration
+	runnerConfig.ContextSize = req.ContextSize
+	runnerConfig.Speculative = req.Speculative
+
+	// Set vLLM-specific configuration if provided
+	if req.VLLM != nil {
+		runnerConfig.VLLM = &inference.VLLMConfig{
+			HFOverrides: req.VLLM.HFOverrides,
 		}
 	}
 
-	// Build runner configuration
-	var runnerConfig inference.BackendConfiguration
-	runnerConfig.ContextSize = req.ContextSize
-	runnerConfig.RuntimeFlags = runtimeFlags
-	runnerConfig.Speculative = req.Speculative
-	runnerConfig.ReasoningBudget = req.ReasoningBudget
-	runnerConfig.HFOverrides = req.HFOverrides
+	// Set llama.cpp-specific configuration if provided
+	if req.LlamaCpp != nil {
+		runnerConfig.LlamaCpp = &inference.LlamaCppConfig{
+			ReasoningBudget: req.LlamaCpp.ReasoningBudget,
+		}
+	}
 
-	// Determine mode from flags
+	// Determine mode - use configured mode or default to completion
 	mode := inference.BackendModeCompletion
-	if slices.Contains(runnerConfig.RuntimeFlags, "--embeddings") {
-		mode = inference.BackendModeEmbedding
+	if req.Mode != nil {
+		mode = *req.Mode
 	}
 
 	// Get model, track usage, and select appropriate backend

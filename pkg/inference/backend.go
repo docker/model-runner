@@ -46,12 +46,28 @@ type SpeculativeDecodingConfig struct {
 	MinAcceptanceRate float64 `json:"min_acceptance_rate,omitempty"`
 }
 
+// VLLMConfig contains vLLM-specific configuration options.
+type VLLMConfig struct {
+	// HFOverrides contains HuggingFace model configuration overrides.
+	// This maps to vLLM's --hf-overrides flag which accepts a JSON dictionary.
+	HFOverrides HFOverrides `json:"hf-overrides,omitempty"`
+}
+
+// LlamaCppConfig contains llama.cpp-specific configuration options.
+type LlamaCppConfig struct {
+	// ReasoningBudget sets the reasoning budget for reasoning models.
+	// Maps to llama.cpp's --reasoning-budget flag.
+	ReasoningBudget *int64 `json:"reasoning-budget,omitempty"`
+}
+
 type BackendConfiguration struct {
-	ContextSize     int64                      `json:"context-size,omitempty"`
-	RuntimeFlags    []string                   `json:"runtime-flags,omitempty"`
-	Speculative     *SpeculativeDecodingConfig `json:"speculative,omitempty"`
-	ReasoningBudget *int64                     `json:"reasoning-budget,omitempty"`
-	HFOverrides     HFOverrides                `json:"hf-overrides,omitempty"`
+	// Shared configuration across all backends
+	ContextSize int64                      `json:"context-size,omitempty"`
+	Speculative *SpeculativeDecodingConfig `json:"speculative,omitempty"`
+
+	// Backend-specific configuration
+	VLLM     *VLLMConfig     `json:"vllm,omitempty"`
+	LlamaCpp *LlamaCppConfig `json:"llamacpp,omitempty"`
 }
 
 type RequiredMemory struct {
