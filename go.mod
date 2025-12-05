@@ -11,7 +11,6 @@ require (
 	github.com/gpustack/gguf-parser-go v0.22.1
 	github.com/jaypipes/ghw v0.19.1
 	github.com/kolesnikovae/go-winjob v1.0.0
-	github.com/mattn/go-shellwords v1.0.12
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/prometheus/client_model v0.6.2
