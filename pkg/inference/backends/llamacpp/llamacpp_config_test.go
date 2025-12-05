@@ -109,7 +109,6 @@ func TestGetArgs(t *testing.T) {
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -123,7 +122,6 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -134,7 +132,7 @@ func TestGetArgs(t *testing.T) {
 				ggufPath: modelPath,
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 1234,
+				ContextSize: int32ptr(1234),
 			},
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
@@ -145,16 +143,65 @@ func TestGetArgs(t *testing.T) {
 			),
 		},
 		{
+			name: "unlimited context size from backend config",
+			mode: inference.BackendModeEmbedding,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(-1),
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--embeddings",
+				"--ctx-size", "-1",
+				"--jinja",
+			),
+		},
+		{
+			name: "0 context size from backend config ignored",
+			mode: inference.BackendModeEmbedding,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(0),
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--embeddings",
+				"--jinja",
+			),
+		},
+		{
+			name: "invalid context size from backend config ignored",
+			mode: inference.BackendModeEmbedding,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(-2),
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--embeddings",
+				"--jinja",
+			),
+		},
+		{
 			name: "context size from model config",
 			mode: inference.BackendModeEmbedding,
 			bundle: &fakeBundle{
 				ggufPath: modelPath,
 				config: types.Config{
-					ContextSize: uint64ptr(2096),
+					ContextSize: int32ptr(2096),
 				},
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 1234,
+				ContextSize: int32ptr(1234),
 			},
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
@@ -175,7 +222,6 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--chat-template-file", "/path/to/bundle/template.jinja",
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -189,7 +235,6 @@ func TestGetArgs(t *testing.T) {
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
-				"--ctx-size", "4096",
 				"--mmproj", "/path/to/model.mmproj",
 			),
 		},
@@ -201,14 +246,13 @@ func TestGetArgs(t *testing.T) {
 			},
 			config: &inference.BackendConfiguration{
 				LlamaCpp: &inference.LlamaCppConfig{
-					ReasoningBudget: int64ptr(1024),
+					ReasoningBudget: int32ptr(1024),
 				},
 			},
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
 				"--reasoning-budget", "1024",
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -220,14 +264,13 @@ func TestGetArgs(t *testing.T) {
 			},
 			config: &inference.BackendConfiguration{
 				LlamaCpp: &inference.LlamaCppConfig{
-					ReasoningBudget: int64ptr(-1),
+					ReasoningBudget: int32ptr(-1),
 				},
 			},
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
 				"--reasoning-budget", "-1",
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -243,7 +286,6 @@ func TestGetArgs(t *testing.T) {
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -261,7 +303,6 @@ func TestGetArgs(t *testing.T) {
 			expected: append(slices.Clone(baseArgs),
 				"--model", modelPath,
 				"--host", socket,
-				"--ctx-size", "4096",
 				"--jinja",
 			),
 		},
@@ -272,9 +313,9 @@ func TestGetArgs(t *testing.T) {
 				ggufPath: modelPath,
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 8192,
+				ContextSize: int32ptr(8192),
 				LlamaCpp: &inference.LlamaCppConfig{
-					ReasoningBudget: int64ptr(2048),
+					ReasoningBudget: int32ptr(2048),
 				},
 			},
 			expected: append(slices.Clone(baseArgs),
@@ -395,10 +436,6 @@ func (f *fakeBundle) RuntimeConfig() types.Config {
 	return f.config
 }
 
-func uint64ptr(n uint64) *uint64 {
-	return &n
-}
-
-func int64ptr(n int64) *int64 {
+func int32ptr(n int32) *int32 {
 	return &n
 }

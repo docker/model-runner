@@ -198,7 +198,11 @@ func (l *llamaCpp) GetRequiredMemoryForModel(ctx context.Context, model string, 
 		return inference.RequiredMemory{}, &inference.ErrGGUFParse{Err: err}
 	}
 
-	contextSize := GetContextSize(mdlConfig, config)
+	configuredContextSize := GetContextSize(mdlConfig, config)
+	contextSize := int32(4096) // default context size
+	if configuredContextSize != nil {
+		contextSize = *configuredContextSize
+	}
 
 	var ngl uint64
 	if l.gpuSupported {
@@ -240,9 +244,9 @@ func (l *llamaCpp) parseModel(ctx context.Context, model string) (*parser.GGUFFi
 }
 
 // estimateMemoryFromGGUF estimates memory requirements from a parsed GGUF file.
-func (l *llamaCpp) estimateMemoryFromGGUF(ggufFile *parser.GGUFFile, contextSize uint64, ngl uint64) inference.RequiredMemory {
+func (l *llamaCpp) estimateMemoryFromGGUF(ggufFile *parser.GGUFFile, contextSize int32, ngl uint64) inference.RequiredMemory {
 	estimate := ggufFile.EstimateLLaMACppRun(
-		parser.WithLLaMACppContextSize(int32(contextSize)),
+		parser.WithLLaMACppContextSize(contextSize),
 		parser.WithLLaMACppLogicalBatchSize(2048),
 		parser.WithLLaMACppOffloadLayers(ngl),
 	)

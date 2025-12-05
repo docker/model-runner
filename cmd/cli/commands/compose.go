@@ -66,7 +66,7 @@ func newUpCommand() *cobra.Command {
 				return err
 			}
 
-			if ctxSize > 0 {
+			if cmd.Flags().Changed("context-size") {
 				sendInfo(fmt.Sprintf("Setting context size to %d", ctxSize))
 			}
 
@@ -82,12 +82,18 @@ func newUpCommand() *cobra.Command {
 			}
 
 			for _, model := range models {
+				configuration := inference.BackendConfiguration{
+					Speculative: speculativeConfig,
+				}
+				if cmd.Flags().Changed("context-size") {
+					// TODO is the context size the same for all models?
+					v := int32(ctxSize)
+					configuration.ContextSize = &v
+				}
+
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
-					Model: model,
-					BackendConfiguration: inference.BackendConfiguration{
-						ContextSize: ctxSize,
-						Speculative: speculativeConfig,
-					},
+					Model:                model,
+					BackendConfiguration: configuration,
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d"
 					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, err)

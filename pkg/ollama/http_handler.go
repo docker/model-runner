@@ -21,13 +21,13 @@ import (
 // Reasoning budget constants for the think parameter conversion
 const (
 	// reasoningBudgetUnlimited represents unlimited reasoning tokens (-1 for llama.cpp)
-	reasoningBudgetUnlimited int64 = -1
+	reasoningBudgetUnlimited int32 = -1
 	// reasoningBudgetDisabled disables reasoning (0 tokens)
-	reasoningBudgetDisabled int64 = 0
+	reasoningBudgetDisabled int32 = 0
 	// reasoningBudgetMedium represents a medium reasoning budget (1024 tokens)
-	reasoningBudgetMedium int64 = 1024
+	reasoningBudgetMedium int32 = 1024
 	// reasoningBudgetLow represents a low reasoning budget (256 tokens)
-	reasoningBudgetLow int64 = 256
+	reasoningBudgetLow int32 = 256
 )
 
 // Reasoning level string constants for the think parameter
@@ -405,15 +405,14 @@ func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 // configureModel extracts and applies model configuration options.
 // Handles num_ctx from options and think parameter for reasoning budget.
-// Returns the context size for use in preloading scenarios.
-func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, options map[string]interface{}, think interface{}, userAgent string) int64 {
-	var contextSize int64
+func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, options map[string]interface{}, think interface{}, userAgent string) {
+	var contextSize int32
 	var hasContextSize bool
 
 	// Extract context size from options
 	if options != nil {
-		if numCtxRaw, ok := options["num_ctx"]; ok {
-			contextSize = convertToInt64(numCtxRaw)
+		if numCtxRaw, ok := options["num_ctx"]; ok && numCtxRaw != nil {
+			contextSize = convertToInt32(numCtxRaw)
 			hasContextSize = true
 		}
 	}
@@ -424,23 +423,13 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 	// Only call ConfigureRunner if we have something to configure
 	if hasContextSize || reasoningBudget != nil {
 		sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-		// Build reasoning budget string for logging (show "nil" when not specified)
-		var budgetStr string
-		if reasoningBudget != nil {
-			budgetStr = fmt.Sprintf("%d", *reasoningBudget)
-		} else {
-			budgetStr = "nil"
-		}
-		sanitizedContextSize := utils.SanitizeForLog(fmt.Sprintf("%d", contextSize), -1)
-		h.log.Infof("configureModel: configuring model %s (context_size=%s, has_context_size=%t, reasoning_budget=%s)",
-			sanitizedModelName, sanitizedContextSize, hasContextSize, budgetStr)
-
+		h.log.Infof("configureModel: configuring model %s", sanitizedModelName)
 		configureRequest := scheduling.ConfigureRequest{
 			Model: modelName,
 		}
 		// Only include ContextSize if explicitly defined
 		if hasContextSize {
-			configureRequest.ContextSize = contextSize
+			configureRequest.ContextSize = &contextSize
 		}
 		// Set llama.cpp-specific reasoning budget if provided
 		if reasoningBudget != nil {
@@ -448,14 +437,12 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 				ReasoningBudget: reasoningBudget,
 			}
 		}
-		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent)
+		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent) // TODO add backend selection?
 		if err != nil {
 			// Log the error but continue with the request
 			h.log.Warnf("configureModel: failed to configure model %s: %v", sanitizedModelName, err)
 		}
 	}
-
-	return contextSize
 }
 
 // isZeroKeepAlive checks if the keep-alive duration string represents zero duration.
@@ -481,42 +468,25 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		modelName = req.Model
 	}
 
+	// Normalize model name
+	modelName = models.NormalizeModelName(modelName)
+
 	if req.Prompt == "" && isZeroKeepAlive(req.KeepAlive) {
 		h.unloadModel(ctx, w, modelName)
 		return
 	}
 
 	// Configure model
-	ctxSize := h.configureModel(ctx, modelName, req.Options, req.Think, r.UserAgent()+" (Ollama API)")
+	h.configureModel(ctx, modelName, req.Options, req.Think, r.UserAgent()+" (Ollama API)")
 
 	if req.Prompt == "" {
-		// Empty prompt - preload the model
-		// ConfigureRunner is idempotent, so calling it again with the same context size is safe
-		configureRequest := scheduling.ConfigureRequest{
-			Model: modelName,
-			BackendConfiguration: inference.BackendConfiguration{
-				ContextSize: ctxSize, // Use extracted value (or 0 for default)
-			},
-		}
-
-		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, r.UserAgent()+" (Ollama API)")
-		if err != nil {
-			sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
-			sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-			h.log.Warnf("handleGenerate: failed to preload model %s: %v", sanitizedModelName, sanitizedErr)
-			http.Error(w, fmt.Sprintf("Failed to preload model: %v", err), http.StatusInternalServerError)
-			return
-		}
-
+		// Empty prompt - preload the model (already configured above)
 		// Return success response in Ollama format (empty JSON object)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("{}"))
 		return
 	}
-
-	// Normalize model name
-	modelName = models.NormalizeModelName(modelName)
 
 	// Convert to OpenAI format completion request
 	openAIReq := map[string]interface{}{
@@ -809,13 +779,13 @@ func convertMessages(messages []Message) []map[string]interface{} {
 // - bool: true (unlimited reasoning, -1) or false (no reasoning, 0)
 // - string: "high" (-1, unlimited), "medium" (1024 tokens), "low" (256 tokens)
 // Returns nil if think is nil or invalid, otherwise returns a pointer to the reasoning_budget value.
-func convertThinkToReasoningBudget(think interface{}) *int64 {
+func convertThinkToReasoningBudget(think interface{}) *int32 {
 	if think == nil {
 		return nil
 	}
 
-	// Helper to create a pointer to an int64 value
-	ptr := func(v int64) *int64 { return &v }
+	// Helper to create a pointer to an int32 value
+	ptr := func(v int32) *int32 { return &v }
 
 	switch v := think.(type) {
 	case bool:
@@ -839,22 +809,22 @@ func convertThinkToReasoningBudget(think interface{}) *int64 {
 	}
 }
 
-// convertToInt64 converts various numeric types to int64
-func convertToInt64(v interface{}) int64 {
+// convertToInt32 converts various numeric types to int32
+func convertToInt32(v interface{}) int32 {
 	switch val := v.(type) {
 	case int:
-		return int64(val)
-	case int64:
+		return int32(val)
+	case int32:
 		return val
 	case float64:
-		return int64(val)
+		return int32(val)
 	case float32:
-		return int64(val)
+		return int32(val)
 	case string:
 		// Sanitize string to remove newline/carriage return before parsing
 		safeVal := utils.SanitizeForLog(val, -1)
-		if num, err := fmt.Sscanf(safeVal, "%d", new(int64)); err == nil && num == 1 {
-			var result int64
+		if num, err := fmt.Sscanf(safeVal, "%d", new(int32)); err == nil && num == 1 {
+			var result int32
 			fmt.Sscanf(safeVal, "%d", &result)
 			return result
 		}

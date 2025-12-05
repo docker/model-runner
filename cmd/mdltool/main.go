@@ -321,7 +321,7 @@ func cmdPackage(args []string) int {
 
 	if contextSize > 0 {
 		fmt.Println("Setting context size:", contextSize)
-		b = b.WithContextSize(contextSize)
+		b = b.WithContextSize(int32(contextSize))
 	}
 
 	if mmproj != "" {

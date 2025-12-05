@@ -9,6 +9,8 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 )
 
+const UnlimitedContextSize = -1
+
 // Config is the configuration for the llama.cpp backend.
 type Config struct {
 	// Args are the base arguments that are always included.
@@ -68,11 +70,14 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	}
 
 	if budget := GetReasoningBudget(config); budget != nil {
-		args = append(args, "--reasoning-budget", strconv.FormatInt(*budget, 10))
+		args = append(args, "--reasoning-budget", strconv.FormatInt(int64(*budget), 10))
 	}
 
 	// Add context size from model config or backend config
-	args = append(args, "--ctx-size", strconv.FormatUint(GetContextSize(bundle.RuntimeConfig(), config), 10))
+	contextSize := GetContextSize(bundle.RuntimeConfig(), config)
+	if contextSize != nil {
+		args = append(args, "--ctx-size", strconv.FormatInt(int64(*contextSize), 10))
+	}
 
 	// Add arguments for Multimodal projector or jinja (they are mutually exclusive)
 	if path := bundle.MMPROJPath(); path != "" {
@@ -84,20 +89,19 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	return args, nil
 }
 
-func GetContextSize(modelCfg types.Config, backendCfg *inference.BackendConfiguration) uint64 {
+func GetContextSize(modelCfg types.Config, backendCfg *inference.BackendConfiguration) *int32 {
 	// Model config takes precedence
-	if modelCfg.ContextSize != nil {
-		return *modelCfg.ContextSize
+	if modelCfg.ContextSize != nil && (*modelCfg.ContextSize == UnlimitedContextSize || *modelCfg.ContextSize > 0) {
+		return modelCfg.ContextSize
 	}
-	// else use backend config
-	if backendCfg != nil && backendCfg.ContextSize > 0 {
-		return uint64(backendCfg.ContextSize)
+	// Fallback to backend config
+	if backendCfg != nil && backendCfg.ContextSize != nil && (*backendCfg.ContextSize == UnlimitedContextSize || *backendCfg.ContextSize > 0) {
+		return backendCfg.ContextSize
 	}
-	// finally return default
-	return 4096 // llama.cpp default
+	return nil
 }
 
-func GetReasoningBudget(backendCfg *inference.BackendConfiguration) *int64 {
+func GetReasoningBudget(backendCfg *inference.BackendConfiguration) *int32 {
 	if backendCfg != nil && backendCfg.LlamaCpp != nil && backendCfg.LlamaCpp.ReasoningBudget != nil {
 		return backendCfg.LlamaCpp.ReasoningBudget
 	}

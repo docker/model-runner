@@ -17,6 +17,7 @@ func newConfigureCmd() *cobra.Command {
 	var numTokens int
 	var minAcceptanceRate float64
 	var hfOverrides string
+	var contextSize int64
 	var reasoningBudget int64
 
 	c := &cobra.Command{
@@ -34,6 +35,10 @@ func newConfigureCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("context-size") {
+				v := int32(contextSize)
+				opts.ContextSize = &v
+			}
 			// Build the speculative config if any speculative flags are set
 			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
 				opts.Speculative = &inference.SpeculativeDecodingConfig{
@@ -64,14 +69,15 @@ func newConfigureCmd() *cobra.Command {
 				if opts.LlamaCpp == nil {
 					opts.LlamaCpp = &inference.LlamaCppConfig{}
 				}
-				opts.LlamaCpp.ReasoningBudget = &reasoningBudget
+				v := int32(reasoningBudget)
+				opts.LlamaCpp.ReasoningBudget = &v
 			}
 			return desktopClient.ConfigureBackend(opts)
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, -1),
 	}
 
-	c.Flags().Int64Var(&opts.ContextSize, "context-size", -1, "context size (in tokens)")
+	c.Flags().Int64Var(&contextSize, "context-size", 0, "context size (in tokens)")
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")

@@ -29,7 +29,7 @@ type ModelPackageRequest struct {
 	// Tag is the name to give the new packaged model.
 	Tag string `json:"tag"`
 	// ContextSize specifies the context size to set for the new model.
-	ContextSize uint64 `json:"context-size,omitempty"`
+	ContextSize *int32 `json:"context-size,omitempty"`
 }
 
 // SimpleModel is a wrapper that allows creating a model with modified configuration

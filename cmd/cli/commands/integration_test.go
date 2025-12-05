@@ -216,7 +216,7 @@ func verifyModelInspect(t *testing.T, client *desktop.Client, ref, expectedID, e
 
 // createAndPushTestModel creates a minimal test model and pushes it to the local registry.
 // Returns the model ID, FQDNs for host and network access, and the manifest digest.
-func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextSize uint64) (modelID, hostFQDN, networkFQDN, digest string) {
+func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextSize *int32) (modelID, hostFQDN, networkFQDN, digest string) {
 	ctx := context.Background()
 
 	// Use the dummy GGUF file from assets
@@ -234,8 +234,8 @@ func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextS
 	require.NoError(t, err)
 
 	// Set context size if specified
-	if contextSize > 0 {
-		pkg = pkg.WithContextSize(contextSize)
+	if contextSize != nil {
+		pkg = pkg.WithContextSize(*contextSize)
 	}
 
 	// Construct the full reference with the local registry host for pushing from test host
@@ -287,7 +287,7 @@ func TestIntegration_PullModel(t *testing.T) {
 	// Create and push two test models with different organizations
 	// Model 1: custom org (test/test-model:latest)
 	modelRef1 := "test/test-model:latest"
-	modelID1, hostFQDN1, networkFQDN1, digest1 := createAndPushTestModel(t, env.registryURL, modelRef1, 2048)
+	modelID1, hostFQDN1, networkFQDN1, digest1 := createAndPushTestModel(t, env.registryURL, modelRef1, int32ptr(2048))
 	t.Logf("Test model 1 pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN1, modelID1, networkFQDN1, digest1)
 
 	// Generate test cases for custom org model (test/test-model)
@@ -304,7 +304,7 @@ func TestIntegration_PullModel(t *testing.T) {
 
 	// Model 2: default org (ai/test-model:latest)
 	modelRef2 := "ai/test-model:latest"
-	modelID2, hostFQDN2, networkFQDN2, digest2 := createAndPushTestModel(t, env.registryURL, modelRef2, 2048)
+	modelID2, hostFQDN2, networkFQDN2, digest2 := createAndPushTestModel(t, env.registryURL, modelRef2, int32ptr(2048))
 	t.Logf("Test model 2 pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN2, modelID2, networkFQDN2, digest2)
 
 	// Generate test cases for default org model (ai/test-model)
@@ -420,7 +420,7 @@ func TestIntegration_InspectModel(t *testing.T) {
 
 	// Create and push a test model with default org (ai/inspect-test:latest)
 	modelRef := "ai/inspect-test:latest"
-	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, int32ptr(2048))
 	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
 
 	// Pull the model using a short reference
@@ -479,7 +479,7 @@ func TestIntegration_TagModel(t *testing.T) {
 
 	// Create and push a test model with default org (ai/tag-test:latest)
 	modelRef := "ai/tag-test:latest"
-	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, int32ptr(2048))
 	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
 
 	// Pull the model using a simple reference
@@ -657,7 +657,7 @@ func TestIntegration_PushModel(t *testing.T) {
 
 	// Create and push a test model with default org (ai/tag-test:latest)
 	modelRef := "ai/tag-test:latest"
-	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, int32ptr(2048))
 	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
 
 	// Pull the model using a simple reference
@@ -791,7 +791,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 	// Create and push a test model with default org (ai/rm-test:latest)
 	modelRef := "ai/rm-test:latest"
-	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, 2048)
+	modelID, hostFQDN, networkFQDN, digest := createAndPushTestModel(t, env.registryURL, modelRef, int32ptr(2048))
 	t.Logf("Test model pushed: %s (ID: %s) FQDN: %s Digest: %s", hostFQDN, modelID, networkFQDN, digest)
 
 	// Generate all reference test cases
@@ -842,9 +842,9 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	t.Run("remove multiple models", func(t *testing.T) {
 		// Create and push two different models
 		modelRef1 := "ai/rm-multi-1:latest"
-		modelID1, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef1, 2048)
+		modelID1, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef1, int32ptr(2048))
 		modelRef2 := "ai/rm-multi-2:latest"
-		modelID2, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef2, 2048)
+		modelID2, _, _, _ := createAndPushTestModel(t, env.registryURL, modelRef2, int32ptr(2048))
 
 		// Pull both models
 		t.Logf("Pulling first model: rm-multi-1")
@@ -1013,4 +1013,8 @@ func TestIntegration_RemoveModel(t *testing.T) {
 			t.Logf("✓ Correctly failed to remove with invalid reference: %v", err)
 		})
 	})
+}
+
+func int32ptr(n int32) *int32 {
+	return &n
 }

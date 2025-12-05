@@ -1040,7 +1040,7 @@ func TestWriteLightweight(t *testing.T) {
 		}
 
 		// Modify the model's config by changing context size
-		newContextSize := uint64(4096)
+		newContextSize := int32(4096)
 		modifiedModel := mutate.ContextSize(baseModel, newContextSize)
 
 		// Use WriteLightweight to write the modified model
@@ -1135,7 +1135,7 @@ func TestWriteLightweight(t *testing.T) {
 		}
 
 		// Create a variant with different config
-		newContextSize := uint64(8192)
+		newContextSize := int32(8192)
 		variant := mutate.ContextSize(baseModel, newContextSize)
 
 		// Use WriteLightweight with multiple tags
@@ -1213,7 +1213,7 @@ func TestWriteLightweight(t *testing.T) {
 		}
 
 		// Create a variant with different context size
-		newContextSize := uint64(2048)
+		newContextSize := int32(2048)
 		variant := mutate.ContextSize(baseModel, newContextSize)
 
 		// Use WriteLightweight for the variant
@@ -1271,7 +1271,7 @@ func TestWriteLightweight(t *testing.T) {
 
 		// Create multiple variants using WriteLightweight
 		for i := 1; i <= 3; i++ {
-			contextSize := uint64(1024 * i)
+			contextSize := int32(1024 * i)
 			variant := mutate.ContextSize(baseModel, contextSize)
 			tag := fmt.Sprintf("integrity-test:variant%d", i)
 			if err := s.WriteLightweight(variant, []string{tag}); err != nil {

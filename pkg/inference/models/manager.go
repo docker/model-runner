@@ -419,7 +419,7 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 	return nil
 }
 
-func (m *Manager) Package(ref string, tag string, contextSize uint64) error {
+func (m *Manager) Package(ref string, tag string, contextSize *int32) error {
 	// Create a builder from an existing model by getting the bundle first
 	// Since ModelArtifact interface is needed to work with the builder
 	bundle, err := m.distributionClient.GetBundle(ref)
@@ -440,8 +440,8 @@ func (m *Manager) Package(ref string, tag string, contextSize uint64) error {
 	}
 
 	// Apply context size if specified
-	if contextSize > 0 {
-		bldr = bldr.WithContextSize(contextSize)
+	if contextSize != nil {
+		bldr = bldr.WithContextSize(*contextSize)
 	}
 
 	// Get the built model artifact
