@@ -67,7 +67,7 @@ type Config struct {
 	Size         string            `json:"size,omitempty"`
 	GGUF         map[string]string `json:"gguf,omitempty"`
 	Safetensors  map[string]string `json:"safetensors,omitempty"`
-	ContextSize  *uint64           `json:"context_size,omitempty"`
+	ContextSize  *int32            `json:"context_size,omitempty"`
 }
 
 // Descriptor provides metadata about the provenance of the model.

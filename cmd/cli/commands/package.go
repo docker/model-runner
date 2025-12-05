@@ -284,9 +284,9 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	distClient := initResult.distClient
 
 	// Set context size
-	if opts.contextSize > 0 {
+	if cmd.Flags().Changed("context-size") {
 		cmd.PrintErrf("Setting context size %d\n", opts.contextSize)
-		pkg = pkg.WithContextSize(opts.contextSize)
+		pkg = pkg.WithContextSize(int32(opts.contextSize))
 	}
 
 	// Add license files

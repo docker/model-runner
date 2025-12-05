@@ -72,7 +72,7 @@ func TestGetArgs(t *testing.T) {
 				safetensorsPath: "/path/to/model",
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 8192,
+				ContextSize: int32ptr(8192),
 			},
 			expected: []string{
 				"serve",
@@ -88,11 +88,11 @@ func TestGetArgs(t *testing.T) {
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model",
 				runtimeConfig: types.Config{
-					ContextSize: ptrUint64(16384),
+					ContextSize: int32ptr(16384),
 				},
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 8192,
+				ContextSize: int32ptr(8192),
 			},
 			expected: []string{
 				"serve",
@@ -185,7 +185,7 @@ func TestGetArgs(t *testing.T) {
 				safetensorsPath: "/path/to/model",
 			},
 			config: &inference.BackendConfiguration{
-				ContextSize: 4096,
+				ContextSize: int32ptr(4096),
 				VLLM: &inference.VLLMConfig{
 					HFOverrides: inference.HFOverrides{
 						"model_type": "bert",
@@ -239,7 +239,7 @@ func TestGetMaxModelLen(t *testing.T) {
 		name          string
 		modelCfg      types.Config
 		backendCfg    *inference.BackendConfiguration
-		expectedValue *uint64
+		expectedValue *int32
 	}{
 		{
 			name:          "no config",
@@ -251,27 +251,27 @@ func TestGetMaxModelLen(t *testing.T) {
 			name:     "backend config only",
 			modelCfg: types.Config{},
 			backendCfg: &inference.BackendConfiguration{
-				ContextSize: 4096,
+				ContextSize: int32ptr(4096),
 			},
-			expectedValue: ptrUint64(4096),
+			expectedValue: int32ptr(4096),
 		},
 		{
 			name: "model config only",
 			modelCfg: types.Config{
-				ContextSize: ptrUint64(8192),
+				ContextSize: int32ptr(8192),
 			},
 			backendCfg:    nil,
-			expectedValue: ptrUint64(8192),
+			expectedValue: int32ptr(8192),
 		},
 		{
 			name: "model config takes precedence",
 			modelCfg: types.Config{
-				ContextSize: ptrUint64(16384),
+				ContextSize: int32ptr(16384),
 			},
 			backendCfg: &inference.BackendConfiguration{
-				ContextSize: 4096,
+				ContextSize: int32ptr(4096),
 			},
-			expectedValue: ptrUint64(16384),
+			expectedValue: int32ptr(16384),
 		},
 	}
 
@@ -287,6 +287,6 @@ func TestGetMaxModelLen(t *testing.T) {
 	}
 }
 
-func ptrUint64(v uint64) *uint64 {
-	return &v
+func int32ptr(n int32) *int32 {
+	return &n
 }

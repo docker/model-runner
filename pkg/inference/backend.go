@@ -57,12 +57,12 @@ type VLLMConfig struct {
 type LlamaCppConfig struct {
 	// ReasoningBudget sets the reasoning budget for reasoning models.
 	// Maps to llama.cpp's --reasoning-budget flag.
-	ReasoningBudget *int64 `json:"reasoning-budget,omitempty"`
+	ReasoningBudget *int32 `json:"reasoning-budget,omitempty"`
 }
 
 type BackendConfiguration struct {
 	// Shared configuration across all backends
-	ContextSize int64                      `json:"context-size,omitempty"`
+	ContextSize *int32                     `json:"context-size,omitempty"`
 	Speculative *SpeculativeDecodingConfig `json:"speculative,omitempty"`
 
 	// Backend-specific configuration

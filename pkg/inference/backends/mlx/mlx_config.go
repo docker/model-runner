@@ -65,15 +65,5 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 // Model config takes precedence over backend config.
 // Returns nil if neither is specified (MLX will use model defaults).
 func GetMaxTokens(modelCfg types.Config, backendCfg *inference.BackendConfiguration) *uint64 {
-	// Model config takes precedence
-	if modelCfg.ContextSize != nil {
-		return modelCfg.ContextSize
-	}
-	// else use backend config
-	if backendCfg != nil && backendCfg.ContextSize > 0 {
-		val := uint64(backendCfg.ContextSize)
-		return &val
-	}
-	// Return nil to let MLX use model defaults
 	return nil
 }

@@ -16,7 +16,7 @@ type model struct {
 	base            types.ModelArtifact
 	appended        []v1.Layer
 	configMediaType ggcr.MediaType
-	contextSize     *uint64
+	contextSize     *int32
 }
 
 func (m *model) Descriptor() (types.Descriptor, error) {

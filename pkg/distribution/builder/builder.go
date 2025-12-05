@@ -67,7 +67,7 @@ func (b *Builder) WithLicense(path string) (*Builder, error) {
 	}, nil
 }
 
-func (b *Builder) WithContextSize(size uint64) *Builder {
+func (b *Builder) WithContextSize(size int32) *Builder {
 	return &Builder{
 		model:          mutate.ContextSize(b.model, size),
 		originalLayers: b.originalLayers,

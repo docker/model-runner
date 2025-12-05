@@ -108,7 +108,7 @@ func TestContextSize(t *testing.T) {
 	if cfg2.ContextSize == nil {
 		t.Fatal("Expected non-nil context")
 	}
-	if *cfg2.ContextSize != uint64(2096) {
+	if *cfg2.ContextSize != 2096 {
 		t.Fatalf("Expected context size of 2096 got %d", *cfg2.ContextSize)
 	}
 }
