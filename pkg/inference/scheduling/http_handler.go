@@ -330,7 +330,9 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	configureRequest := ConfigureRequest{
-		ContextSize: -1,
+		BackendConfiguration: inference.BackendConfiguration{
+			ContextSize: -1,
+		},
 	}
 	if err := json.Unmarshal(body, &configureRequest); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)

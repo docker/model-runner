@@ -83,9 +83,11 @@ func newUpCommand() *cobra.Command {
 
 			for _, model := range models {
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
-					Model:       model,
-					ContextSize: ctxSize,
-					Speculative: speculativeConfig,
+					Model: model,
+					BackendConfiguration: inference.BackendConfiguration{
+						ContextSize: ctxSize,
+						Speculative: speculativeConfig,
+					},
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d"
 					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, err)

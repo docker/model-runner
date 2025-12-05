@@ -493,8 +493,10 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		// Empty prompt - preload the model
 		// ConfigureRunner is idempotent, so calling it again with the same context size is safe
 		configureRequest := scheduling.ConfigureRequest{
-			Model:       modelName,
-			ContextSize: ctxSize, // Use extracted value (or 0 for default)
+			Model: modelName,
+			BackendConfiguration: inference.BackendConfiguration{
+				ContextSize: ctxSize, // Use extracted value (or 0 for default)
+			},
 		}
 
 		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, r.UserAgent()+" (Ollama API)")

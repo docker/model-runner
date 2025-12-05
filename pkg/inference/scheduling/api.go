@@ -93,12 +93,7 @@ type UnloadResponse struct {
 
 // ConfigureRequest specifies per-model runtime configuration options.
 type ConfigureRequest struct {
-	Model       string                               `json:"model"`
-	ContextSize int64                                `json:"context-size,omitempty"`
-	Mode        *inference.BackendMode               `json:"mode,omitempty"`
-	Speculative *inference.SpeculativeDecodingConfig `json:"speculative,omitempty"`
-
-	// Backend-specific configuration
-	VLLM     *inference.VLLMConfig     `json:"vllm,omitempty"`
-	LlamaCpp *inference.LlamaCppConfig `json:"llamacpp,omitempty"`
+	Model string                 `json:"model"`
+	Mode  *inference.BackendMode `json:"mode,omitempty"`
+	inference.BackendConfiguration
 }
