@@ -15,3 +15,7 @@ func New(modelRuntimeInstallPath string) *GPUInfo {
 func (g *GPUInfo) GetVRAMSize() (uint64, error) {
 	return getVRAMSize(g.modelRuntimeInstallPath)
 }
+
+func (g *GPUInfo) HasSupportedAMDGPU() (bool, error) {
+	return hasSupportedAMDGPU()
+}
