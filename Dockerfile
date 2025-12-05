@@ -108,10 +108,34 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 
 RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
+# --- SGLang variant ---
+FROM llamacpp AS sglang
+
+ARG SGLANG_VERSION=0.4.0
+
+USER root
+
+RUN apt update && apt install -y python3 python3-venv python3-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/sglang-env && chown -R modelrunner:modelrunner /opt/sglang-env
+
+USER modelrunner
+
+# Install uv and SGLang as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/sglang-env \
+ && ~/.local/bin/uv pip install --python /opt/sglang-env/bin/python "sglang==${SGLANG_VERSION}"
+
+RUN /opt/sglang-env/bin/python -c "import sglang; print(sglang.__version__)" > /opt/sglang-env/version
+
 FROM llamacpp AS final-llamacpp
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
 
 FROM vllm AS final-vllm
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner
+
+FROM sglang AS final-sglang
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner

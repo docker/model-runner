@@ -15,6 +15,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
+	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/memory"
@@ -144,12 +145,23 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", mlx.Name, err)
 	}
 
+	sglangBackend, err := sglang.New(
+		log,
+		modelManager,
+		log.WithFields(logrus.Fields{"component": sglang.Name}),
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
+	}
+
 	scheduler := scheduling.NewScheduler(
 		log,
 		map[string]inference.Backend{
 			llamacpp.Name: llamaCppBackend,
 			vllm.Name:     vllmBackend,
 			mlx.Name:      mlxBackend,
+			sglang.Name:   sglangBackend,
 		},
 		llamaCppBackend,
 		modelManager,
