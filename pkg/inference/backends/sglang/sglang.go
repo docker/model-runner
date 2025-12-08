@@ -134,7 +134,10 @@ func (s *sglang) Run(ctx context.Context, socket, model string, modelRef string,
 
 	// Add served model name and weight version
 	if model != "" {
-		args = append(args, "--served-model-name", model)
+		// SGLang 0.5.6+ doesn't allow colons in served-model-name (reserved for LoRA syntax)
+		// Replace colons with underscores to sanitize the model name
+		sanitizedModel := strings.ReplaceAll(model, ":", "_")
+		args = append(args, "--served-model-name", sanitizedModel)
 	}
 	if modelRef != "" {
 		args = append(args, "--weight-version", modelRef)
