@@ -171,7 +171,7 @@ jobs:
         with:
           file: Dockerfile
           target: final-sglang
-          platforms: linux/amd64, linux/arm64
+          platforms: linux/amd64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=cuda"
