@@ -24,17 +24,6 @@ const (
 	reasoningBudgetUnlimited int32 = -1
 	// reasoningBudgetDisabled disables reasoning (0 tokens)
 	reasoningBudgetDisabled int32 = 0
-	// reasoningBudgetMedium represents a medium reasoning budget (1024 tokens)
-	reasoningBudgetMedium int32 = 1024
-	// reasoningBudgetLow represents a low reasoning budget (256 tokens)
-	reasoningBudgetLow int32 = 256
-)
-
-// Reasoning level string constants for the think parameter
-const (
-	reasoningLevelHigh   = "high"
-	reasoningLevelMedium = "medium"
-	reasoningLevelLow    = "low"
 )
 
 // HTTPHandler implements the Ollama API compatibility layer
@@ -775,10 +764,10 @@ func convertMessages(messages []Message) []map[string]interface{} {
 }
 
 // convertThinkToReasoningBudget converts the Ollama 'think' parameter to llama.cpp's 'reasoning_budget'.
-// The think parameter can be:
-// - bool: true (unlimited reasoning, -1) or false (no reasoning, 0)
-// - string: "high" (-1, unlimited), "medium" (1024 tokens), "low" (256 tokens)
-// Returns nil if think is nil or invalid, otherwise returns a pointer to the reasoning_budget value.
+// The think parameter must be a boolean:
+// - true: unlimited reasoning (-1)
+// - false: reasoning disabled (0)
+// Returns nil if think is nil or not a boolean.
 func convertThinkToReasoningBudget(think interface{}) *int32 {
 	if think == nil {
 		return nil
@@ -787,26 +776,16 @@ func convertThinkToReasoningBudget(think interface{}) *int32 {
 	// Helper to create a pointer to an int32 value
 	ptr := func(v int32) *int32 { return &v }
 
-	switch v := think.(type) {
-	case bool:
+	// Only accept boolean values
+	if v, ok := think.(bool); ok {
 		if v {
 			return ptr(reasoningBudgetUnlimited)
 		}
 		return ptr(reasoningBudgetDisabled)
-	case string:
-		switch strings.ToLower(v) {
-		case reasoningLevelHigh:
-			return ptr(reasoningBudgetUnlimited)
-		case reasoningLevelMedium:
-			return ptr(reasoningBudgetMedium)
-		case reasoningLevelLow:
-			return ptr(reasoningBudgetLow)
-		default:
-			return nil // Invalid string value
-		}
-	default:
-		return nil // Invalid type
 	}
+
+	// Invalid type - return nil
+	return nil
 }
 
 // convertToInt32 converts various numeric types to int32

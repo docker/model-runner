@@ -15,8 +15,6 @@ import (
 const (
 	reasoningBudgetUnlimited int32 = -1
 	reasoningBudgetDisabled  int32 = 0
-	reasoningBudgetMedium    int32 = 1024
-	reasoningBudgetLow       int32 = 256
 )
 
 // Int32PtrValue implements pflag.Value interface for *int32 pointers
@@ -68,10 +66,8 @@ type ConfigureFlags struct {
 	MinAcceptanceRate float64
 	// vLLM-specific flags
 	HFOverrides string
-	// llama.cpp-specific flags
-	ReasoningBudget *int32
-	// Think parameter for reasoning models (true/false/high/medium/low)
-	Think string
+	// Think parameter for reasoning models (boolean flag)
+	Think bool
 }
 
 // RegisterFlags registers all configuration flags on the given cobra command.
@@ -82,9 +78,8 @@ func (f *ConfigureFlags) RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&f.NumTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	cmd.Flags().Float64Var(&f.MinAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	cmd.Flags().StringVar(&f.HFOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
-	cmd.Flags().Var(NewInt32PtrValue(&f.ReasoningBudget), "reasoning-budget", "reasoning budget for reasoning models - llama.cpp only")
+	cmd.Flags().BoolVar(&f.Think, "think", true, "enable reasoning mode for thinking models")
 	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking)")
-	cmd.Flags().StringVar(&f.Think, "think", "", "enable reasoning mode for thinking models (true/false/high/medium/low)")
 }
 
 // BuildConfigureRequest builds a scheduling.ConfigureRequest from the flags.
@@ -122,17 +117,12 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 		req.VLLM.HFOverrides = hfo
 	}
 
-	// Determine reasoning budget - either from --reasoning-budget or --think
-	reasoningBudget, err := f.getReasoningBudget()
-	if err != nil {
-		return req, err
+	// Set reasoning budget from --think flag (always configured)
+	reasoningBudget := f.getReasoningBudget()
+	if req.LlamaCpp == nil {
+		req.LlamaCpp = &inference.LlamaCppConfig{}
 	}
-	if reasoningBudget != nil {
-		if req.LlamaCpp == nil {
-			req.LlamaCpp = &inference.LlamaCppConfig{}
-		}
-		req.LlamaCpp.ReasoningBudget = reasoningBudget
-	}
+	req.LlamaCpp.ReasoningBudget = reasoningBudget
 
 	// Parse mode if provided
 	if f.Mode != "" {
@@ -146,25 +136,14 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 	return req, nil
 }
 
-// getReasoningBudget determines the reasoning budget from either --reasoning-budget or --think flags.
-// Returns an error if both flags are provided, as they are mutually exclusive.
-func (f *ConfigureFlags) getReasoningBudget() (*int32, error) {
-	// Check for mutual exclusivity - both flags cannot be set at the same time
-	if f.ReasoningBudget != nil && f.Think != "" {
-		return nil, fmt.Errorf("--think and --reasoning-budget are mutually exclusive; please use only one")
+// getReasoningBudget determines the reasoning budget from the --think flag.
+// Default is true (reasoning enabled). Use --no-think to disable.
+// Returns -1 (unlimited) when enabled, 0 when disabled. Always returns a value.
+func (f *ConfigureFlags) getReasoningBudget() *int32 {
+	if f.Think {
+		return ptr(reasoningBudgetUnlimited) // -1: reasoning enabled (unlimited)
 	}
-
-	// If reasoning-budget is explicitly set, use it
-	if f.ReasoningBudget != nil {
-		return f.ReasoningBudget, nil
-	}
-
-	// Otherwise, parse think parameter
-	if f.Think != "" {
-		return parseThinkToReasoningBudget(f.Think)
-	}
-
-	return nil, nil
+	return ptr(reasoningBudgetDisabled) // 0: reasoning disabled
 }
 
 // parseBackendMode parses a string mode value into an inference.BackendMode.
@@ -178,36 +157,5 @@ func parseBackendMode(mode string) (inference.BackendMode, error) {
 		return inference.BackendModeReranking, nil
 	default:
 		return inference.BackendModeCompletion, fmt.Errorf("invalid mode %q: must be one of completion, embedding, reranking", mode)
-	}
-}
-
-// parseThinkToReasoningBudget converts the think parameter string to a reasoning budget value.
-// Accepts: "true", "false", "high", "medium", "low"
-// Returns:
-//   - nil for empty string or "true" (use server default, which is unlimited)
-//   - -1 for "high" (explicitly set unlimited)
-//   - 0 for "false" (disable thinking)
-//   - 1024 for "medium"
-//   - 256 for "low"
-func parseThinkToReasoningBudget(think string) (*int32, error) {
-	if think == "" {
-		return nil, nil
-	}
-
-	switch strings.ToLower(think) {
-	case "true":
-		// Use nil to let the server use its default (currently unlimited)
-		return nil, nil
-	case "high":
-		// Explicitly set unlimited reasoning budget
-		return ptr(reasoningBudgetUnlimited), nil
-	case "false":
-		return ptr(reasoningBudgetDisabled), nil
-	case "medium":
-		return ptr(reasoningBudgetMedium), nil
-	case "low":
-		return ptr(reasoningBudgetLow), nil
-	default:
-		return nil, fmt.Errorf("invalid think value %q: must be one of true, false, high, medium, low", think)
 	}
 }

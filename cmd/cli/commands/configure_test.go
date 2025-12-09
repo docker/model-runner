@@ -4,89 +4,6 @@ import (
 	"testing"
 )
 
-func TestConfigureCmdReasoningBudgetFlag(t *testing.T) {
-	// Create the configure command
-	cmd := newConfigureCmd()
-
-	// Verify the --reasoning-budget flag exists
-	reasoningBudgetFlag := cmd.Flags().Lookup("reasoning-budget")
-	if reasoningBudgetFlag == nil {
-		t.Fatal("--reasoning-budget flag not found")
-	}
-
-	// Verify the default value is empty (nil pointer)
-	if reasoningBudgetFlag.DefValue != "" {
-		t.Errorf("Expected default reasoning-budget value to be '' (nil), got '%s'", reasoningBudgetFlag.DefValue)
-	}
-
-	// Verify the flag type
-	if reasoningBudgetFlag.Value.Type() != "int32" {
-		t.Errorf("Expected reasoning-budget flag type to be 'int32', got '%s'", reasoningBudgetFlag.Value.Type())
-	}
-}
-
-func TestConfigureCmdReasoningBudgetFlagChanged(t *testing.T) {
-	tests := []struct {
-		name          string
-		setValue      string
-		expectChanged bool
-		expectedValue string
-	}{
-		{
-			name:          "flag not set - should not be changed",
-			setValue:      "",
-			expectChanged: false,
-			expectedValue: "",
-		},
-		{
-			name:          "flag set to 0 (disable reasoning) - should be changed",
-			setValue:      "0",
-			expectChanged: true,
-			expectedValue: "0",
-		},
-		{
-			name:          "flag set to -1 (unlimited) - should be changed",
-			setValue:      "-1",
-			expectChanged: true,
-			expectedValue: "-1",
-		},
-		{
-			name:          "flag set to positive value - should be changed",
-			setValue:      "1024",
-			expectChanged: true,
-			expectedValue: "1024",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a fresh configure command for each test
-			cmd := newConfigureCmd()
-
-			// Only set the flag if setValue is not empty
-			if tt.setValue != "" {
-				err := cmd.Flags().Set("reasoning-budget", tt.setValue)
-				if err != nil {
-					t.Fatalf("Failed to set reasoning-budget flag: %v", err)
-				}
-			}
-
-			// Check if the flag was marked as changed
-			isChanged := cmd.Flags().Changed("reasoning-budget")
-			if isChanged != tt.expectChanged {
-				t.Errorf("Expected Changed() = %v, got %v", tt.expectChanged, isChanged)
-			}
-
-			// Verify the value using String() method
-			flag := cmd.Flags().Lookup("reasoning-budget")
-			value := flag.Value.String()
-			if value != tt.expectedValue {
-				t.Errorf("Expected value = %s, got %s", tt.expectedValue, value)
-			}
-		})
-	}
-}
-
 func TestConfigureCmdHfOverridesFlag(t *testing.T) {
 	// Create the configure command
 	cmd := newConfigureCmd()
@@ -189,102 +106,70 @@ func TestConfigureCmdThinkFlag(t *testing.T) {
 		t.Fatal("--think flag not found")
 	}
 
-	// Verify the default value is empty
-	if thinkFlag.DefValue != "" {
-		t.Errorf("Expected default think value to be empty, got '%s'", thinkFlag.DefValue)
+	// Verify the default value is true (reasoning enabled by default)
+	if thinkFlag.DefValue != "true" {
+		t.Errorf("Expected default think value to be 'true', got '%s'", thinkFlag.DefValue)
 	}
 
 	// Verify the flag type
-	if thinkFlag.Value.Type() != "string" {
-		t.Errorf("Expected think flag type to be 'string', got '%s'", thinkFlag.Value.Type())
+	if thinkFlag.Value.Type() != "bool" {
+		t.Errorf("Expected think flag type to be 'bool', got '%s'", thinkFlag.Value.Type())
+	}
+
+	// Test setting the flag to true
+	err := cmd.Flags().Set("think", "true")
+	if err != nil {
+		t.Errorf("Failed to set think flag to true: %v", err)
+	}
+
+	// Verify the value was set
+	if thinkFlag.Value.String() != "true" {
+		t.Errorf("Expected think flag value to be 'true', got '%s'", thinkFlag.Value.String())
 	}
 }
 
-// TestThinkAndReasoningBudgetMutualExclusivity verifies that --think and --reasoning-budget
-// cannot be used together
-func TestThinkAndReasoningBudgetMutualExclusivity(t *testing.T) {
+func TestThinkFlagBehavior(t *testing.T) {
 	tests := []struct {
-		name            string
-		think           string
-		reasoningBudget *int32
-		expectError     bool
-		errorContains   string
+		name           string
+		thinkValue     bool
+		expectedBudget int32
 	}{
 		{
-			name:            "only think flag set",
-			think:           "high",
-			reasoningBudget: nil,
-			expectError:     false,
+			name:           "default - enabled (true)",
+			thinkValue:     true,
+			expectedBudget: -1,
 		},
 		{
-			name:            "only reasoning-budget flag set",
-			think:           "",
-			reasoningBudget: ptr(1024),
-			expectError:     false,
+			name:           "explicitly set to true",
+			thinkValue:     true,
+			expectedBudget: -1,
 		},
 		{
-			name:            "neither flag set",
-			think:           "",
-			reasoningBudget: nil,
-			expectError:     false,
-		},
-		{
-			name:            "both flags set - should error",
-			think:           "high",
-			reasoningBudget: ptr(1024),
-			expectError:     true,
-			errorContains:   "mutually exclusive",
-		},
-		{
-			name:            "both flags set with think=false - should error",
-			think:           "false",
-			reasoningBudget: ptr(0),
-			expectError:     true,
-			errorContains:   "mutually exclusive",
-		},
-		{
-			name:            "both flags set with think=medium - should error",
-			think:           "medium",
-			reasoningBudget: ptr(-1),
-			expectError:     true,
-			errorContains:   "mutually exclusive",
+			name:           "explicitly set to false (--no-think)",
+			thinkValue:     false,
+			expectedBudget: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			flags := ConfigureFlags{
-				Think:           tt.think,
-				ReasoningBudget: tt.reasoningBudget,
+				Think: tt.thinkValue,
 			}
 
-			_, err := flags.BuildConfigureRequest("test-model")
+			req, err := flags.BuildConfigureRequest("test-model")
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
 
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error when both --think and --reasoning-budget are set, but got nil")
-				} else if tt.errorContains != "" && !contains(err.Error(), tt.errorContains) {
-					t.Errorf("Expected error to contain %q, got %q", tt.errorContains, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
+			// Reasoning budget should always be set
+			if req.LlamaCpp == nil || req.LlamaCpp.ReasoningBudget == nil {
+				t.Fatal("Expected reasoning budget to always be set")
+			}
+
+			if *req.LlamaCpp.ReasoningBudget != tt.expectedBudget {
+				t.Errorf("Expected reasoning budget to be %d, got %d", tt.expectedBudget, *req.LlamaCpp.ReasoningBudget)
 			}
 		})
 	}
-}
-
-// contains is a helper function to check if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

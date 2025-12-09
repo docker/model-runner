@@ -239,25 +239,7 @@ func TestGetArgs(t *testing.T) {
 			),
 		},
 		{
-			name: "reasoning budget from backend config",
-			mode: inference.BackendModeCompletion,
-			bundle: &fakeBundle{
-				ggufPath: modelPath,
-			},
-			config: &inference.BackendConfiguration{
-				LlamaCpp: &inference.LlamaCppConfig{
-					ReasoningBudget: int32ptr(1024),
-				},
-			},
-			expected: append(slices.Clone(baseArgs),
-				"--model", modelPath,
-				"--host", socket,
-				"--reasoning-budget", "1024",
-				"--jinja",
-			),
-		},
-		{
-			name: "reasoning budget with negative value (unlimited)",
+			name: "reasoning budget enabled (-1 unlimited)",
 			mode: inference.BackendModeCompletion,
 			bundle: &fakeBundle{
 				ggufPath: modelPath,
@@ -271,6 +253,24 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--reasoning-budget", "-1",
+				"--jinja",
+			),
+		},
+		{
+			name: "reasoning budget disabled (0)",
+			mode: inference.BackendModeCompletion,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+			},
+			config: &inference.BackendConfiguration{
+				LlamaCpp: &inference.LlamaCppConfig{
+					ReasoningBudget: int32ptr(0),
+				},
+			},
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--reasoning-budget", "0",
 				"--jinja",
 			),
 		},
