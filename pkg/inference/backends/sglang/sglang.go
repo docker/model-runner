@@ -98,14 +98,14 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	s.pythonPath = pythonPath
 
 	// Check if sglang is installed
-	if err := exec.Command(pythonPath, "-c", "import sglang").Run(); err != nil {
+	if err := s.pythonCmd("-c", "import sglang").Run(); err != nil {
 		s.status = "sglang package not installed"
 		s.log.Warnf("sglang package not found. Install with: uv pip install sglang[all]")
 		return ErrSGLangNotFound
 	}
 
 	// Get version
-	output, err := exec.Command(pythonPath, "-c", "import sglang; print(sglang.__version__)").Output()
+	output, err := s.pythonCmd("-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
 		s.log.Warnf("could not get sglang version: %v", err)
 		s.status = "running sglang version: unknown"
@@ -187,4 +187,16 @@ func (s *sglang) GetRequiredMemoryForModel(_ context.Context, _ string, _ *infer
 	// Returning an error prevents the scheduler from making incorrect decisions based
 	// on placeholder values.
 	return inference.RequiredMemory{}, ErrNotImplemented
+}
+
+// pythonCmd creates an exec.Cmd that runs python3 with the given arguments.
+func (s *sglang) pythonCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command("python3", args...)
+
+	// Override the actual binary path if we discovered a specific interpreter.
+	if s.pythonPath != "" && s.pythonPath != "python3" {
+		cmd.Path = s.pythonPath
+	}
+
+	return cmd
 }
