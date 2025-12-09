@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/pkg/inference"
@@ -11,14 +12,45 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Int32PtrValue implements pflag.Value interface for *int32 pointers
+// This allows flags to have a nil default value instead of 0
+type Int32PtrValue struct {
+	ptr **int32
+}
+
+func NewInt32PtrValue(p **int32) *Int32PtrValue {
+	return &Int32PtrValue{ptr: p}
+}
+
+func (v *Int32PtrValue) String() string {
+	if v.ptr == nil || *v.ptr == nil {
+		return ""
+	}
+	return strconv.FormatInt(int64(**v.ptr), 10)
+}
+
+func (v *Int32PtrValue) Set(s string) error {
+	val, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return err
+	}
+	i32 := int32(val)
+	*v.ptr = &i32
+	return nil
+}
+
+func (v *Int32PtrValue) Type() string {
+	return "int32"
+}
+
 func newConfigureCmd() *cobra.Command {
 	var opts scheduling.ConfigureRequest
 	var draftModel string
 	var numTokens int
 	var minAcceptanceRate float64
 	var hfOverrides string
-	var contextSize int64
-	var reasoningBudget int64
+	var contextSize *int32
+	var reasoningBudget *int32
 
 	c := &cobra.Command{
 		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--reasoning-budget=<n>] MODEL",
@@ -35,10 +67,8 @@ func newConfigureCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("context-size") {
-				v := int32(contextSize)
-				opts.ContextSize = &v
-			}
+			// contextSize is nil by default, only set if user provided the flag
+			opts.ContextSize = contextSize
 			// Build the speculative config if any speculative flags are set
 			if draftModel != "" || numTokens > 0 || minAcceptanceRate > 0 {
 				opts.Speculative = &inference.SpeculativeDecodingConfig{
@@ -62,26 +92,24 @@ func newConfigureCmd() *cobra.Command {
 				}
 				opts.VLLM.HFOverrides = hfo
 			}
-			// Set llama.cpp-specific reasoning budget if explicitly provided
-			// Note: We check if flag was changed rather than checking value > 0
-			// because 0 is a valid value (disables reasoning) and -1 means unlimited
-			if cmd.Flags().Changed("reasoning-budget") {
+			// Set llama.cpp-specific reasoning budget if provided
+			// reasoningBudget is nil by default, only set if user provided the flag
+			if reasoningBudget != nil {
 				if opts.LlamaCpp == nil {
 					opts.LlamaCpp = &inference.LlamaCppConfig{}
 				}
-				v := int32(reasoningBudget)
-				opts.LlamaCpp.ReasoningBudget = &v
+				opts.LlamaCpp.ReasoningBudget = reasoningBudget
 			}
 			return desktopClient.ConfigureBackend(opts)
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, -1),
 	}
 
-	c.Flags().Int64Var(&contextSize, "context-size", 0, "context size (in tokens)")
+	c.Flags().Var(NewInt32PtrValue(&contextSize), "context-size", "context size (in tokens)")
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	c.Flags().StringVar(&hfOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
-	c.Flags().Int64Var(&reasoningBudget, "reasoning-budget", 0, "reasoning budget for reasoning models - llama.cpp only")
+	c.Flags().Var(NewInt32PtrValue(&reasoningBudget), "reasoning-budget", "reasoning budget for reasoning models - llama.cpp only")
 	return c
 }

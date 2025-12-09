@@ -14,14 +14,14 @@ func TestConfigureCmdReasoningBudgetFlag(t *testing.T) {
 		t.Fatal("--reasoning-budget flag not found")
 	}
 
-	// Verify the default value is 0
-	if reasoningBudgetFlag.DefValue != "0" {
-		t.Errorf("Expected default reasoning-budget value to be '0', got '%s'", reasoningBudgetFlag.DefValue)
+	// Verify the default value is empty (nil pointer)
+	if reasoningBudgetFlag.DefValue != "" {
+		t.Errorf("Expected default reasoning-budget value to be '' (nil), got '%s'", reasoningBudgetFlag.DefValue)
 	}
 
 	// Verify the flag type
-	if reasoningBudgetFlag.Value.Type() != "int64" {
-		t.Errorf("Expected reasoning-budget flag type to be 'int64', got '%s'", reasoningBudgetFlag.Value.Type())
+	if reasoningBudgetFlag.Value.Type() != "int32" {
+		t.Errorf("Expected reasoning-budget flag type to be 'int32', got '%s'", reasoningBudgetFlag.Value.Type())
 	}
 }
 
@@ -30,31 +30,31 @@ func TestConfigureCmdReasoningBudgetFlagChanged(t *testing.T) {
 		name          string
 		setValue      string
 		expectChanged bool
-		expectedValue int64
+		expectedValue string
 	}{
 		{
 			name:          "flag not set - should not be changed",
 			setValue:      "",
 			expectChanged: false,
-			expectedValue: 0,
+			expectedValue: "",
 		},
 		{
 			name:          "flag set to 0 (disable reasoning) - should be changed",
 			setValue:      "0",
 			expectChanged: true,
-			expectedValue: 0,
+			expectedValue: "0",
 		},
 		{
 			name:          "flag set to -1 (unlimited) - should be changed",
 			setValue:      "-1",
 			expectChanged: true,
-			expectedValue: -1,
+			expectedValue: "-1",
 		},
 		{
 			name:          "flag set to positive value - should be changed",
 			setValue:      "1024",
 			expectChanged: true,
-			expectedValue: 1024,
+			expectedValue: "1024",
 		},
 	}
 
@@ -77,13 +77,11 @@ func TestConfigureCmdReasoningBudgetFlagChanged(t *testing.T) {
 				t.Errorf("Expected Changed() = %v, got %v", tt.expectChanged, isChanged)
 			}
 
-			// Verify the value
-			value, err := cmd.Flags().GetInt64("reasoning-budget")
-			if err != nil {
-				t.Fatalf("Failed to get reasoning-budget flag value: %v", err)
-			}
+			// Verify the value using String() method
+			flag := cmd.Flags().Lookup("reasoning-budget")
+			value := flag.Value.String()
 			if value != tt.expectedValue {
-				t.Errorf("Expected value = %d, got %d", tt.expectedValue, value)
+				t.Errorf("Expected value = %s, got %s", tt.expectedValue, value)
 			}
 		})
 	}
@@ -120,9 +118,9 @@ func TestConfigureCmdContextSizeFlag(t *testing.T) {
 		t.Fatal("--context-size flag not found")
 	}
 
-	// Verify the default value is -1 (indicating not set)
-	if contextSizeFlag.DefValue != "-1" {
-		t.Errorf("Expected default context-size value to be '-1', got '%s'", contextSizeFlag.DefValue)
+	// Verify the default value is empty (nil pointer)
+	if contextSizeFlag.DefValue != "" {
+		t.Errorf("Expected default context-size value to be '' (nil), got '%s'", contextSizeFlag.DefValue)
 	}
 
 	// Test setting the flag value
@@ -131,14 +129,10 @@ func TestConfigureCmdContextSizeFlag(t *testing.T) {
 		t.Errorf("Failed to set context-size flag: %v", err)
 	}
 
-	// Verify the value was set
-	contextSizeValue, err := cmd.Flags().GetInt64("context-size")
-	if err != nil {
-		t.Errorf("Failed to get context-size flag value: %v", err)
-	}
-
-	if contextSizeValue != 8192 {
-		t.Errorf("Expected context-size flag value to be 8192, got %d", contextSizeValue)
+	// Verify the value was set using String() method
+	contextSizeValue := contextSizeFlag.Value.String()
+	if contextSizeValue != "8192" {
+		t.Errorf("Expected context-size flag value to be '8192', got '%s'", contextSizeValue)
 	}
 }
 

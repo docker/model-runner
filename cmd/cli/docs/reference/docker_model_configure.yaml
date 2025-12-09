@@ -6,8 +6,7 @@ pname: docker model
 plink: docker_model.yaml
 options:
     - option: context-size
-      value_type: int64
-      default_value: "-1"
+      value_type: int32
       description: context size (in tokens)
       deprecated: false
       hidden: false
@@ -25,8 +24,7 @@ options:
       kubernetes: false
       swarm: false
     - option: reasoning-budget
-      value_type: int64
-      default_value: "0"
+      value_type: int32
       description: reasoning budget for reasoning models - llama.cpp only
       deprecated: false
       hidden: false
