@@ -106,9 +106,9 @@ func TestConfigureCmdThinkFlag(t *testing.T) {
 		t.Fatal("--think flag not found")
 	}
 
-	// Verify the default value is true (reasoning enabled by default)
-	if thinkFlag.DefValue != "true" {
-		t.Errorf("Expected default think value to be 'true', got '%s'", thinkFlag.DefValue)
+	// Verify the default value is empty
+	if thinkFlag.DefValue != "" {
+		t.Errorf("Expected default think value to be empty (nil), got '%s'", thinkFlag.DefValue)
 	}
 
 	// Verify the flag type
@@ -129,24 +129,30 @@ func TestConfigureCmdThinkFlag(t *testing.T) {
 }
 
 func TestThinkFlagBehavior(t *testing.T) {
+	// Helper to create bool pointer
+	boolPtr := func(b bool) *bool { return &b }
+
 	tests := []struct {
 		name           string
-		thinkValue     bool
+		thinkValue     *bool
+		expectBudget   bool
 		expectedBudget int32
 	}{
 		{
-			name:           "default - enabled (true)",
-			thinkValue:     true,
+			name:         "default - not set (nil)",
+			thinkValue:   nil,
+			expectBudget: false,
+		},
+		{
+			name:           "explicitly set to true (--think)",
+			thinkValue:     boolPtr(true),
+			expectBudget:   true,
 			expectedBudget: -1,
 		},
 		{
-			name:           "explicitly set to true",
-			thinkValue:     true,
-			expectedBudget: -1,
-		},
-		{
-			name:           "explicitly set to false (--no-think)",
-			thinkValue:     false,
+			name:           "explicitly set to false (--think=false)",
+			thinkValue:     boolPtr(false),
+			expectBudget:   true,
 			expectedBudget: 0,
 		},
 	}
@@ -162,13 +168,19 @@ func TestThinkFlagBehavior(t *testing.T) {
 				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			// Reasoning budget should always be set
-			if req.LlamaCpp == nil || req.LlamaCpp.ReasoningBudget == nil {
-				t.Fatal("Expected reasoning budget to always be set")
-			}
-
-			if *req.LlamaCpp.ReasoningBudget != tt.expectedBudget {
-				t.Errorf("Expected reasoning budget to be %d, got %d", tt.expectedBudget, *req.LlamaCpp.ReasoningBudget)
+			if tt.expectBudget {
+				// Reasoning budget should be set
+				if req.LlamaCpp == nil || req.LlamaCpp.ReasoningBudget == nil {
+					t.Fatal("Expected reasoning budget to be set")
+				}
+				if *req.LlamaCpp.ReasoningBudget != tt.expectedBudget {
+					t.Errorf("Expected reasoning budget to be %d, got %d", tt.expectedBudget, *req.LlamaCpp.ReasoningBudget)
+				}
+			} else {
+				// Reasoning budget should NOT be set
+				if req.LlamaCpp != nil && req.LlamaCpp.ReasoningBudget != nil {
+					t.Errorf("Expected reasoning budget to be nil when not set, got %d", *req.LlamaCpp.ReasoningBudget)
+				}
 			}
 		})
 	}

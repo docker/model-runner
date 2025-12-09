@@ -49,6 +49,41 @@ func (v *Int32PtrValue) Type() string {
 	return "int32"
 }
 
+// BoolPtrValue implements pflag.Value interface for *bool pointers
+// This allows flags to have a nil default value to detect if explicitly set
+type BoolPtrValue struct {
+	ptr **bool
+}
+
+// NewBoolPtrValue creates a new BoolPtrValue for the given pointer
+func NewBoolPtrValue(p **bool) *BoolPtrValue {
+	return &BoolPtrValue{ptr: p}
+}
+
+func (v *BoolPtrValue) String() string {
+	if v.ptr == nil || *v.ptr == nil {
+		return ""
+	}
+	return strconv.FormatBool(**v.ptr)
+}
+
+func (v *BoolPtrValue) Set(s string) error {
+	val, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	*v.ptr = &val
+	return nil
+}
+
+func (v *BoolPtrValue) Type() string {
+	return "bool"
+}
+
+func (v *BoolPtrValue) IsBoolFlag() bool {
+	return true
+}
+
 // ptr is a helper function to create a pointer to int32
 func ptr(v int32) *int32 {
 	return &v
@@ -66,19 +101,18 @@ type ConfigureFlags struct {
 	MinAcceptanceRate float64
 	// vLLM-specific flags
 	HFOverrides string
-	// Think parameter for reasoning models (boolean flag)
-	Think bool
+	// Think parameter for reasoning models
+	Think *bool
 }
 
 // RegisterFlags registers all configuration flags on the given cobra command.
-// This ensures both configure and compose commands have the same flags.
 func (f *ConfigureFlags) RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().Var(NewInt32PtrValue(&f.ContextSize), "context-size", "context size (in tokens)")
 	cmd.Flags().StringVar(&f.DraftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	cmd.Flags().IntVar(&f.NumTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	cmd.Flags().Float64Var(&f.MinAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	cmd.Flags().StringVar(&f.HFOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
-	cmd.Flags().BoolVar(&f.Think, "think", true, "enable reasoning mode for thinking models")
+	cmd.Flags().Var(NewBoolPtrValue(&f.Think), "think", "enable reasoning mode for thinking models")
 	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking)")
 }
 
@@ -117,12 +151,14 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 		req.VLLM.HFOverrides = hfo
 	}
 
-	// Set reasoning budget from --think flag (always configured)
+	// Set reasoning budget from --think flag
 	reasoningBudget := f.getReasoningBudget()
-	if req.LlamaCpp == nil {
-		req.LlamaCpp = &inference.LlamaCppConfig{}
+	if reasoningBudget != nil {
+		if req.LlamaCpp == nil {
+			req.LlamaCpp = &inference.LlamaCppConfig{}
+		}
+		req.LlamaCpp.ReasoningBudget = reasoningBudget
 	}
-	req.LlamaCpp.ReasoningBudget = reasoningBudget
 
 	// Parse mode if provided
 	if f.Mode != "" {
@@ -137,12 +173,19 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 }
 
 // getReasoningBudget determines the reasoning budget from the --think flag.
-// Default is true (reasoning enabled). Use --no-think to disable.
-// Returns -1 (unlimited) when enabled, 0 when disabled. Always returns a value.
+// Returns nil if flag not set
+// Returns -1 (unlimited) when --think or --think=true.
+// Returns 0 (disabled) when --think=false.
 func (f *ConfigureFlags) getReasoningBudget() *int32 {
-	if f.Think {
+	// If Think is nil, flag was not set - don't configure
+	if f.Think == nil {
+		return nil
+	}
+	// If explicitly set to true, enable reasoning (unlimited)
+	if *f.Think {
 		return ptr(reasoningBudgetUnlimited) // -1: reasoning enabled (unlimited)
 	}
+	// If explicitly set to false, disable reasoning
 	return ptr(reasoningBudgetDisabled) // 0: reasoning disabled
 }
 

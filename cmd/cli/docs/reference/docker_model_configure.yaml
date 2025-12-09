@@ -63,7 +63,6 @@ options:
       swarm: false
     - option: think
       value_type: bool
-      default_value: "true"
       description: enable reasoning mode for thinking models
       deprecated: false
       hidden: false
