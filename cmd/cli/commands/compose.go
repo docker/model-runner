@@ -34,19 +34,6 @@ func newComposeCmd() *cobra.Command {
 	return c
 }
 
-// Reasoning budget constants for the think parameter conversion
-const (
-	reasoningBudgetUnlimited int32 = -1
-	reasoningBudgetDisabled  int32 = 0
-	reasoningBudgetMedium    int32 = 1024
-	reasoningBudgetLow       int32 = 256
-)
-
-// ptr is a helper function to create a pointer to int32
-func ptr(v int32) *int32 {
-	return &v
-}
-
 func newUpCommand() *cobra.Command {
 	var models []string
 	var ctxSize int64
@@ -54,8 +41,6 @@ func newUpCommand() *cobra.Command {
 	var draftModel string
 	var numTokens int
 	var minAcceptanceRate float64
-	var mode string
-	var think string
 	c := &cobra.Command{
 		Use: "up",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -81,7 +66,7 @@ func newUpCommand() *cobra.Command {
 				return err
 			}
 
-			if cmd.Flags().Changed("context-size") {
+			if ctxSize > 0 {
 				sendInfo(fmt.Sprintf("Setting context size to %d", ctxSize))
 			}
 
@@ -96,52 +81,14 @@ func newUpCommand() *cobra.Command {
 				sendInfo(fmt.Sprintf("Enabling speculative decoding with draft model: %s", draftModel))
 			}
 
-			// Parse mode if provided
-			var backendMode *inference.BackendMode
-			if mode != "" {
-				parsedMode, err := parseBackendMode(mode)
-				if err != nil {
-					_ = sendError(err.Error())
-					return err
-				}
-				backendMode = &parsedMode
-				sendInfo(fmt.Sprintf("Setting backend mode to %s", mode))
-			}
-
-			// Parse think parameter for reasoning budget
-			var reasoningBudget *int32
-			if think != "" {
-				budget, err := parseThinkToReasoningBudget(think)
-				if err != nil {
-					_ = sendError(err.Error())
-					return err
-				}
-				reasoningBudget = budget
-				sendInfo(fmt.Sprintf("Setting think mode to %s", think))
-			}
-
 			for _, model := range models {
-				configuration := inference.BackendConfiguration{
-					Speculative: speculativeConfig,
-				}
-				if cmd.Flags().Changed("context-size") {
-					// TODO is the context size the same for all models?
-					v := int32(ctxSize)
-					configuration.ContextSize = &v
-				}
-
-				// Set llama.cpp-specific reasoning budget if provided
-				if reasoningBudget != nil {
-					if configuration.LlamaCpp == nil {
-						configuration.LlamaCpp = &inference.LlamaCppConfig{}
-					}
-					configuration.LlamaCpp.ReasoningBudget = reasoningBudget
-				}
-
+				size := int32(ctxSize)
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
-					Model:                model,
-					Mode:                 backendMode,
-					BackendConfiguration: configuration,
+					Model: model,
+					BackendConfiguration: inference.BackendConfiguration{
+						ContextSize: &size,
+						Speculative: speculativeConfig,
+					},
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d"
 					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, err)
@@ -171,55 +118,8 @@ func newUpCommand() *cobra.Command {
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
-	c.Flags().StringVar(&mode, "mode", "", "backend operation mode (completion, embedding, reranking)")
-	c.Flags().StringVar(&think, "think", "", "enable reasoning mode for thinking models (true/false/high/medium/low)")
 	_ = c.MarkFlagRequired("model")
 	return c
-}
-
-// parseBackendMode parses a string mode value into an inference.BackendMode.
-func parseBackendMode(mode string) (inference.BackendMode, error) {
-	switch strings.ToLower(mode) {
-	case "completion":
-		return inference.BackendModeCompletion, nil
-	case "embedding":
-		return inference.BackendModeEmbedding, nil
-	case "reranking":
-		return inference.BackendModeReranking, nil
-	default:
-		return inference.BackendModeCompletion, fmt.Errorf("invalid mode %q: must be one of completion, embedding, reranking", mode)
-	}
-}
-
-// parseThinkToReasoningBudget converts the think parameter string to a reasoning budget value.
-// Accepts: "true", "false", "high", "medium", "low"
-// Returns:
-//   - nil for empty string or "true" (use server default, which is unlimited)
-//   - -1 for "high" (explicitly set unlimited)
-//   - 0 for "false" (disable thinking)
-//   - 1024 for "medium"
-//   - 256 for "low"
-func parseThinkToReasoningBudget(think string) (*int32, error) {
-	if think == "" {
-		return nil, nil
-	}
-
-	switch strings.ToLower(think) {
-	case "true":
-		// Use nil to let the server use its default (currently unlimited)
-		return nil, nil
-	case "high":
-		// Explicitly set unlimited reasoning budget
-		return ptr(reasoningBudgetUnlimited), nil
-	case "false":
-		return ptr(reasoningBudgetDisabled), nil
-	case "medium":
-		return ptr(reasoningBudgetMedium), nil
-	case "low":
-		return ptr(reasoningBudgetLow), nil
-	default:
-		return nil, fmt.Errorf("invalid think value %q: must be one of true, false, high, medium, low", think)
-	}
 }
 
 func newDownCommand() *cobra.Command {

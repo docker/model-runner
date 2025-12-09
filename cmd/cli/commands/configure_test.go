@@ -157,3 +157,134 @@ func TestConfigureCmdSpeculativeFlags(t *testing.T) {
 		t.Fatal("--speculative-min-acceptance-rate flag not found")
 	}
 }
+
+func TestConfigureCmdModeFlag(t *testing.T) {
+	// Create the configure command
+	cmd := newConfigureCmd()
+
+	// Verify the --mode flag exists
+	modeFlag := cmd.Flags().Lookup("mode")
+	if modeFlag == nil {
+		t.Fatal("--mode flag not found")
+	}
+
+	// Verify the default value is empty
+	if modeFlag.DefValue != "" {
+		t.Errorf("Expected default mode value to be empty, got '%s'", modeFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if modeFlag.Value.Type() != "string" {
+		t.Errorf("Expected mode flag type to be 'string', got '%s'", modeFlag.Value.Type())
+	}
+}
+
+func TestConfigureCmdThinkFlag(t *testing.T) {
+	// Create the configure command
+	cmd := newConfigureCmd()
+
+	// Verify the --think flag exists
+	thinkFlag := cmd.Flags().Lookup("think")
+	if thinkFlag == nil {
+		t.Fatal("--think flag not found")
+	}
+
+	// Verify the default value is empty
+	if thinkFlag.DefValue != "" {
+		t.Errorf("Expected default think value to be empty, got '%s'", thinkFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if thinkFlag.Value.Type() != "string" {
+		t.Errorf("Expected think flag type to be 'string', got '%s'", thinkFlag.Value.Type())
+	}
+}
+
+// TestThinkAndReasoningBudgetMutualExclusivity verifies that --think and --reasoning-budget
+// cannot be used together
+func TestThinkAndReasoningBudgetMutualExclusivity(t *testing.T) {
+	tests := []struct {
+		name            string
+		think           string
+		reasoningBudget *int32
+		expectError     bool
+		errorContains   string
+	}{
+		{
+			name:            "only think flag set",
+			think:           "high",
+			reasoningBudget: nil,
+			expectError:     false,
+		},
+		{
+			name:            "only reasoning-budget flag set",
+			think:           "",
+			reasoningBudget: ptr(1024),
+			expectError:     false,
+		},
+		{
+			name:            "neither flag set",
+			think:           "",
+			reasoningBudget: nil,
+			expectError:     false,
+		},
+		{
+			name:            "both flags set - should error",
+			think:           "high",
+			reasoningBudget: ptr(1024),
+			expectError:     true,
+			errorContains:   "mutually exclusive",
+		},
+		{
+			name:            "both flags set with think=false - should error",
+			think:           "false",
+			reasoningBudget: ptr(0),
+			expectError:     true,
+			errorContains:   "mutually exclusive",
+		},
+		{
+			name:            "both flags set with think=medium - should error",
+			think:           "medium",
+			reasoningBudget: ptr(-1),
+			expectError:     true,
+			errorContains:   "mutually exclusive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flags := ConfigureFlags{
+				Think:           tt.think,
+				ReasoningBudget: tt.reasoningBudget,
+			}
+
+			_, err := flags.BuildConfigureRequest("test-model")
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error when both --think and --reasoning-budget are set, but got nil")
+				} else if tt.errorContains != "" && !contains(err.Error(), tt.errorContains) {
+					t.Errorf("Expected error to contain %q, got %q", tt.errorContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// contains is a helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
