@@ -152,8 +152,3 @@ func TestParseThinkToReasoningBudget(t *testing.T) {
 		})
 	}
 }
-
-// Helper function to create a pointer to int32
-func ptr(v int32) *int32 {
-	return &v
-}

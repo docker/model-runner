@@ -42,6 +42,11 @@ const (
 	reasoningBudgetLow       int32 = 256
 )
 
+// ptr is a helper function to create a pointer to int32
+func ptr(v int32) *int32 {
+	return &v
+}
+
 func newUpCommand() *cobra.Command {
 	var models []string
 	var ctxSize int64
@@ -127,9 +132,10 @@ func newUpCommand() *cobra.Command {
 
 				// Set llama.cpp-specific reasoning budget if provided
 				if reasoningBudget != nil {
-					configuration.LlamaCpp = &inference.LlamaCppConfig{
-						ReasoningBudget: reasoningBudget,
+					if configuration.LlamaCpp == nil {
+						configuration.LlamaCpp = &inference.LlamaCppConfig{}
 					}
+					configuration.LlamaCpp.ReasoningBudget = reasoningBudget
 				}
 
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
@@ -197,8 +203,6 @@ func parseThinkToReasoningBudget(think string) (*int32, error) {
 	if think == "" {
 		return nil, nil
 	}
-
-	ptr := func(v int32) *int32 { return &v }
 
 	switch strings.ToLower(think) {
 	case "true":
