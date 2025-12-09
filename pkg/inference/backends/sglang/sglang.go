@@ -100,7 +100,7 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	// Check if sglang is installed
 	if err := s.pythonCmd("-c", "import sglang").Run(); err != nil {
 		s.status = "sglang package not installed"
-		s.log.Warnf("sglang package not found. Install with: uv pip install sglang[all]")
+		s.log.Warnf("sglang package not found. Install with: uv pip install sglang")
 		return ErrSGLangNotFound
 	}
 
