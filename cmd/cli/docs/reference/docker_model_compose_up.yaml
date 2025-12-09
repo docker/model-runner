@@ -23,6 +23,15 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: mode
+      value_type: string
+      description: backend operation mode (completion, embedding, reranking)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: model
       value_type: stringArray
       default_value: '[]'
@@ -56,6 +65,16 @@ options:
       value_type: int
       default_value: "0"
       description: number of tokens to predict speculatively
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: think
+      value_type: string
+      description: |
+        enable reasoning mode for thinking models (true/false/high/medium/low)
       deprecated: false
       hidden: false
       experimental: false
