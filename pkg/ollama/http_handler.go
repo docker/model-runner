@@ -1056,11 +1056,13 @@ func (s *streamingChatResponseWriter) Write(data []byte) (int, error) {
 			continue
 		}
 
-		// Extract content and tool calls from structured response
+		// Extract content, tool calls, and thinking from structured response
 		var content string
+		var thinking string
 		var toolCalls []ToolCall
 		if len(chunk.Choices) > 0 {
 			content = chunk.Choices[0].Delta.Content
+			thinking = chunk.Choices[0].Delta.ReasoningContent
 			if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
 				// Convert tool calls to Ollama format
 				toolCalls = convertToolCallsToOllamaFormat(chunk.Choices[0].Delta.ToolCalls)
@@ -1074,6 +1076,9 @@ func (s *streamingChatResponseWriter) Write(data []byte) (int, error) {
 		}
 		if len(toolCalls) > 0 {
 			message.ToolCalls = toolCalls
+		}
+		if thinking != "" {
+			message.Thinking = thinking
 		}
 
 		ollamaChunk := ChatResponse{
@@ -1241,6 +1246,10 @@ func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *r
 		// Include tool calls if present
 		if len(openAIResp.Choices[0].Message.ToolCalls) > 0 {
 			message.ToolCalls = convertToolCallsToOllamaFormat(openAIResp.Choices[0].Message.ToolCalls)
+		}
+		// Include thinking content if present
+		if openAIResp.Choices[0].Message.ReasoningContent != "" {
+			message.Thinking = openAIResp.Choices[0].Message.ReasoningContent
 		}
 	}
 
