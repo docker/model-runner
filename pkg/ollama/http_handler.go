@@ -724,8 +724,11 @@ func (h *HTTPHandler) mapOllamaOptionsToOpenAI(ollamaOpts map[string]interface{}
 // OpenWebUI may send raw base64 data without prefix, but llama.cpp requires it.
 // This function:
 // - Returns data as-is if it already starts with "data:", "http://", or "https://"
-// - Prepends "data:image/jpeg;base64," to raw base64 strings
+// - Detects MIME type from base64 prefix and prepends appropriate data URI
 func ensureDataURIPrefix(imageData string) string {
+	// Trim whitespace that might come from UIs
+	imageData = strings.TrimSpace(imageData)
+
 	// Check if already has a URI scheme
 	if strings.HasPrefix(imageData, "data:") ||
 		strings.HasPrefix(imageData, "http://") ||
@@ -733,8 +736,21 @@ func ensureDataURIPrefix(imageData string) string {
 		return imageData
 	}
 
-	// Assume raw base64 data - add data URI prefix
-	return "data:image/jpeg;base64," + imageData
+	// Detect MIME type from base64 prefix
+	var mimeType string
+	if strings.HasPrefix(imageData, "/9j/") {
+		mimeType = "image/jpeg"
+	} else if strings.HasPrefix(imageData, "iVBOR") {
+		mimeType = "image/png"
+	} else if strings.HasPrefix(imageData, "R0lG") {
+		mimeType = "image/gif"
+	} else {
+		// Default to jpeg for unknown formats
+		mimeType = "image/jpeg"
+	}
+
+	// Assume raw base64 data - add data URI prefix with detected MIME type
+	return "data:" + mimeType + ";base64," + imageData
 }
 
 // convertMessages converts Ollama messages to OpenAI format
@@ -748,7 +764,11 @@ func convertMessages(messages []Message) []map[string]interface{} {
 		// Handle multimodal content (text + images)
 		if len(msg.Images) > 0 {
 			// Convert to OpenAI multimodal format: content is an array of content objects
-			var contentArray []map[string]interface{}
+			contentArraySize := len(msg.Images)
+			if msg.Content != "" {
+				contentArraySize++
+			}
+			contentArray := make([]map[string]interface{}, 0, contentArraySize)
 
 			// Add text content if present
 			if msg.Content != "" {

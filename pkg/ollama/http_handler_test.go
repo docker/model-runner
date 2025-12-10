@@ -91,6 +91,32 @@ func TestConvertMessages_Multimodal(t *testing.T) {
 			// Note: JSON field order follows struct definition
 			expected: `[{"content":"Let me call a function","role":"assistant","tool_calls":[{"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"San Francisco\"}"}}]}]`,
 		},
+		{
+			name: "tool result message with tool_call_id",
+			messages: []Message{
+				{
+					Role:       "tool",
+					Content:    "The weather in San Francisco is sunny, 72°F",
+					ToolCallID: "call_123",
+				},
+			},
+			expected: `[{"content":"The weather in San Francisco is sunny, 72°F","role":"tool","tool_call_id":"call_123"}]`,
+		},
+		{
+			name: "multiple raw base64 images without prefix",
+			messages: []Message{
+				{
+					Role:    "user",
+					Content: "Compare these two images",
+					Images: []string{
+						"/9j/4AAQSkZJRgABAQEBLA...",
+						"iVBORw0KGgoAAAANSUhEUgAAA...",
+					},
+				},
+			},
+			// Should auto-detect MIME types and add appropriate prefixes
+			expected: `[{"content":[{"text":"Compare these two images","type":"text"},{"image_url":{"url":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEBLA..."},"type":"image_url"},{"image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA..."},"type":"image_url"}],"role":"user"}]`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,9 +144,19 @@ func TestEnsureDataURIPrefix(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "raw base64 without prefix",
+			name:     "raw JPEG base64 without prefix",
 			input:    "/9j/4AAQSkZJRgABAQEBLA...",
 			expected: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEBLA...",
+		},
+		{
+			name:     "raw PNG base64 without prefix",
+			input:    "iVBORw0KGgoAAAANSUhEUgAAA...",
+			expected: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA...",
+		},
+		{
+			name:     "raw GIF base64 without prefix",
+			input:    "R0lGODlhAQABAIAAAAAAAP...",
+			expected: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP...",
 		},
 		{
 			name:     "already has data URI prefix",
@@ -141,6 +177,16 @@ func TestEnsureDataURIPrefix(t *testing.T) {
 			name:     "https URL",
 			input:    "https://example.com/image.jpg",
 			expected: "https://example.com/image.jpg",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "data:image/jpeg;base64,",
+		},
+		{
+			name:     "whitespace with base64",
+			input:    "  /9j/4AAQSkZJRgABAQEBLA...  ",
+			expected: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEBLA...",
 		},
 	}
 
