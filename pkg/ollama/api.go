@@ -66,6 +66,7 @@ type Message struct {
 	Images     []string   `json:"images,omitempty"`       // For multimodal support
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // For function calling
 	ToolCallID string     `json:"tool_call_id,omitempty"` // For tool results
+	Thinking   string     `json:"thinking,omitempty"`     // Internal field for model's thinking output
 }
 
 // ToolCall represents a function call made by the model
