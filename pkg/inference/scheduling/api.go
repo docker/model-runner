@@ -29,7 +29,7 @@ func trimRequestPathToOpenAIRoot(path string) string {
 }
 
 // backendModeForRequest determines the backend operation mode to handle an
-// OpenAI inference request. Its second parameter is true if and only if a valid
+// OpenAI or Anthropic inference request. Its second parameter is true if and only if a valid
 // mode could be determined.
 func backendModeForRequest(path string) (inference.BackendMode, bool) {
 	if strings.HasSuffix(path, "/v1/chat/completions") || strings.HasSuffix(path, "/v1/completions") {
@@ -38,6 +38,9 @@ func backendModeForRequest(path string) (inference.BackendMode, bool) {
 		return inference.BackendModeEmbedding, true
 	} else if strings.HasSuffix(path, "/rerank") || strings.HasSuffix(path, "/score") {
 		return inference.BackendModeReranking, true
+	} else if strings.HasSuffix(path, "/v1/messages") || strings.HasSuffix(path, "/v1/messages/count_tokens") {
+		// Anthropic Messages API - treated as completion mode
+		return inference.BackendModeCompletion, true
 	}
 	return inference.BackendMode(0), false
 }

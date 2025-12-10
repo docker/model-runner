@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/model-runner/pkg/anthropic"
 	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -183,6 +184,10 @@ func main() {
 	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
 	ollamaHandler := ollama.NewHTTPHandler(log, scheduler, schedulerHTTP, nil, modelManager)
 	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
+
+	// Add Anthropic Messages API compatibility layer
+	anthropicHandler := anthropic.NewHandler(log, schedulerHTTP, nil, modelManager)
+	router.Handle(anthropic.APIPrefix+"/", anthropicHandler)
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

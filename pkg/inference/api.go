@@ -20,4 +20,6 @@ const RequestOriginHeader = "X-Request-Origin"
 const (
 	// OriginOllamaCompletion indicates the request came from the Ollama /api/chat or /api/generate endpoints
 	OriginOllamaCompletion = "ollama/completion"
+	// OriginAnthropicMessages indicates the request came from the Anthropic /v1/messages endpoint
+	OriginAnthropicMessages = "anthropic/messages"
 )
