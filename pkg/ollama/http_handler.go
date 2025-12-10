@@ -720,13 +720,62 @@ func (h *HTTPHandler) mapOllamaOptionsToOpenAI(ollamaOpts map[string]interface{}
 	// as it requires a special ConfigureRunner call
 }
 
+// ensureDataURIPrefix ensures that image data has a proper data URI prefix.
+// OpenWebUI may send raw base64 data without prefix, but llama.cpp requires it.
+// This function:
+// - Returns data as-is if it already starts with "data:", "http://", or "https://"
+// - Prepends "data:image/jpeg;base64," to raw base64 strings
+func ensureDataURIPrefix(imageData string) string {
+	// Check if already has a URI scheme
+	if strings.HasPrefix(imageData, "data:") ||
+		strings.HasPrefix(imageData, "http://") ||
+		strings.HasPrefix(imageData, "https://") {
+		return imageData
+	}
+
+	// Assume raw base64 data - add data URI prefix
+	return "data:image/jpeg;base64," + imageData
+}
+
 // convertMessages converts Ollama messages to OpenAI format
 func convertMessages(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, len(messages))
 	for i, msg := range messages {
 		openAIMsg := map[string]interface{}{
-			"role":    msg.Role,
-			"content": msg.Content,
+			"role": msg.Role,
+		}
+
+		// Handle multimodal content (text + images)
+		if len(msg.Images) > 0 {
+			// Convert to OpenAI multimodal format: content is an array of content objects
+			var contentArray []map[string]interface{}
+
+			// Add text content if present
+			if msg.Content != "" {
+				contentArray = append(contentArray, map[string]interface{}{
+					"type": "text",
+					"text": msg.Content,
+				})
+			}
+
+			// Add images in OpenAI format
+			for _, imageData := range msg.Images {
+				// Ensure image data has proper data URI prefix
+				// OpenWebUI may send raw base64 without the prefix, but llama.cpp requires it
+				imageURL := ensureDataURIPrefix(imageData)
+
+				contentArray = append(contentArray, map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": imageURL,
+					},
+				})
+			}
+
+			openAIMsg["content"] = contentArray
+		} else {
+			// Regular text-only message
+			openAIMsg["content"] = msg.Content
 		}
 
 		// Add tool calls if present (for assistant messages)
@@ -751,11 +800,6 @@ func convertMessages(messages []Message) []map[string]interface{} {
 		// Add tool_call_id if present (for tool result messages)
 		if msg.ToolCallID != "" {
 			openAIMsg["tool_call_id"] = msg.ToolCallID
-		}
-
-		// Add images if present (for multimodal support)
-		if len(msg.Images) > 0 {
-			openAIMsg["images"] = msg.Images
 		}
 
 		result[i] = openAIMsg
