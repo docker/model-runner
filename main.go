@@ -11,13 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/config"
-	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
@@ -65,15 +63,6 @@ func main() {
 		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
 	}
 
-	gpuInfo := gpuinfo.New(llamaServerPath)
-
-	sysMemInfo, err := memory.NewSystemMemoryInfo(log, gpuInfo)
-	if err != nil {
-		log.Fatalf("unable to initialize system memory info: %v", err)
-	}
-
-	memEstimator := memory.NewEstimator(sysMemInfo)
-
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
 	var baseTransport *http.Transport
@@ -93,7 +82,6 @@ func main() {
 		log,
 		clientConfig,
 		nil,
-		memEstimator,
 	)
 	modelManager := models.NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), clientConfig)
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
@@ -117,12 +105,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
 	}
-
-	if os.Getenv("MODEL_RUNNER_RUNTIME_MEMORY_CHECK") == "1" {
-		memory.SetRuntimeMemoryCheck(true)
-	}
-
-	memEstimator.SetDefaultBackend(llamaCppBackend)
 
 	vllmBackend, err := vllm.New(
 		log,
@@ -160,7 +142,6 @@ func main() {
 			"",
 			false,
 		),
-		sysMemInfo,
 	)
 
 	// Create the HTTP handler for the scheduler

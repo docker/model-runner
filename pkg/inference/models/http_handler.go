@@ -15,7 +15,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
@@ -38,8 +37,6 @@ type HTTPHandler struct {
 	httpHandler http.Handler
 	// lock is used to synchronize access to the models manager's router.
 	lock sync.RWMutex
-	// memoryEstimator is used to calculate runtime memory requirements for models.
-	memoryEstimator memory.MemoryEstimator
 	// manager handles business logic for model operations.
 	manager *Manager
 }
@@ -56,13 +53,12 @@ type ClientConfig struct {
 }
 
 // NewHTTPHandler creates a new model's handler.
-func NewHTTPHandler(log logging.Logger, c ClientConfig, allowedOrigins []string, memoryEstimator memory.MemoryEstimator) *HTTPHandler {
+func NewHTTPHandler(log logging.Logger, c ClientConfig, allowedOrigins []string) *HTTPHandler {
 	// Create the manager.
 	m := &HTTPHandler{
-		log:             log,
-		router:          http.NewServeMux(),
-		memoryEstimator: memoryEstimator,
-		manager:         NewManager(log.WithFields(logrus.Fields{"component": "service"}), c),
+		log:     log,
+		router:  http.NewServeMux(),
+		manager: NewManager(log.WithFields(logrus.Fields{"component": "service"}), c),
 	}
 
 	// Register routes.
@@ -163,23 +159,7 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 	// Normalize the model name to add defaults
 	request.From = NormalizeModelName(request.From)
 
-	// Pull the model. In the future, we may support additional operations here
-	// besides pulling (such as model building).
-	if memory.RuntimeMemoryCheckEnabled() && !request.IgnoreRuntimeMemoryCheck {
-		h.log.Infof("Will estimate memory required for %q", request.From)
-		proceed, req, totalMem, err := h.memoryEstimator.HaveSufficientMemoryForModel(r.Context(), request.From, nil)
-		if err != nil {
-			h.log.Warnf("Failed to validate sufficient system memory for model %q: %s", request.From, err)
-			// Prefer staying functional in case of unexpected estimation errors.
-			proceed = true
-		}
-		if !proceed {
-			errstr := fmt.Sprintf("Runtime memory requirement for model %q exceeds total system memory: required %d RAM %d VRAM, system %d RAM %d VRAM", request.From, req.RAM, req.VRAM, totalMem.RAM, totalMem.VRAM)
-			h.log.Warnf(errstr)
-			http.Error(w, errstr, http.StatusInsufficientStorage)
-			return
-		}
-	}
+	// Pull the model
 	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			h.log.Infof("Request canceled/timed out while pulling model %q", request.From)

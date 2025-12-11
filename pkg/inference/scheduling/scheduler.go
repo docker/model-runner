@@ -10,7 +10,6 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
@@ -47,7 +46,6 @@ func NewScheduler(
 	modelManager *models.Manager,
 	httpClient *http.Client,
 	tracker *metrics.Tracker,
-	sysMemInfo memory.SystemMemoryInfo,
 ) *Scheduler {
 	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
 
@@ -58,7 +56,7 @@ func NewScheduler(
 		defaultBackend: defaultBackend,
 		modelManager:   modelManager,
 		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager, openAIRecorder, sysMemInfo),
+		loader:         newLoader(log, backends, modelManager, openAIRecorder),
 		tracker:        tracker,
 		openAIRecorder: openAIRecorder,
 	}
