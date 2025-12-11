@@ -128,6 +128,126 @@ func TestConfigureCmdThinkFlag(t *testing.T) {
 	}
 }
 
+func TestConfigureCmdGPUMemoryUtilizationFlag(t *testing.T) {
+	// Create the configure command
+	cmd := newConfigureCmd()
+
+	// Verify the --gpu-memory-utilization flag exists
+	gpuMemFlag := cmd.Flags().Lookup("gpu-memory-utilization")
+	if gpuMemFlag == nil {
+		t.Fatal("--gpu-memory-utilization flag not found")
+	}
+
+	// Verify the default value is empty (nil pointer)
+	if gpuMemFlag.DefValue != "" {
+		t.Errorf("Expected default gpu-memory-utilization value to be '' (nil), got '%s'", gpuMemFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if gpuMemFlag.Value.Type() != "float64" {
+		t.Errorf("Expected gpu-memory-utilization flag type to be 'float64', got '%s'", gpuMemFlag.Value.Type())
+	}
+
+	// Test setting the flag value
+	err := cmd.Flags().Set("gpu-memory-utilization", "0.7")
+	if err != nil {
+		t.Errorf("Failed to set gpu-memory-utilization flag: %v", err)
+	}
+
+	// Verify the value was set
+	gpuMemValue := gpuMemFlag.Value.String()
+	if gpuMemValue != "0.7" {
+		t.Errorf("Expected gpu-memory-utilization flag value to be '0.7', got '%s'", gpuMemValue)
+	}
+}
+
+func TestGPUMemoryUtilizationBehavior(t *testing.T) {
+	// Helper to create float64 pointer
+	float64Ptr := func(f float64) *float64 { return &f }
+
+	tests := []struct {
+		name               string
+		gpuMemValue        *float64
+		expectError        bool
+		expectGPUMemSet    bool
+		expectedGPUMemUtil float64
+	}{
+		{
+			name:            "default - not set (nil)",
+			gpuMemValue:     nil,
+			expectError:     false,
+			expectGPUMemSet: false,
+		},
+		{
+			name:               "valid value 0.5",
+			gpuMemValue:        float64Ptr(0.5),
+			expectError:        false,
+			expectGPUMemSet:    true,
+			expectedGPUMemUtil: 0.5,
+		},
+		{
+			name:               "edge case 0.0",
+			gpuMemValue:        float64Ptr(0.0),
+			expectError:        false,
+			expectGPUMemSet:    true,
+			expectedGPUMemUtil: 0.0,
+		},
+		{
+			name:               "edge case 1.0",
+			gpuMemValue:        float64Ptr(1.0),
+			expectError:        false,
+			expectGPUMemSet:    true,
+			expectedGPUMemUtil: 1.0,
+		},
+		{
+			name:        "invalid - negative value",
+			gpuMemValue: float64Ptr(-0.1),
+			expectError: true,
+		},
+		{
+			name:        "invalid - value > 1.0",
+			gpuMemValue: float64Ptr(1.5),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flags := ConfigureFlags{
+				GPUMemoryUtilization: tt.gpuMemValue,
+			}
+
+			req, err := flags.BuildConfigureRequest("test-model")
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if tt.expectGPUMemSet {
+				// GPU memory utilization should be set
+				if req.VLLM == nil || req.VLLM.GPUMemoryUtilization == nil {
+					t.Fatal("Expected GPU memory utilization to be set")
+				}
+				if *req.VLLM.GPUMemoryUtilization != tt.expectedGPUMemUtil {
+					t.Errorf("Expected GPU memory utilization to be %f, got %f", tt.expectedGPUMemUtil, *req.VLLM.GPUMemoryUtilization)
+				}
+			} else {
+				// GPU memory utilization should NOT be set
+				if req.VLLM != nil && req.VLLM.GPUMemoryUtilization != nil {
+					t.Errorf("Expected GPU memory utilization to be nil when not set, got %f", *req.VLLM.GPUMemoryUtilization)
+				}
+			}
+		})
+	}
+}
+
 func TestThinkFlagBehavior(t *testing.T) {
 	// Helper to create bool pointer
 	boolPtr := func(b bool) *bool { return &b }

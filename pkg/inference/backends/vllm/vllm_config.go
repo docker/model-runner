@@ -60,6 +60,15 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 
 	// Add vLLM-specific arguments from backend config
 	if config != nil && config.VLLM != nil {
+		// Add GPU memory utilization if specified
+		if config.VLLM.GPUMemoryUtilization != nil {
+			utilization := *config.VLLM.GPUMemoryUtilization
+			if utilization < 0.0 || utilization > 1.0 {
+				return nil, fmt.Errorf("gpu-memory-utilization must be between 0.0 and 1.0, got %f", utilization)
+			}
+			args = append(args, "--gpu-memory-utilization", strconv.FormatFloat(utilization, 'f', -1, 64))
+		}
+
 		// Add HuggingFace overrides if specified
 		if len(config.VLLM.HFOverrides) > 0 {
 			hfOverridesJSON, err := json.Marshal(config.VLLM.HFOverrides)

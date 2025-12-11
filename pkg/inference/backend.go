@@ -67,6 +67,10 @@ type VLLMConfig struct {
 	// HFOverrides contains HuggingFace model configuration overrides.
 	// This maps to vLLM's --hf-overrides flag which accepts a JSON dictionary.
 	HFOverrides HFOverrides `json:"hf-overrides,omitempty"`
+	// GPUMemoryUtilization sets the fraction of GPU memory to be used for the model executor.
+	// Must be between 0.0 and 1.0. If not specified, vLLM uses its default value of 0.9.
+	// This maps to vLLM's --gpu-memory-utilization flag.
+	GPUMemoryUtilization *float64 `json:"gpu-memory-utilization,omitempty"`
 }
 
 // LlamaCppConfig contains llama.cpp-specific configuration options.

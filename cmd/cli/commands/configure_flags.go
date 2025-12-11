@@ -84,6 +84,37 @@ func (v *BoolPtrValue) IsBoolFlag() bool {
 	return true
 }
 
+// Float64PtrValue implements pflag.Value interface for *float64 pointers
+// This allows flags to have a nil default value instead of 0.0
+type Float64PtrValue struct {
+	ptr **float64
+}
+
+// NewFloat64PtrValue creates a new Float64PtrValue for the given pointer
+func NewFloat64PtrValue(p **float64) *Float64PtrValue {
+	return &Float64PtrValue{ptr: p}
+}
+
+func (v *Float64PtrValue) String() string {
+	if v.ptr == nil || *v.ptr == nil {
+		return ""
+	}
+	return strconv.FormatFloat(**v.ptr, 'f', -1, 64)
+}
+
+func (v *Float64PtrValue) Set(s string) error {
+	val, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*v.ptr = &val
+	return nil
+}
+
+func (v *Float64PtrValue) Type() string {
+	return "float64"
+}
+
 // ptr is a helper function to create a pointer to int32
 func ptr(v int32) *int32 {
 	return &v
@@ -100,7 +131,8 @@ type ConfigureFlags struct {
 	NumTokens         int
 	MinAcceptanceRate float64
 	// vLLM-specific flags
-	HFOverrides string
+	HFOverrides          string
+	GPUMemoryUtilization *float64
 	// Think parameter for reasoning models
 	Think *bool
 }
@@ -112,6 +144,7 @@ func (f *ConfigureFlags) RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&f.NumTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	cmd.Flags().Float64Var(&f.MinAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
 	cmd.Flags().StringVar(&f.HFOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
+	cmd.Flags().Var(NewFloat64PtrValue(&f.GPUMemoryUtilization), "gpu-memory-utilization", "fraction of GPU memory to use for the model executor (0.0-1.0) - vLLM only")
 	cmd.Flags().Var(NewBoolPtrValue(&f.Think), "think", "enable reasoning mode for thinking models")
 	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking)")
 }
@@ -149,6 +182,18 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 			req.VLLM = &inference.VLLMConfig{}
 		}
 		req.VLLM.HFOverrides = hfo
+	}
+
+	// Set GPU memory utilization if provided (vLLM-specific)
+	if f.GPUMemoryUtilization != nil {
+		utilization := *f.GPUMemoryUtilization
+		if utilization < 0.0 || utilization > 1.0 {
+			return req, fmt.Errorf("--gpu-memory-utilization must be between 0.0 and 1.0, got %f", utilization)
+		}
+		if req.VLLM == nil {
+			req.VLLM = &inference.VLLMConfig{}
+		}
+		req.VLLM.GPUMemoryUtilization = f.GPUMemoryUtilization
 	}
 
 	// Set reasoning budget from --think flag

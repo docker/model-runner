@@ -203,6 +203,135 @@ func TestGetArgs(t *testing.T) {
 				`{"model_type":"bert"}`,
 			},
 		},
+		{
+			name: "with GPU memory utilization 0.5",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(0.5),
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--gpu-memory-utilization",
+				"0.5",
+			},
+		},
+		{
+			name: "with GPU memory utilization 0.0 (edge case)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(0.0),
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--gpu-memory-utilization",
+				"0",
+			},
+		},
+		{
+			name: "with GPU memory utilization 1.0 (edge case)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(1.0),
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--gpu-memory-utilization",
+				"1",
+			},
+		},
+		{
+			name: "with GPU memory utilization negative (invalid)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(-0.1),
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "with GPU memory utilization > 1.0 (invalid)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(1.5),
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "with GPU memory utilization and other parameters",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(8192),
+				VLLM: &inference.VLLMConfig{
+					GPUMemoryUtilization: float64ptr(0.7),
+					HFOverrides: inference.HFOverrides{
+						"architectures": []interface{}{"LlamaForCausalLM"},
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--max-model-len",
+				"8192",
+				"--gpu-memory-utilization",
+				"0.7",
+				"--hf-overrides",
+				`{"architectures":["LlamaForCausalLM"]}`,
+			},
+		},
+		{
+			name: "without GPU memory utilization (should not add flag)",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"model_type": "llama",
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--hf-overrides",
+				`{"model_type":"llama"}`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -288,5 +417,9 @@ func TestGetMaxModelLen(t *testing.T) {
 }
 
 func int32ptr(n int32) *int32 {
+	return &n
+}
+
+func float64ptr(n float64) *float64 {
 	return &n
 }

@@ -11,7 +11,7 @@ func newConfigureCmd() *cobra.Command {
 	var flags ConfigureFlags
 
 	c := &cobra.Command{
-		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--mode=<mode>] [--think] MODEL",
+		Use:    "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--gpu-memory-utilization=<float>] [--mode=<mode>] [--think] MODEL",
 		Short:  "Configure runtime options for a model",
 		Hidden: true,
 		Args: func(cmd *cobra.Command, args []string) error {
