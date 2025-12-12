@@ -570,7 +570,6 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 
 func newRunCmd() *cobra.Command {
 	var debug bool
-	var ignoreRuntimeMemoryCheck bool
 	var colorMode string
 	var detach bool
 
@@ -686,7 +685,7 @@ func newRunCmd() *cobra.Command {
 					return handleClientError(err, "Failed to inspect model")
 				}
 				cmd.Println("Unable to find model '" + model + "' locally. Pulling from the server.")
-				if err := pullModel(cmd, desktopClient, model, ignoreRuntimeMemoryCheck); err != nil {
+				if err := pullModel(cmd, desktopClient, model); err != nil {
 					return err
 				}
 			}
@@ -733,7 +732,6 @@ func newRunCmd() *cobra.Command {
 	c.Args = requireMinArgs(1, "run", cmdArgs)
 
 	c.Flags().BoolVar(&debug, "debug", false, "Enable debug logging")
-	c.Flags().BoolVar(&ignoreRuntimeMemoryCheck, "ignore-runtime-memory-check", false, "Do not block pull if estimated runtime memory for model exceeds system resources.")
 	c.Flags().StringVar(&colorMode, "color", "no", "Use colored output (auto|yes|no)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 

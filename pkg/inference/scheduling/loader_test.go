@@ -125,65 +125,6 @@ func createAliveTerminableMockRunner(log *logrus.Entry, backend inference.Backen
 	}
 }
 
-// TestFormatMemorySize tests the formatMemorySize helper function
-func TestFormatMemorySize(t *testing.T) {
-	tests := []struct {
-		name     string
-		bytes    uint64
-		expected string
-	}{
-		{
-			name:     "sentinel value 0 is unknown",
-			bytes:    0,
-			expected: "unknown",
-		},
-		{
-			name:     "sentinel value 1 is unknown",
-			bytes:    1,
-			expected: "unknown",
-		},
-		{
-			name:     "2 bytes is still unknown (edge case)",
-			bytes:    2,
-			expected: "0 MB",
-		},
-		{
-			name:     "1 MB",
-			bytes:    1024 * 1024,
-			expected: "1 MB",
-		},
-		{
-			name:     "512 MB",
-			bytes:    512 * 1024 * 1024,
-			expected: "512 MB",
-		},
-		{
-			name:     "1 GB",
-			bytes:    1024 * 1024 * 1024,
-			expected: "1024 MB",
-		},
-		{
-			name:     "8 GB",
-			bytes:    8 * 1024 * 1024 * 1024,
-			expected: "8192 MB",
-		},
-		{
-			name:     "fractional MB rounds down",
-			bytes:    1024*1024 + 512*1024, // 1.5 MB
-			expected: "1 MB",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatMemorySize(tt.bytes)
-			if result != tt.expected {
-				t.Errorf("formatMemorySize(%d) = %q, want %q", tt.bytes, result, tt.expected)
-			}
-		})
-	}
-}
-
 // TestMakeRunnerKey tests that runner keys are created correctly
 func TestMakeRunnerKey(t *testing.T) {
 	tests := []struct {

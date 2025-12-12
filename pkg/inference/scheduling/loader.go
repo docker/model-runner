@@ -194,15 +194,6 @@ func (l *loader) broadcast() {
 	}
 }
 
-// formatMemorySize formats a memory size in bytes as a string.
-// Values of 0 or 1 are treated as sentinel values for "unknown" memory size.
-func formatMemorySize(bytes uint64) string {
-	if bytes <= 1 {
-		return "unknown"
-	}
-	return fmt.Sprintf("%d MB", bytes/1024/1024)
-}
-
 // freeRunnerSlot frees a runner slot.
 // The caller must hold the loader lock.
 func (l *loader) freeRunnerSlot(slot int, key runnerKey) {

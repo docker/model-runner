@@ -14,9 +14,6 @@ import (
 type ModelCreateRequest struct {
 	// From is the name of the model to pull.
 	From string `json:"from"`
-	// IgnoreRuntimeMemoryCheck indicates whether the server should check if it has sufficient
-	// memory to run the given model (assuming default configuration).
-	IgnoreRuntimeMemoryCheck bool `json:"ignore-runtime-memory-check,omitempty"`
 	// BearerToken is an optional bearer token for authentication.
 	BearerToken string `json:"bearer-token,omitempty"`
 }
