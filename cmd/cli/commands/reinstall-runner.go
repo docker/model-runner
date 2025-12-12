@@ -12,6 +12,7 @@ func newReinstallRunner() *cobra.Command {
 	var backend string
 	var doNotTrack bool
 	var debug bool
+	var proxyCert string
 	c := &cobra.Command{
 		Use:   "reinstall-runner",
 		Short: "Reinstall Docker Model Runner (Docker Engine only)",
@@ -24,6 +25,7 @@ func newReinstallRunner() *cobra.Command {
 				doNotTrack:      doNotTrack,
 				pullImage:       true,
 				pruneContainers: true,
+				proxyCert:       proxyCert,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -35,6 +37,7 @@ func newReinstallRunner() *cobra.Command {
 		Backend:    &backend,
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
+		ProxyCert:  &proxyCert,
 	})
 	return c
 }

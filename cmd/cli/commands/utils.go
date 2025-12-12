@@ -182,7 +182,7 @@ func requireMinArgs(n int, cmdName string, usageArgs string) cobra.PositionalArg
 	}
 }
 
-// runnerOptions holds common runner configuration options
+// runnerFlagOptions holds common runner configuration options
 type runnerFlagOptions struct {
 	Port       *uint16
 	Host       *string
@@ -190,6 +190,7 @@ type runnerFlagOptions struct {
 	Backend    *string
 	DoNotTrack *bool
 	Debug      *bool
+	ProxyCert  *string
 }
 
 // addRunnerFlags adds common runner flags to a command
@@ -212,5 +213,8 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.Debug != nil {
 		cmd.Flags().BoolVar(opts.Debug, "debug", false, "Enable debug logging")
+	}
+	if opts.ProxyCert != nil {
+		cmd.Flags().StringVar(opts.ProxyCert, "proxy-cert", "", "Path to a CA certificate file for proxy SSL inspection")
 	}
 }

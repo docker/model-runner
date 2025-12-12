@@ -138,7 +138,7 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug, false); err != nil {
+	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug, false, ""); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -172,6 +172,7 @@ type runnerOptions struct {
 	doNotTrack      bool
 	pullImage       bool
 	pruneContainers bool
+	proxyCert       string
 }
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
@@ -285,7 +286,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		return fmt.Errorf("unable to initialize standalone model storage: %w", err)
 	}
 	// Create the model runner container.
-	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind, debug, vllmOnWSL); err != nil {
+	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind, debug, vllmOnWSL, opts.proxyCert); err != nil {
 		return fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -300,6 +301,7 @@ func newInstallRunner() *cobra.Command {
 	var backend string
 	var doNotTrack bool
 	var debug bool
+	var proxyCert string
 	c := &cobra.Command{
 		Use:   "install-runner",
 		Short: "Install Docker Model Runner (Docker Engine only)",
@@ -312,6 +314,7 @@ func newInstallRunner() *cobra.Command {
 				doNotTrack:      doNotTrack,
 				pullImage:       true,
 				pruneContainers: false,
+				proxyCert:       proxyCert,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -323,6 +326,7 @@ func newInstallRunner() *cobra.Command {
 		Backend:    &backend,
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
+		ProxyCert:  &proxyCert,
 	})
 	return c
 }

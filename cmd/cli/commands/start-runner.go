@@ -11,6 +11,7 @@ func newStartRunner() *cobra.Command {
 	var backend string
 	var doNotTrack bool
 	var debug bool
+	var proxyCert string
 	c := &cobra.Command{
 		Use:   "start-runner",
 		Short: "Start Docker Model Runner (Docker Engine only)",
@@ -21,6 +22,7 @@ func newStartRunner() *cobra.Command {
 				backend:    backend,
 				doNotTrack: doNotTrack,
 				pullImage:  false,
+				proxyCert:  proxyCert,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -31,6 +33,7 @@ func newStartRunner() *cobra.Command {
 		Backend:    &backend,
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
+		ProxyCert:  &proxyCert,
 	})
 	return c
 }
