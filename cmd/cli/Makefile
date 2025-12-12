@@ -14,7 +14,7 @@ all: build
 
 build:
 	@echo "Building $(BINARY_NAME)..."
-	go build -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty)" -o $(BINARY_NAME) .
+	go build -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty --match "cmd/cli*" | sed 's|^cmd/cli/||')" -o $(BINARY_NAME) .
 
 link:
 	@if [ ! -f $(BINARY_NAME) ]; then \
