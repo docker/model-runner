@@ -33,7 +33,13 @@ COPY --link . .
 # Build the Go binary (static build)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner ./main.go
+    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner .
+
+# Build the Go binary for SGLang (without vLLM)
+FROM builder AS builder-sglang
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w" -o model-runner .
 
 # --- Get llama.cpp binary ---
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
@@ -97,17 +103,50 @@ USER modelrunner
 
 # Install uv and vLLM as modelrunner user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
- && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
- && if [ "$TARGETARCH" = "amd64" ]; then \
-      WHEEL_ARCH="manylinux_2_31_x86_64"; \
-      WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
-      ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
+    && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
+    && if [ "$TARGETARCH" = "amd64" ]; then \
+    WHEEL_ARCH="manylinux_2_31_x86_64"; \
+    WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
+    ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
     else \
-      ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"; \
+    ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"; \
     fi
 
 RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
+# --- SGLang variant ---
+FROM llamacpp AS sglang
+
+ARG SGLANG_VERSION=0.5.6
+
+USER root
+
+# Install CUDA toolkit 13 for nvcc (needed for flashinfer JIT compilation)
+RUN apt update && apt install -y \
+    python3 python3-venv python3-dev \
+    curl ca-certificates build-essential \
+    libnuma1 libnuma-dev numactl ninja-build \
+    wget gnupg \
+    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && apt update && apt install -y cuda-toolkit-13-0 \
+    && rm cuda-keyring_1.1-1_all.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/sglang-env && chown -R modelrunner:modelrunner /opt/sglang-env
+
+USER modelrunner
+
+# Set CUDA paths for nvcc (needed during flashinfer compilation)
+ENV PATH=/usr/local/cuda-13.0/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH
+
+# Install uv and SGLang as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/sglang-env \
+    && ~/.local/bin/uv pip install --python /opt/sglang-env/bin/python "sglang==${SGLANG_VERSION}"
+
+RUN /opt/sglang-env/bin/python -c "import sglang; print(sglang.__version__)" > /opt/sglang-env/version
 FROM llamacpp AS final-llamacpp
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
@@ -115,3 +154,7 @@ COPY --from=builder /app/model-runner /app/model-runner
 FROM vllm AS final-vllm
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
+
+FROM sglang AS final-sglang
+# Copy the built binary from builder-sglang (without vLLM)
+COPY --from=builder-sglang /app/model-runner /app/model-runner

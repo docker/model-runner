@@ -15,6 +15,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
+	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/memory"
@@ -124,12 +125,7 @@ func main() {
 
 	memEstimator.SetDefaultBackend(llamaCppBackend)
 
-	vllmBackend, err := vllm.New(
-		log,
-		modelManager,
-		log.WithFields(logrus.Fields{"component": vllm.Name}),
-		nil,
-	)
+	vllmBackend, err := initVLLMBackend(log, modelManager)
 	if err != nil {
 		log.Fatalf("unable to initialize %s backend: %v", vllm.Name, err)
 	}
@@ -144,13 +140,26 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", mlx.Name, err)
 	}
 
+	sglangBackend, err := sglang.New(
+		log,
+		modelManager,
+		log.WithFields(logrus.Fields{"component": sglang.Name}),
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
+	}
+
+	backends := map[string]inference.Backend{
+		llamacpp.Name: llamaCppBackend,
+		mlx.Name:      mlxBackend,
+		sglang.Name:   sglangBackend,
+	}
+	registerVLLMBackend(backends, vllmBackend)
+
 	scheduler := scheduling.NewScheduler(
 		log,
-		map[string]inference.Backend{
-			llamacpp.Name: llamaCppBackend,
-			vllm.Name:     vllmBackend,
-			mlx.Name:      mlxBackend,
-		},
+		backends,
 		llamaCppBackend,
 		modelManager,
 		http.DefaultClient,
