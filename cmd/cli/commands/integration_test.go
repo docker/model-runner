@@ -371,7 +371,7 @@ func TestIntegration_PullModel(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Pull the model using the test case reference
 			t.Logf("Pulling model with reference: %s", tc.ref)
-			err := pullModel(newPullCmd(), env.client, tc.ref, true)
+			err := pullModel(newPullCmd(), env.client, tc.ref)
 			require.NoError(t, err, "Failed to pull model with reference: %s", tc.ref)
 
 			// List models and verify the expected model is present
@@ -426,7 +426,7 @@ func TestIntegration_InspectModel(t *testing.T) {
 	// Pull the model using a short reference
 	pullRef := "inspect-test"
 	t.Logf("Pulling model with reference: %s", pullRef)
-	err = pullModel(newPullCmd(), env.client, pullRef, true)
+	err = pullModel(newPullCmd(), env.client, pullRef)
 	require.NoError(t, err, "Failed to pull model")
 
 	// Verify the model was pulled
@@ -485,7 +485,7 @@ func TestIntegration_TagModel(t *testing.T) {
 	// Pull the model using a simple reference
 	pullRef := "tag-test"
 	t.Logf("Pulling model with reference: %s", pullRef)
-	err = pullModel(newPullCmd(), env.client, pullRef, true)
+	err = pullModel(newPullCmd(), env.client, pullRef)
 	require.NoError(t, err, "Failed to pull model")
 
 	// Verify the model was pulled
@@ -663,7 +663,7 @@ func TestIntegration_PushModel(t *testing.T) {
 	// Pull the model using a simple reference
 	pullRef := "tag-test"
 	t.Logf("Pulling model with reference: %s", pullRef)
-	err = pullModel(newPullCmd(), env.client, pullRef, true)
+	err = pullModel(newPullCmd(), env.client, pullRef)
 	require.NoError(t, err, "Failed to pull model")
 
 	// Verify the model was pulled
@@ -814,7 +814,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 				// Pull the model
 				pullRef := "rm-test"
 				t.Logf("Pulling model with reference: %s", pullRef)
-				err := pullModel(newPullCmd(), env.client, pullRef, true)
+				err := pullModel(newPullCmd(), env.client, pullRef)
 				require.NoError(t, err, "Failed to pull model")
 
 				// Verify model exists
@@ -848,11 +848,11 @@ func TestIntegration_RemoveModel(t *testing.T) {
 
 		// Pull both models
 		t.Logf("Pulling first model: rm-multi-1")
-		err := pullModel(newPullCmd(), env.client, "rm-multi-1", true)
+		err := pullModel(newPullCmd(), env.client, "rm-multi-1")
 		require.NoError(t, err, "Failed to pull first model")
 
 		t.Logf("Pulling second model: rm-multi-2")
-		err = pullModel(newPullCmd(), env.client, "rm-multi-2", true)
+		err = pullModel(newPullCmd(), env.client, "rm-multi-2")
 		require.NoError(t, err, "Failed to pull second model")
 
 		// Verify both models exist
@@ -878,7 +878,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	t.Run("remove specific tag keeps other tags", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
-		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		err := pullModel(newPullCmd(), env.client, "rm-test")
 		require.NoError(t, err, "Failed to pull model")
 
 		// Add multiple tags to the same model
@@ -940,7 +940,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	t.Run("remove by model ID removes all tags", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
-		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		err := pullModel(newPullCmd(), env.client, "rm-test")
 		require.NoError(t, err, "Failed to pull model")
 
 		// Add multiple tags
@@ -971,7 +971,7 @@ func TestIntegration_RemoveModel(t *testing.T) {
 	t.Run("force flag", func(t *testing.T) {
 		// Pull the model
 		t.Logf("Pulling model: rm-test")
-		err := pullModel(newPullCmd(), env.client, "rm-test", true)
+		err := pullModel(newPullCmd(), env.client, "rm-test")
 		require.NoError(t, err, "Failed to pull model")
 
 		// Test removal with force flag
