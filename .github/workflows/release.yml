@@ -5,28 +5,33 @@ on:
   workflow_dispatch:
     inputs:
       pushLatest:
-        description: 'Tag images produced by this job as latest'
+        description: "Tag images produced by this job as latest"
         required: false
         type: boolean
         default: false
       releaseTag:
-        description: 'Release tag'
+        description: "Release tag"
         required: false
         type: string
         default: "test"
       llamaServerVersion:
-        description: 'llama-server version'
+        description: "llama-server version"
         required: false
         type: string
         default: "latest"
       vllmVersion:
-        description: 'vLLM version'
+        description: "vLLM version"
         required: false
         type: string
         default: "0.12.0"
+      sglangVersion:
+        description: "SGLang version"
+        required: false
+        type: string
+        default: "0.4.0"
       # This can be removed once we have llama.cpp built for MUSA and CANN.
       buildMusaCann:
-        description: 'Build MUSA and CANN images'
+        description: "Build MUSA and CANN images"
         required: false
         type: boolean
         default: false
@@ -74,6 +79,12 @@ jobs:
           echo "docker/model-runner:${{ inputs.releaseTag }}-vllm-cuda" >> "$GITHUB_OUTPUT"
           if [ "${{ inputs.pushLatest }}" == "true" ]; then
             echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
+          fi
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+          echo "sglang-cuda<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:${{ inputs.releaseTag }}-sglang-cuda" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+            echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
@@ -154,6 +165,22 @@ jobs:
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.vllm-cuda }}
+
+      - name: Build SGLang CUDA image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          file: Dockerfile
+          target: final-sglang
+          platforms: linux/amd64
+          build-args: |
+            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
+            "LLAMA_SERVER_VARIANT=cuda"
+            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "SGLANG_VERSION=${{ inputs.sglangVersion }}"
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83

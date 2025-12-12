@@ -67,6 +67,11 @@ func (v *vLLM) UsesExternalModelManagement() bool {
 	return false
 }
 
+// UsesTCP implements inference.Backend.UsesTCP.
+func (v *vLLM) UsesTCP() bool {
+	return false
+}
+
 func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	if !platform.SupportsVLLM() {
 		return errors.New("not implemented")
