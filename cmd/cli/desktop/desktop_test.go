@@ -39,7 +39,7 @@ func TestPullHuggingFaceModel(t *testing.T) {
 	}, nil)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.NoError(t, err)
 }
 
@@ -126,7 +126,7 @@ func TestNonHuggingFaceModel(t *testing.T) {
 	}, nil)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.NoError(t, err)
 }
 
@@ -250,7 +250,7 @@ func TestPullRetryOnNetworkError(t *testing.T) {
 	)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.NoError(t, err)
 }
 
@@ -270,7 +270,7 @@ func TestPullNoRetryOn4xxError(t *testing.T) {
 	}, nil).Times(1)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Model not found")
 }
@@ -297,7 +297,7 @@ func TestPullRetryOn5xxError(t *testing.T) {
 	)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.NoError(t, err)
 }
 
@@ -324,7 +324,7 @@ func TestPullRetryOnServiceUnavailable(t *testing.T) {
 	)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.NoError(t, err)
 }
 
@@ -341,7 +341,7 @@ func TestPullMaxRetriesExhausted(t *testing.T) {
 	mockClient.EXPECT().Do(gomock.Any()).Return(nil, io.EOF).Times(4)
 
 	printer := NewSimplePrinter(func(s string) {})
-	_, _, err := client.Pull(modelName, false, printer)
+	_, _, err := client.Pull(modelName, printer)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to download after 3 retries")
 }

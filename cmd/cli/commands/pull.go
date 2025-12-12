@@ -10,8 +10,6 @@ import (
 )
 
 func newPullCmd() *cobra.Command {
-	var ignoreRuntimeMemoryCheck bool
-
 	c := &cobra.Command{
 		Use:   "pull MODEL",
 		Short: "Pull a model from Docker Hub or HuggingFace to your local environment",
@@ -20,19 +18,17 @@ func newPullCmd() *cobra.Command {
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
-			return pullModel(cmd, desktopClient, args[0], ignoreRuntimeMemoryCheck)
+			return pullModel(cmd, desktopClient, args[0])
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 
-	c.Flags().BoolVar(&ignoreRuntimeMemoryCheck, "ignore-runtime-memory-check", false, "Do not block pull if estimated runtime memory for model exceeds system resources.")
-
 	return c
 }
 
-func pullModel(cmd *cobra.Command, desktopClient *desktop.Client, model string, ignoreRuntimeMemoryCheck bool) error {
+func pullModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	printer := asPrinter(cmd)
-	response, _, err := desktopClient.Pull(model, ignoreRuntimeMemoryCheck, printer)
+	response, _, err := desktopClient.Pull(model, printer)
 
 	if err != nil {
 		return handleClientError(err, "Failed to pull model")

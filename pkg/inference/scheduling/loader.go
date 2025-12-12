@@ -11,7 +11,6 @@ import (
 
 	"github.com/docker/model-runner/pkg/environment"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/memory"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
@@ -31,9 +30,6 @@ const (
 var (
 	// errLoadsDisabled indicates that backend loads are currently disabled.
 	errLoadsDisabled = errors.New("backend loading disabled")
-	// errModelTooBig indicates that the model is too big to ever load into the
-	// available system memory.
-	errModelTooBig = errors.New("model too big")
 	// errRunnerAlreadyActive indicates that a given runner is already active
 	// and therefore can't be reconfigured for example
 	errRunnerAlreadyActive = errors.New("runner already active")
@@ -97,8 +93,6 @@ type loader struct {
 	modelManager *models.Manager
 	// runnerIdleTimeout is the loader-specific default runner idle timeout.
 	runnerIdleTimeout time.Duration
-	// totalMemory is the total system memory allocated to the loader.
-	totalMemory inference.RequiredMemory
 	// idleCheck is used to signal the run loop when timestamps have updated.
 	idleCheck chan struct{}
 	// guard is a sempahore controlling access to all subsequent fields. It is
@@ -108,8 +102,6 @@ type loader struct {
 	guard chan struct{}
 	// loadsEnabled signals that loads are currently enabled.
 	loadsEnabled bool
-	// availableMemory is the available portion of the loader's total memory.
-	availableMemory inference.RequiredMemory
 	// waiters is the set of signal channels associated with waiting loaders. We
 	// use a set of signaling channels (instead of a sync.Cond) to enable
 	// polling. Each signaling channel should be buffered (with size 1).
@@ -121,8 +113,6 @@ type loader struct {
 	slots []*runner
 	// references maps slot indices to reference counts.
 	references []uint
-	// allocations maps slot indices to memory allocation sizes.
-	allocations []inference.RequiredMemory
 	// timestamps maps slot indices to last usage times. Values in this slice
 	// are only valid if the corresponding reference count is zero.
 	timestamps []time.Time
@@ -138,7 +128,6 @@ func newLoader(
 	backends map[string]inference.Backend,
 	modelManager *models.Manager,
 	openAIRecorder *metrics.OpenAIRecorder,
-	sysMemInfo memory.SystemMemoryInfo,
 ) *loader {
 	// Compute the number of runner slots to allocate. Because of RAM and VRAM
 	// limitations, it's unlikely that we'll ever be able to fully populate
@@ -159,24 +148,18 @@ func newLoader(
 		runnerIdleTimeout = 8 * time.Hour
 	}
 
-	// Compute the amount of available memory.
-	totalMemory := sysMemInfo.GetTotalMemory()
-
 	// Create the loader.
 	l := &loader{
 		log:               log,
 		backends:          backends,
 		modelManager:      modelManager,
 		runnerIdleTimeout: runnerIdleTimeout,
-		totalMemory:       totalMemory,
 		idleCheck:         make(chan struct{}, 1),
 		guard:             make(chan struct{}, 1),
-		availableMemory:   totalMemory,
 		waiters:           make(map[chan<- struct{}]bool),
 		runners:           make(map[runnerKey]runnerInfo, nSlots),
 		slots:             make([]*runner, nSlots),
 		references:        make([]uint, nSlots),
-		allocations:       make([]inference.RequiredMemory, nSlots),
 		timestamps:        make([]time.Time, nSlots),
 		runnerConfigs:     make(map[runnerKey]inference.BackendConfiguration),
 		openAIRecorder:    openAIRecorder,
@@ -211,23 +194,11 @@ func (l *loader) broadcast() {
 	}
 }
 
-// formatMemorySize formats a memory size in bytes as a string.
-// Values of 0 or 1 are treated as sentinel values for "unknown" memory size.
-func formatMemorySize(bytes uint64) string {
-	if bytes <= 1 {
-		return "unknown"
-	}
-	return fmt.Sprintf("%d MB", bytes/1024/1024)
-}
-
-// freeRunnerSlot frees a runner slot and reclaims its memory.
+// freeRunnerSlot frees a runner slot.
 // The caller must hold the loader lock.
 func (l *loader) freeRunnerSlot(slot int, key runnerKey) {
 	l.slots[slot].terminate()
 	l.slots[slot] = nil
-	l.availableMemory.RAM += l.allocations[slot].RAM
-	l.availableMemory.VRAM += l.allocations[slot].VRAM
-	l.allocations[slot] = inference.RequiredMemory{RAM: 0, VRAM: 0}
 	l.timestamps[slot] = time.Time{}
 	delete(l.runners, key)
 }
@@ -264,10 +235,7 @@ func (l *loader) evict(idleOnly bool) int {
 		}
 	}
 	if evictedCount > 0 {
-		l.log.Infof("Evicted %d runner(s). Available memory: %s RAM, %s VRAM",
-			evictedCount,
-			formatMemorySize(l.availableMemory.RAM),
-			formatMemorySize(l.availableMemory.VRAM))
+		l.log.Infof("Evicted %d runner(s)", evictedCount)
 	}
 	return len(l.runners)
 }
@@ -447,8 +415,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		return nil, ErrBackendNotFound
 	}
 
-	// Estimate the amount of memory that will be used by the model and check
-	// that we're even capable of loading it.
+	// Get runner configuration if available
 	var runnerConfig *inference.BackendConfiguration
 	draftModelID := ""
 	if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, mode)]; ok {
@@ -465,44 +432,8 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			}
 		}
 	}
-	memory, err := backend.GetRequiredMemoryForModel(ctx, modelID, runnerConfig)
-	var parseErr *inference.ErrGGUFParse
-	if errors.As(err, &parseErr) {
-		// TODO(p1-0tr): For now override memory checks in case model can't be parsed
-		// e.g. model is too new for gguf-parser-go to know. We should provide a cleaner
-		// way to bypass these checks.
-		l.log.Warnf("Could not parse model(%s), memory checks will be ignored for it. Error: %s", modelID, parseErr)
-		memory = inference.RequiredMemory{
-			RAM:  0,
-			VRAM: 0,
-		}
-	} else if err != nil {
-		return nil, err
-	}
 
-	l.log.Infof("Loading %s, which will require %s RAM and %s VRAM on a system with %s RAM and %s VRAM",
-		modelID,
-		formatMemorySize(memory.RAM), formatMemorySize(memory.VRAM),
-		formatMemorySize(l.totalMemory.RAM), formatMemorySize(l.totalMemory.VRAM))
-
-	if l.totalMemory.RAM == 1 {
-		l.log.Warnf("RAM size unknown. Assume model will fit, but only one.")
-		memory.RAM = 1
-	}
-	if l.totalMemory.VRAM == 1 {
-		l.log.Warnf("VRAM size unknown. Assume model will fit, but only one.")
-		memory.VRAM = 1
-	}
-	// Validate if model could fit.
-	// On Windows, llamacpp can use up to half of system RAM as shared GPU memory
-	// if it runs out of dedicated VRAM.
-	totalVRAM := l.totalMemory.VRAM
-	if runtime.GOOS == "windows" {
-		totalVRAM += l.totalMemory.RAM / 2
-	}
-	if memory.RAM > l.totalMemory.RAM || memory.VRAM > totalVRAM {
-		return nil, errModelTooBig
-	}
+	l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
 
 	// Acquire the loader lock and defer its release.
 	if !l.lock(ctx) {
@@ -521,14 +452,6 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 	// Loop until we can satisfy the request or an error occurs.
 	for {
 		slot := -1
-		availableVRAM := l.availableMemory.VRAM
-		if runtime.GOOS == "windows" {
-			sharedRAM := l.totalMemory.RAM / 2
-			if l.availableMemory.RAM < sharedRAM {
-				sharedRAM = l.availableMemory.RAM
-			}
-			availableVRAM += sharedRAM
-		}
 
 		// If loads are disabled, then there's nothing we can do.
 		if !l.loadsEnabled {
@@ -555,25 +478,20 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			}
 		}
 
-		// If there's not sufficient memory or all slots are full, then try
-		// evicting unused runners.
-		if memory.RAM > l.availableMemory.RAM || memory.VRAM > availableVRAM || len(l.runners) == len(l.slots) {
-			l.log.Infof("Evicting to make room: need %s RAM, %s VRAM; have %s RAM, %s VRAM available; %d/%d slots used",
-				formatMemorySize(memory.RAM), formatMemorySize(memory.VRAM),
-				formatMemorySize(l.availableMemory.RAM),
-				formatMemorySize(availableVRAM),
+		// If all slots are full, try evicting unused runners.
+		if len(l.runners) == len(l.slots) {
+			l.log.Infof("Evicting to make room: %d/%d slots used",
 				len(l.runners), len(l.slots))
 			runnerCountAtLoopStart := len(l.runners)
 			remainingRunners := l.evict(false)
-			// Restart the loop if eviction happened to recompute availableVRAM
-			// and re-evaluate all conditions with the updated state.
+			// Restart the loop if eviction happened
 			if remainingRunners < runnerCountAtLoopStart {
 				continue
 			}
 		}
 
-		// If there's sufficient memory and a free slot, then find the slot.
-		if memory.RAM <= l.availableMemory.RAM && memory.VRAM <= availableVRAM && len(l.runners) < len(l.slots) {
+		// If there's a free slot, then find the slot.
+		if len(l.runners) < len(l.slots) {
 			for s, runner := range l.slots {
 				if runner == nil {
 					slot = s
@@ -583,18 +501,13 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		}
 
 		if slot < 0 {
-			l.log.Debugf("Cannot load model yet: need %s RAM, %s VRAM; have %s RAM, %s VRAM available; %d/%d slots used",
-				formatMemorySize(memory.RAM), formatMemorySize(memory.VRAM),
-				formatMemorySize(l.availableMemory.RAM),
-				formatMemorySize(availableVRAM),
+			l.log.Debugf("Cannot load model yet: %d/%d slots used",
 				len(l.runners), len(l.slots))
 		}
 
 		// If we've identified a slot, then we're ready to start a runner.
 		if slot >= 0 {
-			// runnerConfig was already retrieved earlier (lines 401-405), no need to look it up again
 			// Create the runner.
-			l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
 			runner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
 				l.log.Warnf("Unable to start %s backend runner with model %s in %s mode: %v",
@@ -618,13 +531,9 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			}
 
 			// Perform registration and return the runner.
-			l.availableMemory.RAM -= memory.RAM
-			l.availableMemory.VRAM -= memory.VRAM
 			l.runners[makeRunnerKey(backendName, modelID, draftModelID, mode)] = runnerInfo{slot, modelRef}
 			l.slots[slot] = runner
 			l.references[slot] = 1
-			l.allocations[slot].RAM = memory.RAM
-			l.allocations[slot].VRAM = memory.VRAM
 			return runner, nil
 		}
 

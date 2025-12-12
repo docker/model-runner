@@ -54,19 +54,6 @@ func (b *fastFailBackend) Run(ctx context.Context, socket, model string, modelRe
 	return errors.New("boom")
 }
 
-// mockSystemMemoryInfo implements memory.SystemMemoryInfo for testing
-type mockSystemMemoryInfo struct {
-	totalMemory inference.RequiredMemory
-}
-
-func (m *mockSystemMemoryInfo) HaveSufficientMemory(req inference.RequiredMemory) (bool, error) {
-	return req.RAM <= m.totalMemory.RAM && req.VRAM <= m.totalMemory.VRAM, nil
-}
-
-func (m *mockSystemMemoryInfo) GetTotalMemory() inference.RequiredMemory {
-	return m.totalMemory
-}
-
 // createTestLogger creates a logger for testing
 func createTestLogger() *logrus.Entry {
 	log := logrus.New()
@@ -135,136 +122,6 @@ func createAliveTerminableMockRunner(log *logrus.Entry, backend inference.Backen
 		client:         client,
 		proxyLog:       io.NopCloser(nil),
 		openAIRecorder: nil,
-	}
-}
-
-// TestFormatMemorySize tests the formatMemorySize helper function
-func TestFormatMemorySize(t *testing.T) {
-	tests := []struct {
-		name     string
-		bytes    uint64
-		expected string
-	}{
-		{
-			name:     "sentinel value 0 is unknown",
-			bytes:    0,
-			expected: "unknown",
-		},
-		{
-			name:     "sentinel value 1 is unknown",
-			bytes:    1,
-			expected: "unknown",
-		},
-		{
-			name:     "2 bytes is still unknown (edge case)",
-			bytes:    2,
-			expected: "0 MB",
-		},
-		{
-			name:     "1 MB",
-			bytes:    1024 * 1024,
-			expected: "1 MB",
-		},
-		{
-			name:     "512 MB",
-			bytes:    512 * 1024 * 1024,
-			expected: "512 MB",
-		},
-		{
-			name:     "1 GB",
-			bytes:    1024 * 1024 * 1024,
-			expected: "1024 MB",
-		},
-		{
-			name:     "8 GB",
-			bytes:    8 * 1024 * 1024 * 1024,
-			expected: "8192 MB",
-		},
-		{
-			name:     "fractional MB rounds down",
-			bytes:    1024*1024 + 512*1024, // 1.5 MB
-			expected: "1 MB",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatMemorySize(tt.bytes)
-			if result != tt.expected {
-				t.Errorf("formatMemorySize(%d) = %q, want %q", tt.bytes, result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestTotalMemoryWithUnknownVRAM tests that unknown VRAM (sentinel value 1) is handled correctly
-func TestTotalMemoryWithUnknownVRAM(t *testing.T) {
-	sysMemInfo := &mockSystemMemoryInfo{
-		totalMemory: inference.RequiredMemory{
-			RAM:  16 * 1024 * 1024 * 1024, // 16 GB
-			VRAM: 1,                       // unknown (sentinel)
-		},
-	}
-
-	totalMem := sysMemInfo.GetTotalMemory()
-	if totalMem.VRAM != 1 {
-		t.Errorf("Expected VRAM to be 1 (unknown sentinel), got %d", totalMem.VRAM)
-	}
-
-	vramStr := formatMemorySize(totalMem.VRAM)
-	if vramStr != "unknown" {
-		t.Errorf("Expected VRAM to format as 'unknown', got %q", vramStr)
-	}
-
-	ramStr := formatMemorySize(totalMem.RAM)
-	if ramStr == "unknown" {
-		t.Errorf("Expected RAM to format as numeric value, got %q", ramStr)
-	}
-}
-
-// TestMemoryCalculation tests memory requirement calculations
-func TestMemoryCalculation(t *testing.T) {
-	sysMemInfo := &mockSystemMemoryInfo{
-		totalMemory: inference.RequiredMemory{
-			RAM:  2 * 1024 * 1024 * 1024, // 2 GB
-			VRAM: 4 * 1024 * 1024 * 1024, // 4 GB
-		},
-	}
-
-	totalMem := sysMemInfo.GetTotalMemory()
-	if totalMem.RAM != 2*1024*1024*1024 {
-		t.Errorf("Expected RAM to be 2 GB, got %d", totalMem.RAM)
-	}
-	if totalMem.VRAM != 4*1024*1024*1024 {
-		t.Errorf("Expected VRAM to be 4 GB, got %d", totalMem.VRAM)
-	}
-
-	// Test sufficient memory check
-	required := inference.RequiredMemory{
-		RAM:  1 * 1024 * 1024 * 1024, // 1 GB
-		VRAM: 2 * 1024 * 1024 * 1024, // 2 GB
-	}
-
-	sufficient, err := sysMemInfo.HaveSufficientMemory(required)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if !sufficient {
-		t.Error("Expected sufficient memory for 1GB RAM / 2GB VRAM on 2GB RAM / 4GB VRAM system")
-	}
-
-	// Test insufficient memory
-	tooMuch := inference.RequiredMemory{
-		RAM:  3 * 1024 * 1024 * 1024, // 3 GB (more than available)
-		VRAM: 2 * 1024 * 1024 * 1024, // 2 GB
-	}
-
-	sufficient, err = sysMemInfo.HaveSufficientMemory(tooMuch)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if sufficient {
-		t.Error("Expected insufficient memory for 3GB RAM on 2GB RAM system")
 	}
 }
 
@@ -371,17 +228,9 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 		},
 	}}
 
-	// Create system memory info with exactly 1GB RAM and 1GB VRAM (only enough for one model)
-	sysMemInfo := &mockSystemMemoryInfo{
-		totalMemory: inference.RequiredMemory{
-			RAM:  1 * GB,
-			VRAM: 1 * GB,
-		},
-	}
-
 	// Create the loader with minimal dependencies (nil model manager is fine for this test)
 	backends := map[string]inference.Backend{"test-backend": backend}
-	loader := newLoader(log, backends, nil, nil, sysMemInfo)
+	loader := newLoader(log, backends, nil, nil)
 
 	// Enable loads directly under the lock (no background run loop needed)
 	if !loader.lock(context.Background()) {
@@ -397,7 +246,7 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 
 	defunctRunner := createDefunctMockRunner(log, backend)
 
-	// Register the defunct runner in slot 0, consuming all available memory
+	// Register the defunct runner in slot 0
 	slot := 0
 	loader.slots[slot] = defunctRunner
 	loader.runners[makeRunnerKey("test-backend", "model1", "", inference.BackendModeCompletion)] = runnerInfo{
@@ -405,9 +254,6 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 		modelRef: "model1:latest",
 	}
 	loader.references[slot] = 0 // Mark as unused (so it can be evicted)
-	loader.allocations[slot] = inference.RequiredMemory{RAM: 1 * GB, VRAM: 1 * GB}
-	loader.availableMemory.RAM = 0  // All RAM consumed by defunct runner
-	loader.availableMemory.VRAM = 0 // All VRAM consumed by defunct runner
 	loader.timestamps[slot] = time.Now()
 
 	loader.unlock()
@@ -439,16 +285,8 @@ func TestUnusedRunnerEvictionTriggersRetry(t *testing.T) {
 		},
 	}}
 
-	// System has exactly enough memory for one runner
-	sysMemInfo := &mockSystemMemoryInfo{
-		totalMemory: inference.RequiredMemory{
-			RAM:  1 * GB,
-			VRAM: 1 * GB,
-		},
-	}
-
 	backends := map[string]inference.Backend{"test-backend": backend}
-	loader := newLoader(log, backends, nil, nil, sysMemInfo)
+	loader := newLoader(log, backends, nil, nil)
 
 	// Enable loads directly
 	if !loader.lock(context.Background()) {
@@ -470,9 +308,6 @@ func TestUnusedRunnerEvictionTriggersRetry(t *testing.T) {
 		modelRef: "modelX:latest",
 	}
 	loader.references[slot] = 0 // unused
-	loader.allocations[slot] = inference.RequiredMemory{RAM: 1 * GB, VRAM: 1 * GB}
-	loader.availableMemory.RAM = 0
-	loader.availableMemory.VRAM = 0
 	loader.timestamps[slot] = time.Now()
 
 	loader.unlock()

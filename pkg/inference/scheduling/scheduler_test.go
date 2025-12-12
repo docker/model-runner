@@ -6,19 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/inference"
 	"github.com/sirupsen/logrus"
 )
-
-type systemMemoryInfo struct{}
-
-func (i systemMemoryInfo) HaveSufficientMemory(req inference.RequiredMemory) (bool, error) {
-	return true, nil
-}
-
-func (i systemMemoryInfo) GetTotalMemory() inference.RequiredMemory {
-	return inference.RequiredMemory{}
-}
 
 func TestCors(t *testing.T) {
 	// Verify that preflight requests work against non-existing handlers or
@@ -44,7 +33,7 @@ func TestCors(t *testing.T) {
 			discard := logrus.New()
 			discard.SetOutput(io.Discard)
 			log := logrus.NewEntry(discard)
-			s := NewScheduler(log, nil, nil, nil, nil, nil, systemMemoryInfo{})
+			s := NewScheduler(log, nil, nil, nil, nil, nil)
 			httpHandler := NewHTTPHandler(s, nil, []string{"*"})
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)
 			req.Header.Set("Origin", "docker.com")
