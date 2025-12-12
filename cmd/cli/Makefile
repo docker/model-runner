@@ -1,8 +1,8 @@
+include ../../Makefile.common
+
 .PHONY: all build clean link mock unit-tests docs
 
 BINARY_NAME=model-cli
-
-PLUGIN_DIR=$(HOME)/.docker/cli-plugins
 PLUGIN_NAME=docker-model
 
 VERSION ?=
@@ -10,23 +10,42 @@ VERSION ?=
 MACOS_MIN_VERSION := 14.0
 MACOS_MIN_VERSION_LDFLAG := -mmacosx-version-min=$(MACOS_MIN_VERSION)
 
+# OS-specific settings
+ifeq ($(DETECTED_OS),Windows)
+    BINARY_EXT := .exe
+    PLUGIN_DIR := $(USERPROFILE)/.docker/cli-plugins
+else
+    BINARY_EXT :=
+    PLUGIN_DIR := $(HOME)/.docker/cli-plugins
+endif
+
+BINARY_WITH_EXT := $(BINARY_NAME)$(BINARY_EXT)
+PLUGIN_WITH_EXT := $(PLUGIN_NAME)$(BINARY_EXT)
+
 all: build
 
 build:
-	@echo "Building $(BINARY_NAME)..."
-	go build -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty)" -o $(BINARY_NAME) .
+	@echo "Building $(BINARY_WITH_EXT)..."
+	go build -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty)" -o $(BINARY_WITH_EXT) .
 
 link:
-	@if [ ! -f $(BINARY_NAME) ]; then \
+	@if [ ! -f $(BINARY_WITH_EXT) ]; then \
 		echo "Binary not found, building first..."; \
 		$(MAKE) build; \
 	else \
-		echo "Using existing binary $(BINARY_NAME)"; \
+		echo "Using existing binary $(BINARY_WITH_EXT)"; \
 	fi
-	@echo "Linking $(BINARY_NAME) to Docker CLI plugins directory..."
-	@mkdir -p $(PLUGIN_DIR)
-	@ln -sf $(shell pwd)/$(BINARY_NAME) $(PLUGIN_DIR)/$(PLUGIN_NAME)
-	@echo "Link created: $(PLUGIN_DIR)/$(PLUGIN_NAME)"
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Copying $(BINARY_WITH_EXT) to Docker CLI plugins directory..."
+	@mkdir -p "$(PLUGIN_DIR)"
+	@cp -f $(BINARY_WITH_EXT) "$(PLUGIN_DIR)/$(PLUGIN_WITH_EXT)"
+	@echo "Plugin installed: $(PLUGIN_DIR)/$(PLUGIN_WITH_EXT)"
+else
+	@echo "Linking $(BINARY_WITH_EXT) to Docker CLI plugins directory..."
+	@mkdir -p "$(PLUGIN_DIR)"
+	@ln -sf $(shell pwd)/$(BINARY_WITH_EXT) "$(PLUGIN_DIR)/$(PLUGIN_WITH_EXT)"
+	@echo "Link created: $(PLUGIN_DIR)/$(PLUGIN_WITH_EXT)"
+endif
 
 install: build link
 
@@ -68,7 +87,7 @@ unit-tests:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -f $(BINARY_NAME)
+	@rm -f $(BINARY_WITH_EXT)
 	@echo "Cleaned!"
 
 docs:
