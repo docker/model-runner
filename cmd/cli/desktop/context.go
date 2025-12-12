@@ -113,6 +113,20 @@ func NewContextForMock(client DockerHttpClient) *ModelRunnerContext {
 	}
 }
 
+// NewContextForMockWithKind is a ModelRunnerContext constructor exposed only for the
+// purposes of mock testing with a specific engine kind.
+func NewContextForMockWithKind(client DockerHttpClient, kind types.ModelRunnerEngineKind, rawURLPrefix string) *ModelRunnerContext {
+	urlPrefix, err := url.Parse(rawURLPrefix)
+	if err != nil {
+		panic("error occurred while parsing URL: " + err.Error())
+	}
+	return &ModelRunnerContext{
+		kind:      kind,
+		urlPrefix: urlPrefix,
+		client:    client,
+	}
+}
+
 // NewContextForTest creates a ModelRunnerContext for integration testing
 // with a custom URL endpoint. This is intended for use in integration tests
 // where the Model Runner endpoint is dynamically created (e.g., testcontainers).
