@@ -89,13 +89,13 @@ func main() {
 		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 		Transport:     baseTransport,
 	}
+	modelManager := models.NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), clientConfig)
 	modelHandler := models.NewHTTPHandler(
 		log,
-		clientConfig,
+		modelManager,
 		nil,
 		memEstimator,
 	)
-	modelManager := models.NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), clientConfig)
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 
 	// Create llama.cpp configuration from environment variables

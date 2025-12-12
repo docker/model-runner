@@ -124,10 +124,11 @@ func TestPullModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			handler := NewHTTPHandler(log, ClientConfig{
+			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-			}, nil, memEstimator)
+			})
+			handler := NewHTTPHandler(log, manager, nil, memEstimator)
 
 			r := httptest.NewRequest(http.MethodPost, "/models/create", strings.NewReader(`{"from": "`+tag+`"}`))
 			if tt.acceptHeader != "" {
@@ -235,12 +236,13 @@ func TestHandleGetModel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logrus.NewEntry(logrus.StandardLogger())
 			memEstimator := &mockMemoryEstimator{}
-			handler := NewHTTPHandler(log, ClientConfig{
+			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 				Transport:     http.DefaultTransport,
 				UserAgent:     "test-agent",
-			}, nil, memEstimator)
+			})
+			handler := NewHTTPHandler(log, manager, nil, memEstimator)
 
 			// First pull the model if we're testing local access
 			if !tt.remote && !strings.Contains(tt.modelName, "nonexistent") {
@@ -298,6 +300,13 @@ func TestCors(t *testing.T) {
 	// Verify that preflight requests work against non-existing handlers or
 	// method-specific handlers that do not support OPTIONS
 	t.Parallel()
+
+	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
 	tests := []struct {
 		name string
 		path string
@@ -319,7 +328,11 @@ func TestCors(t *testing.T) {
 			discard := logrus.New()
 			discard.SetOutput(io.Discard)
 			log := logrus.NewEntry(discard)
-			m := NewHTTPHandler(log, ClientConfig{}, []string{"*"}, memEstimator)
+			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
+				StoreRootPath: tempDir,
+				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+			})
+			m := NewHTTPHandler(log, manager, []string{"*"}, memEstimator)
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)
 			req.Header.Set("Origin", "docker.com")
 			w := httptest.NewRecorder()
