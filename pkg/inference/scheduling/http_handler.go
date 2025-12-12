@@ -67,8 +67,17 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		"POST " + inference.InferencePrefix + "/{backend}/score",
 		"POST " + inference.InferencePrefix + "/score",
 	}
+
+	// Anthropic Messages API routes
+	anthropicRoutes := []string{
+		"POST " + inference.InferencePrefix + "/{backend}/v1/messages",
+		"POST " + inference.InferencePrefix + "/v1/messages",
+		"POST " + inference.InferencePrefix + "/{backend}/v1/messages/count_tokens",
+		"POST " + inference.InferencePrefix + "/v1/messages/count_tokens",
+	}
+
 	m := make(map[string]http.HandlerFunc)
-	for _, route := range openAIRoutes {
+	for _, route := range append(openAIRoutes, anthropicRoutes...) {
 		m[route] = h.handleOpenAIInference
 	}
 
