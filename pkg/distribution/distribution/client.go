@@ -203,7 +203,7 @@ func (c *Client) looksLikeID(s string) bool {
 	}
 	for i := 0; i < n; i++ {
 		ch := s[i]
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 			return false
 		}
 	}
@@ -223,7 +223,7 @@ func (c *Client) looksLikeDigest(s string) bool {
 	}
 	for i := 0; i < 64; i++ {
 		ch := hashPart[i]
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 			return false
 		}
 	}

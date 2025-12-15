@@ -21,11 +21,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	defaultOrg = "ai"
-	defaultTag = "latest"
-)
-
 // HTTPHandler manages inference model pulls and storage.
 type HTTPHandler struct {
 	// log is the associated logger.
