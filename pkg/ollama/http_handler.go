@@ -316,9 +316,6 @@ func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 		modelName = req.Model
 	}
 
-	// Normalize model name
-	modelName = models.NormalizeModelName(modelName)
-
 	// Get model details
 	model, err := h.modelManager.GetLocal(modelName)
 	if err != nil {
@@ -457,9 +454,6 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		modelName = req.Model
 	}
 
-	// Normalize model name
-	modelName = models.NormalizeModelName(modelName)
-
 	if req.Prompt == "" && isZeroKeepAlive(req.KeepAlive) {
 		h.unloadModel(ctx, w, modelName)
 		return
@@ -566,9 +560,6 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		modelName = req.Model
 	}
 
-	// Normalize model name
-	modelName = models.NormalizeModelName(modelName)
-
 	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
 	h.log.Infof("handleDelete: deleting model %s", sanitizedModelName)
 
@@ -647,9 +638,6 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 	if modelName == "" {
 		modelName = req.Model
 	}
-
-	// Normalize model name
-	modelName = models.NormalizeModelName(modelName)
 
 	// Set Accept header for JSON response (Ollama expects JSON streaming)
 	r.Header.Set("Accept", "application/json")

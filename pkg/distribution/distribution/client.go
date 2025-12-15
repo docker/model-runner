@@ -140,6 +140,8 @@ func NewClient(opts ...Option) (*Client, error) {
 
 // PullModel pulls a model from a registry and returns the local file path
 func (c *Client) PullModel(ctx context.Context, reference string, progressWriter io.Writer, bearerToken ...string) error {
+	// Normalize the model reference
+	reference = NormalizeModelName(reference)
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
 	// Use the client's registry, or create a temporary one if bearer token is provided
@@ -325,7 +327,8 @@ func (c *Client) ListModels() ([]types.Model, error) {
 // GetModel returns a model by reference
 func (c *Client) GetModel(reference string) (types.Model, error) {
 	c.log.Infoln("Getting model by reference:", utils.SanitizeForLog(reference))
-	model, err := c.store.Read(reference)
+	normalizedRef := NormalizeModelName(reference)
+	model, err := c.store.Read(normalizedRef)
 	if err != nil {
 		c.log.Errorln("Failed to get model:", err, "reference:", utils.SanitizeForLog(reference))
 		return nil, fmt.Errorf("get model '%q': %w", utils.SanitizeForLog(reference), err)
@@ -337,7 +340,8 @@ func (c *Client) GetModel(reference string) (types.Model, error) {
 // IsModelInStore checks if a model with the given reference is in the local store
 func (c *Client) IsModelInStore(reference string) (bool, error) {
 	c.log.Infoln("Checking model by reference:", utils.SanitizeForLog(reference))
-	if _, err := c.store.Read(reference); errors.Is(err, ErrModelNotFound) {
+	normalizedRef := NormalizeModelName(reference)
+	if _, err := c.store.Read(normalizedRef); errors.Is(err, ErrModelNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -354,7 +358,8 @@ type DeleteModelResponse []DeleteModelAction
 
 // DeleteModel deletes a model
 func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse, error) {
-	mdl, err := c.store.Read(reference)
+	normalizedRef := NormalizeModelName(reference)
+	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return &DeleteModelResponse{}, err
 	}
@@ -410,7 +415,8 @@ func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse
 // Tag adds a tag to a model
 func (c *Client) Tag(source string, target string) error {
 	c.log.Infoln("Tagging model, source:", source, "target:", utils.SanitizeForLog(target))
-	return c.store.AddTags(source, []string{target})
+	normalizedRef := NormalizeModelName(source)
+	return c.store.AddTags(normalizedRef, []string{target})
 }
 
 // PushModel pushes a tagged model from the content store to the registry.
@@ -422,7 +428,8 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	}
 
 	// Get the model from the store
-	mdl, err := c.store.Read(tag)
+	normalizedRef := NormalizeModelName(tag)
+	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return fmt.Errorf("reading model: %w", err)
 	}
@@ -464,7 +471,8 @@ func (c *Client) ResetStore() error {
 
 // GetBundle returns a types.Bundle containing the model, creating one as necessary
 func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
-	return c.store.BundleForModel(ref)
+	normalizedRef := NormalizeModelName(ref)
+	return c.store.BundleForModel(normalizedRef)
 }
 
 func GetSupportedFormats() []types.Format {

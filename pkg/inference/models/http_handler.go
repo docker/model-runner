@@ -82,53 +82,6 @@ func (h *HTTPHandler) RebuildRoutes(allowedOrigins []string) {
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 }
 
-// NormalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
-// It also converts Hugging Face model names to lowercase.
-// Examples:
-//   - "gemma3" -> "ai/gemma3:latest"
-//   - "gemma3:v1" -> "ai/gemma3:v1"
-//   - "myorg/gemma3" -> "myorg/gemma3:latest"
-//   - "ai/gemma3:latest" -> "ai/gemma3:latest" (unchanged)
-//   - "hf.co/model" -> "hf.co/model:latest" (unchanged - has registry)
-//   - "hf.co/Model" -> "hf.co/model:latest" (converted to lowercase)
-func NormalizeModelName(model string) string {
-	// If the model is empty, return as-is
-	if model == "" {
-		return model
-	}
-
-	// Normalize HuggingFace model names (lowercase)
-	if strings.HasPrefix(model, "hf.co/") {
-		// Replace hf.co with huggingface.co to avoid losing the Authorization header on redirect.
-		model = "huggingface.co" + strings.ToLower(strings.TrimPrefix(model, "hf.co"))
-	}
-
-	// Check if model contains a registry (domain with dot before first slash)
-	firstSlash := strings.Index(model, "/")
-	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
-		// Has a registry, just ensure tag
-		if !strings.Contains(model, ":") {
-			return model + ":" + defaultTag
-		}
-		return model
-	}
-
-	// Split by colon to check for tag
-	parts := strings.SplitN(model, ":", 2)
-	nameWithOrg := parts[0]
-	tag := defaultTag
-	if len(parts) == 2 {
-		tag = parts[1]
-	}
-
-	// If name doesn't contain a slash, add the default org
-	if !strings.Contains(nameWithOrg, "/") {
-		nameWithOrg = defaultOrg + "/" + nameWithOrg
-	}
-
-	return nameWithOrg + ":" + tag
-}
-
 func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          h.handleCreateModel,
@@ -154,9 +107,6 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-
-	// Normalize the model name to add defaults
-	request.From = NormalizeModelName(request.From)
 
 	// Pull the model
 	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
@@ -339,14 +289,6 @@ func (h *HTTPHandler) handleDeleteModel(w http.ResponseWriter, r *http.Request) 
 
 	// First try to delete without normalization (as ID), then with normalization if not found
 	resp, err := h.manager.Delete(modelRef, force)
-	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-		// If not found as-is, try with normalization
-		normalizedRef := NormalizeModelName(modelRef)
-		if normalizedRef != modelRef { // only try normalized if it's different
-			resp, err = h.manager.Delete(normalizedRef, force)
-		}
-	}
-
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -426,9 +368,7 @@ func (h *HTTPHandler) handleModelAction(w http.ResponseWriter, r *http.Request) 
 
 	switch action {
 	case "tag":
-		// For tag actions, we likely expect model references rather than IDs,
-		// so normalize the model name, but we'll handle both cases in the handlers
-		h.handleTagModel(w, r, NormalizeModelName(model))
+		h.handleTagModel(w, r, model)
 	case "push":
 		h.handlePushModel(w, r, model)
 	default:
@@ -517,13 +457,10 @@ func (h *HTTPHandler) handlePackageModel(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Normalize the source model name
-	normalized := NormalizeModelName(request.From)
-
-	err := h.manager.Package(normalized, request.Tag, request.ContextSize)
+	err := h.manager.Package(request.From, request.Tag, request.ContextSize)
 	if err != nil {
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized, -1), err)
+			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(request.From, -1), err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}

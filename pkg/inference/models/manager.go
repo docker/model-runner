@@ -82,14 +82,6 @@ func (m *Manager) GetLocal(ref string) (types.Model, error) {
 
 	// Query the model - first try without normalization (as ID), then with normalization
 	model, err := m.distributionClient.GetModel(ref)
-	if err != nil && errors.Is(err, distribution.ErrModelNotFound) {
-		// If not found as-is, try with normalization
-		normalizedRef := NormalizeModelName(ref)
-		if normalizedRef != ref { // only try normalized if it's different
-			model, err = m.distributionClient.GetModel(normalizedRef)
-		}
-	}
-
 	if err != nil {
 		return nil, fmt.Errorf("error while getting model: %w", err)
 	}
@@ -132,8 +124,7 @@ func (m *Manager) GetRemote(ctx context.Context, ref string) (types.ModelArtifac
 	if m.registryClient == nil {
 		return nil, fmt.Errorf("model registry service unavailable")
 	}
-	normalizedRef := NormalizeModelName(ref)
-	model, err := m.registryClient.Model(ctx, normalizedRef)
+	model, err := m.registryClient.Model(ctx, ref)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting remote model: %w", err)
 	}
