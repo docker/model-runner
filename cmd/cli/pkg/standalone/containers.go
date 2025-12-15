@@ -91,7 +91,8 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 
 func execInContainer(ctx context.Context, dockerClient *client.Client, containerID, cmd string) error {
 	execConfig := container.ExecOptions{
-		Cmd: []string{"sh", "-c", cmd},
+		Cmd:  []string{"sh", "-c", cmd},
+		User: "root",
 	}
 	execResp, err := dockerClient.ContainerExecCreate(ctx, containerID, execConfig)
 	if err != nil {
@@ -267,8 +268,12 @@ func tryGetBindAscendMounts(printer StatusPrinter, debug bool) []mount.Mount {
 	return newMounts
 }
 
+// proxyCertContainerPath is the path where the proxy certificate will be mounted in the container.
+// This location is used by update-ca-certificates to add the cert to the system trust store.
+const proxyCertContainerPath = "/usr/local/share/ca-certificates/proxy-ca.crt"
+
 // CreateControllerContainer creates and starts a controller container.
-func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool) error {
+func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool, proxyCert string) error {
 	imageName := controllerImageName(gpu, backend)
 
 	// Set up the container configuration.
@@ -288,6 +293,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			env = append(env, proxyVar+"="+value)
 		}
 	}
+
 	config := &container.Config{
 		Image: imageName,
 		Env:   env,
@@ -314,6 +320,15 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	ascendMounts := tryGetBindAscendMounts(printer, debug)
 	if len(ascendMounts) > 0 {
 		hostConfig.Mounts = append(hostConfig.Mounts, ascendMounts...)
+	}
+
+	if proxyCert != "" {
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   proxyCert,
+			Target:   proxyCertContainerPath,
+			ReadOnly: true,
+		})
 	}
 
 	portBindings := []nat.PortBinding{{HostIP: host, HostPort: portStr}}
@@ -437,6 +452,20 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			printer.Printf("Warning: failed to copy Docker config: %v\n", err)
 		}
 	}
+
+	// Add proxy certificate to the system CA bundle
+	if created && proxyCert != "" {
+		printer.Printf("Updating CA certificates...\n")
+		if err := execInContainer(ctx, dockerClient, resp.ID, "update-ca-certificates"); err != nil {
+			printer.Printf("Warning: failed to update CA certificates: %v\n", err)
+		} else {
+			printer.Printf("Restarting container to apply CA certificate...\n")
+			if err := dockerClient.ContainerRestart(ctx, resp.ID, container.StopOptions{}); err != nil {
+				printer.Printf("Warning: failed to restart container after adding CA certificate: %v\n", err)
+			}
+		}
+	}
+
 	return nil
 }
 

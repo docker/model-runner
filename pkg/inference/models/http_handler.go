@@ -53,12 +53,11 @@ type ClientConfig struct {
 }
 
 // NewHTTPHandler creates a new model's handler.
-func NewHTTPHandler(log logging.Logger, c ClientConfig, allowedOrigins []string) *HTTPHandler {
-	// Create the manager.
+func NewHTTPHandler(log logging.Logger, manager *Manager, allowedOrigins []string) *HTTPHandler {
 	m := &HTTPHandler{
 		log:     log,
 		router:  http.NewServeMux(),
-		manager: NewManager(log.WithFields(logrus.Fields{"component": "service"}), c),
+		manager: manager,
 	}
 
 	// Register routes.

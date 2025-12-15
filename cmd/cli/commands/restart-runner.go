@@ -11,6 +11,7 @@ func newRestartRunner() *cobra.Command {
 	var gpuMode string
 	var doNotTrack bool
 	var debug bool
+	var proxyCert string
 	c := &cobra.Command{
 		Use:   "restart-runner",
 		Short: "Restart Docker Model Runner (Docker Engine only)",
@@ -30,6 +31,7 @@ func newRestartRunner() *cobra.Command {
 				gpuMode:    gpuMode,
 				doNotTrack: doNotTrack,
 				pullImage:  false,
+				proxyCert:  proxyCert,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -40,6 +42,7 @@ func newRestartRunner() *cobra.Command {
 		GpuMode:    &gpuMode,
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
+		ProxyCert:  &proxyCert,
 	})
 	return c
 }
