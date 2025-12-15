@@ -56,14 +56,6 @@ type Status struct {
 	Error   error  `json:"error"`
 }
 
-// normalizeHuggingFaceModelName converts Hugging Face model names to lowercase
-func normalizeHuggingFaceModelName(model string) string {
-	if strings.HasPrefix(model, "hf.co/") {
-		return strings.ToLower(model)
-	}
-	return model
-}
-
 func (c *Client) Status() Status {
 	// TODO: Query "/".
 	resp, err := c.doRequest(http.MethodGet, inference.ModelsPrefix, nil)
@@ -106,8 +98,6 @@ func (c *Client) Status() Status {
 }
 
 func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
-
 	// Check if this is a Hugging Face model and if HF_TOKEN is set
 	var hfToken string
 	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
@@ -233,8 +223,6 @@ func (c *Client) withRetries(
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
-
 	return c.withRetries("push", 3, printer, func(attempt int) (string, bool, error, bool) {
 		pushPath := inference.ModelsPrefix + "/" + model + "/push"
 		resp, err := c.doRequest(
@@ -303,7 +291,6 @@ func (c *Client) ListOpenAI() (dmrm.OpenAIModelList, error) {
 }
 
 func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
-	model = normalizeHuggingFaceModelName(model)
 	rawResponse, err := c.listRawWithQuery(fmt.Sprintf("%s/%s", inference.ModelsPrefix, model), model, remote)
 	if err != nil {
 		return dmrm.Model{}, err
@@ -317,7 +304,6 @@ func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
 }
 
 func (c *Client) InspectOpenAI(model string) (dmrm.OpenAIModel, error) {
-	model = normalizeHuggingFaceModelName(model)
 	modelsRoute := inference.InferencePrefix + "/v1/models"
 	rawResponse, err := c.listRaw(fmt.Sprintf("%s/%s", modelsRoute, model), model)
 	if err != nil {
@@ -366,8 +352,6 @@ func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
 func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
-	model = normalizeHuggingFaceModelName(model)
-
 	// Build the message content - either simple string or multimodal array
 	var messageContent interface{}
 	if len(imageURLs) > 0 {
@@ -536,7 +520,6 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	modelRemoved := ""
 	for _, model := range modelArgs {
-		model = normalizeHuggingFaceModelName(model)
 		// Construct the URL with query parameters
 		removePath := fmt.Sprintf("%s/%s?force=%s",
 			inference.ModelsPrefix,
@@ -826,11 +809,6 @@ func (c *Client) handleQueryError(err error, path string) error {
 }
 
 func (c *Client) Tag(source, targetRepo, targetTag string) error {
-	source = normalizeHuggingFaceModelName(source)
-	// For tag operations, let the daemon handle name resolution to support
-	// partial name matching like "smollm2" -> "ai/smollm2:latest"
-	// Don't do client-side ID expansion which can cause issues with tagging
-
 	// Construct the URL with query parameters using the normalized source
 	tagPath := fmt.Sprintf("%s/%s/tag?repo=%s&tag=%s",
 		inference.ModelsPrefix,
