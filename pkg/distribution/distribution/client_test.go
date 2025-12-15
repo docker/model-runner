@@ -1078,8 +1078,11 @@ func TestTag(t *testing.T) {
 		t.Fatalf("Failed to get model ID: %v", err)
 	}
 
+	// Normalize the model name before writing
+	normalized := client.normalizeModelName("some-repo:some-tag")
+
 	// Push the model to the store
-	if err := client.store.Write(model, []string{"some-repo:some-tag"}, nil); err != nil {
+	if err := client.store.Write(model, []string{normalized}, nil); err != nil {
 		t.Fatalf("Failed to push model to store: %v", err)
 	}
 
@@ -1192,8 +1195,11 @@ func TestIsModelInStoreFound(t *testing.T) {
 		t.Fatalf("Failed to create model: %v", err)
 	}
 
+	// Normalize the model name before writing
+	normalized := client.normalizeModelName("some-repo:some-tag")
+
 	// Push the model to the store
-	if err := client.store.Write(model, []string{"some-repo:some-tag"}, nil); err != nil {
+	if err := client.store.Write(model, []string{normalized}, nil); err != nil {
 		t.Fatalf("Failed to push model to store: %v", err)
 	}
 

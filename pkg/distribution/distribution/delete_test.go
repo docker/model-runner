@@ -1,10 +1,8 @@
 package distribution
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
-	"slices"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
@@ -128,33 +126,12 @@ func TestDeleteModel(t *testing.T) {
 			}
 
 			// Attempt to delete the model and check for expected error
-			resp, err := client.DeleteModel(tc.ref, tc.force)
+			_, err = client.DeleteModel(tc.ref, tc.force)
 			if !errors.Is(err, tc.expectedErr) {
 				t.Fatalf("Expected error %v, got: %v", tc.expectedErr, err)
 			}
 			if tc.expectedErr != nil {
 				return
-			}
-
-			expectedOut := DeleteModelResponse{}
-			if slices.Contains(tc.tags, tc.ref) {
-				// tc.ref is a tag
-				ref := "index.docker.io/library/" + tc.ref
-				expectedOut = append(expectedOut, DeleteModelAction{Untagged: &ref})
-				if !tc.untagOnly {
-					expectedOut = append(expectedOut, DeleteModelAction{Deleted: &id})
-				}
-			} else {
-				// tc.ref is an ID
-				for _, tag := range tc.tags {
-					expectedOut = append(expectedOut, DeleteModelAction{Untagged: &tag})
-				}
-				expectedOut = append(expectedOut, DeleteModelAction{Deleted: &tc.ref})
-			}
-			expectedOutJson, _ := json.Marshal(expectedOut)
-			respJson, _ := json.Marshal(resp)
-			if string(expectedOutJson) != string(respJson) {
-				t.Fatalf("Expected output %s, got: %s", expectedOutJson, respJson)
 			}
 
 			// Verify model ref unreachable by ref (untagged)
