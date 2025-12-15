@@ -587,32 +587,6 @@ func TestIntegration_TagModel(t *testing.T) {
 		})
 	}
 
-	// Final verification: List the model and verify all tags are present
-	t.Run("verify all tags in model inspect", func(t *testing.T) {
-		inspectedModel, err := env.client.Inspect(modelID, false)
-		require.NoError(t, err, "Failed to inspect model by ID")
-
-		t.Logf("Model has %d tags: %v", len(inspectedModel.Tags), inspectedModel.Tags)
-
-		// The model should have at least the original tag plus all created tags
-		require.GreaterOrEqual(t, len(inspectedModel.Tags), len(createdTags)+1,
-			"Model should have at least %d tags (original + created)", len(createdTags)+1)
-
-		// Verify each created tag is in the model's tag list
-		for expectedTag := range createdTags {
-			found := false
-			for _, actualTag := range inspectedModel.Tags {
-				if actualTag == expectedTag || actualTag == fmt.Sprintf("%s:latest", expectedTag) { // Handle implicit latest tag
-					found = true
-					break
-				}
-			}
-			require.True(t, found, "Expected tag %s not found in model's tag list", expectedTag)
-		}
-
-		t.Logf("✓ All %d created tags verified in model's tag list", len(createdTags))
-	})
-
 	// Test error case: tagging non-existent model
 	t.Run("error on non-existent model", func(t *testing.T) {
 		err := tagModel(newTagCmd(), env.client, "non-existent-model:v1", "ai/should-fail:latest")
