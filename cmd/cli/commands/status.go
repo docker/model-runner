@@ -7,11 +7,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/docker/model-runner/cmd/cli/pkg/types"
-
 	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func newStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Check if the Docker Model Runner is running",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			standalone, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false)
+			runner, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false)
 			if err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
@@ -40,7 +40,7 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			if formatJson {
-				return jsonStatus(standalone, status, backendStatus)
+				return jsonStatus(asPrinter(cmd), runner, status, backendStatus)
 			} else {
 				textStatus(cmd, status, backendStatus)
 			}
@@ -69,44 +69,58 @@ func textStatus(cmd *cobra.Command, status desktop.Status, backendStatus map[str
 	}
 }
 
-func jsonStatus(standalone *standaloneRunner, status desktop.Status, backendStatus map[string]string) error {
+func makeEndpoint(host string, port int) string {
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/v1/"
+}
+
+func jsonStatus(printer standalone.StatusPrinter, runner *standaloneRunner, status desktop.Status, backendStatus map[string]string) error {
 	type Status struct {
-		Running  bool              `json:"running"`
-		Backends map[string]string `json:"backends"`
-		Endpoint string            `json:"endpoint"`
+		Running      bool              `json:"running"`
+		Backends     map[string]string `json:"backends"`
+		Kind         string            `json:"kind"`
+		Endpoint     string            `json:"endpoint"`
+		EndpointHost string            `json:"endpointHost"`
 	}
-	var endpoint string
+	var endpoint, endpointHost string
 	kind := modelRunner.EngineKind()
 	switch kind {
 	case types.ModelRunnerEngineKindDesktop:
-		endpoint = "http://model-runner.docker.internal/engines/v1/"
+		endpoint = "http://model-runner.docker.internal/v1/"
+		endpointHost = modelRunner.URL("/v1/")
 	case types.ModelRunnerEngineKindMobyManual:
-		endpoint = modelRunner.URL("/engines/v1/")
+		endpoint = modelRunner.URL("/v1/")
+		endpointHost = endpoint
 	case types.ModelRunnerEngineKindCloud:
-		fallthrough
+		gatewayIP := "127.0.0.1"
+		var gatewayPort uint16 = standalone.DefaultControllerPortCloud
+		if runner != nil {
+			if runner.gatewayIP != "" {
+				gatewayIP = runner.gatewayIP
+			}
+			if runner.gatewayPort != 0 {
+				gatewayPort = runner.gatewayPort
+			}
+		}
+		endpoint = makeEndpoint(gatewayIP, int(gatewayPort))
+		endpointHost = makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud)
 	case types.ModelRunnerEngineKindMoby:
-		if standalone.gatewayIP == "" {
-			standalone.gatewayIP = "127.0.0.1"
-		}
-
-		if standalone.gatewayPort == 0 {
-			standalone.gatewayPort = 12434
-		}
-
-		endpoint = "http://" + net.JoinHostPort(standalone.gatewayIP, strconv.Itoa(int(standalone.gatewayPort))) + "/engines/v1/"
+		endpoint = makeEndpoint("host.docker.internal", standalone.DefaultControllerPortMoby)
+		endpointHost = makeEndpoint("127.0.0.1", standalone.DefaultControllerPortMoby)
 	default:
 		return fmt.Errorf("unhandled engine kind: %v", kind)
 	}
 	s := Status{
-		Running:  status.Running,
-		Backends: backendStatus,
-		Endpoint: endpoint,
+		Running:      status.Running,
+		Backends:     backendStatus,
+		Kind:         kind.String(),
+		Endpoint:     endpoint,
+		EndpointHost: endpointHost,
 	}
 	marshal, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(marshal))
+	printer.Println(string(marshal))
 	return nil
 }
 

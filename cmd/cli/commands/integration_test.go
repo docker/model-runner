@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/stretchr/testify/require"
@@ -117,7 +118,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	registryURL := ociRegistry(t, ctx, net)
 	dmrURL := dockerModelRunner(t, ctx, net)
 
-	modelRunnerCtx, err := desktop.NewContextForTest(dmrURL, nil)
+	modelRunnerCtx, err := desktop.NewContextForTest(dmrURL, nil, types.ModelRunnerEngineKindMoby)
 	require.NoError(t, err, "Failed to create model runner context")
 
 	client := desktop.New(modelRunnerCtx)

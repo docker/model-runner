@@ -68,7 +68,7 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 
 	// Ensure the .docker directory exists
 	mkdirCmd := "mkdir -p /home/modelrunner/.docker && chown modelrunner:modelrunner /home/modelrunner/.docker"
-	if err := execInContainer(ctx, dockerClient, containerID, mkdirCmd); err != nil {
+	if err := execInContainer(ctx, dockerClient, containerID, mkdirCmd, false); err != nil {
 		return err
 	}
 
@@ -82,17 +82,19 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 
 	// Set correct ownership and permissions
 	chmodCmd := "chown modelrunner:modelrunner /home/modelrunner/.docker/config.json && chmod 600 /home/modelrunner/.docker/config.json"
-	if err := execInContainer(ctx, dockerClient, containerID, chmodCmd); err != nil {
+	if err := execInContainer(ctx, dockerClient, containerID, chmodCmd, false); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func execInContainer(ctx context.Context, dockerClient *client.Client, containerID, cmd string) error {
+func execInContainer(ctx context.Context, dockerClient *client.Client, containerID, cmd string, asRoot bool) error {
 	execConfig := container.ExecOptions{
-		Cmd:  []string{"sh", "-c", cmd},
-		User: "root",
+		Cmd: []string{"sh", "-c", cmd},
+	}
+	if asRoot {
+		execConfig.User = "root"
 	}
 	execResp, err := dockerClient.ContainerExecCreate(ctx, containerID, execConfig)
 	if err != nil {
@@ -453,10 +455,10 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		}
 	}
 
-	// Add proxy certificate to the system CA bundle
+	// Add proxy certificate to the system CA bundle (requires root for update-ca-certificates)
 	if created && proxyCert != "" {
 		printer.Printf("Updating CA certificates...\n")
-		if err := execInContainer(ctx, dockerClient, resp.ID, "update-ca-certificates"); err != nil {
+		if err := execInContainer(ctx, dockerClient, resp.ID, "update-ca-certificates", true); err != nil {
 			printer.Printf("Warning: failed to update CA certificates: %v\n", err)
 		} else {
 			printer.Printf("Restarting container to apply CA certificate...\n")

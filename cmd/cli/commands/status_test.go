@@ -2,15 +2,19 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	mockdesktop "github.com/docker/model-runner/cmd/cli/mocks"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -123,6 +127,83 @@ func TestStatus(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, strings.HasPrefix(buf.String(), test.expectedOutput))
 			}
+		})
+	}
+}
+
+func TestJsonStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		engineKind       types.ModelRunnerEngineKind
+		urlPrefix        string
+		expectedKind     string
+		expectedEndpoint string
+		expectedHostEnd  string
+	}{
+		{
+			name:             "Docker Desktop",
+			engineKind:       types.ModelRunnerEngineKindDesktop,
+			urlPrefix:        "http://localhost" + inference.ExperimentalEndpointsPrefix,
+			expectedKind:     "Docker Desktop",
+			expectedEndpoint: "http://model-runner.docker.internal/v1/",
+			expectedHostEnd:  "http://localhost" + inference.ExperimentalEndpointsPrefix + "/v1/",
+		},
+		{
+			name:             "Docker Engine",
+			engineKind:       types.ModelRunnerEngineKindMoby,
+			urlPrefix:        "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby),
+			expectedKind:     "Docker Engine",
+			expectedEndpoint: makeEndpoint("host.docker.internal", standalone.DefaultControllerPortMoby),
+			expectedHostEnd:  makeEndpoint("127.0.0.1", standalone.DefaultControllerPortMoby),
+		},
+		{
+			name:             "Docker Cloud",
+			engineKind:       types.ModelRunnerEngineKindCloud,
+			urlPrefix:        "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud),
+			expectedKind:     "Docker Cloud",
+			expectedEndpoint: makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud),
+			expectedHostEnd:  makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud),
+		},
+		{
+			name:             "Docker Engine (Manual Install)",
+			engineKind:       types.ModelRunnerEngineKindMobyManual,
+			urlPrefix:        "http://localhost:8080",
+			expectedKind:     "Docker Engine (Manual Install)",
+			expectedEndpoint: "http://localhost:8080/v1/",
+			expectedHostEnd:  "http://localhost:8080/v1/",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, err := desktop.NewContextForTest(test.urlPrefix, nil, test.engineKind)
+			require.NoError(t, err)
+			modelRunner = ctx
+
+			var output string
+			printer := desktop.NewSimplePrinter(func(msg string) {
+				output = msg
+			})
+			status := desktop.Status{Running: true}
+			backendStatus := map[string]string{"llama.cpp": "running"}
+
+			// Cloud kind needs a runner for gateway IP/port
+			var runner *standaloneRunner
+			if test.engineKind == types.ModelRunnerEngineKindCloud {
+				runner = &standaloneRunner{}
+			}
+
+			err = jsonStatus(printer, runner, status, backendStatus)
+			require.NoError(t, err)
+
+			var result map[string]any
+			err = json.Unmarshal([]byte(output), &result)
+			require.NoError(t, err)
+
+			require.Equal(t, test.expectedKind, result["kind"])
+			require.Equal(t, test.expectedEndpoint, result["endpoint"])
+			require.Equal(t, test.expectedHostEnd, result["endpointHost"])
+			require.Equal(t, true, result["running"])
 		})
 	}
 }
