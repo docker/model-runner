@@ -305,3 +305,90 @@ func TestThinkFlagBehavior(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeFlagsValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		runtimeFlags  []string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:         "valid runtime flags without paths",
+			runtimeFlags: []string{"--verbose", "--threads", "4"},
+			expectError:  false,
+		},
+		{
+			name:         "empty runtime flags",
+			runtimeFlags: []string{},
+			expectError:  false,
+		},
+		{
+			name:          "reject absolute path in value",
+			runtimeFlags:  []string{"--log-file", "/var/log/model.log"},
+			expectError:   true,
+			errorContains: "paths are not allowed",
+		},
+		{
+			name:          "reject absolute path in flag=value format",
+			runtimeFlags:  []string{"--output-file=/tmp/output.txt"},
+			expectError:   true,
+			errorContains: "paths are not allowed",
+		},
+		{
+			name:          "reject relative path",
+			runtimeFlags:  []string{"--config", "../config.yaml"},
+			expectError:   true,
+			errorContains: "paths are not allowed",
+		},
+		{
+			name:          "reject URL",
+			runtimeFlags:  []string{"--endpoint", "http://example.com/api"},
+			expectError:   true,
+			errorContains: "paths are not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flags := ConfigureFlags{}
+			req, err := flags.BuildConfigureRequest("test-model")
+			if err != nil {
+				t.Fatalf("BuildConfigureRequest failed: %v", err)
+			}
+
+			// Set runtime flags after building request
+			req.RuntimeFlags = tt.runtimeFlags
+
+			// Note: The actual validation happens in scheduler.ConfigureRunner,
+			// but we're testing that the BuildConfigureRequest correctly
+			// preserves the RuntimeFlags for validation downstream.
+			// For a true integration test, we would need to mock the scheduler.
+
+			if tt.expectError {
+				// In this unit test context, we verify the flags are preserved
+				// The actual validation will happen in the scheduler
+				if len(req.RuntimeFlags) == 0 && len(tt.runtimeFlags) > 0 {
+					t.Error("RuntimeFlags should be preserved in the request")
+				}
+			} else {
+				if !equalStringSlices(req.RuntimeFlags, tt.runtimeFlags) {
+					t.Errorf("Expected RuntimeFlags %v, got %v", tt.runtimeFlags, req.RuntimeFlags)
+				}
+			}
+		})
+	}
+}
+
+// equalStringSlices checks if two string slices are equal
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

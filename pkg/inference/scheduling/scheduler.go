@@ -240,6 +240,11 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 		}
 	}
 
+	// Validate runtime flags to prevent path-based security issues
+	if err := inference.ValidateRuntimeFlags(runtimeFlags); err != nil {
+		return nil, err
+	}
+
 	// Build runner configuration with shared settings
 	var runnerConfig inference.BackendConfiguration
 	runnerConfig.ContextSize = req.ContextSize
