@@ -84,6 +84,23 @@ func TestGetArgs(t *testing.T) {
 			},
 		},
 		{
+			name: "with runtime flags",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				RuntimeFlags: []string{"--gpu-memory-utilization", "0.9"},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--gpu-memory-utilization",
+				"0.9",
+			},
+		},
+		{
 			name: "with model context size (takes precedence)",
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model",

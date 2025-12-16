@@ -93,7 +93,8 @@ type UnloadResponse struct {
 
 // ConfigureRequest specifies per-model runtime configuration options.
 type ConfigureRequest struct {
-	Model string                 `json:"model"`
-	Mode  *inference.BackendMode `json:"mode,omitempty"`
+	Model           string                 `json:"model"`
+	Mode            *inference.BackendMode `json:"mode,omitempty"`
+	RawRuntimeFlags string                 `json:"raw-runtime-flags,omitempty"`
 	inference.BackendConfiguration
 }

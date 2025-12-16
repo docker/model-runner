@@ -79,6 +79,11 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, "--ctx-size", strconv.FormatInt(int64(*contextSize), 10))
 	}
 
+	// Add arguments from backend config
+	if config != nil {
+		args = append(args, config.RuntimeFlags...)
+	}
+
 	// Add arguments for Multimodal projector or jinja (they are mutually exclusive)
 	if path := bundle.MMPROJPath(); path != "" {
 		args = append(args, "--mmproj", path)

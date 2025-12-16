@@ -37,6 +37,7 @@ func newComposeCmd() *cobra.Command {
 func newUpCommand() *cobra.Command {
 	var models []string
 	var ctxSize int64
+	var rawRuntimeFlags string
 	var backend string
 	var draftModel string
 	var numTokens int
@@ -69,6 +70,9 @@ func newUpCommand() *cobra.Command {
 			if ctxSize > 0 {
 				sendInfo(fmt.Sprintf("Setting context size to %d", ctxSize))
 			}
+			if rawRuntimeFlags != "" {
+				sendInfo("Setting raw runtime flags to " + rawRuntimeFlags)
+			}
 
 			// Build speculative config if any speculative flags are set
 			var speculativeConfig *inference.SpeculativeDecodingConfig
@@ -89,10 +93,11 @@ func newUpCommand() *cobra.Command {
 						ContextSize: &size,
 						Speculative: speculativeConfig,
 					},
+					RawRuntimeFlags: rawRuntimeFlags,
 				}); err != nil {
-					configErrFmtString := "failed to configure backend for model %s with context-size %d"
-					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, err)
-					return fmt.Errorf(configErrFmtString+": %w", model, ctxSize, err)
+					configErrFmtString := "failed to configure backend for model %s with context-size %d  and runtime-flags %s"
+					_ = sendErrorf(configErrFmtString+": %v", model, rawRuntimeFlags, ctxSize, err)
+					return fmt.Errorf(configErrFmtString+": %w", model, ctxSize, rawRuntimeFlags, err)
 				}
 				sendInfo("Successfully configured backend for model " + model)
 			}
@@ -114,6 +119,7 @@ func newUpCommand() *cobra.Command {
 	}
 	c.Flags().StringArrayVar(&models, "model", nil, "model to use")
 	c.Flags().Int64Var(&ctxSize, "context-size", -1, "context size for the model")
+	c.Flags().StringVar(&rawRuntimeFlags, "runtime-flags", "", "raw runtime flags to pass to the inference engine")
 	c.Flags().StringVar(&backend, "backend", llamacpp.Name, "inference backend to use")
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")

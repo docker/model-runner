@@ -82,8 +82,9 @@ type LlamaCppConfig struct {
 
 type BackendConfiguration struct {
 	// Shared configuration across all backends
-	ContextSize *int32                     `json:"context-size,omitempty"`
-	Speculative *SpeculativeDecodingConfig `json:"speculative,omitempty"`
+	ContextSize  *int32                     `json:"context-size,omitempty"`
+	RuntimeFlags []string                   `json:"runtime-flags,omitempty"`
+	Speculative  *SpeculativeDecodingConfig `json:"speculative,omitempty"`
 
 	// Backend-specific configuration
 	VLLM     *VLLMConfig     `json:"vllm,omitempty"`

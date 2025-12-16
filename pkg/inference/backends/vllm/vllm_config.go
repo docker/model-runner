@@ -56,7 +56,11 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	if maxLen := GetMaxModelLen(bundle.RuntimeConfig(), config); maxLen != nil {
 		args = append(args, "--max-model-len", strconv.FormatInt(int64(*maxLen), 10))
 	}
-	// If nil, vLLM will automatically derive from the model config
+
+	// Add runtime flags from backend config
+	if config != nil {
+		args = append(args, config.RuntimeFlags...)
+	}
 
 	// Add vLLM-specific arguments from backend config
 	if config != nil && config.VLLM != nil {
