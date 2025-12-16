@@ -96,7 +96,7 @@ func newUpCommand() *cobra.Command {
 					RawRuntimeFlags: rawRuntimeFlags,
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d  and runtime-flags %s"
-_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, rawRuntimeFlags, err)
+					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, rawRuntimeFlags, err)
 					return fmt.Errorf(configErrFmtString+": %w", model, ctxSize, rawRuntimeFlags, err)
 				}
 				sendInfo("Successfully configured backend for model " + model)
