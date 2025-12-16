@@ -580,7 +580,11 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 // The layers must already exist in the store.
 func (c *Client) WriteLightweightModel(mdl types.ModelArtifact, tags []string) error {
 	c.log.Infoln("Writing lightweight model variant")
-	return c.store.WriteLightweight(mdl, tags)
+	normalizedTags := make([]string, len(tags))
+	for i, tag := range tags {
+		normalizedTags[i] = c.normalizeModelName(tag)
+	}
+	return c.store.WriteLightweight(mdl, normalizedTags)
 }
 
 func (c *Client) ResetStore() error {
