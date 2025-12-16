@@ -18,17 +18,6 @@ type ModelCreateRequest struct {
 	BearerToken string `json:"bearer-token,omitempty"`
 }
 
-// ModelPackageRequest represents a model package request, which creates a new model
-// from an existing one with modified properties (e.g., context size).
-type ModelPackageRequest struct {
-	// From is the name of the source model to package from.
-	From string `json:"from"`
-	// Tag is the name to give the new packaged model.
-	Tag string `json:"tag"`
-	// ContextSize specifies the context size to set for the new model.
-	ContextSize *int32 `json:"context-size,omitempty"`
-}
-
 // SimpleModel is a wrapper that allows creating a model with modified configuration
 type SimpleModel struct {
 	types.Model

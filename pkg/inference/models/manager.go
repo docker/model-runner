@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
-	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -416,48 +415,6 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 		return fmt.Errorf("error while pushing model: %w", err)
 	}
 
-	return nil
-}
-
-func (m *Manager) Package(ref string, tag string, contextSize *int32) error {
-	// Create a builder from an existing model by getting the bundle first
-	// Since ModelArtifact interface is needed to work with the builder
-	bundle, err := m.distributionClient.GetBundle(ref)
-	if err != nil {
-		return fmt.Errorf("error while getting model bundle: %w", err)
-	}
-
-	// Create a builder from the existing model artifact (from the bundle)
-	modelArtifact, ok := bundle.(types.ModelArtifact)
-	if !ok {
-		return fmt.Errorf("model bundle is not a valid model artifact")
-	}
-
-	// Create a builder from the existing model
-	bldr, err := builder.FromModel(modelArtifact)
-	if err != nil {
-		return fmt.Errorf("error while building model bundle: %w", err)
-	}
-
-	// Apply context size if specified
-	if contextSize != nil {
-		bldr = bldr.WithContextSize(*contextSize)
-	}
-
-	// Get the built model artifact
-	builtModel := bldr.Model()
-
-	// Check if we can use lightweight repackaging (config-only changes from existing model)
-	useLightweight := bldr.HasOnlyConfigChanges()
-
-	if useLightweight {
-		// Use the lightweight method to avoid re-transferring layers
-		if err := m.distributionClient.WriteLightweightModel(builtModel, []string{tag}); err != nil {
-			return fmt.Errorf("error writing model: %w", err)
-		}
-	} else {
-		return err
-	}
 	return nil
 }
 

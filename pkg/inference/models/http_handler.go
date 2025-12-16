@@ -15,7 +15,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
 	"github.com/sirupsen/logrus"
@@ -133,7 +132,6 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
 		"POST " + inference.ModelsPrefix + "/create":                          h.handleCreateModel,
 		"POST " + inference.ModelsPrefix + "/load":                            h.handleLoadModel,
-		"POST " + inference.ModelsPrefix + "/package":                         h.handlePackageModel,
 		"GET " + inference.ModelsPrefix:                                       h.handleGetModels,
 		"GET " + inference.ModelsPrefix + "/{name...}":                        h.handleGetModel,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     h.handleDeleteModel,
@@ -498,47 +496,6 @@ func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, mo
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-}
-
-// handlePackageModel handles POST <inference-prefix>/models/package requests.
-func (h *HTTPHandler) handlePackageModel(w http.ResponseWriter, r *http.Request) {
-
-	// Decode the request
-	var request ModelPackageRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Validate required fields
-	if request.From == "" || request.Tag == "" {
-		http.Error(w, "both 'from' and 'tag' fields are required", http.StatusBadRequest)
-		return
-	}
-
-	// Normalize the source model name
-	normalized := NormalizeModelName(request.From)
-
-	err := h.manager.Package(normalized, request.Tag, request.ContextSize)
-	if err != nil {
-		if errors.Is(err, distribution.ErrModelNotFound) {
-			h.log.Warnf("Failed to package model from %q: %v", utils.SanitizeForLog(normalized, -1), err)
-			http.Error(w, "Model not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Return success response
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]string{
-		"message": fmt.Sprintf("Successfully packaged model from %s with tag %s", request.From, request.Tag),
-		"model":   request.Tag,
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Warnln("Error while encoding package response:", err)
 	}
 }
 
