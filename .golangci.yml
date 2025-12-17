@@ -5,6 +5,8 @@ run:
   # Skip vendor and generated code
   skip-dirs:
     - pkg/go-containerregistry
+  skip-files:
+    - main_test.go
 
 formatters:
   enable:
