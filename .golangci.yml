@@ -2,11 +2,6 @@ version: "2"
 
 run:
   timeout: 5m
-  # Skip vendor and generated code
-  skip-dirs:
-    - pkg/go-containerregistry
-  skip-files:
-    - main_test.go
 
 formatters:
   enable:
@@ -216,6 +211,10 @@ linters:
       - text: '^shadow: declaration of "(ctx|err|ok)" shadows declaration'
         linters:
           - govet
+      - path: main_test\.go # Exclude main_test.go files because of a false positive: https://github.com/docker/model-runner/actions/runs/20296739902/job/58292102948
+        linters:
+          - staticcheck
+        text: "SA5011"
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
