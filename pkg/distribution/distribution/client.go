@@ -138,8 +138,132 @@ func NewClient(opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// normalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
+// It also converts Hugging Face model names to lowercase and resolves IDs to full IDs.
+// This is a private method used internally by the Client.
+func (c *Client) normalizeModelName(model string) string {
+	const (
+		defaultOrg = "ai"
+		defaultTag = "latest"
+	)
+
+	model = strings.TrimSpace(model)
+
+	// If the model is empty, return as-is
+	if model == "" {
+		return model
+	}
+
+	// If it looks like an ID or digest, try to resolve it to full ID
+	if c.looksLikeID(model) || c.looksLikeDigest(model) {
+		if fullID := c.resolveID(model); fullID != "" {
+			return fullID
+		}
+		// If not found, return as-is
+		return model
+	}
+
+	// Normalize HuggingFace model names (lowercase path)
+	if strings.HasPrefix(model, "hf.co/") {
+		// Replace hf.co with huggingface.co to avoid losing the Authorization header on redirect.
+		model = "huggingface.co" + strings.ToLower(strings.TrimPrefix(model, "hf.co"))
+	}
+
+	// Check if model contains a registry (domain with dot before first slash)
+	firstSlash := strings.Index(model, "/")
+	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
+		// Has a registry, just ensure tag
+		if !strings.Contains(model, ":") {
+			return model + ":" + defaultTag
+		}
+		return model
+	}
+
+	// Split by colon to check for tag
+	parts := strings.SplitN(model, ":", 2)
+	nameWithOrg := parts[0]
+	tag := defaultTag
+	if len(parts) == 2 && parts[1] != "" {
+		tag = parts[1]
+	}
+
+	// If name doesn't contain a slash, add the default org
+	if !strings.Contains(nameWithOrg, "/") {
+		nameWithOrg = defaultOrg + "/" + nameWithOrg
+	}
+
+	return nameWithOrg + ":" + tag
+}
+
+// looksLikeID returns true for short & long hex IDs (12 or 64 chars)
+func (c *Client) looksLikeID(s string) bool {
+	n := len(s)
+	if n != 12 && n != 64 {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		ch := s[i]
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// looksLikeDigest returns true for e.g. "sha256:<64-hex>"
+func (c *Client) looksLikeDigest(s string) bool {
+	const prefix = "sha256:"
+	if !strings.HasPrefix(s, prefix) {
+		return false
+	}
+	hashPart := s[len(prefix):]
+	// SHA256 digests must be exactly 64 hex characters
+	if len(hashPart) != 64 {
+		return false
+	}
+	for i := 0; i < 64; i++ {
+		ch := hashPart[i]
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveID attempts to resolve a short ID or digest to a full model ID
+// by checking all models in the store. Returns empty string if not found.
+func (c *Client) resolveID(id string) string {
+	models, err := c.ListModels()
+	if err != nil {
+		return ""
+	}
+
+	for _, m := range models {
+		fullID, err := m.ID()
+		if err != nil {
+			continue
+		}
+
+		// Check short ID (12 chars) - match against the hex part after "sha256:"
+		if len(id) == 12 && strings.HasPrefix(fullID, "sha256:") {
+			if len(fullID) >= 19 && fullID[7:19] == id {
+				return fullID
+			}
+		}
+
+		// Check full ID match (with or without sha256: prefix)
+		if fullID == id || strings.TrimPrefix(fullID, "sha256:") == id {
+			return fullID
+		}
+	}
+
+	return ""
+}
+
 // PullModel pulls a model from a registry and returns the local file path
 func (c *Client) PullModel(ctx context.Context, reference string, progressWriter io.Writer, bearerToken ...string) error {
+	// Normalize the model reference
+	reference = c.normalizeModelName(reference)
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
 	// Use the client's registry, or create a temporary one if bearer token is provided
@@ -325,7 +449,8 @@ func (c *Client) ListModels() ([]types.Model, error) {
 // GetModel returns a model by reference
 func (c *Client) GetModel(reference string) (types.Model, error) {
 	c.log.Infoln("Getting model by reference:", utils.SanitizeForLog(reference))
-	model, err := c.store.Read(reference)
+	normalizedRef := c.normalizeModelName(reference)
+	model, err := c.store.Read(normalizedRef)
 	if err != nil {
 		c.log.Errorln("Failed to get model:", err, "reference:", utils.SanitizeForLog(reference))
 		return nil, fmt.Errorf("get model '%q': %w", utils.SanitizeForLog(reference), err)
@@ -337,7 +462,8 @@ func (c *Client) GetModel(reference string) (types.Model, error) {
 // IsModelInStore checks if a model with the given reference is in the local store
 func (c *Client) IsModelInStore(reference string) (bool, error) {
 	c.log.Infoln("Checking model by reference:", utils.SanitizeForLog(reference))
-	if _, err := c.store.Read(reference); errors.Is(err, ErrModelNotFound) {
+	normalizedRef := c.normalizeModelName(reference)
+	if _, err := c.store.Read(normalizedRef); errors.Is(err, ErrModelNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -354,7 +480,8 @@ type DeleteModelResponse []DeleteModelAction
 
 // DeleteModel deletes a model
 func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse, error) {
-	mdl, err := c.store.Read(reference)
+	normalizedRef := c.normalizeModelName(reference)
+	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return &DeleteModelResponse{}, err
 	}
@@ -366,13 +493,13 @@ func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse
 	// Check if this is a digest reference (contains @)
 	// Digest references like "name@sha256:..." should be treated as ID references, not tags
 	isDigestReference := strings.Contains(reference, "@")
-	isTag := id != reference && !isDigestReference
+	isTag := id != normalizedRef && !isDigestReference
 
 	resp := DeleteModelResponse{}
 
 	if isTag {
 		c.log.Infoln("Untagging model:", reference)
-		tags, err := c.store.RemoveTags([]string{reference})
+		tags, err := c.store.RemoveTags([]string{normalizedRef})
 		if err != nil {
 			c.log.Errorln("Failed to untag model:", err, "tag:", reference)
 			return &DeleteModelResponse{}, fmt.Errorf("untagging model: %w", err)
@@ -410,7 +537,9 @@ func (c *Client) DeleteModel(reference string, force bool) (*DeleteModelResponse
 // Tag adds a tag to a model
 func (c *Client) Tag(source string, target string) error {
 	c.log.Infoln("Tagging model, source:", source, "target:", utils.SanitizeForLog(target))
-	return c.store.AddTags(source, []string{target})
+	normalizedSource := c.normalizeModelName(source)
+	normalizedTarget := c.normalizeModelName(target)
+	return c.store.AddTags(normalizedSource, []string{normalizedTarget})
 }
 
 // PushModel pushes a tagged model from the content store to the registry.
@@ -422,7 +551,8 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	}
 
 	// Get the model from the store
-	mdl, err := c.store.Read(tag)
+	normalizedRef := c.normalizeModelName(tag)
+	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return fmt.Errorf("reading model: %w", err)
 	}
@@ -450,7 +580,11 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 // The layers must already exist in the store.
 func (c *Client) WriteLightweightModel(mdl types.ModelArtifact, tags []string) error {
 	c.log.Infoln("Writing lightweight model variant")
-	return c.store.WriteLightweight(mdl, tags)
+	normalizedTags := make([]string, len(tags))
+	for i, tag := range tags {
+		normalizedTags[i] = c.normalizeModelName(tag)
+	}
+	return c.store.WriteLightweight(mdl, normalizedTags)
 }
 
 func (c *Client) ResetStore() error {
@@ -464,7 +598,8 @@ func (c *Client) ResetStore() error {
 
 // GetBundle returns a types.Bundle containing the model, creating one as necessary
 func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
-	return c.store.BundleForModel(ref)
+	normalizedRef := c.normalizeModelName(ref)
+	return c.store.BundleForModel(normalizedRef)
 }
 
 func GetSupportedFormats() []types.Format {

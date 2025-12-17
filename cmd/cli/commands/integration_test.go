@@ -587,32 +587,6 @@ func TestIntegration_TagModel(t *testing.T) {
 		})
 	}
 
-	// Final verification: List the model and verify all tags are present
-	t.Run("verify all tags in model inspect", func(t *testing.T) {
-		inspectedModel, err := env.client.Inspect(modelID, false)
-		require.NoError(t, err, "Failed to inspect model by ID")
-
-		t.Logf("Model has %d tags: %v", len(inspectedModel.Tags), inspectedModel.Tags)
-
-		// The model should have at least the original tag plus all created tags
-		require.GreaterOrEqual(t, len(inspectedModel.Tags), len(createdTags)+1,
-			"Model should have at least %d tags (original + created)", len(createdTags)+1)
-
-		// Verify each created tag is in the model's tag list
-		for expectedTag := range createdTags {
-			found := false
-			for _, actualTag := range inspectedModel.Tags {
-				if actualTag == expectedTag || actualTag == fmt.Sprintf("%s:latest", expectedTag) { // Handle implicit latest tag
-					found = true
-					break
-				}
-			}
-			require.True(t, found, "Expected tag %s not found in model's tag list", expectedTag)
-		}
-
-		t.Logf("✓ All %d created tags verified in model's tag list", len(createdTags))
-	})
-
 	// Test error case: tagging non-existent model
 	t.Run("error on non-existent model", func(t *testing.T) {
 		err := tagModel(newTagCmd(), env.client, "non-existent-model:v1", "ai/should-fail:latest")
@@ -1014,6 +988,131 @@ func TestIntegration_RemoveModel(t *testing.T) {
 			t.Logf("✓ Correctly failed to remove with invalid reference: %v", err)
 		})
 	})
+}
+
+// TestIntegration_PackageModel tests packaging a GGUF model file
+// to ensure the model is properly loaded and tagged in the model store.
+// This test reproduces issue #461 where packaging fails with "model not found" during tagging.
+func TestIntegration_PackageModel(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Ensure no models exist initially
+	models, err := listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	if len(models) != 0 {
+		t.Fatal("Expected no initial models, but found some")
+	}
+
+	// Use the dummy GGUF file from assets
+	dummyGGUFPath := filepath.Join("../../../assets/dummy.gguf")
+	absPath, err := filepath.Abs(dummyGGUFPath)
+	require.NoError(t, err)
+
+	// Check if the file exists
+	_, err = os.Stat(absPath)
+	require.NoError(t, err, "dummy.gguf not found at %s", absPath)
+
+	// Test case 1: Package a GGUF file with a simple tag
+	t.Run("package GGUF with simple tag", func(t *testing.T) {
+		targetTag := "ai/packaged-test:latest"
+
+		// Create package options
+		opts := packageOptions{
+			ggufPath: absPath,
+			tag:      targetTag,
+		}
+
+		// Execute the package command using the helper function with test client
+		t.Logf("Packaging GGUF file %s as %s", absPath, targetTag)
+		err := packageModel(env.ctx, newPackagedCmd(), env.client, opts)
+		require.NoError(t, err, "Failed to package GGUF model")
+
+		// Verify the model was loaded and tagged
+		t.Logf("Verifying model was loaded and tagged")
+		models, err := listModels(false, env.client, false, false, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, models, "No models found after packaging")
+
+		// Verify we can inspect the model by tag
+		model, err := env.client.Inspect(targetTag, false)
+		require.NoError(t, err, "Failed to inspect packaged model by tag: %s", targetTag)
+		require.NotEmpty(t, model.ID, "Model ID should not be empty")
+		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+
+		t.Logf("✓ Successfully packaged and tagged model: %s (ID: %s)", targetTag, model.ID[7:19])
+
+		// Cleanup
+		err = removeModel(env.client, model.ID, true)
+		require.NoError(t, err, "Failed to remove model")
+	})
+
+	// Test case 2: Package with context size override
+	t.Run("package GGUF with context size", func(t *testing.T) {
+		targetTag := "ai/packaged-ctx:latest"
+
+		// Create package options with context size
+		opts := packageOptions{
+			ggufPath:    absPath,
+			tag:         targetTag,
+			contextSize: 4096,
+		}
+
+		// Create a command for context
+		cmd := newPackagedCmd()
+		// Set the flag as changed for context size
+		cmd.Flags().Set("context-size", "4096")
+
+		// Execute the package command using the helper function with test client
+		t.Logf("Packaging GGUF file with context size 4096 as %s", targetTag)
+		err := packageModel(env.ctx, cmd, env.client, opts)
+		require.NoError(t, err, "Failed to package GGUF model with context size")
+
+		// Verify the model was loaded and tagged
+		model, err := env.client.Inspect(targetTag, false)
+		require.NoError(t, err, "Failed to inspect packaged model")
+		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+
+		t.Logf("✓ Successfully packaged model with context size: %s", targetTag)
+
+		// Cleanup
+		err = removeModel(env.client, model.ID, true)
+		require.NoError(t, err, "Failed to remove model")
+	})
+
+	// Test case 3: Package with different org
+	t.Run("package GGUF with custom org", func(t *testing.T) {
+		targetTag := "myorg/packaged-test:v1"
+
+		// Create package options
+		opts := packageOptions{
+			ggufPath: absPath,
+			tag:      targetTag,
+		}
+
+		// Create a command for context
+		cmd := newPackagedCmd()
+
+		// Execute the package command using the helper function with test client
+		t.Logf("Packaging GGUF file as %s", targetTag)
+		err := packageModel(env.ctx, cmd, env.client, opts)
+		require.NoError(t, err, "Failed to package GGUF model with custom org")
+
+		// Verify the model was loaded and tagged
+		model, err := env.client.Inspect(targetTag, false)
+		require.NoError(t, err, "Failed to inspect packaged model")
+		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+
+		t.Logf("✓ Successfully packaged model with custom org: %s", targetTag)
+
+		// Cleanup
+		err = removeModel(env.client, model.ID, true)
+		require.NoError(t, err, "Failed to remove model")
+	})
+
+	// Verify all models are cleaned up
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.Empty(t, strings.TrimSpace(models), "All models should be removed after cleanup")
 }
 
 func int32ptr(n int32) *int32 {

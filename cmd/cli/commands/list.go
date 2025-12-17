@@ -72,27 +72,39 @@ func listModels(openai bool, desktopClient *desktop.Client, quiet bool, jsonForm
 	}
 
 	if modelFilter != "" {
-		// Normalize the filter to match stored model names (backend normalizes when storing)
-		normalizedFilter := dmrm.NormalizeModelName(modelFilter)
+		// If filter doesn't contain '/', prepend default namespace 'ai/'
+		if !strings.Contains(modelFilter, "/") {
+			modelFilter = "ai/" + modelFilter
+		}
+
 		var filteredModels []dmrm.Model
+
+		// Check if filter has a colon (i.e., includes a tag)
+		hasColon := strings.Contains(modelFilter, ":")
+
 		for _, m := range models {
-			hasMatchingTag := false
+			var matchingTags []string
 			for _, tag := range m.Tags {
-				// Tags are stored in normalized format by the backend
-				if tag == normalizedFilter {
-					hasMatchingTag = true
-					break
-				}
-				// Also check without the tag part
-				modelName, _, _ := strings.Cut(tag, ":")
-				filterName, _, _ := strings.Cut(normalizedFilter, ":")
-				if modelName == filterName {
-					hasMatchingTag = true
-					break
+				if hasColon {
+					// Filter includes a tag part - do exact match
+					// Tags are stored in normalized format by the backend
+					if tag == modelFilter {
+						matchingTags = append(matchingTags, tag)
+					}
+				} else {
+					// Filter has no colon - match repository name only (part before ':')
+					repository, _, _ := strings.Cut(tag, ":")
+					if repository == modelFilter {
+						matchingTags = append(matchingTags, tag)
+					}
 				}
 			}
-			if hasMatchingTag {
-				filteredModels = append(filteredModels, m)
+			// Only include the model if at least one tag matched, and only include matching tags
+			if len(matchingTags) > 0 {
+				// Create a copy of the model with only the matching tags
+				filteredModel := m
+				filteredModel.Tags = matchingTags
+				filteredModels = append(filteredModels, filteredModel)
 			}
 		}
 		models = filteredModels

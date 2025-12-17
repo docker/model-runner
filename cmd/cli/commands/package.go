@@ -131,7 +131,7 @@ func newPackagedCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.tag = args[0]
-			if err := packageModel(cmd, opts); err != nil {
+			if err := packageModel(cmd.Context(), cmd, desktopClient, opts); err != nil {
 				cmd.PrintErrln("Failed to package model")
 				return fmt.Errorf("package model: %w", err)
 			}
@@ -254,7 +254,7 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 	return result, nil
 }
 
-func packageModel(cmd *cobra.Command, opts packageOptions) error {
+func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) error {
 	var (
 		target builder.Target
 		err    error
@@ -264,7 +264,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 			registry.WithUserAgent("docker-model-cli/" + desktop.Version),
 		).NewTarget(opts.tag)
 	} else {
-		target, err = newModelRunnerTarget(desktopClient, opts.tag)
+		target, err = newModelRunnerTarget(client, opts.tag)
 	}
 	if err != nil {
 		return err
@@ -357,7 +357,7 @@ func packageModel(cmd *cobra.Command, opts packageOptions) error {
 	done := make(chan error, 1)
 	go func() {
 		defer pw.Close()
-		done <- pkg.Build(cmd.Context(), target, pw)
+		done <- pkg.Build(ctx, target, pw)
 	}()
 
 	scanner := bufio.NewScanner(pr)
@@ -443,7 +443,7 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 		return fmt.Errorf("get model ID: %w", err)
 	}
 	if t.tag.String() != "" {
-		if err := desktopClient.Tag(id, parseRepo(t.tag), t.tag.TagStr()); err != nil {
+		if err := t.client.Tag(id, parseRepo(t.tag), t.tag.TagStr()); err != nil {
 			return fmt.Errorf("tag model: %w", err)
 		}
 	}

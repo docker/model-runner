@@ -25,6 +25,10 @@ func (i Index) Tag(reference string, tag string) (Index, error) {
 		tag = tag[:idx]
 	}
 	tag = strings.TrimPrefix(tag, reference)
+	if tag == "" {
+		// No-op if tag is empty after removing reference, e.g. tagging "model:latest" with "model:latest"
+		return i, nil
+	}
 	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return Index{}, fmt.Errorf("invalid tag: %w", err)

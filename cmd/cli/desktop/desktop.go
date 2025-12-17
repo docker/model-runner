@@ -56,14 +56,6 @@ type Status struct {
 	Error   error  `json:"error"`
 }
 
-// normalizeHuggingFaceModelName converts Hugging Face model names to lowercase
-func normalizeHuggingFaceModelName(model string) string {
-	if strings.HasPrefix(model, "hf.co/") {
-		return strings.ToLower(model)
-	}
-	return model
-}
-
 func (c *Client) Status() Status {
 	// TODO: Query "/".
 	resp, err := c.doRequest(http.MethodGet, inference.ModelsPrefix, nil)
@@ -106,8 +98,6 @@ func (c *Client) Status() Status {
 }
 
 func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
-
 	// Check if this is a Hugging Face model and if HF_TOKEN is set
 	var hfToken string
 	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
@@ -233,8 +223,6 @@ func (c *Client) withRetries(
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
-	model = normalizeHuggingFaceModelName(model)
-
 	return c.withRetries("push", 3, printer, func(attempt int) (string, bool, error, bool) {
 		pushPath := inference.ModelsPrefix + "/" + model + "/push"
 		resp, err := c.doRequest(
@@ -303,22 +291,6 @@ func (c *Client) ListOpenAI() (dmrm.OpenAIModelList, error) {
 }
 
 func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
-	model = normalizeHuggingFaceModelName(model)
-	if model != "" {
-		// Only try to expand to model ID if the reference doesn't contain:
-		// - A slash (org/name format)
-		// - A colon (tagged reference like name:tag)
-		// - An @ symbol (digest reference like name@sha256:...)
-		if !strings.Contains(strings.Trim(model, "/"), "/") &&
-			!strings.Contains(model, ":") &&
-			!strings.Contains(model, "@") {
-			// Do an extra API call to check if the model parameter isn't a model ID.
-			modelId, err := c.fullModelID(model)
-			if err == nil {
-				model = modelId
-			}
-		}
-	}
 	rawResponse, err := c.listRawWithQuery(fmt.Sprintf("%s/%s", inference.ModelsPrefix, model), model, remote)
 	if err != nil {
 		return dmrm.Model{}, err
@@ -332,15 +304,7 @@ func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
 }
 
 func (c *Client) InspectOpenAI(model string) (dmrm.OpenAIModel, error) {
-	model = normalizeHuggingFaceModelName(model)
 	modelsRoute := inference.InferencePrefix + "/v1/models"
-	if !strings.Contains(strings.Trim(model, "/"), "/") {
-		// Do an extra API call to check if the model parameter isn't a model ID.
-		var err error
-		if model, err = c.fullModelID(model); err != nil {
-			return dmrm.OpenAIModel{}, fmt.Errorf("invalid model name: %s", model)
-		}
-	}
 	rawResponse, err := c.listRaw(fmt.Sprintf("%s/%s", modelsRoute, model), model)
 	if err != nil {
 		return dmrm.OpenAIModel{}, err
@@ -381,39 +345,6 @@ func (c *Client) listRawWithQuery(route string, model string, remote bool) ([]by
 	return body, nil
 }
 
-func (c *Client) fullModelID(id string) (string, error) {
-	bodyResponse, err := c.listRaw(inference.ModelsPrefix, "")
-	if err != nil {
-		return "", err
-	}
-
-	var modelsJson []dmrm.Model
-	if err := json.Unmarshal(bodyResponse, &modelsJson); err != nil {
-		return "", fmt.Errorf("failed to unmarshal response body: %w", err)
-	}
-
-	for _, m := range modelsJson {
-		if m.ID[7:19] == id || strings.TrimPrefix(m.ID, "sha256:") == id || m.ID == id {
-			return m.ID, nil
-		}
-		// Check if the ID matches any of the model's tags using exact match first
-		for _, tag := range m.Tags {
-			if tag == id {
-				return m.ID, nil
-			}
-		}
-
-		// Normalize everything and try to find exact matches
-		for _, tag := range m.Tags {
-			if dmrm.NormalizeModelName(tag) == dmrm.NormalizeModelName(id) {
-				return m.ID, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("model with ID %s not found", id)
-}
-
 // Chat performs a chat request and streams the response content with selective markdown rendering.
 func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
 	return c.ChatWithContext(context.Background(), model, prompt, imageURLs, outputFunc, shouldUseMarkdown)
@@ -421,14 +352,6 @@ func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(
 
 // ChatWithContext performs a chat request with context support for cancellation and streams the response content with selective markdown rendering.
 func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) error {
-	model = normalizeHuggingFaceModelName(model)
-	if !strings.Contains(strings.Trim(model, "/"), "/") {
-		// Do an extra API call to check if the model parameter isn't a model ID.
-		if expanded, err := c.fullModelID(model); err == nil {
-			model = expanded
-		}
-	}
-
 	// Build the message content - either simple string or multimodal array
 	var messageContent interface{}
 	if len(imageURLs) > 0 {
@@ -597,32 +520,6 @@ func (c *Client) ChatWithContext(ctx context.Context, model, prompt string, imag
 func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	modelRemoved := ""
 	for _, model := range modelArgs {
-		model = normalizeHuggingFaceModelName(model)
-
-		// Handle digest references (model@sha256:...)
-		// These need to be normalized to include default org if missing
-		if strings.Contains(model, "@") && !strings.Contains(model, "/") {
-			// Split on @ to get repository and digest
-			parts := strings.SplitN(model, "@", 2)
-			if len(parts) == 2 {
-				repo := parts[0]
-				digest := parts[1]
-				// Add default org if the repository doesn't contain a slash
-				if !strings.Contains(repo, "/") {
-					model = fmt.Sprintf("ai/%s@%s", repo, digest)
-				}
-			}
-		}
-
-		// Only expand simple names without tags or digests to model IDs
-		// Tagged references (model:tag) and digest references (model@sha256:...)
-		// should be passed as-is to allow tag-specific operations
-		if !strings.Contains(model, "/") && !strings.Contains(model, ":") && !strings.Contains(model, "@") {
-			if expanded, err := c.fullModelID(model); err == nil {
-				model = expanded
-			}
-		}
-
 		// Construct the URL with query parameters
 		removePath := fmt.Sprintf("%s/%s?force=%s",
 			inference.ModelsPrefix,
@@ -912,11 +809,6 @@ func (c *Client) handleQueryError(err error, path string) error {
 }
 
 func (c *Client) Tag(source, targetRepo, targetTag string) error {
-	source = normalizeHuggingFaceModelName(source)
-	// For tag operations, let the daemon handle name resolution to support
-	// partial name matching like "smollm2" -> "ai/smollm2:latest"
-	// Don't do client-side ID expansion which can cause issues with tagging
-
 	// Construct the URL with query parameters using the normalized source
 	tagPath := fmt.Sprintf("%s/%s/tag?repo=%s&tag=%s",
 		inference.ModelsPrefix,
