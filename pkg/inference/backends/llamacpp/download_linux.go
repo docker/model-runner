@@ -1,18 +1,50 @@
+//go:build linux
+
 package llamacpp
 
 import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 
+	"github.com/docker/model-runner/pkg/gpuinfo"
 	"github.com/docker/model-runner/pkg/logging"
 )
 
-func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _ *http.Client,
-	_, vendoredServerStoragePath string,
+func init() {
+	// Enable GPU variant detection by default on Linux
+	ShouldUseGPUVariantLock.Lock()
+	defer ShouldUseGPUVariantLock.Unlock()
+	ShouldUseGPUVariant = true
+}
+
+func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
+	llamaCppPath, vendoredServerStoragePath string,
 ) error {
-	l.status = fmt.Sprintf("running llama.cpp version: %s",
-		getLlamaCppVersion(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server")))
-	return errLlamaCppUpdateDisabled
+	var hasAMD bool
+	var err error
+	
+	ShouldUseGPUVariantLock.Lock()
+	defer ShouldUseGPUVariantLock.Unlock()
+	if ShouldUseGPUVariant {
+		// Create GPU info to check for supported AMD GPUs
+		gpuInfo := gpuinfo.New(vendoredServerStoragePath)
+		hasAMD, err = gpuInfo.HasSupportedAMDGPU()
+		if err != nil {
+			log.Debugf("AMD GPU detection failed: %v", err)
+		}
+	}
+	
+	desiredVersion := GetDesiredServerVersion()
+	desiredVariant := "cpu"
+	
+	// Use ROCm if supported AMD GPU is detected
+	if hasAMD {
+		log.Info("Supported AMD GPU detected, using ROCm variant")
+		desiredVariant = "rocm"
+	}
+	
+	l.status = fmt.Sprintf("looking for updates for %s variant", desiredVariant)
+	return l.downloadLatestLlamaCpp(ctx, log, httpClient, llamaCppPath, vendoredServerStoragePath, desiredVersion,
+		desiredVariant)
 }

@@ -17,3 +17,9 @@ func getVRAMSize(_ string) (uint64, error) {
 	}
 	return uint64(vramSize), nil
 }
+
+// hasSupportedAMDGPU returns true if the system has supported AMD GPUs
+func hasSupportedAMDGPU() (bool, error) {
+	// AMD GPU detection is only supported on Linux
+	return false, nil
+}

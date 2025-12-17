@@ -39,3 +39,9 @@ func getVRAMSize(modelRuntimeInstallPath string) (uint64, error) {
 	}
 	return 0, errors.New("unexpected nv-gpu-info output format")
 }
+
+// hasSupportedAMDGPU returns true if the system has supported AMD GPUs
+func hasSupportedAMDGPU() (bool, error) {
+	// AMD GPU detection is only supported on Linux
+	return false, nil
+}
