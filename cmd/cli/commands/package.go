@@ -28,12 +28,13 @@ func newPackagedCmd() *cobra.Command {
 	var opts packageOptions
 
 	c := &cobra.Command{
-		Use:   "package (--gguf <path> | --safetensors-dir <path> | --from <model>) [--license <path>...] [--context-size <tokens>] [--push] MODEL",
+		Use:   "package (--gguf <path> | --safetensors-dir <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
 		Short: "Package a GGUF file, Safetensors directory, or existing model into a Docker model OCI artifact.",
-		Long: "Package a GGUF file, Safetensors directory, or existing model into a Docker model OCI artifact, with optional licenses. The package is sent to the model-runner, unless --push is specified.\n" +
+		Long: "Package a GGUF file, Safetensors directory, or existing model into a Docker model OCI artifact, with optional licenses and multimodal projector. The package is sent to the model-runner, unless --push is specified.\n" +
 			"When packaging a sharded GGUF model, --gguf should point to the first shard. All shard files should be siblings and should include the index in the file name (e.g. model-00001-of-00015.gguf).\n" +
 			"When packaging a Safetensors model, --safetensors-dir should point to a directory containing .safetensors files and config files (*.json, merges.txt). All files will be auto-discovered and config files will be packaged into a tar archive.\n" +
-			"When packaging from an existing model using --from, you can modify properties like context size to create a variant of the original model.",
+			"When packaging from an existing model using --from, you can modify properties like context size to create a variant of the original model.\n" +
+			"For multimodal models, use --mmproj to include a multimodal projector file.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := requireExactArgs(1, "package", "MODEL")(cmd, args); err != nil {
 				return err
@@ -116,6 +117,17 @@ func newPackagedCmd() *cobra.Command {
 				opts.licensePaths[i] = filepath.Clean(l)
 			}
 
+			// Validate mmproj path if provided
+			if opts.mmprojPath != "" {
+				if !filepath.IsAbs(opts.mmprojPath) {
+					return fmt.Errorf(
+						"mmproj path must be absolute.\n\n" +
+							"See 'docker model package --help' for more information",
+					)
+				}
+				opts.mmprojPath = filepath.Clean(opts.mmprojPath)
+			}
+
 			// Validate dir-tar paths are relative (not absolute)
 			for _, dirPath := range opts.dirTarPaths {
 				if filepath.IsAbs(dirPath) {
@@ -146,6 +158,7 @@ func newPackagedCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
 	c.Flags().StringArrayVar(&opts.dirTarPaths, "dir-tar", nil, "relative path to directory to package as tar (can be specified multiple times)")
+	c.Flags().StringVar(&opts.mmprojPath, "mmproj", "", "absolute path to multimodal projector file")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
 	return c
@@ -159,6 +172,7 @@ type packageOptions struct {
 	fromModel        string
 	licensePaths     []string
 	dirTarPaths      []string
+	mmprojPath       string
 	push             bool
 	tag              string
 }
@@ -302,6 +316,14 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 		cmd.PrintErrf("Adding chat template file from %q\n", opts.chatTemplatePath)
 		if pkg, err = pkg.WithChatTemplateFile(opts.chatTemplatePath); err != nil {
 			return fmt.Errorf("add chat template file from path %q: %w", opts.chatTemplatePath, err)
+		}
+	}
+
+	if opts.mmprojPath != "" {
+		cmd.PrintErrf("Adding multimodal projector file from %q\n", opts.mmprojPath)
+		pkg, err = pkg.WithMultimodalProjector(opts.mmprojPath)
+		if err != nil {
+			return fmt.Errorf("add multimodal projector file: %w", err)
 		}
 	}
 
