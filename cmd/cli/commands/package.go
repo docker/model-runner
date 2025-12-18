@@ -24,6 +24,18 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 )
 
+// validateAbsolutePath validates that a path is absolute and returns the cleaned path
+func validateAbsolutePath(path, name string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf(
+			"%s path must be absolute.\n\n"+
+				"See 'docker model package --help' for more information",
+			name,
+		)
+	}
+	return filepath.Clean(path), nil
+}
+
 func newPackagedCmd() *cobra.Command {
 	var opts packageOptions
 
@@ -67,13 +79,11 @@ func newPackagedCmd() *cobra.Command {
 
 			// Validate GGUF path if provided
 			if opts.ggufPath != "" {
-				if !filepath.IsAbs(opts.ggufPath) {
-					return fmt.Errorf(
-						"GGUF path must be absolute.\n\n" +
-							"See 'docker model package --help' for more information",
-					)
+				var err error
+				opts.ggufPath, err = validateAbsolutePath(opts.ggufPath, "GGUF")
+				if err != nil {
+					return err
 				}
-				opts.ggufPath = filepath.Clean(opts.ggufPath)
 			}
 
 			// Validate safetensors directory if provided
@@ -108,24 +118,29 @@ func newPackagedCmd() *cobra.Command {
 			}
 
 			for i, l := range opts.licensePaths {
-				if !filepath.IsAbs(l) {
-					return fmt.Errorf(
-						"license path must be absolute.\n\n" +
-							"See 'docker model package --help' for more information",
-					)
+				var err error
+				opts.licensePaths[i], err = validateAbsolutePath(l, "license")
+				if err != nil {
+					return err
 				}
-				opts.licensePaths[i] = filepath.Clean(l)
+			}
+
+			// Validate chat template path if provided
+			if opts.chatTemplatePath != "" {
+				var err error
+				opts.chatTemplatePath, err = validateAbsolutePath(opts.chatTemplatePath, "chat template")
+				if err != nil {
+					return err
+				}
 			}
 
 			// Validate mmproj path if provided
 			if opts.mmprojPath != "" {
-				if !filepath.IsAbs(opts.mmprojPath) {
-					return fmt.Errorf(
-						"mmproj path must be absolute.\n\n" +
-							"See 'docker model package --help' for more information",
-					)
+				var err error
+				opts.mmprojPath, err = validateAbsolutePath(opts.mmprojPath, "mmproj")
+				if err != nil {
+					return err
 				}
-				opts.mmprojPath = filepath.Clean(opts.mmprojPath)
 			}
 
 			// Validate dir-tar paths are relative (not absolute)
