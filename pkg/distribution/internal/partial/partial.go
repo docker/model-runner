@@ -1,14 +1,13 @@
 package partial
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/partial"
-	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
 type WithRawConfigFile interface {
@@ -71,16 +70,20 @@ type WithRawManifest interface {
 }
 
 func ID(i WithRawManifest) (string, error) {
-	digest, err := partial.Digest(i)
+	raw, err := i.RawManifest()
 	if err != nil {
-		return "", fmt.Errorf("get digest: %w", err)
+		return "", fmt.Errorf("get raw manifest: %w", err)
+	}
+	digest, _, err := oci.SHA256(bytes.NewReader(raw))
+	if err != nil {
+		return "", fmt.Errorf("compute digest: %w", err)
 	}
 	return digest.String(), nil
 }
 
 type WithLayers interface {
 	WithRawConfigFile
-	Layers() ([]v1.Layer, error)
+	Layers() ([]oci.Layer, error)
 }
 
 func GGUFPaths(i WithLayers) ([]string, error) {
@@ -138,7 +141,7 @@ func ConfigArchivePath(i WithLayers) (string, error) {
 
 // layerPathsByMediaType is a generic helper function that finds a layer by media type and returns its path.
 // Natively supports both Docker and ModelPack media types without any conversion.
-func layerPathsByMediaType(i WithLayers, mediaType ggcr.MediaType) ([]string, error) {
+func layerPathsByMediaType(i WithLayers, mediaType oci.MediaType) ([]string, error) {
 	layers, err := i.Layers()
 	if err != nil {
 		return nil, fmt.Errorf("get layers: %w", err)
@@ -163,7 +166,7 @@ func layerPathsByMediaType(i WithLayers, mediaType ggcr.MediaType) ([]string, er
 
 // matchesMediaType checks if a layer media type matches the target type.
 // Natively supports both Docker and ModelPack formats without any conversion.
-func matchesMediaType(layerMT, targetMT ggcr.MediaType) bool {
+func matchesMediaType(layerMT, targetMT oci.MediaType) bool {
 	// Exact match
 	if layerMT == targetMT {
 		return true
@@ -174,52 +177,68 @@ func matchesMediaType(layerMT, targetMT ggcr.MediaType) bool {
 	switch targetMT {
 	case types.MediaTypeGGUF:
 		// ModelPack GGUF layers also match Docker GGUF target
-		return layerMT == ggcr.MediaType(modelpack.MediaTypeWeightGGUF)
+		return layerMT == oci.MediaType(modelpack.MediaTypeWeightGGUF)
 	case types.MediaTypeSafetensors:
 		// ModelPack safetensors layers also match Docker safetensors target
-		return layerMT == ggcr.MediaType(modelpack.MediaTypeWeightSafetensors)
+		return layerMT == oci.MediaType(modelpack.MediaTypeWeightSafetensors)
 	default:
 		// Other media types have no cross-format equivalents
 		return false
 	}
 }
 
-func ManifestForLayers(i WithLayers) (*v1.Manifest, error) {
-	cfgLayer, err := partial.ConfigLayer(i)
+func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
+	raw, err := i.RawConfigFile()
 	if err != nil {
 		return nil, fmt.Errorf("get raw config file: %w", err)
 	}
-	cfgDsc, err := partial.Descriptor(cfgLayer)
+	cfgHash, _, err := oci.SHA256(bytes.NewReader(raw))
 	if err != nil {
-		return nil, fmt.Errorf("get config descriptor: %w", err)
+		return nil, fmt.Errorf("compute config hash: %w", err)
 	}
-	cfgDsc.MediaType = types.MediaTypeModelConfigV01
+	cfgDsc := oci.Descriptor{
+		MediaType: types.MediaTypeModelConfigV01,
+		Size:      int64(len(raw)),
+		Digest:    cfgHash,
+	}
 
 	ls, err := i.Layers()
 	if err != nil {
 		return nil, fmt.Errorf("get layers: %w", err)
 	}
 
-	var layers []v1.Descriptor
+	var layers []oci.Descriptor
 	for _, l := range ls {
 		// Check if this is our Layer type which embeds the full descriptor with annotations
 		if layer, ok := l.(*Layer); ok {
 			// Use the embedded descriptor directly to preserve annotations
 			layers = append(layers, layer.Descriptor)
 		} else {
-			// Fall back to partial.Descriptor for other layer types
-			desc, err := partial.Descriptor(l)
+			// Fall back to computing descriptor for other layer types
+			mt, err := l.MediaType()
 			if err != nil {
-				return nil, fmt.Errorf("get layer descriptor: %w", err)
+				return nil, fmt.Errorf("get layer media type: %w", err)
 			}
-			layers = append(layers, *desc)
+			size, err := l.Size()
+			if err != nil {
+				return nil, fmt.Errorf("get layer size: %w", err)
+			}
+			digest, err := l.Digest()
+			if err != nil {
+				return nil, fmt.Errorf("get layer digest: %w", err)
+			}
+			layers = append(layers, oci.Descriptor{
+				MediaType: mt,
+				Size:      size,
+				Digest:    digest,
+			})
 		}
 	}
 
-	return &v1.Manifest{
+	return &oci.Manifest{
 		SchemaVersion: 2,
-		MediaType:     ggcr.OCIManifestSchema1,
-		Config:        *cfgDsc,
+		MediaType:     oci.OCIManifestSchema1,
+		Config:        cfgDsc,
 		Layers:        layers,
 	}, nil
 }

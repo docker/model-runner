@@ -80,8 +80,8 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		Digest string `json:"digest"`
 	}
 
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("failed to unmarshal response body: %w", err)
+	if unmarshalErr := json.Unmarshal(body, &response); unmarshalErr != nil {
+		return fmt.Errorf("failed to unmarshal response body: %w", unmarshalErr)
 	}
 
 	var latest string
@@ -111,7 +111,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		log.Warnf("proceeding to update llama.cpp binary")
 	} else if strings.TrimSpace(string(data)) == latest {
 		log.Infoln("current llama.cpp version is already up to date")
-		if _, err := os.Stat(llamaCppPath); err == nil {
+		if _, statErr := os.Stat(llamaCppPath); statErr == nil {
 			l.status = fmt.Sprintf("running llama.cpp %s (%s) version: %s",
 				desiredTag, latest, getLlamaCppVersion(log, llamaCppPath))
 			return nil
@@ -129,8 +129,8 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	defer os.RemoveAll(downloadDir)
 
 	l.status = fmt.Sprintf("downloading %s (%s) variant of llama.cpp", desiredTag, latest)
-	if err := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir); err != nil {
-		return fmt.Errorf("could not extract image: %w", err)
+	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir); extractErr != nil {
+		return fmt.Errorf("could not extract image: %w", extractErr)
 	}
 
 	if err := os.RemoveAll(filepath.Dir(llamaCppPath)); err != nil && !errors.Is(err, os.ErrNotExist) {

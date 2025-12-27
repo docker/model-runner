@@ -1,16 +1,44 @@
 package mutate_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/static"
-	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
+
+// staticLayer is a simple in-memory layer for testing.
+type staticLayer struct {
+	content   []byte
+	mediaType oci.MediaType
+	hash      oci.Hash
+}
+
+func newStaticLayer(content []byte, mediaType oci.MediaType) *staticLayer {
+	h, _, _ := oci.SHA256(bytes.NewReader(content))
+	return &staticLayer{
+		content:   content,
+		mediaType: mediaType,
+		hash:      h,
+	}
+}
+
+func (l *staticLayer) Digest() (oci.Hash, error)         { return l.hash, nil }
+func (l *staticLayer) DiffID() (oci.Hash, error)         { return l.hash, nil }
+func (l *staticLayer) Size() (int64, error)              { return int64(len(l.content)), nil }
+func (l *staticLayer) MediaType() (oci.MediaType, error) { return l.mediaType, nil }
+func (l *staticLayer) Compressed() (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(l.content)), nil
+}
+func (l *staticLayer) Uncompressed() (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(l.content)), nil
+}
 
 func TestAppendLayer(t *testing.T) {
 	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
@@ -27,7 +55,7 @@ func TestAppendLayer(t *testing.T) {
 
 	// Append a layer
 	mdl2 := mutate.AppendLayers(mdl1,
-		static.NewLayer([]byte("some layer content"), "application/vnd.example.some.media.type"),
+		newStaticLayer([]byte("some layer content"), "application/vnd.example.some.media.type"),
 	)
 	if mdl2 == nil {
 		t.Fatal("Expected non-nil model")
@@ -69,7 +97,7 @@ func TestConfigMediaTypes(t *testing.T) {
 		t.Fatalf("Expected media type %s, got %s", types.MediaTypeModelConfigV01, manifest1.Config.MediaType)
 	}
 
-	newMediaType := ggcr.MediaType("application/vnd.example.other.type")
+	newMediaType := oci.MediaType("application/vnd.example.other.type")
 	mdl2 := mutate.ConfigMediaType(mdl1, newMediaType)
 	manifest2, err := mdl2.Manifest()
 	if err != nil {

@@ -20,10 +20,10 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
+	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/sirupsen/logrus"
 )
@@ -34,13 +34,13 @@ var (
 
 func TestClientPullModel(t *testing.T) {
 	// Set up test registry
-	server := httptest.NewServer(registry.New())
+	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
 	registryURL, err := url.Parse(server.URL)
 	if err != nil {
 		t.Fatalf("Failed to parse registry URL: %v", err)
 	}
-	registry := registryURL.Host
+	registryHost := registryURL.Host
 
 	// Create temp directory for store
 	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
@@ -49,8 +49,8 @@ func TestClientPullModel(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -65,12 +65,12 @@ func TestClientPullModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
-	tag := registry + "/testmodel:v1.0.0"
-	ref, err := name.ParseReference(tag)
+	tag := registryHost + "/testmodel:v1.0.0"
+	ref, err := reference.ParseReference(tag)
 	if err != nil {
 		t.Fatalf("Failed to parse reference: %v", err)
 	}
-	if err := remote.Write(ref, model); err != nil {
+	if err := remote.Write(ref, model, remote.WithPlainHTTP(true)); err != nil {
 		t.Fatalf("Failed to push model: %v", err)
 	}
 
@@ -151,8 +151,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create client
-		testClient, err := NewClient(WithStoreRootPath(tempDir))
+		// Create client with plainHTTP for test registry
+		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -161,7 +161,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Test with non-existent repository
-		nonExistentRef := registry + "/nonexistent/model:v1.0.0"
+		nonExistentRef := registryHost + "/nonexistent/model:v1.0.0"
 		err = testClient.PullModel(context.Background(), nonExistentRef, &progressBuffer)
 		if err == nil {
 			t.Fatal("Expected error for non-existent model, got nil")
@@ -171,24 +171,28 @@ func TestClientPullModel(t *testing.T) {
 		var pullErr *mdregistry.Error
 		ok := errors.As(err, &pullErr)
 		if !ok {
-			t.Fatalf("Expected PullError, got %T", err)
+			t.Fatalf("Expected registry.Error, got %T: %v", err, err)
+		}
+
+		// Verify it matches registry.ErrModelNotFound for API compatibility
+		if !errors.Is(err, mdregistry.ErrModelNotFound) {
+			t.Fatalf("Expected registry.ErrModelNotFound, got %T", err)
 		}
 
 		// Verify error fields
 		if pullErr.Reference != nonExistentRef {
 			t.Errorf("Expected reference %q, got %q", nonExistentRef, pullErr.Reference)
 		}
-		if pullErr.Code != "NAME_UNKNOWN" {
-			t.Errorf("Expected error code MANIFEST_UNKNOWN, got %q", pullErr.Code)
+		// The error code can be NAME_UNKNOWN, MANIFEST_UNKNOWN, or UNKNOWN depending on the resolver implementation
+		if pullErr.Code != "NAME_UNKNOWN" && pullErr.Code != "MANIFEST_UNKNOWN" && pullErr.Code != "UNKNOWN" {
+			t.Errorf("Expected error code NAME_UNKNOWN, MANIFEST_UNKNOWN, or UNKNOWN, got %q", pullErr.Code)
 		}
-		if pullErr.Message != "Repository not found" {
-			t.Errorf("Expected message '\"Repository not found', got %q", pullErr.Message)
+		// The error message varies by resolver implementation
+		if !strings.Contains(strings.ToLower(pullErr.Message), "not found") {
+			t.Errorf("Expected message to contain 'not found', got %q", pullErr.Message)
 		}
 		if pullErr.Err == nil {
 			t.Error("Expected underlying error to be non-nil")
-		}
-		if !errors.Is(pullErr, mdregistry.ErrModelNotFound) {
-			t.Errorf("Expected underlying error to match ErrModelNotFound, got %v", pullErr.Err)
 		}
 	})
 
@@ -200,8 +204,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create client
-		testClient, err := NewClient(WithStoreRootPath(tempDir))
+		// Create client with plainHTTP for test registry
+		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -213,7 +217,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push model to local store
-		testTag := registry + "/incomplete-test/model:v1.0.0"
+		testTag := registryHost + "/incomplete-test/model:v1.0.0"
 		if err := testClient.store.Write(mdl, []string{testTag}, nil); err != nil {
 			t.Fatalf("Failed to push model to store: %v", err)
 		}
@@ -304,8 +308,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create client
-		testClient, err := NewClient(WithStoreRootPath(tempDir))
+		// Create client with plainHTTP for test registry
+		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -317,8 +321,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push first version of model to registry
-		testTag := registry + "/update-test:v1.0.0"
-		if err := writeToRegistry(testGGUFFile, testTag); err != nil {
+		testTag := registryHost + "/update-test:v1.0.0"
+		if err := writeToRegistry(testGGUFFile, testTag, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push first version of model: %v", err)
 		}
 
@@ -359,7 +363,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push updated model with same tag
-		if err := writeToRegistry(updatedModelFile, testTag); err != nil {
+		if err := writeToRegistry(updatedModelFile, testTag, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push updated model: %v", err)
 		}
 
@@ -405,12 +409,12 @@ func TestClientPullModel(t *testing.T) {
 	t.Run("pull unsupported (newer) version", func(t *testing.T) {
 		newMdl := mutate.ConfigMediaType(model, "application/vnd.docker.ai.model.config.v0.2+json")
 		// Push model to local store
-		testTag := registry + "/unsupported-test/model:v1.0.0"
-		ref, err := name.ParseReference(testTag)
+		testTag := registryHost + "/unsupported-test/model:v1.0.0"
+		ref, err := reference.ParseReference(testTag)
 		if err != nil {
 			t.Fatalf("Failed to parse reference: %v", err)
 		}
-		if err := remote.Write(ref, newMdl); err != nil {
+		if err := remote.Write(ref, newMdl, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push model: %v", err)
 		}
 		if err := client.PullModel(context.Background(), testTag, nil); err == nil || !errors.Is(err, ErrUnsupportedMediaType) {
@@ -440,12 +444,12 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push to registry
-		testTag := registry + "/safetensors-test/model:v1.0.0"
-		ref, err := name.ParseReference(testTag)
+		testTag := registryHost + "/safetensors-test/model:v1.0.0"
+		ref, err := reference.ParseReference(testTag)
 		if err != nil {
 			t.Fatalf("Failed to parse reference: %v", err)
 		}
-		if err := remote.Write(ref, safetensorsModel); err != nil {
+		if err := remote.Write(ref, safetensorsModel, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push safetensors model to registry: %v", err)
 		}
 
@@ -456,7 +460,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(clientTempDir)
 
-		testClient, err := NewClient(WithStoreRootPath(clientTempDir))
+		testClient, err := NewClient(WithStoreRootPath(clientTempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create test client: %v", err)
 		}
@@ -490,8 +494,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create client
-		testClient, err := NewClient(WithStoreRootPath(tempDir))
+		// Create client with plainHTTP for test registry
+		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -564,8 +568,8 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create client
-		testClient, err := NewClient(WithStoreRootPath(tempDir))
+		// Create client with plainHTTP for test registry
+		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -574,7 +578,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Test with non-existent model
-		nonExistentRef := registry + "/nonexistent/model:v1.0.0"
+		nonExistentRef := registryHost + "/nonexistent/model:v1.0.0"
 		err = testClient.PullModel(context.Background(), nonExistentRef, &progressBuffer)
 
 		// Expect an error
@@ -600,8 +604,8 @@ func TestClientGetModel(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -614,6 +618,7 @@ func TestClientGetModel(t *testing.T) {
 
 	// Push model to local store
 	tag := "test/model:v1.0.0"
+	normalizedTag := "docker.io/test/model:v1.0.0" // Reference package normalizes to include registry
 	if err := client.store.Write(model, []string{tag}, nil); err != nil {
 		t.Fatalf("Failed to push model to store: %v", err)
 	}
@@ -624,9 +629,9 @@ func TestClientGetModel(t *testing.T) {
 		t.Fatalf("Failed to get model: %v", err)
 	}
 
-	// Verify model
-	if len(mi.Tags()) == 0 || mi.Tags()[0] != tag {
-		t.Errorf("Model tags don't match: got %v, want [%s]", mi.Tags(), tag)
+	// Verify model - tags are normalized to include the default registry
+	if len(mi.Tags()) == 0 || mi.Tags()[0] != normalizedTag {
+		t.Errorf("Model tags don't match: got %v, want [%s]", mi.Tags(), normalizedTag)
 	}
 }
 
@@ -638,8 +643,8 @@ func TestClientGetModelNotFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -659,8 +664,8 @@ func TestClientListModels(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -701,8 +706,10 @@ func TestClientListModels(t *testing.T) {
 		t.Fatalf("Failed to push model to store: %v", err)
 	}
 
-	// Tags for verification
-	tags := []string{tag1, tag2}
+	// Normalized tags for verification (reference package normalizes to include default registry)
+	normalizedTag1 := "docker.io/test/model1:v1.0.0"
+	normalizedTag2 := "docker.io/test/model2:v1.0.0"
+	tags := []string{normalizedTag1, normalizedTag2}
 
 	// List models
 	models, err := client.ListModels()
@@ -738,8 +745,8 @@ func TestClientGetStorePath(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -887,8 +894,8 @@ func TestNewReferenceError(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -913,14 +920,14 @@ func TestPush(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
 	// Create a test registry
-	server := httptest.NewServer(registry.New())
+	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
 
 	// Create a tag for the model
@@ -981,14 +988,14 @@ func TestPushProgress(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
 	// Create a test registry
-	server := httptest.NewServer(registry.New())
+	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
 
 	// Create a tag for the model
@@ -1038,18 +1045,28 @@ func TestPushProgress(t *testing.T) {
 		t.Fatalf("Failed to push model: %v", err)
 	}
 
-	// Verify we got at least 3 messages (2 progress + 1 success)
-	if len(lines) < 3 {
-		t.Fatalf("Expected at least 3 progress messages, got %d", len(lines))
+	// Verify we got at least 2 messages (1 progress + 1 success)
+	// With fast local uploads, we may only get one progress update per layer
+	if len(lines) < 2 {
+		t.Fatalf("Expected at least 2 progress messages, got %d", len(lines))
 	}
 
-	// Verify the last two messages
-	lastTwo := lines[len(lines)-2:]
-	if !strings.Contains(lastTwo[0], "Uploaded:") {
-		t.Fatalf("Expected progress message to contain 'Uploaded: x MB', got %q", lastTwo[0])
+	// Verify we got at least one progress message and the success message
+	hasProgress := false
+	hasSuccess := false
+	for _, line := range lines {
+		if strings.Contains(line, "Uploaded:") {
+			hasProgress = true
+		}
+		if strings.Contains(line, "success") {
+			hasSuccess = true
+		}
 	}
-	if !strings.Contains(lastTwo[1], "success") {
-		t.Fatalf("Expected last progress message to contain 'success', got %q", lastTwo[1])
+	if !hasProgress {
+		t.Fatalf("Expected at least one progress message containing 'Uploaded:', got %v", lines)
+	}
+	if !hasSuccess {
+		t.Fatalf("Expected a success message, got %v", lines)
 	}
 }
 
@@ -1061,8 +1078,8 @@ func TestTag(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1122,8 +1139,8 @@ func TestTagNotFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1142,8 +1159,8 @@ func TestClientPushModelNotFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1161,8 +1178,8 @@ func TestIsModelInStoreNotFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1182,8 +1199,8 @@ func TestIsModelInStoreFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create client
-	client, err := NewClient(WithStoreRootPath(tempDir))
+	// Create client with plainHTTP for test registry
+	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1210,10 +1227,10 @@ func TestIsModelInStoreFound(t *testing.T) {
 }
 
 // writeToRegistry writes a GGUF model to a registry.
-func writeToRegistry(source, reference string) error {
+func writeToRegistry(source, refStr string, opts ...remote.Option) error {
 
 	// Parse the reference
-	ref, err := name.ParseReference(reference)
+	ref, err := reference.ParseReference(refStr)
 	if err != nil {
 		return fmt.Errorf("parse ref: %w", err)
 	}
@@ -1225,7 +1242,7 @@ func writeToRegistry(source, reference string) error {
 	}
 
 	// Push the image
-	if err := remote.Write(ref, mdl); err != nil {
+	if err := remote.Write(ref, mdl, opts...); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 

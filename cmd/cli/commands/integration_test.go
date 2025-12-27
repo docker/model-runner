@@ -17,6 +17,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -109,6 +110,11 @@ func generateReferenceTestCases(info modelInfo) []referenceTestCase {
 // setupTestEnv creates the complete test environment with registry and DMR
 func setupTestEnv(t *testing.T) *testEnv {
 	ctx := context.Background()
+
+	// Set environment variables for the test process to match the DMR container.
+	// This ensures CLI functions use the same default registry when parsing references.
+	t.Setenv("DEFAULT_REGISTRY", "registry.local:5000")
+	t.Setenv("INSECURE_REGISTRY", "true")
 
 	// Create a custom network for container communication
 	net, err := network.New(ctx)
@@ -1037,7 +1043,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		model, err := env.client.Inspect(targetTag, false)
 		require.NoError(t, err, "Failed to inspect packaged model by tag: %s", targetTag)
 		require.NotEmpty(t, model.ID, "Model ID should not be empty")
-		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
 
 		t.Logf("✓ Successfully packaged and tagged model: %s (ID: %s)", targetTag, model.ID[7:19])
 
@@ -1070,7 +1076,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		// Verify the model was loaded and tagged
 		model, err := env.client.Inspect(targetTag, false)
 		require.NoError(t, err, "Failed to inspect packaged model")
-		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
 
 		t.Logf("✓ Successfully packaged model with context size: %s", targetTag)
 
@@ -1100,7 +1106,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		// Verify the model was loaded and tagged
 		model, err := env.client.Inspect(targetTag, false)
 		require.NoError(t, err, "Failed to inspect packaged model")
-		require.Contains(t, model.Tags, targetTag, "Model should have the expected tag")
+		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
 
 		t.Logf("✓ Successfully packaged model with custom org: %s", targetTag)
 
@@ -1117,4 +1123,13 @@ func TestIntegration_PackageModel(t *testing.T) {
 
 func int32ptr(n int32) *int32 {
 	return &n
+}
+
+// normalizeRef normalizes a reference to its fully qualified form.
+// This is used in tests to compare against the stored tags which are always normalized.
+func normalizeRef(t *testing.T, ref string) string {
+	t.Helper()
+	parsed, err := reference.ParseReference(ref, registry.GetDefaultRegistryOptions()...)
+	require.NoError(t, err, "Failed to parse reference: %s", ref)
+	return parsed.String()
 }

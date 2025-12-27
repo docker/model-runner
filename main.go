@@ -30,6 +30,12 @@ import (
 
 var log = logrus.New()
 
+// Log is the logger used by the application, exported for testing purposes.
+var Log = log
+
+// testLog is a test-override logger used by createLlamaCppConfigFromEnv.
+var testLog = log
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -198,7 +204,7 @@ func main() {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Docker Model Runner is running"))
+		_, _ = w.Write([]byte("Docker Model Runner is running"))
 	})
 
 	// Add metrics endpoint if enabled
@@ -287,12 +293,12 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	for _, arg := range args {
 		for _, disallowed := range disallowedArgs {
 			if arg == disallowed {
-				log.Fatalf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed)
+				testLog.Fatalf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed)
 			}
 		}
 	}
 
-	log.Infof("Using custom arguments: %v", args)
+	testLog.Infof("Using custom arguments: %v", args)
 	return &llamacpp.Config{
 		Args: args,
 	}

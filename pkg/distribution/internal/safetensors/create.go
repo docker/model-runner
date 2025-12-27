@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 var (
@@ -39,17 +39,17 @@ func NewModel(paths []string) (*Model, error) {
 		allPaths = paths
 	}
 
-	layers := make([]v1.Layer, len(allPaths))
-	diffIDs := make([]v1.Hash, len(allPaths))
+	layers := make([]oci.Layer, len(allPaths))
+	diffIDs := make([]oci.Hash, len(allPaths))
 
 	for i, path := range allPaths {
-		layer, err := partial.NewLayer(path, types.MediaTypeSafetensors)
-		if err != nil {
-			return nil, fmt.Errorf("create safetensors layer from %q: %w", path, err)
+		layer, layerErr := partial.NewLayer(path, types.MediaTypeSafetensors)
+		if layerErr != nil {
+			return nil, fmt.Errorf("create safetensors layer from %q: %w", path, layerErr)
 		}
-		diffID, err := layer.DiffID()
-		if err != nil {
-			return nil, fmt.Errorf("get safetensors layer diffID: %w", err)
+		diffID, diffIDErr := layer.DiffID()
+		if diffIDErr != nil {
+			return nil, fmt.Errorf("get safetensors layer diffID: %w", diffIDErr)
 		}
 		layers[i] = layer
 		diffIDs[i] = diffID
@@ -68,7 +68,7 @@ func NewModel(paths []string) (*Model, error) {
 				Descriptor: types.Descriptor{
 					Created: &created,
 				},
-				RootFS: v1.RootFS{
+				RootFS: oci.RootFS{
 					Type:    "rootfs",
 					DiffIDs: diffIDs,
 				},

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 func TestBlobs(t *testing.T) {
@@ -30,7 +30,7 @@ func TestBlobs(t *testing.T) {
 
 		// create the blob
 		expectedContent := "some data"
-		hash, _, err := v1.SHA256(bytes.NewBufferString(expectedContent))
+		hash, _, err := oci.SHA256(bytes.NewBufferString(expectedContent))
 		if err != nil {
 			t.Fatalf("error calculating hash: %v", err)
 		}
@@ -68,7 +68,7 @@ func TestBlobs(t *testing.T) {
 
 	t.Run("WriteBlob fails", func(t *testing.T) {
 		// simulate lingering incomplete blob file (if program crashed)
-		hash := v1.Hash{
+		hash := oci.Hash{
 			Algorithm: "sha256",
 			Hex:       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		}
@@ -105,7 +105,7 @@ func TestBlobs(t *testing.T) {
 
 	t.Run("WriteBlob reuses existing blob", func(t *testing.T) {
 		// simulate existing blob
-		hash := v1.Hash{
+		hash := oci.Hash{
 			Algorithm: "sha256",
 			Hex:       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		}

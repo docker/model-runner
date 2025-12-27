@@ -15,11 +15,15 @@ func TestInstallRunnerHostFlag(t *testing.T) {
 	hostFlag := cmd.Flags().Lookup("host")
 	if hostFlag == nil {
 		t.Fatal("--host flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := hostFlag.DefValue
+
 	// Verify the default value
-	if hostFlag.DefValue != "127.0.0.1" {
-		t.Errorf("Expected default host value to be '127.0.0.1', got '%s'", hostFlag.DefValue)
+	if defValue != "127.0.0.1" {
+		t.Errorf("Expected default host value to be '127.0.0.1', got '%s'", defValue)
 	}
 
 	// Verify the flag type
@@ -77,11 +81,15 @@ func TestInstallRunnerBackendFlag(t *testing.T) {
 	backendFlag := cmd.Flags().Lookup("backend")
 	if backendFlag == nil {
 		t.Fatal("--backend flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := backendFlag.DefValue
+
 	// Verify the default value
-	if backendFlag.DefValue != "" {
-		t.Errorf("Expected default backend value to be empty, got '%s'", backendFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default backend value to be empty, got '%s'", defValue)
 	}
 
 	// Verify the flag type

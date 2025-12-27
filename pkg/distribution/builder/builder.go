@@ -9,14 +9,14 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 // Builder builds a model artifact
 type Builder struct {
 	model          types.ModelArtifact
-	originalLayers []v1.Layer // Snapshot of layers when created from existing model
+	originalLayers []oci.Layer // Snapshot of layers when created from existing model
 }
 
 // FromGGUF returns a *Builder that builds a model artifacts from a GGUF file
@@ -106,8 +106,8 @@ func (b *Builder) WithConfigArchive(path string) (*Builder, error) {
 	}
 
 	for _, layer := range layers {
-		mediaType, err := layer.MediaType()
-		if err == nil && mediaType == types.MediaTypeVLLMConfigArchive {
+		mediaType, mediaTypeErr := layer.MediaType()
+		if mediaTypeErr == nil && mediaType == types.MediaTypeVLLMConfigArchive {
 			return nil, fmt.Errorf("model already has a config archive layer")
 		}
 	}

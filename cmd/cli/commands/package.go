@@ -14,11 +14,11 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 )
 
@@ -434,7 +434,7 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 // modelRunnerTarget loads model to Docker Model Runner via models/load endpoint
 type modelRunnerTarget struct {
 	client *desktop.Client
-	tag    name.Tag
+	tag    *reference.Tag
 }
 
 func newModelRunnerTarget(client *desktop.Client, tag string) (*modelRunnerTarget, error) {
@@ -443,7 +443,7 @@ func newModelRunnerTarget(client *desktop.Client, tag string) (*modelRunnerTarge
 	}
 	if tag != "" {
 		var err error
-		target.tag, err = name.NewTag(tag)
+		target.tag, err = reference.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			return nil, fmt.Errorf("invalid tag: %w", err)
 		}
@@ -477,7 +477,7 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 	if err != nil {
 		return fmt.Errorf("get model ID: %w", err)
 	}
-	if t.tag.String() != "" {
+	if t.tag != nil {
 		if err := t.client.Tag(id, parseRepo(t.tag), t.tag.TagStr()); err != nil {
 			return fmt.Errorf("tag model: %w", err)
 		}

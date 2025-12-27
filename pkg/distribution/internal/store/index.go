@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/registry"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 )
 
 // Index represents the index of all models in the store
@@ -17,18 +17,18 @@ type Index struct {
 	Models []IndexEntry `json:"models"`
 }
 
-func (i Index) Tag(reference string, tag string) (Index, error) {
+func (i Index) Tag(ref string, tag string) (Index, error) {
 	// Remove @sha256 in case the reference is a digest
 	tag = strings.TrimSpace(tag)
 	if idx := strings.Index(tag, "@sha256"); idx != -1 {
 		tag = tag[:idx]
 	}
-	tag = strings.TrimPrefix(tag, reference)
+	tag = strings.TrimPrefix(tag, ref)
 	if tag == "" {
 		// No-op if tag is empty after removing reference, e.g. tagging "model:latest" with "model:latest"
 		return i, nil
 	}
-	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
+	tagRef, err := reference.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return Index{}, fmt.Errorf("invalid tag: %w", err)
 	}
@@ -36,7 +36,7 @@ func (i Index) Tag(reference string, tag string) (Index, error) {
 	result := Index{}
 	var tagged bool
 	for _, entry := range i.Models {
-		if entry.MatchesReference(reference) {
+		if entry.MatchesReference(ref) {
 			result.Models = append(result.Models, entry.Tag(tagRef))
 			tagged = true
 		} else {
@@ -50,10 +50,10 @@ func (i Index) Tag(reference string, tag string) (Index, error) {
 	return result, nil
 }
 
-func (i Index) UnTag(tag string) (name.Tag, Index, error) {
-	tagRef, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
+func (i Index) UnTag(tag string) (*reference.Tag, Index, error) {
+	tagRef, err := reference.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
-		return name.Tag{}, Index{}, err
+		return nil, Index{}, err
 	}
 
 	result := Index{
@@ -66,9 +66,9 @@ func (i Index) UnTag(tag string) (name.Tag, Index, error) {
 	return tagRef, result, nil
 }
 
-func (i Index) Find(reference string) (IndexEntry, int, bool) {
+func (i Index) Find(ref string) (IndexEntry, int, bool) {
 	for n, entry := range i.Models {
-		if entry.MatchesReference(reference) {
+		if entry.MatchesReference(ref) {
 			return i.Models[n], n, true
 		}
 	}
@@ -76,10 +76,10 @@ func (i Index) Find(reference string) (IndexEntry, int, bool) {
 	return IndexEntry{}, 0, false
 }
 
-func (i Index) Remove(reference string) Index {
+func (i Index) Remove(ref string) Index {
 	var result Index
 	for _, entry := range i.Models {
-		if entry.MatchesReference(reference) {
+		if entry.MatchesReference(ref) {
 			continue
 		}
 		result.Models = append(result.Models, entry)
@@ -153,52 +153,52 @@ type IndexEntry struct {
 }
 
 func (e IndexEntry) HasTag(tag string) bool {
-	ref, err := name.NewTag(tag, registry.GetDefaultRegistryOptions()...)
+	ref, err := reference.NewTag(tag, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
+		tr, err := reference.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
-		if tr.Name() == ref.Name() {
+		if tr.String() == ref.String() {
 			return true
 		}
 	}
 	return false
 }
 
-func (e IndexEntry) hasTag(tag name.Tag) bool {
+func (e IndexEntry) hasTag(tag *reference.Tag) bool {
 	for _, t := range e.Tags {
-		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
+		tr, err := reference.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
-		if tr.Name() == tag.Name() {
+		if tr.String() == tag.String() {
 			return true
 		}
 	}
 	return false
 }
 
-func (e IndexEntry) MatchesReference(reference string) bool {
-	if e.ID == reference {
+func (e IndexEntry) MatchesReference(ref string) bool {
+	if e.ID == ref {
 		return true
 	}
-	ref, err := name.ParseReference(reference, registry.GetDefaultRegistryOptions()...)
+	parsedRef, err := reference.ParseReference(ref, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return false
 	}
-	if dgst, ok := ref.(name.Digest); ok {
+	if dgst, ok := parsedRef.(*reference.Digest); ok {
 		if dgst.DigestStr() == e.ID {
 			return true
 		}
 	}
-	return e.HasTag(reference)
+	return e.HasTag(ref)
 }
 
-func (e IndexEntry) Tag(tag name.Tag) IndexEntry {
+func (e IndexEntry) Tag(tag *reference.Tag) IndexEntry {
 	if e.hasTag(tag) {
 		return e
 	}
@@ -209,14 +209,14 @@ func (e IndexEntry) Tag(tag name.Tag) IndexEntry {
 	}
 }
 
-func (e IndexEntry) UnTag(tag name.Tag) IndexEntry {
+func (e IndexEntry) UnTag(tag *reference.Tag) IndexEntry {
 	var tags []string
 	for i, t := range e.Tags {
-		tr, err := name.ParseReference(t, registry.GetDefaultRegistryOptions()...)
+		tr, err := reference.ParseReference(t, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			continue
 		}
-		if tr.Name() == tag.Name() {
+		if tr.String() == tag.String() {
 			continue
 		}
 		tags = append(tags, e.Tags[i])

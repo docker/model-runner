@@ -15,8 +15,10 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 // TestStoreAPI tests the store API directly
@@ -157,8 +159,9 @@ func TestStoreAPI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RemoveTags failed: %v", err)
 		}
-		if tags[0] != "index.docker.io/library/api-model:api-v1.0" {
-			t.Fatalf("Expected removed tag 'index.docker.io/library/api-model:api-v1.0', got '%s'", tags[0])
+		// Tags are normalized with default org (ai/) prefix
+		if tags[0] != "docker.io/ai/api-model:api-v1.0" {
+			t.Fatalf("Expected removed tag 'docker.io/ai/api-model:api-v1.0', got '%s'", tags[0])
 		}
 
 		// Verify tag was removed from list
@@ -510,7 +513,7 @@ func TestWriteRollsBackOnLayerFailure(t *testing.T) {
 	if len(layers) == 0 {
 		t.Fatalf("expected at least one layer")
 	}
-	newHash, err := v1.NewHash("sha256:" + strings.Repeat("c", 64))
+	newHash, err := oci.NewHash("sha256:" + strings.Repeat("c", 64))
 	if err != nil {
 		t.Fatalf("failed to build hash: %v", err)
 	}
@@ -560,15 +563,15 @@ func (configErrorModel) RawConfigFile() ([]byte, error) {
 }
 
 type failingLayer struct {
-	v1.Layer
-	hash v1.Hash
+	oci.Layer
+	hash oci.Hash
 }
 
-func (f failingLayer) DiffID() (v1.Hash, error) {
+func (f failingLayer) DiffID() (oci.Hash, error) {
 	return f.hash, nil
 }
 
-func (f failingLayer) Digest() (v1.Hash, error) {
+func (f failingLayer) Digest() (oci.Hash, error) {
 	return f.hash, nil
 }
 
@@ -654,8 +657,28 @@ func TestIncompleteFileHandling(t *testing.T) {
 
 // Helper function to check if a tag is in a slice of tags
 func containsTag(tags []string, tag string) bool {
+	// Normalize the expected tag for comparison using default registry options
+	expectedRef, err := reference.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
+	if err != nil {
+		// Fall back to exact match if parsing fails
+		for _, t := range tags {
+			if t == tag {
+				return true
+			}
+		}
+		return false
+	}
+	expectedNorm := expectedRef.String()
 	for _, t := range tags {
-		if t == tag {
+		// Normalize stored tag for comparison using same options
+		storedRef, err := reference.ParseReference(t, registry.GetDefaultRegistryOptions()...)
+		if err != nil {
+			if t == tag {
+				return true
+			}
+			continue
+		}
+		if storedRef.String() == expectedNorm {
 			return true
 		}
 	}
@@ -1286,10 +1309,11 @@ func TestWriteLightweight(t *testing.T) {
 		}
 
 		// Should have base + 3 variants + any models from previous tests
+		// Tags are normalized to docker.io/library/integrity-test:...
 		integrityTestCount := 0
 		for _, m := range models {
 			for _, tag := range m.Tags {
-				if strings.HasPrefix(tag, "integrity-test:") {
+				if strings.Contains(tag, "integrity-test:") {
 					integrityTestCount++
 					break
 				}
@@ -1308,7 +1332,7 @@ func TestWriteLightweight(t *testing.T) {
 		for _, m := range models {
 			hasIntegrityTag := false
 			for _, tag := range m.Tags {
-				if strings.HasPrefix(tag, "integrity-test:") {
+				if strings.Contains(tag, "integrity-test:") {
 					hasIntegrityTag = true
 					break
 				}

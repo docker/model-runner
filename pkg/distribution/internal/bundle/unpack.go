@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	ggcrtypes "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
 // Unpack creates and return a Bundle by unpacking files and config from model into dir.
@@ -92,7 +92,7 @@ func detectModelFormat(model types.Model) types.Format {
 }
 
 // hasLayerWithMediaType checks if the model contains a layer with the specified media type
-func hasLayerWithMediaType(model types.Model, targetMediaType ggcrtypes.MediaType) bool {
+func hasLayerWithMediaType(model types.Model, targetMediaType oci.MediaType) bool {
 	// Check specific media types using the model's methods
 	//nolint:exhaustive // only checking for specific layer types
 	switch targetMediaType {

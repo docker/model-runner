@@ -12,11 +12,15 @@ func TestConfigureCmdHfOverridesFlag(t *testing.T) {
 	hfOverridesFlag := cmd.Flags().Lookup("hf_overrides")
 	if hfOverridesFlag == nil {
 		t.Fatal("--hf_overrides flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := hfOverridesFlag.DefValue
+
 	// Verify the default value is empty
-	if hfOverridesFlag.DefValue != "" {
-		t.Errorf("Expected default hf_overrides value to be empty, got '%s'", hfOverridesFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default hf_overrides value to be empty, got '%s'", defValue)
 	}
 
 	// Verify the flag type
@@ -33,11 +37,15 @@ func TestConfigureCmdContextSizeFlag(t *testing.T) {
 	contextSizeFlag := cmd.Flags().Lookup("context-size")
 	if contextSizeFlag == nil {
 		t.Fatal("--context-size flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := contextSizeFlag.DefValue
+
 	// Verify the default value is empty (nil pointer)
-	if contextSizeFlag.DefValue != "" {
-		t.Errorf("Expected default context-size value to be '' (nil), got '%s'", contextSizeFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default context-size value to be '' (nil), got '%s'", defValue)
 	}
 
 	// Test setting the flag value
@@ -83,11 +91,15 @@ func TestConfigureCmdModeFlag(t *testing.T) {
 	modeFlag := cmd.Flags().Lookup("mode")
 	if modeFlag == nil {
 		t.Fatal("--mode flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := modeFlag.DefValue
+
 	// Verify the default value is empty
-	if modeFlag.DefValue != "" {
-		t.Errorf("Expected default mode value to be empty, got '%s'", modeFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default mode value to be empty, got '%s'", defValue)
 	}
 
 	// Verify the flag type
@@ -104,11 +116,15 @@ func TestConfigureCmdThinkFlag(t *testing.T) {
 	thinkFlag := cmd.Flags().Lookup("think")
 	if thinkFlag == nil {
 		t.Fatal("--think flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := thinkFlag.DefValue
+
 	// Verify the default value is empty
-	if thinkFlag.DefValue != "" {
-		t.Errorf("Expected default think value to be empty (nil), got '%s'", thinkFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default think value to be empty (nil), got '%s'", defValue)
 	}
 
 	// Verify the flag type
@@ -136,11 +152,15 @@ func TestConfigureCmdGPUMemoryUtilizationFlag(t *testing.T) {
 	gpuMemFlag := cmd.Flags().Lookup("gpu-memory-utilization")
 	if gpuMemFlag == nil {
 		t.Fatal("--gpu-memory-utilization flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := gpuMemFlag.DefValue
+
 	// Verify the default value is empty (nil pointer)
-	if gpuMemFlag.DefValue != "" {
-		t.Errorf("Expected default gpu-memory-utilization value to be '' (nil), got '%s'", gpuMemFlag.DefValue)
+	if defValue != "" {
+		t.Errorf("Expected default gpu-memory-utilization value to be '' (nil), got '%s'", defValue)
 	}
 
 	// Verify the flag type

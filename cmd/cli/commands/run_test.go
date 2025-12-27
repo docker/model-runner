@@ -122,6 +122,7 @@ func TestRunCmdDetachFlag(t *testing.T) {
 	detachFlag := cmd.Flags().Lookup("detach")
 	if detachFlag == nil {
 		t.Fatal("--detach flag not found")
+		return // unreachable but satisfies staticcheck SA5011
 	}
 
 	// Verify the shorthand flag exists
@@ -130,9 +131,12 @@ func TestRunCmdDetachFlag(t *testing.T) {
 		t.Fatal("-d shorthand flag not found")
 	}
 
+	// Get values to avoid potential nil dereference flagged by linter
+	defValue := detachFlag.DefValue
+
 	// Verify the default value is false
-	if detachFlag.DefValue != "false" {
-		t.Errorf("Expected default detach value to be 'false', got '%s'", detachFlag.DefValue)
+	if defValue != "false" {
+		t.Errorf("Expected default detach value to be 'false', got '%s'", defValue)
 	}
 
 	// Verify the flag type

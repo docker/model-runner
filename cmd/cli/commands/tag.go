@@ -6,8 +6,8 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/registry"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ func newTagCmd() *cobra.Command {
 
 func tagModel(cmd *cobra.Command, desktopClient *desktop.Client, source, target string) error {
 	// Ensure tag is valid
-	tag, err := name.NewTag(target, registry.GetDefaultRegistryOptions()...)
+	tag, err := reference.NewTag(target, registry.GetDefaultRegistryOptions()...)
 	if err != nil {
 		return fmt.Errorf("invalid tag: %w", err)
 	}
@@ -40,6 +40,6 @@ func tagModel(cmd *cobra.Command, desktopClient *desktop.Client, source, target 
 
 // parseRepo returns the repo portion of the original target string. It does not include implicit
 // index.docker.io when the registry is omitted.
-func parseRepo(tag name.Tag) string {
+func parseRepo(tag *reference.Tag) string {
 	return strings.TrimSuffix(tag.String(), ":"+tag.TagStr())
 }

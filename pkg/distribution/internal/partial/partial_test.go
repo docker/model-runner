@@ -7,8 +7,8 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
 // mockConfig is used to test ConfigFile and Config functions
@@ -226,7 +226,7 @@ func TestLayerPathByMediaType(t *testing.T) {
 // TestGGUFPaths_ModelPackMediaType tests that GGUFPaths can find ModelPack format layers
 func TestGGUFPaths_ModelPackMediaType(t *testing.T) {
 	// Create a layer with ModelPack GGUF media type
-	modelPackGGUFType := ggcr.MediaType("application/vnd.cncf.model.weight.v1.gguf")
+	modelPackGGUFType := oci.MediaType("application/vnd.cncf.model.weight.v1.gguf")
 
 	layer, err := partial.NewLayer(filepath.Join("..", "..", "assets", "dummy.gguf"), modelPackGGUFType)
 	if err != nil {

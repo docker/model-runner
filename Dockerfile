@@ -19,9 +19,6 @@ WORKDIR /app
 # Copy go mod/sum first for better caching
 COPY --link go.mod go.sum ./
 
-# Copy pkg/go-containerregistry for the replace directive in go.mod
-COPY --link pkg/go-containerregistry ./pkg/go-containerregistry
-
 # Download dependencies (with cache mounts)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

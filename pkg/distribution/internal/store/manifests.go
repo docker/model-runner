@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 const (
@@ -15,13 +15,13 @@ const (
 )
 
 // manifestPath returns the path to the manifest file for the given hash.
-func (s *LocalStore) manifestPath(hash v1.Hash) string {
+func (s *LocalStore) manifestPath(hash oci.Hash) string {
 	return filepath.Join(s.rootPath, manifestsDir, hash.Algorithm, hash.Hex)
 }
 
 // WriteManifest writes the model's manifest to the store
-func (s *LocalStore) WriteManifest(hash v1.Hash, raw []byte) error {
-	manifest, err := v1.ParseManifest(bytes.NewReader(raw))
+func (s *LocalStore) WriteManifest(hash oci.Hash, raw []byte) error {
+	manifest, err := oci.ParseManifest(bytes.NewReader(raw))
 	if err != nil {
 		return fmt.Errorf("parse manifest: %w", err)
 	}
@@ -57,7 +57,7 @@ func (s *LocalStore) WriteManifest(hash v1.Hash, raw []byte) error {
 	return nil
 }
 
-func newEntryForManifest(digest v1.Hash, manifest *v1.Manifest) IndexEntry {
+func newEntryForManifest(digest oci.Hash, manifest *oci.Manifest) IndexEntry {
 	files := make([]string, len(manifest.Layers)+1)
 	for i := range manifest.Layers {
 		files[i] = manifest.Layers[i].Digest.String()
@@ -71,7 +71,7 @@ func newEntryForManifest(digest v1.Hash, manifest *v1.Manifest) IndexEntry {
 }
 
 // removeManifest removes the manifest file from the store
-func (s *LocalStore) removeManifest(hash v1.Hash) error {
+func (s *LocalStore) removeManifest(hash oci.Hash) error {
 	return os.Remove(s.manifestPath(hash))
 }
 

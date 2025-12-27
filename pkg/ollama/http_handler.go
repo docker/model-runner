@@ -467,7 +467,7 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		// Return success response in Ollama format (empty JSON object)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 		return
 	}
 
@@ -538,9 +538,9 @@ func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, mo
 	if respRecorder.statusCode == http.StatusOK {
 		// Return empty JSON object for success
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	} else {
-		w.Write([]byte(respRecorder.body.String()))
+		_, _ = w.Write([]byte(respRecorder.body.String()))
 	}
 }
 
@@ -622,7 +622,7 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	// Return success response in Ollama format (empty JSON object)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("{}"))
+	_, _ = w.Write([]byte("{}"))
 }
 
 // handlePull handles POST /api/pull
@@ -651,7 +651,7 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 
 	// Call the model manager's Pull method with the wrapped writer
 	if err := h.modelManager.Pull(modelName, "", r, ollamaWriter); err != nil {
-		h.log.Errorf("Failed to pull model: %v", err)
+		h.log.Errorf("Failed to pull model: %s", utils.SanitizeForLog(err.Error(), -1))
 
 		// Send error in Ollama JSON format
 		errorResponse := ollamaPullStatus{
@@ -668,8 +668,8 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Headers already sent - write error as JSON line
 			if data, marshalErr := json.Marshal(errorResponse); marshalErr == nil {
-				w.Write(data)
-				w.Write([]byte("\n"))
+				_, _ = w.Write(data)
+				_, _ = w.Write([]byte("\n"))
 			}
 		}
 	}
@@ -1031,8 +1031,8 @@ func (s *streamingChatResponseWriter) Write(data []byte) (int, error) {
 				Done:      true,
 			}
 			if jsonData, err := json.Marshal(finalResp); err == nil {
-				s.w.Write(jsonData)
-				s.w.Write([]byte("\n"))
+				_, _ = s.w.Write(jsonData)
+				_, _ = s.w.Write([]byte("\n"))
 			}
 			continue
 		}
@@ -1077,8 +1077,8 @@ func (s *streamingChatResponseWriter) Write(data []byte) (int, error) {
 		}
 
 		if jsonData, err := json.Marshal(ollamaChunk); err == nil {
-			s.w.Write(jsonData)
-			s.w.Write([]byte("\n"))
+			_, _ = s.w.Write(jsonData)
+			_, _ = s.w.Write([]byte("\n"))
 		}
 	}
 
@@ -1153,8 +1153,8 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 				Done:      true,
 			}
 			if jsonData, err := json.Marshal(finalResp); err == nil {
-				s.w.Write(jsonData)
-				s.w.Write([]byte("\n"))
+				_, _ = s.w.Write(jsonData)
+				_, _ = s.w.Write([]byte("\n"))
 			}
 			continue
 		}
@@ -1184,8 +1184,8 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 		}
 
 		if jsonData, err := json.Marshal(ollamaChunk); err == nil {
-			s.w.Write(jsonData)
-			s.w.Write([]byte("\n"))
+			_, _ = s.w.Write(jsonData)
+			_, _ = s.w.Write([]byte("\n"))
 		}
 	}
 
@@ -1213,7 +1213,7 @@ func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *r
 			}
 		} else {
 			// Fallback: return raw error body
-			w.Write([]byte(respRecorder.body.String()))
+			_, _ = w.Write([]byte(respRecorder.body.String()))
 		}
 		return
 	}
@@ -1300,7 +1300,7 @@ func (h *HTTPHandler) convertGenerateResponse(w http.ResponseWriter, respRecorde
 			}
 		} else {
 			// Fallback: return raw error body
-			w.Write([]byte(respRecorder.body.String()))
+			_, _ = w.Write([]byte(respRecorder.body.String()))
 		}
 		return
 	}

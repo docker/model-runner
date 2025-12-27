@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 func TestStream(t *testing.T) {
@@ -21,11 +21,11 @@ func TestStream(t *testing.T) {
 	r := tarball.NewReader(f)
 
 	// Read blobs
-	assertNextBlob(t, r, v1.Hash{
+	assertNextBlob(t, r, oci.Hash{
 		Algorithm: "sha256",
 		Hex:       "bec7cb2222b54879bf3c7e70504960bdfbd898a05ab1f8247808484869a46bad",
 	}, "some-blob-contents")
-	assertNextBlob(t, r, v1.Hash{
+	assertNextBlob(t, r, oci.Hash{
 		Algorithm: "sha512",
 		Hex:       "d302a5a946106425f12177a93f87c1b7d4ee8ad851937a6a59dc6e0b758fbed5ab10a116509f73165e2b29b40e870f8c28a6a4f6c1ebfe9fa7d295ba7ff151c9",
 	}, "other-blob-contents")
@@ -46,7 +46,7 @@ func TestStream(t *testing.T) {
 	}
 }
 
-func assertNextBlob(t *testing.T, r *tarball.Reader, expectedDiffID v1.Hash, expectedContents string) {
+func assertNextBlob(t *testing.T, r *tarball.Reader, expectedDiffID oci.Hash, expectedContents string) {
 	diffID, err := r.Next()
 	if err != nil {
 		t.Fatalf("Failed to read blob: %v", err)

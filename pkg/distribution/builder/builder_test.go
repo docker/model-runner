@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 func TestBuilder(t *testing.T) {
@@ -333,6 +333,6 @@ type mockFailingModel struct {
 	types.ModelArtifact
 }
 
-func (m *mockFailingModel) Layers() ([]v1.Layer, error) {
+func (m *mockFailingModel) Layers() ([]oci.Layer, error) {
 	return nil, fmt.Errorf("simulated layers error")
 }

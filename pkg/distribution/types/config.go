@@ -3,34 +3,36 @@ package types
 import (
 	"time"
 
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
+
+// MediaType is an alias for oci.MediaType for convenience.
+type MediaType = oci.MediaType
 
 const (
 	// MediaTypeModelConfigV01 is the media type for the model config json.
-	MediaTypeModelConfigV01 = types.MediaType("application/vnd.docker.ai.model.config.v0.1+json")
+	MediaTypeModelConfigV01 MediaType = "application/vnd.docker.ai.model.config.v0.1+json"
 
 	// MediaTypeGGUF indicates a file in GGUF version 3 format, containing a tensor model.
-	MediaTypeGGUF = types.MediaType("application/vnd.docker.ai.gguf.v3")
+	MediaTypeGGUF MediaType = "application/vnd.docker.ai.gguf.v3"
 
 	// MediaTypeSafetensors indicates a file in safetensors format, containing model weights.
-	MediaTypeSafetensors = types.MediaType("application/vnd.docker.ai.safetensors")
+	MediaTypeSafetensors MediaType = "application/vnd.docker.ai.safetensors"
 
 	// MediaTypeVLLMConfigArchive indicates a tar archive containing vLLM-specific config files.
-	MediaTypeVLLMConfigArchive = types.MediaType("application/vnd.docker.ai.vllm.config.tar")
+	MediaTypeVLLMConfigArchive MediaType = "application/vnd.docker.ai.vllm.config.tar"
 
 	// MediaTypeDirTar indicates a tar archive containing a directory with its structure preserved.
-	MediaTypeDirTar = types.MediaType("application/vnd.docker.ai.dir.tar")
+	MediaTypeDirTar MediaType = "application/vnd.docker.ai.dir.tar"
 
 	// MediaTypeLicense indicates a plain text file containing a license
-	MediaTypeLicense = types.MediaType("application/vnd.docker.ai.license")
+	MediaTypeLicense MediaType = "application/vnd.docker.ai.license"
 
 	// MediaTypeMultimodalProjector indicates a Multimodal projector file
-	MediaTypeMultimodalProjector = types.MediaType("application/vnd.docker.ai.mmproj")
+	MediaTypeMultimodalProjector MediaType = "application/vnd.docker.ai.mmproj"
 
 	// MediaTypeChatTemplate indicates a Jinja chat template
-	MediaTypeChatTemplate = types.MediaType("application/vnd.docker.ai.chat.template.jinja")
+	MediaTypeChatTemplate MediaType = "application/vnd.docker.ai.chat.template.jinja"
 
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")
@@ -68,7 +70,7 @@ type ModelConfig interface {
 type ConfigFile struct {
 	Config     Config     `json:"config"`
 	Descriptor Descriptor `json:"descriptor"`
-	RootFS     v1.RootFS  `json:"rootfs"`
+	RootFS     oci.RootFS `json:"rootfs"`
 }
 
 // Config describes the model.

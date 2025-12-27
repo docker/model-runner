@@ -184,17 +184,17 @@ func TestParseHeader_TruncatedFile(t *testing.T) {
 
 	// Write header length claiming 1000 bytes
 	headerLen := uint64(1000)
-	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
+	if writeErr := binary.Write(file, binary.LittleEndian, headerLen); writeErr != nil {
 		file.Close()
-		t.Fatalf("failed to write header length: %v", err)
+		t.Fatalf("failed to write header length: %v", writeErr)
 	}
 
 	// But only write 500 bytes (truncated)
 	truncatedJSON := make([]byte, 500)
 	copy(truncatedJSON, []byte(`{"incomplete": "json`))
-	if _, err := file.Write(truncatedJSON); err != nil {
+	if _, writeTruncErr := file.Write(truncatedJSON); writeTruncErr != nil {
 		file.Close()
-		t.Fatalf("failed to write truncated data: %v", err)
+		t.Fatalf("failed to write truncated data: %v", writeTruncErr)
 	}
 	file.Close()
 
@@ -220,15 +220,15 @@ func TestParseHeader_InvalidJSON(t *testing.T) {
 
 	// Write header length
 	headerLen := uint64(len(invalidJSON))
-	if err := binary.Write(file, binary.LittleEndian, headerLen); err != nil {
+	if writeHdrErr := binary.Write(file, binary.LittleEndian, headerLen); writeHdrErr != nil {
 		file.Close()
-		t.Fatalf("failed to write header length: %v", err)
+		t.Fatalf("failed to write header length: %v", writeHdrErr)
 	}
 
 	// Write invalid JSON
-	if _, err := file.Write(invalidJSON); err != nil {
+	if _, writeJSONErr := file.Write(invalidJSON); writeJSONErr != nil {
 		file.Close()
-		t.Fatalf("failed to write invalid JSON: %v", err)
+		t.Fatalf("failed to write invalid JSON: %v", writeJSONErr)
 	}
 	file.Close()
 

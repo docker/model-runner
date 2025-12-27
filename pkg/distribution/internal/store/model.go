@@ -7,29 +7,27 @@ import (
 	"os"
 
 	mdpartial "github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	mdtypes "github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/partial"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
-var _ v1.Image = &Model{}
+var _ oci.Image = &Model{}
 
 type Model struct {
 	rawManifest   []byte
-	manifest      *v1.Manifest
+	manifest      *oci.Manifest
 	rawConfigFile []byte
-	layers        []v1.Layer
+	layers        []oci.Layer
 	tags          []string
 }
 
-func (s *LocalStore) newModel(digest v1.Hash, tags []string) (*Model, error) {
+func (s *LocalStore) newModel(digest oci.Hash, tags []string) (*Model, error) {
 	rawManifest, err := os.ReadFile(s.manifestPath(digest))
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
 
-	manifest, err := v1.ParseManifest(bytes.NewReader(rawManifest))
+	manifest, err := oci.ParseManifest(bytes.NewReader(rawManifest))
 	if err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
@@ -43,7 +41,7 @@ func (s *LocalStore) newModel(digest v1.Hash, tags []string) (*Model, error) {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 
-	layers := make([]v1.Layer, len(manifest.Layers))
+	layers := make([]oci.Layer, len(manifest.Layers))
 	for i, ld := range manifest.Layers {
 		layerPath, err := s.blobPath(ld.Digest)
 		if err != nil {
@@ -64,23 +62,44 @@ func (s *LocalStore) newModel(digest v1.Hash, tags []string) (*Model, error) {
 	}, err
 }
 
-func (m *Model) Layers() ([]v1.Layer, error) {
+func (m *Model) Layers() ([]oci.Layer, error) {
 	return m.layers, nil
 }
 
-func (m *Model) MediaType() (types.MediaType, error) {
+func (m *Model) MediaType() (oci.MediaType, error) {
 	return m.manifest.MediaType, nil
 }
 
 func (m *Model) Size() (int64, error) {
-	return partial.Size(m)
+	raw, err := m.RawManifest()
+	if err != nil {
+		return 0, err
+	}
+	rawCfg, err := m.RawConfigFile()
+	if err != nil {
+		return 0, err
+	}
+	size := int64(len(raw)) + int64(len(rawCfg))
+	for _, l := range m.layers {
+		s, err := l.Size()
+		if err != nil {
+			return 0, err
+		}
+		size += s
+	}
+	return size, nil
 }
 
-func (m *Model) ConfigName() (v1.Hash, error) {
-	return partial.ConfigName(m)
+func (m *Model) ConfigName() (oci.Hash, error) {
+	raw, err := m.RawConfigFile()
+	if err != nil {
+		return oci.Hash{}, err
+	}
+	h, _, err := oci.SHA256(bytes.NewReader(raw))
+	return h, err
 }
 
-func (m *Model) ConfigFile() (*v1.ConfigFile, error) {
+func (m *Model) ConfigFile() (*oci.ConfigFile, error) {
 	return nil, errors.New("invalid for model")
 }
 
@@ -88,19 +107,24 @@ func (m *Model) RawConfigFile() ([]byte, error) {
 	return m.rawConfigFile, nil
 }
 
-func (m *Model) Digest() (v1.Hash, error) {
-	return partial.Digest(m)
+func (m *Model) Digest() (oci.Hash, error) {
+	raw, err := m.RawManifest()
+	if err != nil {
+		return oci.Hash{}, err
+	}
+	h, _, err := oci.SHA256(bytes.NewReader(raw))
+	return h, err
 }
 
-func (m *Model) Manifest() (*v1.Manifest, error) {
-	return partial.Manifest(m)
+func (m *Model) Manifest() (*oci.Manifest, error) {
+	return m.manifest, nil
 }
 
 func (m *Model) RawManifest() ([]byte, error) {
 	return m.rawManifest, nil
 }
 
-func (m *Model) LayerByDigest(hash v1.Hash) (v1.Layer, error) {
+func (m *Model) LayerByDigest(hash oci.Hash) (oci.Layer, error) {
 	for _, l := range m.layers {
 		d, err := l.Digest()
 		if err != nil {
@@ -113,7 +137,7 @@ func (m *Model) LayerByDigest(hash v1.Hash) (v1.Layer, error) {
 	return nil, fmt.Errorf("layer with digest %s not found", hash)
 }
 
-func (m *Model) LayerByDiffID(hash v1.Hash) (v1.Layer, error) {
+func (m *Model) LayerByDiffID(hash oci.Hash) (oci.Layer, error) {
 	return m.LayerByDigest(hash)
 }
 

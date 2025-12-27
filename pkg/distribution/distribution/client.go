@@ -13,11 +13,11 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/huggingface"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/oci/authn"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/sirupsen/logrus"
@@ -46,6 +46,7 @@ type options struct {
 	userAgent     string
 	username      string
 	password      string
+	plainHTTP     bool
 }
 
 // WithStoreRootPath sets the store root path
@@ -94,6 +95,13 @@ func WithRegistryAuth(username, password string) Option {
 	}
 }
 
+// WithPlainHTTP allows connecting to registries using plain HTTP instead of HTTPS.
+func WithPlainHTTP(plain bool) Option {
+	return func(o *options) {
+		o.plainHTTP = plain
+	}
+}
+
 func defaultOptions() *options {
 	return &options{
 		logger:    logrus.NewEntry(logrus.StandardLogger()),
@@ -124,6 +132,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	registryOpts := []registry.ClientOption{
 		registry.WithTransport(options.transport),
 		registry.WithUserAgent(options.userAgent),
+		registry.WithPlainHTTP(options.plainHTTP),
 	}
 
 	// Add auth if credentials are provided
@@ -175,7 +184,10 @@ func (c *Client) normalizeModelName(model string) string {
 	firstSlash := strings.Index(model, "/")
 	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
 		// Has a registry, just ensure tag
-		if !strings.Contains(model, ":") {
+		// Check for tag separator after the last "/" (to avoid matching port like :5000)
+		lastSlash := strings.LastIndex(model, "/")
+		afterLastSlash := model[lastSlash+1:]
+		if !strings.Contains(afterLastSlash, ":") {
 			return model + ":" + defaultTag
 		}
 		return model
@@ -276,7 +288,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	if len(bearerToken) > 0 && bearerToken[0] != "" {
 		token = bearerToken[0]
 		// Create a temporary registry client with bearer token authentication
-		auth := &authn.Bearer{Token: token}
+		auth := authn.NewBearer(token)
 		registryClient = registry.FromClient(c.registry, registry.WithAuth(auth))
 	}
 
@@ -288,6 +300,11 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 			c.log.Infoln("No OCI manifest found, attempting native HuggingFace pull")
 			// Pass original reference to preserve case-sensitivity for HuggingFace API
 			return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
+		}
+		// Check if the error should be converted to registry.ErrModelNotFound for API compatibility
+		// If the error already matches ErrModelNotFound, return it directly to preserve errors.Is compatibility
+		if errors.Is(err, registry.ErrModelNotFound) {
+			return err
 		}
 		return fmt.Errorf("reading model from registry: %w", err)
 	}
@@ -337,9 +354,13 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 
 	// If we have any incomplete downloads, create a new context with resume offsets
 	// and re-fetch using the original reference to ensure compatibility with all registries
+	var rangeSuccess *remote.RangeSuccess
 	if len(resumeOffsets) > 0 {
 		c.log.Infof("Resuming %d interrupted layer download(s)", len(resumeOffsets))
+		// Create a RangeSuccess tracker to record which Range requests succeed
+		rangeSuccess = &remote.RangeSuccess{}
 		ctx = remote.WithResumeOffsets(ctx, resumeOffsets)
+		ctx = remote.WithRangeSuccess(ctx, rangeSuccess)
 		// Re-fetch the model using the original tag reference
 		// The digest has already been validated above, and the resume context will handle layer resumption
 		c.log.Infof("Re-fetching model with original reference for resume: %s", utils.SanitizeForLog(reference))
@@ -379,7 +400,12 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 
 	// Model doesn't exist in local store or digests don't match, pull from remote
 
-	if err = c.store.Write(remoteModel, []string{reference}, progressWriter); err != nil {
+	// Pass rangeSuccess to store.Write for resume detection
+	var writeOpts []store.WriteOption
+	if rangeSuccess != nil {
+		writeOpts = append(writeOpts, store.WithRangeSuccess(rangeSuccess))
+	}
+	if err = c.store.Write(remoteModel, []string{reference}, progressWriter, writeOpts...); err != nil {
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {
 			c.log.Warnf("Failed to write error message: %v", writeErr)
 		}
@@ -677,12 +703,37 @@ func isNotOCIError(err error) bool {
 
 	// Also check error message for common patterns
 	errStr := err.Error()
+	errStrLower := strings.ToLower(errStr)
 	return strings.Contains(errStr, "MANIFEST_UNKNOWN") ||
 		strings.Contains(errStr, "NAME_UNKNOWN") ||
-		strings.Contains(errStr, "manifest unknown") ||
+		strings.Contains(errStrLower, "manifest unknown") ||
+		strings.Contains(errStrLower, "name unknown") ||
 		// HuggingFace returns this error for non-GGUF repositories
 		strings.Contains(errStr, "Repository is not GGUF") ||
-		strings.Contains(errStr, "not compatible with llama.cpp")
+		strings.Contains(errStr, "not compatible with llama.cpp") ||
+		// Additional patterns that might indicate non-OCI format from registry
+		strings.Contains(errStrLower, "blob unknown") ||
+		strings.Contains(errStrLower, "tag unknown") ||
+		// Containerd resolver specific error patterns
+		strings.Contains(errStrLower, "not found") ||
+		strings.Contains(errStrLower, "status 404") ||
+		strings.Contains(errStrLower, "status code 404") ||
+		strings.Contains(errStrLower, "response status code") ||
+		strings.Contains(errStrLower, "no such host") ||
+		strings.Contains(errStrLower, "connection refused") ||
+		// Additional OCI-related patterns
+		strings.Contains(errStrLower, "no manifest found") ||
+		strings.Contains(errStrLower, "no image found") ||
+		strings.Contains(errStrLower, "image not found") ||
+		strings.Contains(errStrLower, "artifact not found") ||
+		// Additional HuggingFace-specific error patterns
+		strings.Contains(errStrLower, "repository not found") ||
+		strings.Contains(errStrLower, "resource not found") ||
+		strings.Contains(errStrLower, "endpoint not found") ||
+		strings.Contains(errStrLower, "model not found") ||
+		// More specific HuggingFace error patterns
+		strings.Contains(errStr, "401") ||
+		strings.Contains(errStr, "403")
 }
 
 // parseHFReference extracts repo and revision from a HF reference

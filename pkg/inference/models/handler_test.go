@@ -14,7 +14,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	reg "github.com/docker/model-runner/pkg/distribution/registry"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
+	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +41,6 @@ func getProjectRoot(t *testing.T) string {
 }
 
 func TestPullModel(t *testing.T) {
-
 	// Create temp directory for store
 	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
 	if err != nil {
@@ -50,7 +49,7 @@ func TestPullModel(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a test registry
-	server := httptest.NewServer(registry.New())
+	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
 
 	// Create a tag for the model
@@ -72,8 +71,8 @@ func TestPullModel(t *testing.T) {
 		t.Fatalf("Failed to add license to model: %v", err)
 	}
 
-	// Build the OCI model artifact + push it
-	client := reg.NewClient()
+	// Build the OCI model artifact + push it (use plainHTTP for test registry)
+	client := reg.NewClient(reg.WithPlainHTTP(true))
 	target, err := client.NewTarget(tag)
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
@@ -111,6 +110,7 @@ func TestPullModel(t *testing.T) {
 			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+				PlainHTTP:     true,
 			})
 			handler := NewHTTPHandler(log, manager, nil)
 
@@ -149,7 +149,7 @@ func TestHandleGetModel(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a test registry
-	server := httptest.NewServer(registry.New())
+	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
 
 	uri, err := url.Parse(server.URL)
@@ -169,9 +169,9 @@ func TestHandleGetModel(t *testing.T) {
 		t.Fatalf("Failed to add license to model: %v", err)
 	}
 
-	// Build the OCI model artifact + push it
+	// Build the OCI model artifact + push it (use plainHTTP for test registry)
 	tag := uri.Host + "/ai/model:v1.0.0"
-	client := reg.NewClient()
+	client := reg.NewClient(reg.WithPlainHTTP(true))
 	target, err := client.NewTarget(tag)
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
@@ -224,6 +224,7 @@ func TestHandleGetModel(t *testing.T) {
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 				Transport:     http.DefaultTransport,
 				UserAgent:     "test-agent",
+				PlainHTTP:     true,
 			})
 			handler := NewHTTPHandler(log, manager, nil)
 

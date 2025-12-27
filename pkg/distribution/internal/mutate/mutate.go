@@ -1,19 +1,18 @@
 package mutate
 
 import (
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
-func AppendLayers(mdl types.ModelArtifact, layers ...v1.Layer) types.ModelArtifact {
+func AppendLayers(mdl types.ModelArtifact, layers ...oci.Layer) types.ModelArtifact {
 	return &model{
 		base:     mdl,
 		appended: layers,
 	}
 }
 
-func ConfigMediaType(mdl types.ModelArtifact, mt ggcr.MediaType) types.ModelArtifact {
+func ConfigMediaType(mdl types.ModelArtifact, mt oci.MediaType) types.ModelArtifact {
 	return &model{
 		base:            mdl,
 		configMediaType: mt,

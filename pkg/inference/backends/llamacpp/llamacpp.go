@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -319,8 +319,8 @@ func (l *llamaCpp) parseRemoteModel(ctx context.Context, model string) (*parser.
 	return mdlGguf, config, nil
 }
 
-func getGGUFLayers(layers []v1.Layer) []v1.Layer {
-	var filtered []v1.Layer
+func getGGUFLayers(layers []oci.Layer) []oci.Layer {
+	var filtered []oci.Layer
 	for _, layer := range layers {
 		mt, err := layer.MediaType()
 		if err != nil {

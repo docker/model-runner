@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/opencontainers/go-digest"
 )
 
@@ -100,7 +100,7 @@ func ConvertToDockerConfig(rawConfig []byte) (*types.ConfigFile, error) {
 		Descriptor: types.Descriptor{
 			Created: mp.Descriptor.CreatedAt,
 		},
-		RootFS: v1.RootFS{
+		RootFS: oci.RootFS{
 			Type:    normalizeRootFSType(mp.ModelFS.Type),
 			DiffIDs: convertDiffIDs(mp.ModelFS.DiffIDs),
 		},
@@ -132,19 +132,19 @@ func normalizeRootFSType(mpType string) string {
 	return mpType
 }
 
-// convertDiffIDs converts opencontainers digest.Digest slice to go-containerregistry v1.Hash slice.
+// convertDiffIDs converts opencontainers digest.Digest slice to oci.Hash slice.
 // Note: Invalid digests are silently skipped here because they will be caught
 // during layer validation when the model is actually loaded. This avoids
 // failing early for formats we might not fully understand yet.
-func convertDiffIDs(digests []digest.Digest) []v1.Hash {
+func convertDiffIDs(digests []digest.Digest) []oci.Hash {
 	if len(digests) == 0 {
 		return nil
 	}
 
-	result := make([]v1.Hash, 0, len(digests))
+	result := make([]oci.Hash, 0, len(digests))
 	for _, d := range digests {
-		// digest.Digest format is "algorithm:hex", same as v1.Hash
-		hash, err := v1.NewHash(d.String())
+		// digest.Digest format is "algorithm:hex", same as oci.Hash
+		hash, err := oci.NewHash(d.String())
 		if err != nil {
 			// Skip invalid digests; they will be caught during layer validation
 			continue

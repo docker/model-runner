@@ -10,9 +10,9 @@ import (
 
 	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 )
@@ -44,6 +44,7 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		distribution.WithLogger(c.Logger),
 		distribution.WithTransport(c.Transport),
 		distribution.WithUserAgent(c.UserAgent),
+		distribution.WithPlainHTTP(c.PlainHTTP),
 	)
 	if err != nil {
 		log.Errorf("Failed to create distribution client: %v", err)
@@ -55,6 +56,7 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 	registryClient := registry.NewClient(
 		registry.WithTransport(c.Transport),
 		registry.WithUserAgent(c.UserAgent),
+		registry.WithPlainHTTP(c.PlainHTTP),
 	)
 
 	tokens := make(chan struct{}, maximumConcurrentModelPulls)
@@ -131,7 +133,7 @@ func (m *Manager) GetRemote(ctx context.Context, ref string) (types.ModelArtifac
 }
 
 // GetRemoteBlobURL returns the URL of a given model blob.
-func (m *Manager) GetRemoteBlobURL(ref string, digest v1.Hash) (string, error) {
+func (m *Manager) GetRemoteBlobURL(ref string, digest oci.Hash) (string, error) {
 	blobURL, err := m.registryClient.BlobURL(ref, digest)
 	if err != nil {
 		return "", fmt.Errorf("error while getting remote model blob URL: %w", err)
@@ -360,7 +362,7 @@ func (m *Manager) Tag(ref, target string) error {
 
 		// Now tag using the found model reference (the matching tag)
 		if tagErr := m.distributionClient.Tag(foundModelRef, target); tagErr != nil {
-			m.log.Warnf("Failed to apply tag %q to resolved model %q: %v", target, foundModelRef, tagErr)
+			m.log.Warnf("Failed to apply tag %q to resolved model %q: %v", utils.SanitizeForLog(target, -1), utils.SanitizeForLog(foundModelRef, -1), tagErr)
 			return fmt.Errorf("error while tagging model: %w", tagErr)
 		}
 	} else if err != nil {
@@ -400,7 +402,7 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 	}
 
 	// Pull the model using the Docker model distribution client
-	m.log.Infoln("Pushing model:", model)
+	m.log.Infoln("Pushing model:", utils.SanitizeForLog(model, -1))
 	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)

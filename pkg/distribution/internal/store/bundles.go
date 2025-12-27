@@ -6,16 +6,16 @@ import (
 	"path/filepath"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/bundle"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 const (
 	bundlesDir = "bundles"
 )
 
-// manifestPath returns the path to the manifest file for the given hash.
-func (s *LocalStore) bundlePath(hash v1.Hash) string {
+// bundlePath returns the path to the bundle directory for the given hash.
+func (s *LocalStore) bundlePath(hash oci.Hash) string {
 	return filepath.Join(s.rootPath, bundlesDir, hash.Algorithm, hash.Hex)
 }
 
@@ -53,6 +53,6 @@ func (s *LocalStore) createBundle(path string, mdl *Model) (types.ModelBundle, e
 	return bdl, nil
 }
 
-func (s *LocalStore) removeBundle(hash v1.Hash) error {
+func (s *LocalStore) removeBundle(hash oci.Hash) error {
 	return os.RemoveAll(s.bundlePath(hash))
 }

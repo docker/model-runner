@@ -65,16 +65,16 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 			}
 
 			// Create a test logger that captures fatal errors
-			originalLog := log
-			defer func() { log = originalLog }()
+			originalLog := testLog
+			defer func() { testLog = originalLog }()
 
 			// Create a new logger that will exit with a special exit code
-			testLog := logrus.New()
+			newTestLog := logrus.New()
 			var exitCode int
-			testLog.ExitFunc = func(code int) {
+			newTestLog.ExitFunc = func(code int) {
 				exitCode = code
 			}
-			log = testLog
+			testLog = newTestLog
 
 			config := createLlamaCppConfigFromEnv()
 

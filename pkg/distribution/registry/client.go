@@ -10,12 +10,11 @@ import (
 	"sync"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
+	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/oci/authn"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote/transport"
 )
 
 const (
@@ -23,29 +22,31 @@ const (
 )
 
 var (
-	defaultRegistryOpts []name.Option
+	defaultRegistryOpts []reference.Option
 	once                sync.Once
 	DefaultTransport    = remote.DefaultTransport
 )
 
-// GetDefaultRegistryOptions returns name.Option slice with custom default registry
+// GetDefaultRegistryOptions returns reference.Option slice with custom default registry
 // and insecure flag if the corresponding environment variables are set.
 // Environment variables are read once at first call and cached for consistency.
 // Returns a copy of the options to prevent race conditions from slice modifications.
 // - DEFAULT_REGISTRY: Override the default registry (index.docker.io)
 // - INSECURE_REGISTRY: Set to "true" to allow HTTP connections
-func GetDefaultRegistryOptions() []name.Option {
+func GetDefaultRegistryOptions() []reference.Option {
 	once.Do(func() {
-		var opts []name.Option
+		var opts []reference.Option
 		if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
-			opts = append(opts, name.WithDefaultRegistry(defaultReg))
+			opts = append(opts, reference.WithDefaultRegistry(defaultReg))
 		}
 		if os.Getenv("INSECURE_REGISTRY") == "true" {
-			opts = append(opts, name.Insecure)
+			opts = append(opts, reference.Insecure)
 		}
+		// Always use the default org for consistency with model-runner's normalization
+		opts = append(opts, reference.WithDefaultOrg(reference.DefaultOrg))
 		defaultRegistryOpts = opts
 	})
-	return append([]name.Option(nil), defaultRegistryOpts...)
+	return append([]reference.Option(nil), defaultRegistryOpts...)
 }
 
 type Client struct {
@@ -53,6 +54,7 @@ type Client struct {
 	userAgent string
 	keychain  authn.Keychain
 	auth      authn.Authenticator
+	plainHTTP bool
 }
 
 type ClientOption func(*Client)
@@ -93,6 +95,13 @@ func WithAuth(auth authn.Authenticator) ClientOption {
 	}
 }
 
+// WithPlainHTTP enables or disables plain HTTP connections to registries.
+func WithPlainHTTP(plain bool) ClientOption {
+	return func(c *Client) {
+		c.plainHTTP = plain
+	}
+}
+
 func NewClient(opts ...ClientOption) *Client {
 	client := &Client{
 		transport: remote.DefaultTransport,
@@ -113,6 +122,7 @@ func FromClient(base *Client, opts ...ClientOption) *Client {
 		userAgent: base.userAgent,
 		keychain:  base.keychain,
 		auth:      base.auth,
+		plainHTTP: base.plainHTTP,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -120,11 +130,11 @@ func FromClient(base *Client, opts ...ClientOption) *Client {
 	return client
 }
 
-func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifact, error) {
+func (c *Client) Model(ctx context.Context, ref string) (types.ModelArtifact, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
+	parsedRef, err := reference.ParseReference(ref, GetDefaultRegistryOptions()...)
 	if err != nil {
-		return nil, NewReferenceError(reference, err)
+		return nil, NewReferenceError(ref, err)
 	}
 
 	// Set up authentication options
@@ -132,6 +142,7 @@ func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifa
 		remote.WithContext(ctx),
 		remote.WithTransport(c.transport),
 		remote.WithUserAgent(c.userAgent),
+		remote.WithPlainHTTP(c.plainHTTP),
 	}
 
 	// Use direct auth if provided, otherwise fall back to keychain
@@ -142,61 +153,73 @@ func (c *Client) Model(ctx context.Context, reference string) (types.ModelArtifa
 	}
 
 	// Return the artifact at the given reference
-	remoteImg, err := remote.Image(ref, authOpts...)
+	remoteImg, err := remote.Image(parsedRef, authOpts...)
 	if err != nil {
 		errStr := err.Error()
-		if strings.Contains(errStr, "UNAUTHORIZED") {
-			return nil, NewRegistryError(reference, "UNAUTHORIZED", "Authentication required for this model", err)
+		errStrLower := strings.ToLower(errStr)
+		if strings.Contains(errStr, "UNAUTHORIZED") || strings.Contains(errStrLower, "unauthorized") {
+			return nil, NewRegistryError(ref, "UNAUTHORIZED", "Authentication required for this model", err)
 		}
 		if strings.Contains(errStr, "MANIFEST_UNKNOWN") {
-			return nil, NewRegistryError(reference, "MANIFEST_UNKNOWN", "Model not found", err)
+			return nil, NewRegistryError(ref, "MANIFEST_UNKNOWN", "Model not found", err)
 		}
 		if strings.Contains(errStr, "NAME_UNKNOWN") {
-			return nil, NewRegistryError(reference, "NAME_UNKNOWN", "Repository not found", err)
+			return nil, NewRegistryError(ref, "NAME_UNKNOWN", "Repository not found", err)
 		}
-		return nil, NewRegistryError(reference, "UNKNOWN", err.Error(), err)
+		// containerd resolver returns "404 Not Found" or "not found" for missing manifests
+		if strings.Contains(errStr, "404") || strings.Contains(errStrLower, "not found") {
+			return nil, NewRegistryError(ref, "MANIFEST_UNKNOWN", "Model not found", err)
+		}
+		// containerd resolver may return different error formats - check for common patterns
+		if strings.Contains(errStrLower, "manifest unknown") ||
+			strings.Contains(errStrLower, "name unknown") ||
+			strings.Contains(errStrLower, "blob unknown") {
+			return nil, NewRegistryError(ref, "MANIFEST_UNKNOWN", "Model not found", err)
+		}
+		// Preserve the original error for API consumers to handle appropriately
+		return nil, NewRegistryError(ref, "UNKNOWN", err.Error(), err)
 	}
 
 	return &artifact{remoteImg}, nil
 }
 
-func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
+func (c *Client) BlobURL(ref string, digest oci.Hash) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
+	parsedRef, err := reference.ParseReference(ref, GetDefaultRegistryOptions()...)
 	if err != nil {
-		return "", NewReferenceError(reference, err)
+		return "", NewReferenceError(ref, err)
 	}
 
 	return fmt.Sprintf("%s://%s/v2/%s/blobs/%s",
-		ref.Context().Registry.Scheme(),
-		ref.Context().Registry.RegistryStr(),
-		ref.Context().RepositoryStr(),
+		parsedRef.Context().Registry.Scheme(),
+		parsedRef.Context().Registry.RegistryStr(),
+		parsedRef.Context().RepositoryStr(),
 		digest.String()), nil
 }
 
-func (c *Client) BearerToken(ctx context.Context, reference string) (string, error) {
+func (c *Client) BearerToken(ctx context.Context, ref string) (string, error) {
 	// Parse the reference
-	ref, err := name.ParseReference(reference, GetDefaultRegistryOptions()...)
+	parsedRef, err := reference.ParseReference(ref, GetDefaultRegistryOptions()...)
 	if err != nil {
-		return "", NewReferenceError(reference, err)
+		return "", NewReferenceError(ref, err)
 	}
 
 	var auth authn.Authenticator
 	if c.auth != nil {
 		auth = c.auth
 	} else {
-		auth, err = c.keychain.Resolve(ref.Context())
+		auth, err = c.keychain.Resolve(authn.NewResource(parsedRef))
 		if err != nil {
 			return "", fmt.Errorf("resolving credentials: %w", err)
 		}
 	}
 
-	pr, err := transport.Ping(ctx, ref.Context().Registry, c.transport)
+	pr, err := remote.Ping(ctx, parsedRef.Context().Registry, c.transport)
 	if err != nil {
 		return "", fmt.Errorf("pinging registry: %w", err)
 	}
 
-	tok, err := transport.Exchange(ctx, ref.Context().Registry, auth, c.transport, []string{ref.Scope(transport.PullScope)}, pr)
+	tok, err := remote.Exchange(ctx, parsedRef.Context().Registry, auth, c.transport, []string{parsedRef.Scope(remote.PullScope)}, pr)
 	if err != nil {
 		return "", fmt.Errorf("getting registry token: %w", err)
 	}
@@ -204,15 +227,16 @@ func (c *Client) BearerToken(ctx context.Context, reference string) (string, err
 }
 
 type Target struct {
-	reference name.Reference
+	reference reference.Reference
 	transport http.RoundTripper
 	userAgent string
 	keychain  authn.Keychain
 	auth      authn.Authenticator
+	plainHTTP bool
 }
 
 func (c *Client) NewTarget(tag string) (*Target, error) {
-	ref, err := name.NewTag(tag, GetDefaultRegistryOptions()...)
+	ref, err := reference.NewTag(tag, GetDefaultRegistryOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tag: %q: %w", tag, err)
 	}
@@ -222,6 +246,7 @@ func (c *Client) NewTarget(tag string) (*Target, error) {
 		userAgent: c.userAgent,
 		keychain:  c.keychain,
 		auth:      c.auth,
+		plainHTTP: c.plainHTTP,
 	}, nil
 }
 
@@ -248,6 +273,7 @@ func (t *Target) Write(ctx context.Context, model types.ModelArtifact, progressW
 		remote.WithTransport(t.transport),
 		remote.WithUserAgent(t.userAgent),
 		remote.WithProgress(pr.Updates()),
+		remote.WithPlainHTTP(t.plainHTTP),
 	}
 
 	// Use direct auth if provided, otherwise fall back to keychain

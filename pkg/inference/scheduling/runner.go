@@ -180,7 +180,7 @@ func run(
 				errJson, err := json.Marshal(&res)
 				if err == nil {
 					w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					w.Write(errJson)
+					_, _ = w.Write(errJson)
 				}
 				return
 			case <-time.After(30 * time.Second):

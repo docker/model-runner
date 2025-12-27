@@ -7,24 +7,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	v1types "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
-// mockLayer implements v1.Layer for testing
+// mockLayer implements oci.Layer for testing
 type mockLayer struct {
 	size      int64
 	diffID    string
-	mediaType v1types.MediaType
+	mediaType oci.MediaType
 }
 
-func (m *mockLayer) Digest() (v1.Hash, error) {
-	return v1.Hash{}, nil
+func (m *mockLayer) Digest() (oci.Hash, error) {
+	return oci.Hash{}, nil
 }
 
-func (m *mockLayer) DiffID() (v1.Hash, error) {
-	return v1.NewHash(m.diffID)
+func (m *mockLayer) DiffID() (oci.Hash, error) {
+	return oci.NewHash(m.diffID)
 }
 
 func (m *mockLayer) Compressed() (io.ReadCloser, error) {
@@ -39,7 +38,7 @@ func (m *mockLayer) Size() (int64, error) {
 	return m.size, nil
 }
 
-func (m *mockLayer) MediaType() (v1types.MediaType, error) {
+func (m *mockLayer) MediaType() (oci.MediaType, error) {
 	return m.mediaType, nil
 }
 
@@ -54,7 +53,7 @@ func newMockLayer(size int64) *mockLayer {
 func TestMessages(t *testing.T) {
 	t.Run("writeProgress", func(t *testing.T) {
 		var buf bytes.Buffer
-		update := v1.Update{
+		update := oci.Update{
 			Complete: 1024 * 1024,
 		}
 		layer1 := newMockLayer(2016)
@@ -140,7 +139,7 @@ func TestMessages(t *testing.T) {
 func TestProgressEmissionScenarios(t *testing.T) {
 	tests := []struct {
 		name          string
-		updates       []v1.Update
+		updates       []oci.Update
 		delays        []time.Duration
 		expectedCount int
 		description   string
@@ -148,7 +147,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 	}{
 		{
 			name: "time-based updates",
-			updates: []v1.Update{
+			updates: []oci.Update{
 				{Complete: 100},  // First update always sent
 				{Complete: 100},  // Sent after interval
 				{Complete: 1000}, // Sent after interval
@@ -163,7 +162,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 		},
 		{
 			name: "byte-based updates",
-			updates: []v1.Update{
+			updates: []oci.Update{
 				{Complete: MinBytesForUpdate},     // First update always sent
 				{Complete: MinBytesForUpdate * 2}, // Second update with 1MB difference
 			},
@@ -176,7 +175,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 		},
 		{
 			name: "no updates - too frequent",
-			updates: []v1.Update{
+			updates: []oci.Update{
 				{Complete: 100}, // First update always sent
 				{Complete: 100}, // Too frequent, no update
 				{Complete: 100}, // Too frequent, no update
@@ -191,7 +190,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 		},
 		{
 			name: "finsh update",
-			updates: []v1.Update{
+			updates: []oci.Update{
 				{Complete: 100}, // First update always sent
 				{Complete: 100}, // Too frequent, no update
 				{Complete: 200}, // Too frequent, but finished, report update
@@ -206,7 +205,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 		},
 		{
 			name: "no updates - too few bytes",
-			updates: []v1.Update{
+			updates: []oci.Update{
 				{Complete: 50},                      // First update always sent
 				{Complete: MinBytesForUpdate},       // Too few bytes
 				{Complete: MinBytesForUpdate + 100}, // enough bytes now

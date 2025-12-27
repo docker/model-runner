@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 // UpdateInterval defines how often progress updates should be sent
@@ -32,29 +32,29 @@ type Message struct {
 }
 
 type Reporter struct {
-	progress  chan v1.Update
+	progress  chan oci.Update
 	done      chan struct{}
 	err       error
 	out       io.Writer
 	format    progressF
-	layer     v1.Layer
+	layer     oci.Layer
 	imageSize uint64
 }
 
-type progressF func(update v1.Update) string
+type progressF func(update oci.Update) string
 
-func PullMsg(update v1.Update) string {
+func PullMsg(update oci.Update) string {
 	return fmt.Sprintf("Downloaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
-func PushMsg(update v1.Update) string {
+func PushMsg(update oci.Update) string {
 	return fmt.Sprintf("Uploaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
-func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer v1.Layer) *Reporter {
+func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci.Layer) *Reporter {
 	return &Reporter{
 		out:       w,
-		progress:  make(chan v1.Update, 1),
+		progress:  make(chan oci.Update, 1),
 		done:      make(chan struct{}),
 		format:    msgF,
 		layer:     layer,
@@ -72,7 +72,7 @@ func safeUint64(n int64) uint64 {
 
 // Updates returns a channel for receiving progress Updates. It is the responsibility of the caller to close
 // the channel when they are done sending Updates. Should only be called once per Reporter instance.
-func (r *Reporter) Updates() chan<- v1.Update {
+func (r *Reporter) Updates() chan<- oci.Update {
 	go func() {
 		var lastComplete int64
 		var lastUpdate time.Time

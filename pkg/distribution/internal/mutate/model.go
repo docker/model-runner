@@ -5,16 +5,14 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	ggcrpartial "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/partial"
-	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
 type model struct {
 	base            types.ModelArtifact
-	appended        []v1.Layer
-	configMediaType ggcr.MediaType
+	appended        []oci.Layer
+	configMediaType oci.MediaType
 	contextSize     *int32
 }
 
@@ -30,7 +28,7 @@ func (m *model) Config() (types.ModelConfig, error) {
 	return partial.Config(m)
 }
 
-func (m *model) MediaType() (ggcr.MediaType, error) {
+func (m *model) MediaType() (oci.MediaType, error) {
 	manifest, err := m.Manifest()
 	if err != nil {
 		return "", fmt.Errorf("compute maniest: %w", err)
@@ -39,26 +37,26 @@ func (m *model) MediaType() (ggcr.MediaType, error) {
 }
 
 func (m *model) Size() (int64, error) {
-	return ggcrpartial.Size(m)
+	return oci.Size(m)
 }
 
-func (m *model) ConfigName() (v1.Hash, error) {
-	return ggcrpartial.ConfigName(m)
+func (m *model) ConfigName() (oci.Hash, error) {
+	return oci.ConfigName(m)
 }
 
-func (m *model) ConfigFile() (*v1.ConfigFile, error) {
+func (m *model) ConfigFile() (*oci.ConfigFile, error) {
 	return nil, fmt.Errorf("invalid for model")
 }
 
-func (m *model) Digest() (v1.Hash, error) {
-	return ggcrpartial.Digest(m)
+func (m *model) Digest() (oci.Hash, error) {
+	return oci.Digest(m)
 }
 
 func (m *model) RawManifest() ([]byte, error) {
-	return ggcrpartial.RawManifest(m)
+	return oci.RawManifest(m)
 }
 
-func (m *model) LayerByDigest(hash v1.Hash) (v1.Layer, error) {
+func (m *model) LayerByDigest(hash oci.Hash) (oci.Layer, error) {
 	ls, err := m.Layers()
 	if err != nil {
 		return nil, err
@@ -75,7 +73,7 @@ func (m *model) LayerByDigest(hash v1.Hash) (v1.Layer, error) {
 	return nil, fmt.Errorf("layer not found")
 }
 
-func (m *model) LayerByDiffID(hash v1.Hash) (v1.Layer, error) {
+func (m *model) LayerByDiffID(hash oci.Hash) (oci.Layer, error) {
 	ls, err := m.Layers()
 	if err != nil {
 		return nil, err
@@ -92,7 +90,7 @@ func (m *model) LayerByDiffID(hash v1.Hash) (v1.Layer, error) {
 	return nil, fmt.Errorf("layer not found")
 }
 
-func (m *model) Layers() ([]v1.Layer, error) {
+func (m *model) Layers() ([]oci.Layer, error) {
 	ls, err := m.base.Layers()
 	if err != nil {
 		return nil, err
@@ -100,7 +98,7 @@ func (m *model) Layers() ([]v1.Layer, error) {
 	return append(ls, m.appended...), nil
 }
 
-func (m *model) Manifest() (*v1.Manifest, error) {
+func (m *model) Manifest() (*oci.Manifest, error) {
 	manifest, err := partial.ManifestForLayers(m)
 	if err != nil {
 		return nil, err

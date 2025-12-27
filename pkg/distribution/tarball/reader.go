@@ -9,22 +9,22 @@ import (
 	"path/filepath"
 	"strings"
 
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 type Reader struct {
 	tr          *tar.Reader
 	rawManifest []byte
-	digest      v1.Hash
+	digest      oci.Hash
 	done        bool
 }
 
 type Blob struct {
-	diffID v1.Hash
+	diffID oci.Hash
 	rc     io.ReadCloser
 }
 
-func (b Blob) DiffID() (v1.Hash, error) {
+func (b Blob) DiffID() (oci.Hash, error) {
 	return b.diffID, nil
 }
 
@@ -32,14 +32,14 @@ func (b Blob) Uncompressed() (io.ReadCloser, error) {
 	return b.rc, nil
 }
 
-func (r *Reader) Next() (v1.Hash, error) {
+func (r *Reader) Next() (oci.Hash, error) {
 	for {
 		hdr, err := r.tr.Next()
 		if err != nil {
 			if err == io.EOF {
 				r.done = true
 			}
-			return v1.Hash{}, err
+			return oci.Hash{}, err
 		}
 		// fi := hdr.FileInfo()
 		if hdr.Typeflag != tar.TypeReg {
@@ -47,16 +47,16 @@ func (r *Reader) Next() (v1.Hash, error) {
 		}
 		if hdr.Name == "manifest.json" {
 			// save the manifest
-			hasher, err := v1.Hasher("sha256")
+			hasher, err := oci.Hasher("sha256")
 			if err != nil {
-				return v1.Hash{}, err
+				return oci.Hash{}, err
 			}
 			rm, err := io.ReadAll(io.TeeReader(r.tr, hasher))
 			if err != nil {
-				return v1.Hash{}, err
+				return oci.Hash{}, err
 			}
 			r.rawManifest = rm
-			r.digest = v1.Hash{
+			r.digest = oci.Hash{
 				Algorithm: "sha256",
 				Hex:       hex.EncodeToString(hasher.Sum(make([]byte, 0, hasher.Size()))),
 			}
@@ -64,13 +64,13 @@ func (r *Reader) Next() (v1.Hash, error) {
 		}
 		cleanPath := filepath.Clean(hdr.Name)
 		if strings.Contains(cleanPath, "..") {
-			return v1.Hash{}, fmt.Errorf("invalid path detected: %s", hdr.Name)
+			return oci.Hash{}, fmt.Errorf("invalid path detected: %s", hdr.Name)
 		}
 		parts := strings.Split(cleanPath, "/")
 		if len(parts) != 3 || parts[0] != "blobs" && parts[0] != "manifests" {
 			continue
 		}
-		return v1.Hash{
+		return oci.Hash{
 			Algorithm: parts[1],
 			Hex:       parts[2],
 		}, nil
@@ -81,12 +81,12 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	return r.tr.Read(p)
 }
 
-func (r *Reader) Manifest() ([]byte, v1.Hash, error) {
+func (r *Reader) Manifest() ([]byte, oci.Hash, error) {
 	if !r.done {
-		return nil, v1.Hash{}, errors.New("must read all blobs first before getting manifest")
+		return nil, oci.Hash{}, errors.New("must read all blobs first before getting manifest")
 	}
 	if r.done && r.rawManifest == nil {
-		return nil, v1.Hash{}, errors.New("manifest not found")
+		return nil, oci.Hash{}, errors.New("manifest not found")
 	}
 	return r.rawManifest, r.digest, nil
 }

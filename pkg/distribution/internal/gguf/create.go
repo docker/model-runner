@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	parser "github.com/gpustack/gguf-parser-go"
 )
 
@@ -17,8 +17,8 @@ func NewModel(path string) (*Model, error) {
 	if len(shards) == 0 {
 		shards = []string{path} // single file
 	}
-	layers := make([]v1.Layer, len(shards))
-	diffIDs := make([]v1.Hash, len(shards))
+	layers := make([]oci.Layer, len(shards))
+	diffIDs := make([]oci.Hash, len(shards))
 	for i, shard := range shards {
 		layer, err := partial.NewLayer(shard, types.MediaTypeGGUF)
 		if err != nil {
@@ -40,7 +40,7 @@ func NewModel(path string) (*Model, error) {
 				Descriptor: types.Descriptor{
 					Created: &created,
 				},
-				RootFS: v1.RootFS{
+				RootFS: oci.RootFS{
 					Type:    "rootfs",
 					DiffIDs: diffIDs,
 				},

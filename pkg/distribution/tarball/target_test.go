@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 func TestTarget(t *testing.T) {
@@ -36,7 +36,7 @@ func TestTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
-	blobHash, _, err := v1.SHA256(bytes.NewReader(blobContents))
+	blobHash, _, err := oci.SHA256(bytes.NewReader(blobContents))
 	if err != nil {
 		t.Fatalf("Failed to calculate hash: %v", err)
 	}

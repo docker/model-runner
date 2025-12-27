@@ -1,7 +1,7 @@
 package types
 
 import (
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 type Model interface {
@@ -20,7 +20,7 @@ type ModelArtifact interface {
 	ID() (string, error)
 	Config() (ModelConfig, error)
 	Descriptor() (Descriptor, error)
-	v1.Image
+	oci.Image
 }
 
 type ModelBundle interface {

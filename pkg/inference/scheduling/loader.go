@@ -12,6 +12,7 @@ import (
 	"github.com/docker/model-runner/pkg/environment"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
 )
@@ -256,7 +257,8 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 		}
 	}
 	if !found {
-		l.log.Warnf("No unused runner found for backend=%s, model=%s, mode=%s", backend, model, mode)
+		l.log.Warnf("No unused runner found for backend=%s, model=%s, mode=%s",
+			utils.SanitizeForLog(backend), utils.SanitizeForLog(model), utils.SanitizeForLog(string(mode)))
 	}
 	return len(l.runners)
 }

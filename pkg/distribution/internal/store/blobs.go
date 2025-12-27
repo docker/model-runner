@@ -12,7 +12,8 @@ import (
 	"unicode"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 )
 
 const (
@@ -42,7 +43,7 @@ func isSafeHex(hexLength int, s string) bool {
 }
 
 // validateHash ensures the hash components are safe for filesystem paths
-func validateHash(hash v1.Hash) error {
+func validateHash(hash oci.Hash) error {
 	hexLength, ok := isSafeAlgorithm(hash.Algorithm)
 	if !ok {
 		return fmt.Errorf("invalid hash algorithm: %q not in allowlist", hash.Algorithm)
@@ -59,7 +60,7 @@ func (s *LocalStore) blobsDir() string {
 }
 
 // blobPath returns the path to the blob for the given hash.
-func (s *LocalStore) blobPath(hash v1.Hash) (string, error) {
+func (s *LocalStore) blobPath(hash oci.Hash) (string, error) {
 	if err := validateHash(hash); err != nil {
 		return "", fmt.Errorf("unsafe hash: %w", err)
 	}
@@ -77,20 +78,30 @@ func (s *LocalStore) blobPath(hash v1.Hash) (string, error) {
 }
 
 type blob interface {
-	DiffID() (v1.Hash, error)
+	DiffID() (oci.Hash, error)
 	Uncompressed() (io.ReadCloser, error)
 }
 
 // writeLayer writes the layer blob to the store.
 // It returns true when a new blob was created and the blob's DiffID.
-func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.Hash, error) {
+func (s *LocalStore) writeLayer(layer blob, updates chan<- oci.Update, rangeSuccess *remote.RangeSuccess) (bool, oci.Hash, error) {
 	hash, err := layer.DiffID()
 	if err != nil {
-		return false, v1.Hash{}, fmt.Errorf("get file hash: %w", err)
+		return false, oci.Hash{}, fmt.Errorf("get file hash: %w", err)
 	}
+
+	// Also get the layer digest for Range header matching
+	// (for remote layers, DiffID == Digest, but we need the digest string for rangeSuccess lookup)
+	var digestStr string
+	if digester, ok := layer.(interface{ Digest() (oci.Hash, error) }); ok {
+		if d, digestErr := digester.Digest(); digestErr == nil {
+			digestStr = d.String()
+		}
+	}
+
 	hasBlob, err := s.hasBlob(hash)
 	if err != nil {
-		return false, v1.Hash{}, fmt.Errorf("check blob existence: %w", err)
+		return false, oci.Hash{}, fmt.Errorf("check blob existence: %w", err)
 	}
 	if hasBlob {
 		// TODO: write something to the progress channel (we probably need to redo progress reporting a little bit)
@@ -100,14 +111,23 @@ func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.
 	// Check if we're resuming an incomplete download
 	incompleteSize, err := s.GetIncompleteSize(hash)
 	if err != nil {
-		return false, v1.Hash{}, fmt.Errorf("check incomplete size: %w", err)
+		return false, oci.Hash{}, fmt.Errorf("check incomplete size: %w", err)
 	}
 
 	lr, err := layer.Uncompressed()
 	if err != nil {
-		return false, v1.Hash{}, fmt.Errorf("get blob contents: %w", err)
+		return false, oci.Hash{}, fmt.Errorf("get blob contents: %w", err)
 	}
 	defer lr.Close()
+
+	// Also get the layer digest for Range header matching
+	// (for remote layers, we need the digest string for rangeSuccess lookup)
+	layerDigestStr := digestStr // preserve the original digestStr parameter
+	if digester, ok := layer.(interface{ Digest() (oci.Hash, error) }); ok {
+		if d, digestLayerErr := digester.Digest(); digestLayerErr == nil {
+			layerDigestStr = d.String()
+		}
+	}
 
 	// Wrap the reader with progress reporting, accounting for already downloaded bytes
 	var r io.Reader
@@ -119,16 +139,23 @@ func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.
 
 	// WriteBlob will handle appending to incomplete files
 	// The HTTP layer will handle resuming via Range headers
-	if err := s.WriteBlob(hash, r); err != nil {
+	if err := s.WriteBlobWithResume(hash, r, layerDigestStr, rangeSuccess); err != nil {
 		return false, hash, err
 	}
 	return true, hash, nil
 }
 
-// WriteBlob writes the blob to the store, reporting progress to the given channel.
-// If the blob is already in the store, it is a no-op and the blob is not consumed from the reader.
-// If an incomplete download exists, it will be resumed by appending to the existing file.
-func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
+// WriteBlob writes the blob to the store. For backwards compatibility, this version
+// does not support resume detection. Use WriteBlobWithResume for resume support.
+func (s *LocalStore) WriteBlob(diffID oci.Hash, r io.Reader) error {
+	return s.WriteBlobWithResume(diffID, r, "", nil)
+}
+
+// WriteBlobWithResume writes the blob to the store with optional resume support.
+// If digestStr and rangeSuccess are provided, and rangeSuccess indicates a successful
+// Range request for this digest, WriteBlob will append to the incomplete file instead
+// of starting fresh.
+func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr string, rangeSuccess *remote.RangeSuccess) error {
 	hasBlob, err := s.hasBlob(diffID)
 	if err != nil {
 		return fmt.Errorf("check blob existence: %w", err)
@@ -146,33 +173,83 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 
 	// Check if we're resuming a partial download
 	var f *os.File
-	var isResume bool
-	if _, err := os.Stat(incompletePath); err == nil {
+	if stat, err := os.Stat(incompletePath); err == nil {
+		existingSize := stat.Size()
+
 		// Before resuming, verify that the incomplete file isn't already complete
-		existingFile, err := os.Open(incompletePath)
-		if err != nil {
-			return fmt.Errorf("open incomplete file for verification: %w", err)
+		existingFile, openErr := os.Open(incompletePath)
+		if openErr != nil {
+			return fmt.Errorf("open incomplete file for verification: %w", openErr)
 		}
 
-		computedHash, _, err := v1.SHA256(existingFile)
+		computedHash, _, sha256Err := oci.SHA256(existingFile)
 		existingFile.Close()
 
-		if err == nil && computedHash.String() == diffID.String() {
+		if sha256Err == nil && computedHash.String() == diffID.String() {
 			// File is already complete, just rename it
-			if err := os.Rename(incompletePath, path); err != nil {
-				return fmt.Errorf("rename completed blob file: %w", err)
+			if renameErr := os.Rename(incompletePath, path); renameErr != nil {
+				return fmt.Errorf("rename completed blob file: %w", renameErr)
 			}
 			return nil
 		}
 
-		// File is incomplete or corrupt, try to resume
-		isResume = true
-		f, err = os.OpenFile(incompletePath, os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return fmt.Errorf("open incomplete blob file for resume: %w", err)
+		// The HTTP request is made lazily. Read first byte to trigger the request.
+		buf := make([]byte, 1)
+		n, readErr := r.Read(buf)
+		if readErr != nil && readErr != io.EOF {
+			// Clean up the incomplete file on read error (unless it's a context cancellation
+			// which should preserve the file for future resume attempts)
+			if !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, context.DeadlineExceeded) {
+				_ = os.Remove(incompletePath)
+			}
+			return fmt.Errorf("read first byte: %w", readErr)
+		}
+
+		// Check if a Range request succeeded for this digest
+		shouldResume := false
+		if rangeSuccess != nil && digestStr != "" {
+			if offset, ok := rangeSuccess.Get(digestStr); ok && offset == existingSize {
+				shouldResume = true
+			}
+		}
+
+		if shouldResume {
+			// Range request succeeded and offset matches - append to incomplete file
+			var openFileErr error
+			f, openFileErr = os.OpenFile(incompletePath, os.O_APPEND|os.O_WRONLY, 0644)
+			if openFileErr != nil {
+				return fmt.Errorf("open incomplete file for resume: %w", openFileErr)
+			}
+		} else {
+			// No Range success or offset mismatch - start fresh
+			if removeErr := os.Remove(incompletePath); removeErr != nil {
+				return fmt.Errorf("remove incomplete file: %w", removeErr)
+			}
+			var createErr error
+			f, createErr = createFile(incompletePath)
+			if createErr != nil {
+				return fmt.Errorf("create blob file: %w", createErr)
+			}
+		}
+
+		// Write the first byte we already read
+		if n > 0 {
+			if _, err := f.Write(buf[:n]); err != nil {
+				f.Close()
+				return fmt.Errorf("write first byte: %w", err)
+			}
+		}
+		if readErr == io.EOF {
+			// Only one byte in the entire response, we're done
+			f.Close()
+			if renameErr := os.Rename(incompletePath, path); renameErr != nil {
+				return fmt.Errorf("rename blob file: %w", renameErr)
+			}
+			os.Remove(incompletePath)
+			return nil
 		}
 	} else {
-		// New download: create file
+		// No incomplete file exists - create new file
 		f, err = createFile(incompletePath)
 		if err != nil {
 			return fmt.Errorf("create blob file: %w", err)
@@ -181,10 +258,10 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 	defer f.Close()
 
 	if _, err := io.Copy(f, r); err != nil {
-		// If we were resuming and copy failed, only delete the incomplete file if it's
-		// not a context cancellation. Context cancellation is a normal interruption and
-		// the file should be preserved for future resume attempts.
-		if isResume && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		// On copy failure, only delete the incomplete file if it's not a context
+		// cancellation. Context cancellation is a normal interruption and the file
+		// should be preserved for future download attempts.
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			_ = os.Remove(incompletePath)
 		}
 		return fmt.Errorf("copy blob %q to store: %w", diffID.String(), err)
@@ -192,39 +269,17 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 
 	f.Close() // Rename will fail on Windows if the file is still open.
 
-	// For resumed downloads, verify the complete file's hash before finalizing
-	// (For new downloads, the stream was already verified during download)
-	if isResume {
-		completeFile, err := os.Open(incompletePath)
-		if err != nil {
-			return fmt.Errorf("open completed file for verification: %w", err)
-		}
-		defer completeFile.Close()
-
-		computedHash, _, err := v1.SHA256(completeFile)
-		if err != nil {
-			return fmt.Errorf("compute hash of completed file: %w", err)
-		}
-
-		if computedHash.String() != diffID.String() {
-			// The resumed download is corrupt, remove it so we can start fresh next time
-			_ = os.Remove(incompletePath)
-			return fmt.Errorf("hash mismatch after download: got %s, want %s", computedHash, diffID)
-		}
+	if renameFinalErr := os.Rename(incompletePath, path); renameFinalErr != nil {
+		return fmt.Errorf("rename blob file: %w", renameFinalErr)
 	}
 
-	if err := os.Rename(incompletePath, path); err != nil {
-		return fmt.Errorf("rename blob file: %w", err)
-	}
-
-	// Only remove incomplete file if rename succeeded (though rename should have moved it)
-	// This is a safety cleanup in case rename didn't remove the source
+	// Safety cleanup in case rename didn't remove the source
 	os.Remove(incompletePath)
 	return nil
 }
 
 // removeBlob removes the blob with the given hash from the store.
-func (s *LocalStore) removeBlob(hash v1.Hash) error {
+func (s *LocalStore) removeBlob(hash oci.Hash) error {
 	path, err := s.blobPath(hash)
 	if err != nil {
 		return fmt.Errorf("get blob path: %w", err)
@@ -232,7 +287,7 @@ func (s *LocalStore) removeBlob(hash v1.Hash) error {
 	return os.Remove(path)
 }
 
-func (s *LocalStore) hasBlob(hash v1.Hash) (bool, error) {
+func (s *LocalStore) hasBlob(hash oci.Hash) (bool, error) {
 	path, err := s.blobPath(hash)
 	if err != nil {
 		return false, fmt.Errorf("get blob path: %w", err)
@@ -244,7 +299,7 @@ func (s *LocalStore) hasBlob(hash v1.Hash) (bool, error) {
 }
 
 // GetIncompleteSize returns the size of an incomplete blob if it exists, or 0 if it doesn't.
-func (s *LocalStore) GetIncompleteSize(hash v1.Hash) (int64, error) {
+func (s *LocalStore) GetIncompleteSize(hash oci.Hash) (int64, error) {
 	path, err := s.blobPath(hash)
 	if err != nil {
 		return 0, fmt.Errorf("get blob path: %w", err)
@@ -276,7 +331,7 @@ func incompletePath(path string) string {
 }
 
 // writeConfigFile writes the model config JSON file to the blob store and reports whether the file was newly created.
-func (s *LocalStore) writeConfigFile(mdl v1.Image) (bool, error) {
+func (s *LocalStore) writeConfigFile(mdl oci.Image) (bool, error) {
 	hash, err := mdl.ConfigName()
 	if err != nil {
 		return false, fmt.Errorf("get digest: %w", err)

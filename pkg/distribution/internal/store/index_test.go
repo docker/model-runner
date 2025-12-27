@@ -46,7 +46,7 @@ func TestMatchReference(t *testing.T) {
 				ID:   "sha256:232a0650cd323d3b760854c4030f63ef11023d6eb3ef78327883f3f739f99def",
 				Tags: []string{"some-repo:latest", "some-repo:some-tag"},
 			},
-			reference:   "docker.io/library/some-repo:latest",
+			reference:   "docker.io/ai/some-repo:latest",
 			shouldMatch: true,
 			description: "implicit registry match",
 		},
@@ -80,15 +80,17 @@ func TestMatchReference(t *testing.T) {
 
 func TestTag(t *testing.T) {
 	t.Run("Tagging an entry", func(t *testing.T) {
+		// Use normalized tag format since reference package normalizes all tags
+		// The default org is "ai", so tags are normalized to docker.io/ai/...
 		idx := store.Index{
 			Models: []store.IndexEntry{
 				{
 					ID:   "some-id",
-					Tags: []string{"some-tag"},
+					Tags: []string{"docker.io/ai/some-tag:latest"},
 				},
 				{
 					ID:   "other-id",
-					Tags: []string{"other-tag"},
+					Tags: []string{"docker.io/ai/other-tag:latest"},
 				},
 			},
 		}
@@ -111,8 +113,9 @@ func TestTag(t *testing.T) {
 		if len(idx.Models[0].Tags) != 2 {
 			t.Fatalf("Expected 2 tags, got %d", len(idx.Models[0].Tags))
 		}
-		if idx.Models[0].Tags[1] != "other-tag" {
-			t.Fatalf("Expected tag 'other-tag', got '%s'", idx.Models[0].Tags[1])
+		// Tags are normalized to full docker.io/ai form (default org is "ai")
+		if idx.Models[0].Tags[1] != "docker.io/ai/other-tag:latest" {
+			t.Fatalf("Expected tag 'docker.io/ai/other-tag:latest', got '%s'", idx.Models[0].Tags[1])
 		}
 
 		// Check that tag is removed from the second model
@@ -134,11 +137,13 @@ func TestTag(t *testing.T) {
 
 func TestUntag(t *testing.T) {
 	t.Run("UnTagging an entry", func(t *testing.T) {
+		// Use normalized tag format since reference package normalizes all tags
+		// The default org is "ai", so tags are normalized to docker.io/ai/...
 		idx := store.Index{
 			Models: []store.IndexEntry{
 				{
 					ID:   "some-id",
-					Tags: []string{"some-tag", "other-tag"},
+					Tags: []string{"docker.io/ai/some-tag:latest", "docker.io/ai/other-tag:latest"},
 				},
 				{
 					ID:   "other-id",
@@ -157,8 +162,9 @@ func TestUntag(t *testing.T) {
 			if len(newIdx.Models[0].Tags) != 1 {
 				t.Fatalf("Expected 1 tag, got %d", len(newIdx.Models[0].Tags))
 			}
-			if tag.String() != "other-tag" {
-				t.Fatalf("Expected tag 'other-tag', got '%s'", tag)
+			// Tags are normalized to full docker.io/ai form (default org is "ai")
+			if tag.String() != "docker.io/ai/other-tag:latest" {
+				t.Fatalf("Expected tag 'docker.io/ai/other-tag:latest', got '%s'", tag)
 			}
 		})
 		t.Run("UnTagging invalid tag", func(t *testing.T) {

@@ -88,17 +88,17 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 
 	// Check if mlx-lm package is installed by attempting to import it
 	cmd := exec.CommandContext(ctx, pythonPath, "-c", "import mlx_lm")
-	if err := cmd.Run(); err != nil {
+	if runErr := cmd.Run(); runErr != nil {
 		m.status = "mlx-lm package not installed"
 		m.log.Warnf("mlx-lm package not found. Install with: uv pip install mlx-lm")
-		return fmt.Errorf("mlx-lm package not installed: %w", err)
+		return fmt.Errorf("mlx-lm package not installed: %w", runErr)
 	}
 
 	// Get MLX version
 	cmd = exec.CommandContext(ctx, pythonPath, "-c", "import mlx; print(mlx.__version__)")
-	output, err := cmd.Output()
-	if err != nil {
-		m.log.Warnf("could not get MLX version: %v", err)
+	output, outputErr := cmd.Output()
+	if outputErr != nil {
+		m.log.Warnf("could not get MLX version: %v", outputErr)
 		m.status = "running MLX version: unknown"
 	} else {
 		m.status = fmt.Sprintf("running MLX version: %s", strings.TrimSpace(string(output)))

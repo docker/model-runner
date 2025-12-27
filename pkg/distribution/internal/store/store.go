@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
+	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 )
 
 const (
@@ -112,7 +113,7 @@ func (s *LocalStore) Delete(ref string) (string, []string, error) {
 		return "", nil, ErrModelNotFound
 	}
 
-	digest, err := v1.NewHash(model.ID)
+	digest, err := oci.NewHash(model.ID)
 	if err != nil {
 		return "", nil, fmt.Errorf("parse manifest digest %q: %w", model.ID, err)
 	}
@@ -143,7 +144,7 @@ func (s *LocalStore) Delete(ref string) (string, []string, error) {
 			// Skip deletion if blob is referenced by other models
 			continue
 		}
-		hash, err := v1.NewHash(blobFile)
+		hash, err := oci.NewHash(blobFile)
 		if err != nil {
 			fmt.Printf("Warning: failed to parse blob hash %s: %v\n", blobFile, err)
 			continue
@@ -191,7 +192,7 @@ func (s *LocalStore) RemoveTags(tags []string) ([]string, error) {
 			}
 			return tagRefs, fmt.Errorf("untagging model: %w", err)
 		}
-		tagRefs = append(tagRefs, tagRef.Name())
+		tagRefs = append(tagRefs, tagRef.String())
 		index = newIndex
 	}
 	return tagRefs, s.writeIndex(index)
@@ -220,8 +221,26 @@ func (sw *syncWriter) Write(p []byte) (n int, err error) {
 	return sw.w.Write(p)
 }
 
+// WriteOption configures Write behavior.
+type WriteOption func(*writeOptions)
+
+type writeOptions struct {
+	rangeSuccess *remote.RangeSuccess
+}
+
+// WithRangeSuccess passes a RangeSuccess tracker for resume detection.
+func WithRangeSuccess(rs *remote.RangeSuccess) WriteOption {
+	return func(o *writeOptions) {
+		o.rangeSuccess = rs
+	}
+}
+
 // Write writes a model to the store
-func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error) {
+func (s *LocalStore) Write(mdl oci.Image, tags []string, w io.Writer, opts ...WriteOption) (err error) {
+	var options writeOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
 	initialIndex, err := s.readIndex()
 	if err != nil {
 		return fmt.Errorf("reading models index: %w", err)
@@ -291,7 +310,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error)
 	// Pull all layers in parallel
 	type layerResult struct {
 		created bool
-		diffID  v1.Hash
+		diffID  oci.Hash
 		err     error
 	}
 
@@ -300,17 +319,17 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error)
 
 	for i, layer := range layers {
 		wg.Add(1)
-		go func(idx int, l v1.Layer) {
+		go func(idx int, l oci.Layer) {
 			defer wg.Done()
 
 			var pr *progress.Reporter
-			var progressChan chan<- v1.Update
+			var progressChan chan<- oci.Update
 			if safeWriter != nil {
 				pr = progress.NewProgressReporter(safeWriter, progress.PullMsg, imageSize, l)
 				progressChan = pr.Updates()
 			}
 
-			created, diffID, err := s.writeLayer(l, progressChan)
+			created, diffID, err := s.writeLayer(l, progressChan, options.rangeSuccess)
 
 			if progressChan != nil {
 				close(progressChan)
@@ -344,7 +363,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error)
 	}
 
 	// Collect new layer digests
-	var newLayerDigests []v1.Hash
+	var newLayerDigests []oci.Hash
 	for _, result := range results {
 		if result.created {
 			newLayerDigests = append(newLayerDigests, result.diffID)
@@ -352,7 +371,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error)
 	}
 
 	if len(newLayerDigests) > 0 {
-		digests := append([]v1.Hash(nil), newLayerDigests...)
+		digests := append([]oci.Hash(nil), newLayerDigests...)
 		cleanups = append(cleanups, func() error {
 			var errs []error
 			for _, dg := range digests {
@@ -408,7 +427,7 @@ func (s *LocalStore) Write(mdl v1.Image, tags []string, w io.Writer) (err error)
 
 // WriteLightweight writes only the manifest and config for a model, assuming layers already exist in the store.
 // This is used for config-only modifications where the layer data hasn't changed.
-func (s *LocalStore) WriteLightweight(mdl v1.Image, tags []string) (err error) {
+func (s *LocalStore) WriteLightweight(mdl oci.Image, tags []string) (err error) {
 	initialIndex, err := s.readIndex()
 	if err != nil {
 		return fmt.Errorf("reading models index: %w", err)
@@ -525,7 +544,7 @@ func (s *LocalStore) Read(reference string) (*Model, error) {
 	// Find the model by tag
 	for _, model := range models {
 		if model.MatchesReference(reference) {
-			hash, err := v1.NewHash(model.ID)
+			hash, err := oci.NewHash(model.ID)
 			if err != nil {
 				return nil, fmt.Errorf("parsing hash: %w", err)
 			}

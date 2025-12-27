@@ -86,18 +86,19 @@ func buildModelFromFiles(localPaths map[string]string, safetensorsFiles, configF
 
 	// Create config archive if we have config files
 	if len(configFiles) > 0 {
-		configArchive, err := createConfigArchive(localPaths, configFiles, tempDir)
-		if err != nil {
-			return nil, fmt.Errorf("create config archive: %w", err)
+		configArchive, configArchiveErr := createConfigArchive(localPaths, configFiles, tempDir)
+		if configArchiveErr != nil {
+			return nil, fmt.Errorf("create config archive: %w", configArchiveErr)
 		}
 		// Note: configArchive is created inside tempDir and will be cleaned up when
 		// the caller removes tempDir. The file must exist until after store.Write()
 		// completes since the model artifact references it lazily.
 
 		if configArchive != "" {
-			b, err = b.WithConfigArchive(configArchive)
-			if err != nil {
-				return nil, fmt.Errorf("add config archive: %w", err)
+			var withConfigErr error
+			b, withConfigErr = b.WithConfigArchive(configArchive)
+			if withConfigErr != nil {
+				return nil, fmt.Errorf("add config archive: %w", withConfigErr)
 			}
 		}
 	}

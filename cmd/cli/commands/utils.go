@@ -11,7 +11,7 @@ import (
 	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/moby/term"
 	"github.com/olekukonko/tablewriter"
@@ -33,12 +33,12 @@ const (
 
 // getDefaultRegistry returns the default registry, checking for environment override
 // If DEFAULT_REGISTRY environment variable is set, it returns that value
-// Otherwise, it returns name.DefaultRegistry ("index.docker.io")
+// Otherwise, it returns reference.DefaultRegistry ("index.docker.io")
 func getDefaultRegistry() string {
 	if defaultReg := os.Getenv("DEFAULT_REGISTRY"); defaultReg != "" {
 		return defaultReg
 	}
-	return name.DefaultRegistry
+	return reference.DefaultRegistry
 }
 
 var errNotRunning = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")

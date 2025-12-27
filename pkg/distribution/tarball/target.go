@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
 // Target stores an artifact as a TAR archive
@@ -92,7 +92,7 @@ func (t *Target) Write(ctx context.Context, mdl types.ModelArtifact, progressWri
 	return nil
 }
 
-func (t *Target) addLayer(layer v1.Layer, tw *tar.Writer, progressWriter io.Writer, imageSize int64) error {
+func (t *Target) addLayer(layer oci.Layer, tw *tar.Writer, progressWriter io.Writer, imageSize int64) error {
 	diffID, err := layer.DiffID()
 	if err != nil {
 		return fmt.Errorf("get layer diffID: %w", err)
@@ -113,9 +113,9 @@ func (t *Target) addLayer(layer v1.Layer, tw *tar.Writer, progressWriter io.Writ
 	}
 
 	var pr *progress.Reporter
-	var progressChan chan<- v1.Update
+	var progressChan chan<- oci.Update
 	if progressWriter != nil {
-		pr = progress.NewProgressReporter(progressWriter, func(update v1.Update) string {
+		pr = progress.NewProgressReporter(progressWriter, func(update oci.Update) string {
 			return fmt.Sprintf("Transferred: %.2f MB", float64(update.Complete)/1024/1024)
 		}, imageSize, layer)
 		progressChan = pr.Updates()

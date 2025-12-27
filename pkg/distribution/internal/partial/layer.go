@@ -6,25 +6,24 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
-	ggcrtypes "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
-var _ v1.Layer = &Layer{}
+var _ oci.Layer = &Layer{}
 
 type Layer struct {
 	Path string
-	v1.Descriptor
+	oci.Descriptor
 }
 
-func NewLayer(path string, mt ggcrtypes.MediaType) (*Layer, error) {
+func NewLayer(path string, mt oci.MediaType) (*Layer, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	hash, size, err := v1.SHA256(f)
+	hash, size, err := oci.SHA256(f)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func NewLayer(path string, mt ggcrtypes.MediaType) (*Layer, error) {
 
 	return &Layer{
 		Path: path,
-		Descriptor: v1.Descriptor{
+		Descriptor: oci.Descriptor{
 			Size:        size,
 			Digest:      hash,
 			MediaType:   mt,
@@ -70,11 +69,11 @@ func NewLayer(path string, mt ggcrtypes.MediaType) (*Layer, error) {
 	}, err
 }
 
-func (l Layer) Digest() (v1.Hash, error) {
+func (l Layer) Digest() (oci.Hash, error) {
 	return l.DiffID()
 }
 
-func (l Layer) DiffID() (v1.Hash, error) {
+func (l Layer) DiffID() (oci.Hash, error) {
 	return l.Descriptor.Digest, nil
 }
 
@@ -90,6 +89,6 @@ func (l Layer) Size() (int64, error) {
 	return l.Descriptor.Size, nil
 }
 
-func (l Layer) MediaType() (ggcrtypes.MediaType, error) {
+func (l Layer) MediaType() (oci.MediaType, error) {
 	return l.Descriptor.MediaType, nil
 }

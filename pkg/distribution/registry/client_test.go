@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 )
 
 func TestGetDefaultRegistryOptions_NoEnvVars(t *testing.T) {
@@ -18,18 +18,20 @@ func TestGetDefaultRegistryOptions_NoEnvVars(t *testing.T) {
 
 	opts := GetDefaultRegistryOptions()
 
-	if len(opts) != 0 {
-		t.Errorf("Expected empty options slice, got %d options", len(opts))
+	// WithDefaultOrg is always added
+	if len(opts) != 1 {
+		t.Errorf("Expected 1 option (WithDefaultOrg), got %d options", len(opts))
 	}
 
-	// Verify that the default registry (index.docker.io) is used when no options are set
-	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	// Verify that the default registry (docker.io) is used when no options are set
+	ref, err := reference.ParseReference("myrepo/myimage:tag", opts...)
 	if err != nil {
 		t.Fatalf("Failed to parse reference: %v", err)
 	}
 
-	// When no DEFAULT_REGISTRY is set, the default should be index.docker.io
-	expectedRegistry := "index.docker.io"
+	// When no DEFAULT_REGISTRY is set, the default should be docker.io
+	// (distribution/reference normalizes index.docker.io to docker.io)
+	expectedRegistry := "docker.io"
 	if ref.Context().Registry.Name() != expectedRegistry {
 		t.Errorf("Expected default registry to be '%s', got '%s'", expectedRegistry, ref.Context().Registry.Name())
 	}
@@ -49,12 +51,13 @@ func TestGetDefaultRegistryOptions_OnlyDefaultRegistry(t *testing.T) {
 
 	opts := GetDefaultRegistryOptions()
 
-	if len(opts) != 1 {
-		t.Fatalf("Expected 1 option, got %d", len(opts))
+	// WithDefaultRegistry + WithDefaultOrg
+	if len(opts) != 2 {
+		t.Fatalf("Expected 2 options, got %d", len(opts))
 	}
 
 	// Verify the option sets the default registry by parsing a reference without explicit registry
-	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	ref, err := reference.ParseReference("myrepo/myimage:tag", opts...)
 	if err != nil {
 		t.Fatalf("Failed to parse reference: %v", err)
 	}
@@ -78,12 +81,13 @@ func TestGetDefaultRegistryOptions_OnlyInsecureRegistry(t *testing.T) {
 
 	opts := GetDefaultRegistryOptions()
 
-	if len(opts) != 1 {
-		t.Fatalf("Expected 1 option, got %d", len(opts))
+	// Insecure + WithDefaultOrg
+	if len(opts) != 2 {
+		t.Fatalf("Expected 2 options, got %d", len(opts))
 	}
 
 	// Verify the option makes the registry insecure by parsing a reference
-	ref, err := name.ParseReference("myregistry.io/myrepo/myimage:tag", opts...)
+	ref, err := reference.ParseReference("myregistry.io/myrepo/myimage:tag", opts...)
 	if err != nil {
 		t.Fatalf("Failed to parse reference: %v", err)
 	}
@@ -103,12 +107,13 @@ func TestGetDefaultRegistryOptions_BothEnvVars(t *testing.T) {
 
 	opts := GetDefaultRegistryOptions()
 
-	if len(opts) != 2 {
-		t.Fatalf("Expected 2 options, got %d", len(opts))
+	// WithDefaultRegistry + Insecure + WithDefaultOrg
+	if len(opts) != 3 {
+		t.Fatalf("Expected 3 options, got %d", len(opts))
 	}
 
 	// Verify both options are applied
-	ref, err := name.ParseReference("myrepo/myimage:tag", opts...)
+	ref, err := reference.ParseReference("myrepo/myimage:tag", opts...)
 	if err != nil {
 		t.Fatalf("Failed to parse reference: %v", err)
 	}

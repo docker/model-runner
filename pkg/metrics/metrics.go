@@ -2,16 +2,17 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/oci/authn"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
-	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/sirupsen/logrus"
 )
@@ -87,19 +88,63 @@ func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	}
 	ua := strings.Join(parts, " ")
 	for _, tag := range tags {
-		ref, err := name.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
+		ref, err := reference.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
 			t.log.Errorf("Error parsing reference: %v\n", err)
 			return
 		}
-		if _, err = remote.Head(ref,
-			remote.WithAuthFromKeychain(authn.DefaultKeychain),
-			remote.WithTransport(t.transport),
-			remote.WithUserAgent(ua),
-		); err != nil {
+		if err = t.headManifest(ref, ua); err != nil {
 			t.log.Debugf("Manifest does not exist or error occurred: %v\n", err)
 			continue
 		}
-		t.log.Debugln("Tracked", ref.Name(), ref.Identifier(), "with user agent:", ua)
+		t.log.Debugln("Tracked", utils.SanitizeForLog(ref.Name(), -1), utils.SanitizeForLog(ref.Identifier(), -1), "with user agent:", utils.SanitizeForLog(ua, -1))
 	}
+}
+
+// headManifest sends a HEAD request to check if the manifest exists
+func (t *Tracker) headManifest(ref reference.Reference, ua string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Build the manifest URL
+	registryHost := ref.Context().Registry.RegistryStr()
+	if registryHost == "docker.io" || registryHost == "index.docker.io" {
+		registryHost = "registry-1.docker.io"
+	}
+	repo := ref.Context().Repository
+	identifier := ref.Identifier()
+
+	url := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registryHost, repo, identifier)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, http.NoBody)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("User-Agent", ua)
+	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json")
+
+	// Try to get credentials from keychain
+	auth, err := authn.DefaultKeychain.Resolve(authn.NewResource(ref))
+	if err == nil && auth != nil {
+		if cfg, err := auth.Authorization(); err == nil {
+			if cfg.Username != "" && cfg.Password != "" {
+				req.SetBasicAuth(cfg.Username, cfg.Password)
+			} else if cfg.RegistryToken != "" {
+				req.Header.Set("Authorization", "Bearer "+cfg.RegistryToken)
+			}
+		}
+	}
+
+	resp, err := t.transport.RoundTrip(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("manifest not found: %d", resp.StatusCode)
+	}
+
+	return nil
 }
