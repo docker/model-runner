@@ -486,8 +486,8 @@ func (s *StreamingResponseWriter) sendEvent(eventType string, event *StreamEvent
 		return
 	}
 
-	fmt.Fprintf(s.w, "event: %s\n", eventType)
-	fmt.Fprintf(s.w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(s.w, "event: %s\n", eventType)
+	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", data)
 
 	if s.flusher != nil {
 		s.flusher.Flush()

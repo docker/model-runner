@@ -1,10 +1,12 @@
 package huggingface
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,15 +30,25 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 
-	// Step 2: Filter to model files (safetensors + configs)
-	safetensorsFiles, configFiles := FilterModelFiles(files)
+	// Step 2: Detect model type and filter files accordingly
+	modelType := DetectModelType(files)
 
-	if len(safetensorsFiles) == 0 {
-		return nil, fmt.Errorf("no safetensors files found in repository %s", repo)
+	var modelFiles, configFiles []RepoFile
+	if modelType == ModelTypeDiffusers {
+		modelFiles, configFiles = FilterDiffusersFiles(files)
+		if progressWriter != nil {
+			_ = progress.WriteProgress(progressWriter, "Detected diffusers model", 0, 0, 0, "")
+		}
+	} else {
+		modelFiles, configFiles = FilterModelFiles(files)
+	}
+
+	if len(modelFiles) == 0 {
+		return nil, fmt.Errorf("no model files found in repository %s", repo)
 	}
 
 	// Combine all files to download
-	allFiles := append(safetensorsFiles, configFiles...)
+	allFiles := append(modelFiles, configFiles...)
 
 	if progressWriter != nil {
 		totalSize := TotalSize(allFiles)
@@ -57,7 +69,12 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, safetensorsFiles, configFiles, tempDir)
+	var model types.ModelArtifact
+	if modelType == ModelTypeDiffusers {
+		model, err = buildDiffusersModel(result.LocalPaths, modelFiles, configFiles, tempDir)
+	} else {
+		model, err = buildModelFromFiles(result.LocalPaths, modelFiles, configFiles, tempDir)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -117,6 +134,128 @@ func buildModelFromFiles(localPaths map[string]string, safetensorsFiles, configF
 	}
 
 	return b.Model(), nil
+}
+
+// buildDiffusersModel constructs an OCI model artifact for a diffusers model
+func buildDiffusersModel(localPaths map[string]string, modelFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+	// For diffusers models, we create a tar archive preserving the directory structure
+	allFiles := append(modelFiles, configFiles...)
+
+	// Create a tar archive of all files
+	archivePath, err := createDiffusersArchive(localPaths, allFiles, tempDir)
+	if err != nil {
+		return nil, fmt.Errorf("create diffusers archive: %w", err)
+	}
+
+	// We still need safetensors files to create the base model
+	// Find a safetensors file to use as the base
+	var safetensorsPaths, binPaths []string
+	for _, f := range modelFiles {
+		lowerFilename := strings.ToLower(f.Filename())
+		localPath, ok := localPaths[f.Path]
+		if !ok {
+			continue
+		}
+		if strings.HasSuffix(lowerFilename, ".safetensors") {
+			safetensorsPaths = append(safetensorsPaths, localPath)
+		} else if strings.HasSuffix(lowerFilename, ".bin") {
+			binPaths = append(binPaths, localPath)
+		}
+	}
+
+	if len(safetensorsPaths) == 0 {
+		safetensorsPaths = binPaths
+	}
+
+	if len(safetensorsPaths) == 0 {
+		return nil, fmt.Errorf("no model weight files found")
+	}
+
+	sort.Strings(safetensorsPaths)
+
+	// Create builder from the first weight file to establish base
+	// Note: We use the first file to establish the base, but the full archive will contain all files
+	// The builder.FromSafetensors function handles both .safetensors and .bin files
+	b, err := builder.FromSafetensors([]string{safetensorsPaths[0]})
+	if err != nil {
+		return nil, fmt.Errorf("create builder: %w", err)
+	}
+
+	// Add the diffusers archive as a directory tar layer
+	// This will be extracted preserving the full directory structure
+	b, err = b.WithDirTar(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("add diffusers archive: %w", err)
+	}
+
+	return b.Model(), nil
+}
+
+// createDiffusersArchive creates a tar archive of diffusers model files preserving directory structure
+func createDiffusersArchive(localPaths map[string]string, files []RepoFile, tempDir string) (string, error) {
+	archivePath := filepath.Join(tempDir, "diffusers-model.tar")
+
+	f, err := os.Create(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("create archive file: %w", err)
+	}
+	defer f.Close()
+
+	tw := tar.NewWriter(f)
+	defer tw.Close()
+
+	for _, file := range files {
+		localPath, ok := localPaths[file.Path]
+		if !ok {
+			log.Printf("Warning: skipping file %s (not downloaded)", file.Path)
+			continue
+		}
+
+		// Add file to archive with its original path (preserving directory structure)
+		if err := addFileToTar(tw, localPath, file.Path); err != nil {
+			return "", fmt.Errorf("add file %s to archive: %w", file.Path, err)
+		}
+	}
+
+	return archivePath, nil
+}
+
+// addFileToTar adds a file to a tar archive with the specified archive path
+func addFileToTar(tw *tar.Writer, sourcePath, archivePath string) error {
+	// Get file info
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+
+	// Create tar header
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return fmt.Errorf("create tar header: %w", err)
+	}
+
+	// Use the archive path (with forward slashes for tar)
+	header.Name = filepath.ToSlash(archivePath)
+
+	// Write header
+	if err := tw.WriteHeader(header); err != nil {
+		return fmt.Errorf("write tar header: %w", err)
+	}
+
+	// If it's a file (not directory), write contents
+	if !info.IsDir() {
+		file, err := os.Open(sourcePath)
+		if err != nil {
+			return fmt.Errorf("open file: %w", err)
+		}
+		defer file.Close()
+
+		if _, err := io.Copy(tw, file); err != nil {
+			return fmt.Errorf("copy file contents: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // createConfigArchive creates a tar archive of config files in the specified tempDir

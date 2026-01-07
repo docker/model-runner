@@ -12,6 +12,7 @@ import (
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 )
 
+// Reader reads a tarball containing model artifacts.
 type Reader struct {
 	tr          *tar.Reader
 	rawManifest []byte
@@ -19,15 +20,18 @@ type Reader struct {
 	done        bool
 }
 
+// Blob represents a blob in a tarball.
 type Blob struct {
 	diffID v1.Hash
 	rc     io.ReadCloser
 }
 
+// DiffID returns the diff ID of the blob.
 func (b Blob) DiffID() (v1.Hash, error) {
 	return b.diffID, nil
 }
 
+// Uncompressed returns an uncompressed reader for the blob.
 func (b Blob) Uncompressed() (io.ReadCloser, error) {
 	return b.rc, nil
 }
@@ -81,6 +85,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	return r.tr.Read(p)
 }
 
+// Manifest returns the manifest from the tarball.
 func (r *Reader) Manifest() ([]byte, v1.Hash, error) {
 	if !r.done {
 		return nil, v1.Hash{}, errors.New("must read all blobs first before getting manifest")
@@ -91,6 +96,7 @@ func (r *Reader) Manifest() ([]byte, v1.Hash, error) {
 	return r.rawManifest, r.digest, nil
 }
 
+// NewReader creates a new tarball reader.
 func NewReader(r io.Reader) *Reader {
 	return &Reader{
 		tr: tar.NewReader(r),

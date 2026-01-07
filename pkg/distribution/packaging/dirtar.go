@@ -34,7 +34,7 @@ func CreateDirectoryTarArchive(dirPath string) (string, error) {
 	shouldKeepTempFile := false
 	defer func() {
 		if !shouldKeepTempFile {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
@@ -96,14 +96,14 @@ func CreateDirectoryTarArchive(dirPath string) (string, error) {
 	})
 
 	if err != nil {
-		tw.Close()
-		tmpFile.Close()
+		_ = tw.Close()
+		_ = tmpFile.Close()
 		return "", fmt.Errorf("walk directory: %w", err)
 	}
 
 	// Close tar writer
 	if err := tw.Close(); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return "", fmt.Errorf("close tar writer: %w", err)
 	}
 
@@ -147,7 +147,7 @@ func (p *DirTarProcessor) Process() ([]string, func(), error) {
 	// Return cleanup function
 	cleanup := func() {
 		for _, tempFile := range p.tempFiles {
-			os.Remove(tempFile)
+			_ = os.Remove(tempFile)
 		}
 	}
 

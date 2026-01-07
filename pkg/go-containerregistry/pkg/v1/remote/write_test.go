@@ -30,8 +30,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
@@ -44,6 +42,8 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/tarball"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/validate"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func mustNewTag(t *testing.T, s string) name.Tag {

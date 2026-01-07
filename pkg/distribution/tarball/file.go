@@ -27,7 +27,9 @@ func (t *FileTarget) Write(ctx context.Context, mdl types.ModelArtifact, pw io.W
 	if err != nil {
 		return fmt.Errorf("create file for archive: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	target, err := NewTarget(f)
 	if err != nil {
 		return fmt.Errorf("create target: %w", err)

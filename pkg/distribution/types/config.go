@@ -32,7 +32,9 @@ const (
 	// MediaTypeChatTemplate indicates a Jinja chat template
 	MediaTypeChatTemplate = types.MediaType("application/vnd.docker.ai.chat.template.jinja")
 
-	FormatGGUF        = Format("gguf")
+	// FormatGGUF represents the GGUF format.
+	FormatGGUF = Format("gguf")
+	// FormatSafetensors represents the Safetensors format.
 	FormatSafetensors = Format("safetensors")
 
 	// OCI Annotation keys for model layers
@@ -50,6 +52,7 @@ const (
 	AnnotationMediaTypeUntested = "org.cncf.model.file.mediatype.untested"
 )
 
+// Format represents the format of a model.
 type Format string
 
 // ModelConfig provides a unified interface for accessing model configuration.
@@ -65,6 +68,7 @@ type ModelConfig interface {
 	GetQuantization() string
 }
 
+// ConfigFile represents a model configuration file.
 type ConfigFile struct {
 	Config     Config     `json:"config"`
 	Descriptor Descriptor `json:"descriptor"`

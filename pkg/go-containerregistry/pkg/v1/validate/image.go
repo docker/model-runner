@@ -21,9 +21,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/partial"
+	"github.com/google/go-cmp/cmp"
 )
 
 // Image validates that img does not violate any invariants of the image format.

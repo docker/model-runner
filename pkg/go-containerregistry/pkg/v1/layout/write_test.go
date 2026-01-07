@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/empty"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/match"
@@ -32,6 +31,7 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/stream"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/validate"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestWrite(t *testing.T) {

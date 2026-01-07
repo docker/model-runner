@@ -76,8 +76,14 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		"POST " + inference.InferencePrefix + "/v1/messages/count_tokens",
 	}
 
+	// OpenAI Images API routes
+	imageRoutes := []string{
+		"POST " + inference.InferencePrefix + "/{backend}/v1/images/generations",
+		"POST " + inference.InferencePrefix + "/v1/images/generations",
+	}
+
 	m := make(map[string]http.HandlerFunc)
-	for _, route := range append(openAIRoutes, anthropicRoutes...) {
+	for _, route := range append(append(openAIRoutes, anthropicRoutes...), imageRoutes...) {
 		m[route] = h.handleOpenAIInference
 	}
 

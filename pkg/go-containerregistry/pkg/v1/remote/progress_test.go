@@ -23,7 +23,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
@@ -31,6 +30,7 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/mutate"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/random"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestWriteLayer_Progress(t *testing.T) {

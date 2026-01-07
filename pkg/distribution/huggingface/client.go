@@ -81,7 +81,8 @@ func (c *Client) ListFiles(ctx context.Context, repo, revision string) ([]RepoFi
 	}
 
 	// HuggingFace API endpoint for listing files
-	url := fmt.Sprintf("%s/api/models/%s/tree/%s", c.baseURL, repo, revision)
+	// Use recursive=true to get files from subdirectories (needed for diffusers models)
+	url := fmt.Sprintf("%s/api/models/%s/tree/%s?recursive=true", c.baseURL, repo, revision)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
@@ -94,7 +95,9 @@ func (c *Client) ListFiles(ctx context.Context, repo, revision string) ([]RepoFi
 	if err != nil {
 		return nil, fmt.Errorf("list files: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if err := c.checkResponse(resp, repo); err != nil {
 		return nil, err
@@ -131,7 +134,7 @@ func (c *Client) DownloadFile(ctx context.Context, repo, revision, filename stri
 	}
 
 	if err := c.checkResponse(resp, repo); err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, 0, err
 	}
 

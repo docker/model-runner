@@ -27,7 +27,6 @@ import (
 	"sync"
 
 	authchallenge "github.com/docker/distribution/registry/client/auth/challenge"
-
 	"github.com/docker/model-runner/pkg/go-containerregistry/internal/redact"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/logs"

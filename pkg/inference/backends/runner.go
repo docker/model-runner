@@ -89,13 +89,15 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 	if err != nil {
 		return fmt.Errorf("unable to start %s: %w", config.BackendName, err)
 	}
-	defer backendSandbox.Close()
+	defer func() {
+		_ = backendSandbox.Close()
+	}()
 
 	// Handle backend process errors
 	backendErrors := make(chan error, 1)
 	go func() {
 		backendErr := backendSandbox.Command().Wait()
-		config.ServerLogWriter.Close()
+		_ = config.ServerLogWriter.Close()
 
 		errOutput := new(strings.Builder)
 		if _, err := io.Copy(errOutput, tailBuf); err != nil {

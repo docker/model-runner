@@ -12,7 +12,9 @@ func ReadFile[T any](path string, result T) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	dec := json.NewDecoder(f)
 	if err := dec.Decode(&result); err != nil {
 		return fmt.Errorf("parsing JSON: %w", err)

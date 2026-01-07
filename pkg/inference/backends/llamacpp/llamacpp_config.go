@@ -65,6 +65,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, "--embeddings")
 	case inference.BackendModeReranking:
 		args = append(args, "--embeddings", "--reranking")
+	case inference.BackendModeImageGeneration:
+		return nil, fmt.Errorf("image generation mode not supported by llama.cpp backend")
 	default:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}

@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
+	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

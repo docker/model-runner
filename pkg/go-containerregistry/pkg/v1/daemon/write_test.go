@@ -24,7 +24,6 @@ import (
 
 	api "github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/empty"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/tarball"

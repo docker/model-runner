@@ -48,6 +48,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	// vLLM doesn't have a specific embedding flag like llama.cpp
 	// Embedding models are detected automatically
 	case inference.BackendModeReranking:
+	case inference.BackendModeImageGeneration:
+		return nil, fmt.Errorf("image generation mode not supported by vLLM backend")
 	default:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}

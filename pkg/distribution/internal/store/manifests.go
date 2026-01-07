@@ -92,12 +92,12 @@ func writeFile(path string, data []byte) error {
 	}
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		cleanup()
 		return fmt.Errorf("write temporary file %q: %w", tmpName, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		cleanup()
 		return fmt.Errorf("sync temporary file %q: %w", tmpName, err)
 	}

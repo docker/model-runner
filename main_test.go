@@ -30,8 +30,18 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 			wantErr:   true,
 		},
 		{
+			name:      "disallowed model arg with equals",
+			llamaArgs: "--model=test.gguf",
+			wantErr:   true,
+		},
+		{
 			name:      "disallowed host arg",
 			llamaArgs: "--host localhost:8080",
+			wantErr:   true,
+		},
+		{
+			name:      "disallowed host arg with equals",
+			llamaArgs: "--host=localhost:8080",
 			wantErr:   true,
 		},
 		{
@@ -42,6 +52,11 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 		{
 			name:      "disallowed mmproj arg",
 			llamaArgs: "--mmproj test.mmproj",
+			wantErr:   true,
+		},
+		{
+			name:      "disallowed mmproj arg with equals",
+			llamaArgs: "--mmproj=test.mmproj",
 			wantErr:   true,
 		},
 		{
@@ -78,14 +93,18 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 
 			config := createLlamaCppConfigFromEnv()
 
+			// With the new error handling, we don't exit on error, just log it
+			// So we expect exitCode to always be 0 (no fatal exit)
+			if exitCode != 0 {
+				t.Errorf("Expected exit code 0, got %d", exitCode)
+			}
+
 			if tt.wantErr {
-				if exitCode != 1 {
-					t.Errorf("Expected exit code 1, got %d", exitCode)
+				// For error cases, we now return nil config instead of exiting
+				if config != nil {
+					t.Error("Expected nil config for error cases")
 				}
 			} else {
-				if exitCode != 0 {
-					t.Errorf("Expected exit code 0, got %d", exitCode)
-				}
 				if tt.llamaArgs == "" {
 					if config != nil {
 						t.Error("Expected nil config for empty args")
