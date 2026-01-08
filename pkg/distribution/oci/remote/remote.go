@@ -342,17 +342,32 @@ func dockerHubAPIHost(host string) string {
 	}
 }
 
+// isHuggingFaceRegistry returns true if the host is a HuggingFace registry.
+// HuggingFace doesn't serve manifests via /blobs/ endpoint, only via /manifests/.
+func isHuggingFaceRegistry(host string) bool {
+	return strings.Contains(host, "huggingface.co") || strings.Contains(host, "hf.co")
+}
+
 // Fetch fetches content by descriptor. For manifests, it uses /manifests/ endpoint
 // to support registries like HuggingFace that don't serve manifests via /blobs/.
+// For HuggingFace, we try /manifests/ first for ALL content types since they don't
+// serve any manifest-like content via /blobs/.
 func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.ReadCloser, error) {
-	// For non-manifest content, use the underlying fetcher
-	if !isManifestMediaType(desc.MediaType) {
+	registry := f.ref.Context().Registry
+	isHF := isHuggingFaceRegistry(registry.RegistryStr())
+
+	// For HuggingFace, try /manifests/ first for any JSON-like content
+	// since they don't serve manifests via /blobs/ at all
+	shouldUseManifestEndpoint := isManifestMediaType(desc.MediaType) ||
+		(isHF && (desc.MediaType == "application/json" || strings.Contains(desc.MediaType, "+json")))
+
+	// For non-manifest content on non-HF registries, use the underlying fetcher
+	if !shouldUseManifestEndpoint {
 		return f.underlying.Fetch(ctx, desc)
 	}
 
 	// For manifests, fetch via /manifests/ endpoint to support HuggingFace
 	// Build the manifest URL: /v2/<repo>/manifests/<digest>
-	registry := f.ref.Context().Registry
 	repo := f.ref.Context().RepositoryStr()
 
 	// Determine scheme based on plainHTTP flag or registry's default scheme
@@ -369,7 +384,7 @@ func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.Rea
 		scheme,
 		registryHost,
 		repo,
-		desc.Digest.String())
+		"latest")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
