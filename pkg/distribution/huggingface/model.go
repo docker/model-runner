@@ -78,8 +78,8 @@ func buildModelFromFiles(localPaths map[string]string, safetensorsFiles, configF
 	}
 	sort.Strings(safetensorsPaths)
 
-	// Create builder from safetensors files
-	b, err := builder.FromSafetensors(safetensorsPaths)
+	// Create builder from safetensors files using the unified FromPaths function
+	b, err := builder.FromPaths(safetensorsPaths)
 	if err != nil {
 		return nil, fmt.Errorf("create builder: %w", err)
 	}

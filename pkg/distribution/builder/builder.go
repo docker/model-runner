@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
@@ -19,7 +21,93 @@ type Builder struct {
 	originalLayers []oci.Layer // Snapshot of layers when created from existing model
 }
 
-// FromGGUF returns a *Builder that builds a model artifacts from a GGUF file
+// FromPath returns a *Builder that builds model artifacts from a file path.
+// It auto-detects the model format (GGUF or Safetensors) and discovers any shards.
+// This is the preferred entry point for creating models from local files.
+func FromPath(path string) (*Builder, error) {
+	// Auto-detect format from file extension
+	f, err := format.DetectFromPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("detect format: %w", err)
+	}
+
+	// Discover all shards if this is a sharded model
+	paths, err := f.DiscoverShards(path)
+	if err != nil {
+		return nil, fmt.Errorf("discover shards: %w", err)
+	}
+
+	// Create model using the format abstraction
+	return fromFormat(f, paths)
+}
+
+// FromPaths returns a *Builder that builds model artifacts from multiple file paths.
+// All paths must be of the same format. Use this when you already have the list of files.
+func FromPaths(paths []string) (*Builder, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("at least one path is required")
+	}
+
+	// Detect and verify format from all paths
+	f, err := format.DetectFromPaths(paths)
+	if err != nil {
+		return nil, fmt.Errorf("detect format: %w", err)
+	}
+
+	// Create model using the format abstraction
+	return fromFormat(f, paths)
+}
+
+// fromFormat creates a Builder using the unified format abstraction.
+// This is the internal implementation that creates layers and config.
+func fromFormat(f format.Format, paths []string) (*Builder, error) {
+	// Create layers from paths
+	layers := make([]oci.Layer, len(paths))
+	diffIDs := make([]oci.Hash, len(paths))
+
+	mediaType := f.MediaType()
+	for i, path := range paths {
+		layer, err := partial.NewLayer(path, mediaType)
+		if err != nil {
+			return nil, fmt.Errorf("create layer from %q: %w", path, err)
+		}
+		diffID, err := layer.DiffID()
+		if err != nil {
+			return nil, fmt.Errorf("get diffID for %q: %w", path, err)
+		}
+		layers[i] = layer
+		diffIDs[i] = diffID
+	}
+
+	// Extract config metadata using format-specific logic
+	config, err := f.ExtractConfig(paths)
+	if err != nil {
+		return nil, fmt.Errorf("extract config: %w", err)
+	}
+
+	// Build the model
+	created := time.Now()
+	mdl := &partial.BaseModel{
+		ModelConfigFile: types.ConfigFile{
+			Config: config,
+			Descriptor: types.Descriptor{
+				Created: &created,
+			},
+			RootFS: oci.RootFS{
+				Type:    "rootfs",
+				DiffIDs: diffIDs,
+			},
+		},
+		LayerList: layers,
+	}
+
+	return &Builder{
+		model: mdl,
+	}, nil
+}
+
+// FromGGUF returns a *Builder that builds a model artifacts from a GGUF file.
+// Deprecated: Use FromPath instead, which auto-detects the format.
 func FromGGUF(path string) (*Builder, error) {
 	mdl, err := gguf.NewModel(path)
 	if err != nil {
@@ -30,7 +118,8 @@ func FromGGUF(path string) (*Builder, error) {
 	}, nil
 }
 
-// FromSafetensors returns a *Builder that builds model artifacts from safetensors files
+// FromSafetensors returns a *Builder that builds model artifacts from safetensors files.
+// Deprecated: Use FromPath or FromPaths instead, which auto-detect the format.
 func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
 	mdl, err := safetensors.NewModel(safetensorsPaths)
 	if err != nil {
