@@ -1125,6 +1125,123 @@ func int32ptr(n int32) *int32 {
 	return &n
 }
 
+// setupDockerHubTestEnv creates a test environment for Docker Hub tests.
+// Unlike setupTestEnv, this does NOT set DEFAULT_REGISTRY, so it uses
+// the real Docker Hub (index.docker.io) as the default registry.
+// This is used to test that pulling from Docker Hub works correctly.
+func setupDockerHubTestEnv(t *testing.T) *testEnv {
+	ctx := context.Background()
+
+	// NOTE: We intentionally do NOT set DEFAULT_REGISTRY here.
+	// This tests the real Docker Hub path (index.docker.io).
+
+	// Create a custom network for container communication
+	net, err := network.New(ctx)
+	require.NoError(t, err)
+	testcontainers.CleanupNetwork(t, net)
+
+	dmrURL := dockerModelRunnerForDockerHub(t, ctx, net)
+
+	modelRunnerCtx, err := desktop.NewContextForTest(dmrURL, nil, types.ModelRunnerEngineKindMoby)
+	require.NoError(t, err, "Failed to create model runner context")
+
+	client := desktop.New(modelRunnerCtx)
+	if !client.Status().Running {
+		t.Fatal("DMR is not running")
+	}
+
+	return &testEnv{
+		ctx:    ctx,
+		client: client,
+		net:    net,
+	}
+}
+
+// dockerModelRunnerForDockerHub starts a DMR container configured for Docker Hub tests.
+// Unlike dockerModelRunner, this does NOT set DEFAULT_REGISTRY, so it uses
+// the real Docker Hub as the default registry.
+func dockerModelRunnerForDockerHub(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
+	containerCustomizerOpts := []testcontainers.ContainerCustomizer{
+		testcontainers.WithExposedPorts("12434/tcp"),
+		testcontainers.WithWaitStrategy(wait.ForHTTP("/engines/status").WithPort("12434/tcp").WithStartupTimeout(10 * time.Second)),
+		// NOTE: We intentionally do NOT set DEFAULT_REGISTRY here.
+		// This tests the real Docker Hub path (index.docker.io).
+		network.WithNetwork([]string{"dmr"}, net),
+	}
+	if os.Getenv("BUILD_DMR") == "1" {
+		t.Log("Building DMR container...")
+		out, err := exec.CommandContext(ctx, "make", "-C", "../../..", "docker-build").CombinedOutput()
+		if err != nil {
+			t.Fatalf("Failed to build DMR container: %v\n%s", err, out)
+		}
+	} else {
+		// Always pull the image if it's not build locally.
+		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithAlwaysPull())
+	}
+	t.Log("Starting DMR container for Docker Hub tests (no DEFAULT_REGISTRY)...")
+	ctr, err := testcontainers.Run(
+		ctx, "docker/model-runner:latest",
+		containerCustomizerOpts...,
+	)
+	require.NoError(t, err)
+	testcontainers.CleanupContainer(t, ctr)
+
+	dmrEndpoint, err := ctr.Endpoint(ctx, "")
+	require.NoError(t, err)
+
+	dmrURL := fmt.Sprintf("http://%s", dmrEndpoint)
+	t.Logf("DMR available at: %s", dmrURL)
+	return dmrURL
+}
+
+// TestIntegration_PullFromDockerHub is a smoke test that pulls a real model
+// from Docker Hub to verify that the OCI registry code works correctly
+// with the real Docker Hub registry (index.docker.io -> registry-1.docker.io).
+//
+// This test catches regressions where the code doesn't properly handle
+// Docker Hub's hostname remapping requirements.
+func TestIntegration_PullFromDockerHub(t *testing.T) {
+	env := setupDockerHubTestEnv(t)
+
+	// Ensure no models exist initially
+	models, err := listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	if len(models) != 0 {
+		t.Fatal("Expected no initial models, but found some")
+	}
+
+	// Pull a small model from Docker Hub
+	// ai/smollm2:135M-Q4_0 is a small model that's quick to download
+	modelRef := "ai/smollm2:135M-Q4_0"
+	t.Logf("Pulling model from Docker Hub: %s", modelRef)
+
+	err = pullModel(newPullCmd(), env.client, modelRef)
+	require.NoError(t, err, "Failed to pull model from Docker Hub: %s", modelRef)
+
+	// Verify the model was pulled
+	t.Log("Verifying model was pulled successfully")
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, strings.TrimSpace(models), "Model should exist after pull from Docker Hub")
+
+	// Verify we can inspect the model
+	model, err := env.client.Inspect(modelRef, false)
+	require.NoError(t, err, "Failed to inspect model pulled from Docker Hub")
+	require.NotEmpty(t, model.ID, "Model ID should not be empty")
+
+	t.Logf("✓ Successfully pulled model from Docker Hub: %s (ID: %s)", modelRef, model.ID[7:19])
+
+	// Cleanup: remove the model
+	t.Logf("Cleaning up: removing model %s", model.ID[7:19])
+	err = removeModel(env.client, model.ID, true)
+	require.NoError(t, err, "Failed to remove model")
+
+	// Verify model was removed
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.Empty(t, strings.TrimSpace(models), "Model should be removed after cleanup")
+}
+
 // normalizeRef normalizes a reference to its fully qualified form.
 // This is used in tests to compare against the stored tags which are always normalized.
 func normalizeRef(t *testing.T, ref string) string {

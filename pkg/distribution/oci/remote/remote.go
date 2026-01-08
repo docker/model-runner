@@ -330,6 +330,18 @@ func isManifestMediaType(mediaType string) bool {
 	return false
 }
 
+// dockerHubAPIHost remaps Docker Hub registry hostnames to the actual API endpoint.
+// Docker Hub uses several aliases (docker.io, index.docker.io) but the actual
+// V2 API is served from registry-1.docker.io.
+func dockerHubAPIHost(host string) string {
+	switch host {
+	case "docker.io", "index.docker.io":
+		return "registry-1.docker.io"
+	default:
+		return host
+	}
+}
+
 // Fetch fetches content by descriptor. For manifests, it uses /manifests/ endpoint
 // to support registries like HuggingFace that don't serve manifests via /blobs/.
 func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.ReadCloser, error) {
@@ -349,9 +361,13 @@ func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.Rea
 		scheme = "http"
 	}
 
+	// Remap Docker Hub hostnames to the actual API endpoint
+	// Docker Hub uses several aliases but the V2 API is served from registry-1.docker.io
+	registryHost := dockerHubAPIHost(registry.RegistryStr())
+
 	url := fmt.Sprintf("%s://%s/v2/%s/manifests/%s",
 		scheme,
-		registry.RegistryStr(),
+		registryHost,
 		repo,
 		desc.Digest.String())
 
