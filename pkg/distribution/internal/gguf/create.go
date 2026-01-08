@@ -2,21 +2,30 @@ package gguf
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	parser "github.com/gpustack/gguf-parser-go"
 )
 
+// NewModel creates a new GGUF model from a file path.
+// It delegates to the unified format package for shard discovery and config extraction.
 func NewModel(path string) (*Model, error) {
-	shards := parser.CompleteShardGGUFFilename(path)
-	if len(shards) == 0 {
-		shards = []string{path} // single file
+	// Get the GGUF format handler
+	f, err := format.Get(types.FormatGGUF)
+	if err != nil {
+		return nil, fmt.Errorf("get format: %w", err)
 	}
+
+	// Discover shards using the format package
+	shards, err := f.DiscoverShards(path)
+	if err != nil {
+		return nil, fmt.Errorf("discover shards: %w", err)
+	}
+
+	// Create layers
 	layers := make([]oci.Layer, len(shards))
 	diffIDs := make([]oci.Hash, len(shards))
 	for i, shard := range shards {
@@ -32,11 +41,17 @@ func NewModel(path string) (*Model, error) {
 		diffIDs[i] = diffID
 	}
 
+	// Extract config using the format package
+	config, err := f.ExtractConfig(shards)
+	if err != nil {
+		return nil, fmt.Errorf("extract config: %w", err)
+	}
+
 	created := time.Now()
 	return &Model{
 		BaseModel: partial.BaseModel{
 			ModelConfigFile: types.ConfigFile{
-				Config: configFromFile(path),
+				Config: config,
 				Descriptor: types.Descriptor{
 					Created: &created,
 				},
@@ -48,38 +63,4 @@ func NewModel(path string) (*Model, error) {
 			LayerList: layers,
 		},
 	}, nil
-}
-
-func configFromFile(path string) types.Config {
-	gguf, err := parser.ParseGGUFFile(path)
-	if err != nil {
-		return types.Config{} // continue without metadata
-	}
-	return types.Config{
-		Format:       types.FormatGGUF,
-		Parameters:   normalizeUnitString(gguf.Metadata().Parameters.String()),
-		Architecture: strings.TrimSpace(gguf.Metadata().Architecture),
-		Quantization: strings.TrimSpace(gguf.Metadata().FileType.String()),
-		Size:         normalizeUnitString(gguf.Metadata().Size.String()),
-		GGUF:         extractGGUFMetadata(&gguf.Header),
-	}
-}
-
-var (
-	// spaceBeforeUnitRegex matches one or more spaces between a valid number and a letter (unit)
-	// Used to remove spaces between numbers and units (e.g., "16.78 M" -> "16.78M")
-	// Pattern: integer or decimal number, then whitespace, then letters (unit)
-	spaceBeforeUnitRegex = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)\s+([A-Za-z]+)`)
-)
-
-// normalizeUnitString removes spaces between numbers and units for consistent formatting
-// Examples: "16.78 M" -> "16.78M", "256.35 MiB" -> "256.35MiB", "409M" -> "409M"
-func normalizeUnitString(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return s
-	}
-	// Remove space(s) between numbers/decimals and unit letters using regex
-	// Pattern matches: number(s) or decimal, then whitespace, then letters (unit)
-	return spaceBeforeUnitRegex.ReplaceAllString(s, "$1$2")
 }

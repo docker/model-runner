@@ -7,10 +7,8 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/format"
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
-	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -109,25 +107,13 @@ func fromFormat(f format.Format, paths []string) (*Builder, error) {
 // FromGGUF returns a *Builder that builds a model artifacts from a GGUF file.
 // Deprecated: Use FromPath instead, which auto-detects the format.
 func FromGGUF(path string) (*Builder, error) {
-	mdl, err := gguf.NewModel(path)
-	if err != nil {
-		return nil, err
-	}
-	return &Builder{
-		model: mdl,
-	}, nil
+	return FromPath(path)
 }
 
 // FromSafetensors returns a *Builder that builds model artifacts from safetensors files.
 // Deprecated: Use FromPath or FromPaths instead, which auto-detect the format.
 func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
-	mdl, err := safetensors.NewModel(safetensorsPaths)
-	if err != nil {
-		return nil, err
-	}
-	return &Builder{
-		model: mdl,
-	}, nil
+	return FromPaths(safetensorsPaths)
 }
 
 // FromModel returns a *Builder that builds model artifacts from an existing model artifact
