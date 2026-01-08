@@ -155,16 +155,26 @@ func ociRegistry(t *testing.T, ctx context.Context, net *testcontainers.DockerNe
 	return registryURL
 }
 
-func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
+// dmrConfig holds configuration options for Docker Model Runner container.
+type dmrConfig struct {
+	envVars map[string]string // Optional environment variables to set
+	logMsg  string            // Custom log message (defaults to "Starting DMR container...")
+}
+
+// startDockerModelRunner starts a DMR container with the given configuration.
+// If config.envVars is nil or empty, no extra environment variables are set.
+func startDockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork, config dmrConfig) string {
 	containerCustomizerOpts := []testcontainers.ContainerCustomizer{
 		testcontainers.WithExposedPorts("12434/tcp"),
 		testcontainers.WithWaitStrategy(wait.ForHTTP("/engines/status").WithPort("12434/tcp").WithStartupTimeout(10 * time.Second)),
-		testcontainers.WithEnv(map[string]string{
-			"DEFAULT_REGISTRY":  "registry.local:5000",
-			"INSECURE_REGISTRY": "true",
-		}),
 		network.WithNetwork([]string{"dmr"}, net),
 	}
+
+	// Add environment variables if provided
+	if len(config.envVars) > 0 {
+		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithEnv(config.envVars))
+	}
+
 	if os.Getenv("BUILD_DMR") == "1" {
 		t.Log("Building DMR container...")
 		out, err := exec.CommandContext(ctx, "make", "-C", "../../..", "docker-build").CombinedOutput()
@@ -175,7 +185,13 @@ func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.Do
 		// Always pull the image if it's not build locally.
 		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithAlwaysPull())
 	}
-	t.Log("Starting DMR container...")
+
+	logMsg := config.logMsg
+	if logMsg == "" {
+		logMsg = "Starting DMR container..."
+	}
+	t.Log(logMsg)
+
 	ctr, err := testcontainers.Run(
 		ctx, "docker/model-runner:latest",
 		containerCustomizerOpts...,
@@ -189,6 +205,17 @@ func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.Do
 	dmrURL := fmt.Sprintf("http://%s", dmrEndpoint)
 	t.Logf("DMR available at: %s", dmrURL)
 	return dmrURL
+}
+
+// dockerModelRunner starts a DMR container configured for local registry tests.
+// Sets DEFAULT_REGISTRY and INSECURE_REGISTRY environment variables.
+func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
+	return startDockerModelRunner(t, ctx, net, dmrConfig{
+		envVars: map[string]string{
+			"DEFAULT_REGISTRY":  "registry.local:5000",
+			"INSECURE_REGISTRY": "true",
+		},
+	})
 }
 
 // removeModel removes a model from the local store
@@ -1132,15 +1159,16 @@ func int32ptr(n int32) *int32 {
 func setupDockerHubTestEnv(t *testing.T) *testEnv {
 	ctx := context.Background()
 
-	// NOTE: We intentionally do NOT set DEFAULT_REGISTRY here.
-	// This tests the real Docker Hub path (index.docker.io).
-
 	// Create a custom network for container communication
 	net, err := network.New(ctx)
 	require.NoError(t, err)
 	testcontainers.CleanupNetwork(t, net)
 
-	dmrURL := dockerModelRunnerForDockerHub(t, ctx, net)
+	// dockerModelRunnerForDockerHub starts a DMR container configured for Docker Hub tests.
+	// it uses the real Docker Hub as the default registry.
+	dmrURL := startDockerModelRunner(t, ctx, net, dmrConfig{
+		logMsg: "Starting DMR container for Docker Hub tests (no DEFAULT_REGISTRY)...",
+	})
 
 	modelRunnerCtx, err := desktop.NewContextForTest(dmrURL, nil, types.ModelRunnerEngineKindMoby)
 	require.NoError(t, err, "Failed to create model runner context")
@@ -1155,43 +1183,6 @@ func setupDockerHubTestEnv(t *testing.T) *testEnv {
 		client: client,
 		net:    net,
 	}
-}
-
-// dockerModelRunnerForDockerHub starts a DMR container configured for Docker Hub tests.
-// Unlike dockerModelRunner, this does NOT set DEFAULT_REGISTRY, so it uses
-// the real Docker Hub as the default registry.
-func dockerModelRunnerForDockerHub(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
-	containerCustomizerOpts := []testcontainers.ContainerCustomizer{
-		testcontainers.WithExposedPorts("12434/tcp"),
-		testcontainers.WithWaitStrategy(wait.ForHTTP("/engines/status").WithPort("12434/tcp").WithStartupTimeout(10 * time.Second)),
-		// NOTE: We intentionally do NOT set DEFAULT_REGISTRY here.
-		// This tests the real Docker Hub path (index.docker.io).
-		network.WithNetwork([]string{"dmr"}, net),
-	}
-	if os.Getenv("BUILD_DMR") == "1" {
-		t.Log("Building DMR container...")
-		out, err := exec.CommandContext(ctx, "make", "-C", "../../..", "docker-build").CombinedOutput()
-		if err != nil {
-			t.Fatalf("Failed to build DMR container: %v\n%s", err, out)
-		}
-	} else {
-		// Always pull the image if it's not build locally.
-		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithAlwaysPull())
-	}
-	t.Log("Starting DMR container for Docker Hub tests (no DEFAULT_REGISTRY)...")
-	ctr, err := testcontainers.Run(
-		ctx, "docker/model-runner:latest",
-		containerCustomizerOpts...,
-	)
-	require.NoError(t, err)
-	testcontainers.CleanupContainer(t, ctr)
-
-	dmrEndpoint, err := ctr.Endpoint(ctx, "")
-	require.NoError(t, err)
-
-	dmrURL := fmt.Sprintf("http://%s", dmrEndpoint)
-	t.Logf("DMR available at: %s", dmrURL)
-	return dmrURL
 }
 
 // TestIntegration_PullFromDockerHub is a smoke test that pulls a real model
