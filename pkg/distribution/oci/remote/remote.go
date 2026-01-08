@@ -346,7 +346,7 @@ func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.Rea
 
 	// For HuggingFace, try /manifests/ first for any JSON-like content
 	// since they don't serve manifests via /blobs/ at all
-	shouldUseManifestEndpoint := isHF && (desc.MediaType == "application/json" || strings.Contains(desc.MediaType, "+json"))
+	shouldUseManifestEndpoint := isHF && isManifestMediaType(desc.MediaType)
 
 	// For non-manifest content on non-HF registries, use the underlying fetcher
 	if !shouldUseManifestEndpoint {
