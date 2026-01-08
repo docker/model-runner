@@ -2,9 +2,8 @@ package huggingface
 
 import (
 	"path"
-	"strings"
 
-	"github.com/docker/model-runner/pkg/distribution/packaging"
+	"github.com/docker/model-runner/pkg/distribution/files"
 )
 
 // RepoFile represents a file in a HuggingFace repository
@@ -37,6 +36,7 @@ func (f *RepoFile) Filename() string {
 }
 
 // fileType represents the type of file for model packaging
+// Deprecated: Use files.FileType instead for new code.
 type fileType int
 
 const (
@@ -48,36 +48,25 @@ const (
 	fileTypeConfig
 )
 
-// classifyFile determines the file type based on filename
+// classifyFile determines the file type based on filename.
+// This function delegates to the centralized files.Classify function.
 func classifyFile(filename string) fileType {
-	lower := strings.ToLower(filename)
+	ft := files.Classify(filename)
 
-	// Check for safetensors files
-	if strings.HasSuffix(lower, ".safetensors") {
+	switch ft {
+	case files.FileTypeSafetensors:
 		return fileTypeSafetensors
+	case files.FileTypeConfig, files.FileTypeChatTemplate:
+		return fileTypeConfig
+	default:
+		return fileTypeUnknown
 	}
-
-	// Check for config file extensions
-	for _, ext := range packaging.ConfigExtensions {
-		if strings.HasSuffix(lower, ext) {
-			return fileTypeConfig
-		}
-	}
-
-	// Check for special config files
-	for _, special := range packaging.SpecialConfigFiles {
-		if strings.EqualFold(filename, special) {
-			return fileTypeConfig
-		}
-	}
-
-	return fileTypeUnknown
 }
 
 // FilterModelFiles filters repository files to only include files needed for model-runner
 // Returns safetensors files and config files separately
-func FilterModelFiles(files []RepoFile) (safetensors []RepoFile, configs []RepoFile) {
-	for _, f := range files {
+func FilterModelFiles(repoFiles []RepoFile) (safetensors []RepoFile, configs []RepoFile) {
+	for _, f := range repoFiles {
 		if f.Type != "file" {
 			continue
 		}
@@ -95,17 +84,17 @@ func FilterModelFiles(files []RepoFile) (safetensors []RepoFile, configs []RepoF
 }
 
 // TotalSize calculates the total size of files
-func TotalSize(files []RepoFile) int64 {
+func TotalSize(repoFiles []RepoFile) int64 {
 	var total int64
-	for _, f := range files {
+	for _, f := range repoFiles {
 		total += f.ActualSize()
 	}
 	return total
 }
 
 // isSafetensorsModel checks if the files contain at least one safetensors file
-func isSafetensorsModel(files []RepoFile) bool {
-	for _, f := range files {
+func isSafetensorsModel(repoFiles []RepoFile) bool {
+	for _, f := range repoFiles {
 		if f.Type == "file" && classifyFile(f.Filename()) == fileTypeSafetensors {
 			return true
 		}

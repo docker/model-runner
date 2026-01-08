@@ -8,13 +8,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/docker/model-runner/pkg/distribution/files"
 )
 
-// ConfigExtensions defines the file extensions that should be treated as config files
-var ConfigExtensions = []string{".md", ".txt", ".json", ".vocab", ".jinja"}
+// ConfigExtensions defines the file extensions that should be treated as config files.
+// Deprecated: Use files.ConfigExtensions instead.
+var ConfigExtensions = files.ConfigExtensions
 
-// SpecialConfigFiles are specific filenames treated as config files
-var SpecialConfigFiles = []string{"tokenizer.model"}
+// SpecialConfigFiles are specific filenames treated as config files.
+// Deprecated: Use files.SpecialConfigFiles instead.
+var SpecialConfigFiles = files.SpecialConfigFiles
 
 // PackageFromDirectory scans a directory for safetensors files and config files,
 // creating a temporary tar archive of the config files.
