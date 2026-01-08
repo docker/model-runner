@@ -38,9 +38,10 @@ func (ft FileType) String() string {
 		return "license"
 	case FileTypeChatTemplate:
 		return "chat_template"
-	default:
+	case FileTypeUnknown:
 		return "unknown"
 	}
+	return "unknown"
 }
 
 var (
@@ -161,7 +162,7 @@ func SplitByType(filenames []string) (weights, configs, templates, licenses, unk
 			templates = append(templates, name)
 		case FileTypeLicense:
 			licenses = append(licenses, name)
-		default:
+		case FileTypeUnknown:
 			unknown = append(unknown, name)
 		}
 	}

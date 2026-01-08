@@ -12,14 +12,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/files"
 )
 
-// ConfigExtensions defines the file extensions that should be treated as config files.
-// Deprecated: Use files.ConfigExtensions instead.
-var ConfigExtensions = files.ConfigExtensions
-
-// SpecialConfigFiles are specific filenames treated as config files.
-// Deprecated: Use files.SpecialConfigFiles instead.
-var SpecialConfigFiles = files.SpecialConfigFiles
-
 // PackageFromDirectory scans a directory for safetensors files and config files,
 // creating a temporary tar archive of the config files.
 // It returns the paths to safetensors files, path to temporary config archive (if created),
@@ -168,13 +160,13 @@ func addFileToTar(tw *tar.Writer, filePath string) error {
 // It checks for extensions listed in ConfigExtensions and the special case of the tokenizer.model file.
 func isConfigFile(name string) bool {
 	lower := strings.ToLower(name)
-	for _, ext := range ConfigExtensions {
+	for _, ext := range files.ConfigExtensions {
 		if strings.HasSuffix(lower, ext) {
 			return true
 		}
 	}
 
-	for _, special := range SpecialConfigFiles {
+	for _, special := range files.SpecialConfigFiles {
 		if strings.EqualFold(name, special) {
 			return true
 		}

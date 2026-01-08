@@ -35,34 +35,6 @@ func (f *RepoFile) Filename() string {
 	return path.Base(f.Path)
 }
 
-// fileType represents the type of file for model packaging
-// Deprecated: Use files.FileType instead for new code.
-type fileType int
-
-const (
-	// fileTypeUnknown is an unrecognized file type
-	fileTypeUnknown fileType = iota
-	// fileTypeSafetensors is a safetensors model weight file
-	fileTypeSafetensors
-	// fileTypeConfig is a configuration file (json, txt, etc.)
-	fileTypeConfig
-)
-
-// classifyFile determines the file type based on filename.
-// This function delegates to the centralized files.Classify function.
-func classifyFile(filename string) fileType {
-	ft := files.Classify(filename)
-
-	switch ft {
-	case files.FileTypeSafetensors:
-		return fileTypeSafetensors
-	case files.FileTypeConfig, files.FileTypeChatTemplate:
-		return fileTypeConfig
-	default:
-		return fileTypeUnknown
-	}
-}
-
 // FilterModelFiles filters repository files to only include files needed for model-runner
 // Returns safetensors files and config files separately
 func FilterModelFiles(repoFiles []RepoFile) (safetensors []RepoFile, configs []RepoFile) {
@@ -71,13 +43,13 @@ func FilterModelFiles(repoFiles []RepoFile) (safetensors []RepoFile, configs []R
 			continue
 		}
 
-		switch classifyFile(f.Filename()) {
-		case fileTypeSafetensors:
+		switch ft := files.Classify(f.Filename()); ft {
+		case files.FileTypeSafetensors:
 			safetensors = append(safetensors, f)
-		case fileTypeConfig:
+		case files.FileTypeConfig, files.FileTypeChatTemplate:
 			configs = append(configs, f)
-		case fileTypeUnknown:
-			// Skip unknown file types
+		case files.FileTypeUnknown, files.FileTypeGGUF, files.FileTypeLicense:
+			// Skip these file types
 		}
 	}
 	return safetensors, configs
@@ -95,7 +67,7 @@ func TotalSize(repoFiles []RepoFile) int64 {
 // isSafetensorsModel checks if the files contain at least one safetensors file
 func isSafetensorsModel(repoFiles []RepoFile) bool {
 	for _, f := range repoFiles {
-		if f.Type == "file" && classifyFile(f.Filename()) == fileTypeSafetensors {
+		if f.Type == "file" && files.Classify(f.Filename()) == files.FileTypeSafetensors {
 			return true
 		}
 	}

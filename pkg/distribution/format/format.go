@@ -59,9 +59,10 @@ func DetectFromPath(path string) (Format, error) {
 		return Get(types.FormatGGUF)
 	case files.FileTypeSafetensors:
 		return Get(types.FormatSafetensors)
-	default:
-		return nil, fmt.Errorf("unable to detect format from path: %s", path)
+	case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
+		return nil, fmt.Errorf("unable to detect format from path: %s (file type: %s)", path, ft)
 	}
+	return nil, fmt.Errorf("unable to detect format from path: %s", path)
 }
 
 // DetectFromPaths determines the model format based on a list of file paths.

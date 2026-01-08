@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 )
@@ -27,10 +27,11 @@ func TestTarget(t *testing.T) {
 		t.Fatalf("Failed to create tar target: %v", err)
 	}
 
-	mdl, err := gguf.NewModel(filepath.Join("..", "assets", "dummy.gguf"))
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
+	mdl := b.Model()
 
 	blobContents, err := os.ReadFile(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
