@@ -155,16 +155,26 @@ func ociRegistry(t *testing.T, ctx context.Context, net *testcontainers.DockerNe
 	return registryURL
 }
 
-func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
+// dmrConfig holds configuration options for Docker Model Runner container.
+type dmrConfig struct {
+	envVars map[string]string // Optional environment variables to set
+	logMsg  string            // Custom log message (defaults to "Starting DMR container...")
+}
+
+// startDockerModelRunner starts a DMR container with the given configuration.
+// If config.envVars is nil or empty, no extra environment variables are set.
+func startDockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork, config dmrConfig) string {
 	containerCustomizerOpts := []testcontainers.ContainerCustomizer{
 		testcontainers.WithExposedPorts("12434/tcp"),
 		testcontainers.WithWaitStrategy(wait.ForHTTP("/engines/status").WithPort("12434/tcp").WithStartupTimeout(10 * time.Second)),
-		testcontainers.WithEnv(map[string]string{
-			"DEFAULT_REGISTRY":  "registry.local:5000",
-			"INSECURE_REGISTRY": "true",
-		}),
 		network.WithNetwork([]string{"dmr"}, net),
 	}
+
+	// Add environment variables if provided
+	if len(config.envVars) > 0 {
+		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithEnv(config.envVars))
+	}
+
 	if os.Getenv("BUILD_DMR") == "1" {
 		t.Log("Building DMR container...")
 		out, err := exec.CommandContext(ctx, "make", "-C", "../../..", "docker-build").CombinedOutput()
@@ -175,7 +185,13 @@ func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.Do
 		// Always pull the image if it's not build locally.
 		containerCustomizerOpts = append(containerCustomizerOpts, testcontainers.WithAlwaysPull())
 	}
-	t.Log("Starting DMR container...")
+
+	logMsg := config.logMsg
+	if logMsg == "" {
+		logMsg = "Starting DMR container..."
+	}
+	t.Log(logMsg)
+
 	ctr, err := testcontainers.Run(
 		ctx, "docker/model-runner:latest",
 		containerCustomizerOpts...,
@@ -189,6 +205,17 @@ func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.Do
 	dmrURL := fmt.Sprintf("http://%s", dmrEndpoint)
 	t.Logf("DMR available at: %s", dmrURL)
 	return dmrURL
+}
+
+// dockerModelRunner starts a DMR container configured for local registry tests.
+// Sets DEFAULT_REGISTRY and INSECURE_REGISTRY environment variables.
+func dockerModelRunner(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
+	return startDockerModelRunner(t, ctx, net, dmrConfig{
+		envVars: map[string]string{
+			"DEFAULT_REGISTRY":  "registry.local:5000",
+			"INSECURE_REGISTRY": "true",
+		},
+	})
 }
 
 // removeModel removes a model from the local store
@@ -1123,6 +1150,87 @@ func TestIntegration_PackageModel(t *testing.T) {
 
 func int32ptr(n int32) *int32 {
 	return &n
+}
+
+// setupDockerHubTestEnv creates a test environment for Docker Hub tests.
+// Unlike setupTestEnv, this does NOT set DEFAULT_REGISTRY, so it uses
+// the real Docker Hub (index.docker.io) as the default registry.
+// This is used to test that pulling from Docker Hub works correctly.
+func setupDockerHubTestEnv(t *testing.T) *testEnv {
+	ctx := context.Background()
+
+	// Create a custom network for container communication
+	net, err := network.New(ctx)
+	require.NoError(t, err)
+	testcontainers.CleanupNetwork(t, net)
+
+	// dockerModelRunnerForDockerHub starts a DMR container configured for Docker Hub tests.
+	// it uses the real Docker Hub as the default registry.
+	dmrURL := startDockerModelRunner(t, ctx, net, dmrConfig{
+		logMsg: "Starting DMR container for Docker Hub tests (no DEFAULT_REGISTRY)...",
+	})
+
+	modelRunnerCtx, err := desktop.NewContextForTest(dmrURL, nil, types.ModelRunnerEngineKindMoby)
+	require.NoError(t, err, "Failed to create model runner context")
+
+	client := desktop.New(modelRunnerCtx)
+	if !client.Status().Running {
+		t.Fatal("DMR is not running")
+	}
+
+	return &testEnv{
+		ctx:    ctx,
+		client: client,
+		net:    net,
+	}
+}
+
+// TestIntegration_PullFromDockerHub is a smoke test that pulls a real model
+// from Docker Hub to verify that the OCI registry code works correctly
+// with the real Docker Hub registry (index.docker.io -> registry-1.docker.io).
+//
+// This test catches regressions where the code doesn't properly handle
+// Docker Hub's hostname remapping requirements.
+func TestIntegration_PullFromDockerHub(t *testing.T) {
+	env := setupDockerHubTestEnv(t)
+
+	// Ensure no models exist initially
+	models, err := listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	if len(models) != 0 {
+		t.Fatal("Expected no initial models, but found some")
+	}
+
+	// Pull a small model from Docker Hub
+	// ai/smollm2:135M-Q4_0 is a small model that's quick to download
+	modelRef := "ai/smollm2:135M-Q4_0"
+	t.Logf("Pulling model from Docker Hub: %s", modelRef)
+
+	err = pullModel(newPullCmd(), env.client, modelRef)
+	require.NoError(t, err, "Failed to pull model from Docker Hub: %s", modelRef)
+
+	// Verify the model was pulled
+	t.Log("Verifying model was pulled successfully")
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, strings.TrimSpace(models), "Model should exist after pull from Docker Hub")
+
+	// Verify we can inspect the model
+	model, err := env.client.Inspect(modelRef, false)
+	require.NoError(t, err, "Failed to inspect model pulled from Docker Hub")
+	require.NotEmpty(t, model.ID, "Model ID should not be empty")
+
+	t.Logf("✓ Successfully pulled model from Docker Hub: %s (ID: %s)", modelRef, model.ID[7:19])
+
+	// Cleanup: remove the model
+	t.Logf("Cleaning up: removing model %s", model.ID[7:19])
+	err = removeModel(env.client, model.ID, true)
+	require.NoError(t, err, "Failed to remove model")
+
+	// Verify model was removed
+	models, err = listModels(false, env.client, true, false, "")
+	require.NoError(t, err)
+	require.Empty(t, strings.TrimSpace(models), "Model should be removed after cleanup")
 }
 
 // normalizeRef normalizes a reference to its fully qualified form.
