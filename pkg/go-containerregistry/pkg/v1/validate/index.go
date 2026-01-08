@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/logs"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 // Index validates that idx does not violate any invariants of the index format.

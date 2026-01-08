@@ -22,7 +22,6 @@ import (
 	"time"
 
 	api "github.com/docker/docker/api/types/image"
-
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/tarball"

@@ -1,3 +1,4 @@
+// Package utils provides utility functions for the distribution package.
 package utils
 
 import (

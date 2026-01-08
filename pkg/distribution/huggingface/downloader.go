@@ -155,7 +155,9 @@ func (d *Downloader) downloadFileWithProgress(ctx context.Context, file RepoFile
 	if err != nil {
 		return "", err
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	// Create local file
 	f, err := os.Create(localPath)

@@ -25,9 +25,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 var fakeDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"

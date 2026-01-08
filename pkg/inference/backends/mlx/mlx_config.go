@@ -49,6 +49,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	case inference.BackendModeReranking:
 		// MLX may not support reranking mode
 		return nil, fmt.Errorf("reranking mode not supported by MLX backend")
+	case inference.BackendModeImageGeneration:
+		return nil, fmt.Errorf("image generation mode not supported by MLX backend")
 	default:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}

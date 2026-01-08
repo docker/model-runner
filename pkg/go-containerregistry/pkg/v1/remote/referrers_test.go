@@ -20,7 +20,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
 	v1 "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1"
@@ -28,6 +27,7 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/random"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestReferrers(t *testing.T) {

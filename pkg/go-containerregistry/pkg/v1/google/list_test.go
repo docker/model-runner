@@ -26,10 +26,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/logs"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
+	"github.com/google/go-cmp/cmp"
 )
 
 func mustParseDuration(t *testing.T, d string) time.Duration {

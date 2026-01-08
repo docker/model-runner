@@ -107,7 +107,9 @@ func (s *LocalStore) writeLayer(layer blob, updates chan<- v1.Update) (bool, v1.
 	if err != nil {
 		return false, v1.Hash{}, fmt.Errorf("get blob contents: %w", err)
 	}
-	defer lr.Close()
+	defer func() {
+		_ = lr.Close()
+	}()
 
 	// Wrap the reader with progress reporting, accounting for already downloaded bytes
 	var r io.Reader
@@ -155,7 +157,7 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 		}
 
 		computedHash, _, err := v1.SHA256(existingFile)
-		existingFile.Close()
+		_ = existingFile.Close()
 
 		if err == nil && computedHash.String() == diffID.String() {
 			// File is already complete, just rename it
@@ -190,7 +192,7 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 		return fmt.Errorf("copy blob %q to store: %w", diffID.String(), err)
 	}
 
-	f.Close() // Rename will fail on Windows if the file is still open.
+	_ = f.Close() // Rename will fail on Windows if the file is still open.
 
 	// For resumed downloads, verify the complete file's hash before finalizing
 	// (For new downloads, the stream was already verified during download)
@@ -199,7 +201,9 @@ func (s *LocalStore) WriteBlob(diffID v1.Hash, r io.Reader) error {
 		if err != nil {
 			return fmt.Errorf("open completed file for verification: %w", err)
 		}
-		defer completeFile.Close()
+		defer func() {
+			_ = completeFile.Close()
+		}()
 
 		computedHash, _, err := v1.SHA256(completeFile)
 		if err != nil {

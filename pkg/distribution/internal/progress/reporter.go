@@ -16,6 +16,7 @@ const UpdateInterval = 100 * time.Millisecond
 // before sending a progress update
 const MinBytesForUpdate = 1024 * 1024 // 1MB
 
+// Layer represents progress information for a single layer.
 type Layer struct {
 	ID      string // Layer ID
 	Size    uint64 // Layer size
@@ -31,6 +32,7 @@ type Message struct {
 	Layer   Layer  `json:"layer"`  // Current layer information
 }
 
+// Reporter tracks and reports progress for image operations.
 type Reporter struct {
 	progress  chan v1.Update
 	done      chan struct{}
@@ -43,14 +45,17 @@ type Reporter struct {
 
 type progressF func(update v1.Update) string
 
+// PullMsg formats a message for pull operations.
 func PullMsg(update v1.Update) string {
 	return fmt.Sprintf("Downloaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
+// PushMsg formats a message for push operations.
 func PushMsg(update v1.Update) string {
 	return fmt.Sprintf("Uploaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
+// NewProgressReporter creates a new progress reporter.
 func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer v1.Layer) *Reporter {
 	return &Reporter{
 		out:       w,

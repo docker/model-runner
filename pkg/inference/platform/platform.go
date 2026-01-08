@@ -1,3 +1,4 @@
+// Package platform provides platform-specific checks for backend support.
 package platform
 
 import "runtime"
@@ -16,4 +17,10 @@ func SupportsMLX() bool {
 // SupportsSGLang returns true if SGLang is supported on the current platform.
 func SupportsSGLang() bool {
 	return runtime.GOOS == "linux"
+}
+
+// SupportsDiffusers returns true if diffusers is supported on the current platform.
+// Diffusers is supported on Linux (Docker/GPU) and macOS (MPS/CPU).
+func SupportsDiffusers() bool {
+	return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
 }

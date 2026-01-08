@@ -11,6 +11,7 @@ import (
 	ggcr "github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 )
 
+// WithRawConfigFile is an interface for getting raw config file data.
 type WithRawConfigFile interface {
 	// RawConfigFile returns the serialized bytes of this model's config file.
 	RawConfigFile() ([]byte, error)
@@ -70,6 +71,7 @@ type WithRawManifest interface {
 	RawManifest() ([]byte, error)
 }
 
+// ID returns the ID of the model.
 func ID(i WithRawManifest) (string, error) {
 	digest, err := partial.Digest(i)
 	if err != nil {
@@ -78,15 +80,18 @@ func ID(i WithRawManifest) (string, error) {
 	return digest.String(), nil
 }
 
+// WithLayers is an interface for accessing model layers.
 type WithLayers interface {
 	WithRawConfigFile
 	Layers() ([]v1.Layer, error)
 }
 
+// GGUFPaths returns the paths of GGUF layers in the model.
 func GGUFPaths(i WithLayers) ([]string, error) {
 	return layerPathsByMediaType(i, types.MediaTypeGGUF)
 }
 
+// MMPROJPath returns the path of the multimodal projector layer in the model.
 func MMPROJPath(i WithLayers) (string, error) {
 	paths, err := layerPathsByMediaType(i, types.MediaTypeMultimodalProjector)
 	if err != nil {
@@ -102,6 +107,7 @@ func MMPROJPath(i WithLayers) (string, error) {
 	return paths[0], err
 }
 
+// ChatTemplatePath returns the path of the chat template layer in the model.
 func ChatTemplatePath(i WithLayers) (string, error) {
 	paths, err := layerPathsByMediaType(i, types.MediaTypeChatTemplate)
 	if err != nil {
@@ -117,10 +123,12 @@ func ChatTemplatePath(i WithLayers) (string, error) {
 	return paths[0], err
 }
 
+// SafetensorsPaths returns the paths of safetensors layers in the model.
 func SafetensorsPaths(i WithLayers) ([]string, error) {
 	return layerPathsByMediaType(i, types.MediaTypeSafetensors)
 }
 
+// ConfigArchivePath returns the path of the VLLM config archive layer in the model.
 func ConfigArchivePath(i WithLayers) (string, error) {
 	paths, err := layerPathsByMediaType(i, types.MediaTypeVLLMConfigArchive)
 	if err != nil {
@@ -184,6 +192,7 @@ func matchesMediaType(layerMT, targetMT ggcr.MediaType) bool {
 	}
 }
 
+// ManifestForLayers creates a manifest for the given layers.
 func ManifestForLayers(i WithLayers) (*v1.Manifest, error) {
 	cfgLayer, err := partial.ConfigLayer(i)
 	if err != nil {

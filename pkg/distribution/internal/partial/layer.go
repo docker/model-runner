@@ -13,11 +13,13 @@ import (
 
 var _ v1.Layer = &Layer{}
 
+// Layer represents a layer in a model distribution.
 type Layer struct {
 	Path string
 	v1.Descriptor
 }
 
+// NewLayer creates a new layer from a file path and media type.
 func NewLayer(path string, mt ggcrtypes.MediaType) (*Layer, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -70,26 +72,32 @@ func NewLayer(path string, mt ggcrtypes.MediaType) (*Layer, error) {
 	}, err
 }
 
+// Digest returns the layer's digest.
 func (l Layer) Digest() (v1.Hash, error) {
 	return l.DiffID()
 }
 
+// DiffID returns the layer's diff ID.
 func (l Layer) DiffID() (v1.Hash, error) {
 	return l.Descriptor.Digest, nil
 }
 
+// Compressed returns a reader for the compressed layer contents.
 func (l Layer) Compressed() (io.ReadCloser, error) {
 	return l.Uncompressed()
 }
 
+// Uncompressed returns a reader for the uncompressed layer contents.
 func (l Layer) Uncompressed() (io.ReadCloser, error) {
 	return os.Open(l.Path)
 }
 
+// Size returns the size of the layer.
 func (l Layer) Size() (int64, error) {
 	return l.Descriptor.Size, nil
 }
 
+// MediaType returns the media type of the layer.
 func (l Layer) MediaType() (ggcrtypes.MediaType, error) {
 	return l.Descriptor.MediaType, nil
 }

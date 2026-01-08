@@ -1,3 +1,4 @@
+// Package utils provides utility functions for internal use.
 package utils
 
 import (

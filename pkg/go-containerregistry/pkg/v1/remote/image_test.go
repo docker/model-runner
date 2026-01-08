@@ -27,7 +27,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/authn"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/logs"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
@@ -38,6 +37,7 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/random"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/validate"
+	"github.com/google/go-cmp/cmp"
 )
 
 const bogusDigest = "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"

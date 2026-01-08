@@ -29,7 +29,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/docker/model-runner/pkg/go-containerregistry/internal/retry"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/logs"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/name"
@@ -40,6 +39,7 @@ import (
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 type fakeXCR struct {

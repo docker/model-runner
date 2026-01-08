@@ -36,6 +36,16 @@ func (f *RepoFile) Filename() string {
 	return path.Base(f.Path)
 }
 
+// ModelType represents the type of model (LLM vs diffusers)
+type ModelType int
+
+const (
+	// ModelTypeLLM is a standard LLM model with safetensors at root
+	ModelTypeLLM ModelType = iota
+	// ModelTypeDiffusers is a diffusers model with model_index.json
+	ModelTypeDiffusers
+)
+
 // fileType represents the type of file for model packaging
 type fileType int
 
@@ -46,11 +56,18 @@ const (
 	fileTypeSafetensors
 	// fileTypeConfig is a configuration file (json, txt, etc.)
 	fileTypeConfig
+	// fileTypeDiffusersIndex is the model_index.json file for diffusers models
+	fileTypeDiffusersIndex
 )
 
 // classifyFile determines the file type based on filename
 func classifyFile(filename string) fileType {
 	lower := strings.ToLower(filename)
+
+	// Check for diffusers model_index.json
+	if lower == "model_index.json" {
+		return fileTypeDiffusersIndex
+	}
 
 	// Check for safetensors files
 	if strings.HasSuffix(lower, ".safetensors") {
@@ -87,6 +104,8 @@ func FilterModelFiles(files []RepoFile) (safetensors []RepoFile, configs []RepoF
 			safetensors = append(safetensors, f)
 		case fileTypeConfig:
 			configs = append(configs, f)
+		case fileTypeDiffusersIndex:
+			// Skip diffusers index files here since they're handled separately
 		case fileTypeUnknown:
 			// Skip unknown file types
 		}
@@ -111,4 +130,51 @@ func isSafetensorsModel(files []RepoFile) bool {
 		}
 	}
 	return false
+}
+
+// DetectModelType determines if the repository contains an LLM or diffusers model
+func DetectModelType(files []RepoFile) ModelType {
+	for _, f := range files {
+		if f.Type == "file" && f.Path == "model_index.json" {
+			return ModelTypeDiffusers
+		}
+	}
+	return ModelTypeLLM
+}
+
+// IsDiffusersModel checks if the repository is a diffusers model
+func IsDiffusersModel(files []RepoFile) bool {
+	return DetectModelType(files) == ModelTypeDiffusers
+}
+
+// FilterDiffusersFiles filters repository files for a diffusers model.
+// For diffusers models, we need to download:
+// - model_index.json
+// - All *.safetensors and *.bin files (including in subdirectories)
+// - All config.json files (in root and subdirectories)
+// - scheduler_config.json, preprocessor_config.json, etc.
+func FilterDiffusersFiles(files []RepoFile) (modelFiles []RepoFile, configFiles []RepoFile) {
+	for _, f := range files {
+		if f.Type != "file" {
+			continue
+		}
+
+		lower := strings.ToLower(f.Filename())
+
+		// Include model weight files
+		if strings.HasSuffix(lower, ".safetensors") || strings.HasSuffix(lower, ".bin") {
+			modelFiles = append(modelFiles, f)
+			continue
+		}
+
+		// Include config files
+		if strings.HasSuffix(lower, ".json") ||
+			strings.HasSuffix(lower, ".txt") ||
+			strings.HasSuffix(lower, ".yaml") ||
+			strings.HasSuffix(lower, ".yml") {
+			configFiles = append(configFiles, f)
+			continue
+		}
+	}
+	return modelFiles, configFiles
 }

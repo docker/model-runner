@@ -35,8 +35,8 @@ func TestGetDefaultRegistryOptions_NoEnvVars(t *testing.T) {
 	}
 
 	// Verify it uses HTTPS (secure by default)
-	if ref.Context().Registry.Scheme() != "https" {
-		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Registry.Scheme())
+	if ref.Context().Scheme() != "https" {
+		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Scheme())
 	}
 }
 
@@ -64,8 +64,8 @@ func TestGetDefaultRegistryOptions_OnlyDefaultRegistry(t *testing.T) {
 	}
 
 	// Verify it's not insecure (should use https)
-	if ref.Context().Registry.Scheme() != "https" {
-		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Registry.Scheme())
+	if ref.Context().Scheme() != "https" {
+		t.Errorf("Expected scheme to be 'https', got '%s'", ref.Context().Scheme())
 	}
 }
 
@@ -89,8 +89,8 @@ func TestGetDefaultRegistryOptions_OnlyInsecureRegistry(t *testing.T) {
 	}
 
 	// Insecure registries should use http
-	if ref.Context().Registry.Scheme() != "http" {
-		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Registry.Scheme())
+	if ref.Context().Scheme() != "http" {
+		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Scheme())
 	}
 }
 
@@ -119,8 +119,8 @@ func TestGetDefaultRegistryOptions_BothEnvVars(t *testing.T) {
 	}
 
 	// Check insecure is applied (http scheme)
-	if ref.Context().Registry.Scheme() != "http" {
-		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Registry.Scheme())
+	if ref.Context().Scheme() != "http" {
+		t.Errorf("Expected scheme to be 'http', got '%s'", ref.Context().Scheme())
 	}
 }
 

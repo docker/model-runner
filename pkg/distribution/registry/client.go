@@ -168,8 +168,8 @@ func (c *Client) BlobURL(reference string, digest v1.Hash) (string, error) {
 	}
 
 	return fmt.Sprintf("%s://%s/v2/%s/blobs/%s",
-		ref.Context().Registry.Scheme(),
-		ref.Context().Registry.RegistryStr(),
+		ref.Context().Scheme(),
+		ref.Context().RegistryStr(),
 		ref.Context().RepositoryStr(),
 		digest.String()), nil
 }

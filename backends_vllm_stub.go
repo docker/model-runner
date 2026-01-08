@@ -9,7 +9,7 @@ import (
 )
 
 func initVLLMBackend(log *logrus.Logger, modelManager *models.Manager) (inference.Backend, error) {
-	return nil, nil
+	return nil, nil // VLLM backend is disabled
 }
 
 func registerVLLMBackend(backends map[string]inference.Backend, backend inference.Backend) {

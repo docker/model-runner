@@ -18,6 +18,9 @@ const (
 	// mode.
 	BackendModeEmbedding
 	BackendModeReranking
+	// BackendModeImageGeneration indicates that the backend should run in
+	// image generation mode.
+	BackendModeImageGeneration
 )
 
 type ErrGGUFParse struct {
@@ -37,6 +40,8 @@ func (m BackendMode) String() string {
 		return "embedding"
 	case BackendModeReranking:
 		return "reranking"
+	case BackendModeImageGeneration:
+		return "image_generation"
 	default:
 		return "unknown"
 	}
@@ -72,6 +77,8 @@ func ParseBackendMode(mode string) (BackendMode, bool) {
 		return BackendModeEmbedding, true
 	case "reranking":
 		return BackendModeReranking, true
+	case "image_generation":
+		return BackendModeImageGeneration, true
 	default:
 		return BackendModeCompletion, false
 	}
@@ -101,6 +108,16 @@ type LlamaCppConfig struct {
 	ReasoningBudget *int32 `json:"reasoning-budget,omitempty"`
 }
 
+// DiffusersConfig contains diffusers-specific configuration options.
+type DiffusersConfig struct {
+	// Device specifies the compute device (cpu, cuda, mps).
+	Device string `json:"device,omitempty"`
+	// Precision specifies the compute precision (fp16, bf16, fp32).
+	Precision string `json:"precision,omitempty"`
+	// EnableAttentionSlicing enables attention slicing for memory efficiency.
+	EnableAttentionSlicing bool `json:"enable-attention-slicing,omitempty"`
+}
+
 type BackendConfiguration struct {
 	// Shared configuration across all backends
 	ContextSize  *int32                     `json:"context-size,omitempty"`
@@ -108,8 +125,9 @@ type BackendConfiguration struct {
 	Speculative  *SpeculativeDecodingConfig `json:"speculative,omitempty"`
 
 	// Backend-specific configuration
-	VLLM     *VLLMConfig     `json:"vllm,omitempty"`
-	LlamaCpp *LlamaCppConfig `json:"llamacpp,omitempty"`
+	VLLM      *VLLMConfig      `json:"vllm,omitempty"`
+	LlamaCpp  *LlamaCppConfig  `json:"llamacpp,omitempty"`
+	Diffusers *DiffusersConfig `json:"diffusers,omitempty"`
 }
 
 type RequiredMemory struct {

@@ -26,7 +26,7 @@ func NewTarget(w io.Writer) (*Target, error) {
 	}, nil
 }
 
-// Write writes the artifact in archive format to the configured io.Writer
+// Write writes the artifact in archive format to the configured io.Writer.
 func (t *Target) Write(ctx context.Context, mdl types.ModelArtifact, progressWriter io.Writer) error {
 	tw := tar.NewWriter(t.writer)
 	defer tw.Close()

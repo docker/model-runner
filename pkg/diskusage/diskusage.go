@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 )
 
+// Size calculates the total size of files in the given directory path.
 func Size(path string) (int64, error) {
 	var size int64
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {

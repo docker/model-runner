@@ -23,9 +23,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/docker/model-runner/pkg/go-containerregistry/pkg/registry"
+	"github.com/spf13/cobra"
 )
 
 func NewCmdRegistry() *cobra.Command {

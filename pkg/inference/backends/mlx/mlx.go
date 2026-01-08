@@ -20,7 +20,7 @@ const (
 	Name = "mlx"
 )
 
-var ErrStatusNotFound = errors.New("Python or mlx-lm not found")
+var ErrStatusNotFound = errors.New("python or mlx-lm not found")
 
 // mlx is the MLX-based backend implementation.
 type mlx struct {
