@@ -36,7 +36,7 @@ func TestLoadModel(t *testing.T) {
 		id, err = client.LoadModel(pr, nil)
 		done <- err
 	}()
-	bldr, err := builder.FromGGUF(testGGUFFile)
+	bldr, err := builder.FromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create builder: %v", err)
 	}

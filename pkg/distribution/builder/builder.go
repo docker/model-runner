@@ -104,18 +104,6 @@ func fromFormat(f format.Format, paths []string) (*Builder, error) {
 	}, nil
 }
 
-// FromGGUF returns a *Builder that builds a model artifacts from a GGUF file.
-// Deprecated: Use FromPath instead, which auto-detects the format.
-func FromGGUF(path string) (*Builder, error) {
-	return FromPath(path)
-}
-
-// FromSafetensors returns a *Builder that builds model artifacts from safetensors files.
-// Deprecated: Use FromPath or FromPaths instead, which auto-detect the format.
-func FromSafetensors(safetensorsPaths []string) (*Builder, error) {
-	return FromPaths(safetensorsPaths)
-}
-
 // FromModel returns a *Builder that builds model artifacts from an existing model artifact
 func FromModel(mdl types.ModelArtifact) (*Builder, error) {
 	// Capture original layers for comparison

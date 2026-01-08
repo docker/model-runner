@@ -61,7 +61,7 @@ func TestPullModel(t *testing.T) {
 
 	// Prepare the OCI model artifact
 	projectRoot := getProjectRoot(t)
-	model, err := builder.FromGGUF(filepath.Join(projectRoot, "assets", "dummy.gguf"))
+	model, err := builder.FromPath(filepath.Join(projectRoot, "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create model builder: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestHandleGetModel(t *testing.T) {
 
 	// Prepare the OCI model artifact
 	projectRoot := getProjectRoot(t)
-	model, err := builder.FromGGUF(filepath.Join(projectRoot, "assets", "dummy.gguf"))
+	model, err := builder.FromPath(filepath.Join(projectRoot, "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create model builder: %v", err)
 	}

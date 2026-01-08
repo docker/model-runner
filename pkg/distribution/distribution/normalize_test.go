@@ -486,7 +486,7 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 		done <- err
 	}()
 
-	bldr, err := builder.FromGGUF(ggufPath)
+	bldr, err := builder.FromPath(ggufPath)
 	if err != nil {
 		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
