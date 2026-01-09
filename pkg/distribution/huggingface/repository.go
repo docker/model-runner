@@ -328,20 +328,6 @@ func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-func splitString(s, sep string) []string {
-	var result []string
-	for {
-		idx := indexOfString(s, sep)
-		if idx < 0 {
-			result = append(result, s)
-			break
-		}
-		result = append(result, s[:idx])
-		s = s[idx+len(sep):]
-	}
-	return result
-}
-
 func sortByFilename(files []RepoFile) {
 	// Simple bubble sort (good enough for small lists)
 	for i := 0; i < len(files)-1; i++ {

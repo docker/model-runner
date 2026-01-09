@@ -19,7 +19,7 @@ import (
 // This is the main entry point for pulling native HuggingFace models
 // The tag parameter is used for GGUF repos to select the requested quantization (e.g., "Q4_K_M")
 func BuildModel(ctx context.Context, client *Client, repo, revision, tag string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
-	// Step 1: List files in the repository
+	// List files in the repository
 	if progressWriter != nil {
 		_ = progress.WriteProgress(progressWriter, "Fetching file list...", 0, 0, 0, "")
 	}
@@ -29,7 +29,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 
-	// Step 2: Filter to model files (weights + configs)
+	// Filter to model files (weights + configs)
 	weightFiles, configFiles := FilterModelFiles(files)
 
 	if len(weightFiles) == 0 {

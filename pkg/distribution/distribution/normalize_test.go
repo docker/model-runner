@@ -122,7 +122,7 @@ func TestNormalizeModelName(t *testing.T) {
 		{
 			name:     "name with uppercase (not huggingface)",
 			input:    "MyModel",
-			expected: "ai/MyModel:latest",
+			expected: "ai/mymodel:latest",
 		},
 	}
 

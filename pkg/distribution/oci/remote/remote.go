@@ -299,111 +299,6 @@ type remoteImage struct {
 	store       content.Store
 	ctx         context.Context
 	mu          sync.Mutex
-	httpClient  *http.Client
-	authorizer  docker.Authorizer
-	plainHTTP   bool
-}
-
-// manifestFetcher wraps a fetcher to handle manifest fetches specially.
-// Some registries (like HuggingFace) don't serve manifests via /blobs/ endpoint,
-// only via /manifests/ endpoint. This fetcher detects manifest media types and
-// fetches them from the correct endpoint.
-type manifestFetcher struct {
-	underlying remotes.Fetcher
-	ref        reference.Reference
-	httpClient *http.Client
-	authorizer docker.Authorizer
-	plainHTTP  bool
-}
-
-// isManifestMediaType returns true if the media type indicates a manifest.
-func isManifestMediaType(mediaType string) bool {
-	switch mediaType {
-	case "application/vnd.oci.image.manifest.v1+json",
-		"application/vnd.oci.image.index.v1+json",
-		"application/vnd.docker.distribution.manifest.v2+json",
-		"application/vnd.docker.distribution.manifest.list.v2+json",
-		"application/vnd.docker.distribution.manifest.v1+json",
-		"application/vnd.docker.distribution.manifest.v1+prettyjws":
-		return true
-	}
-	return false
-}
-
-// isHuggingFaceRegistry returns true if the host is a HuggingFace registry.
-// HuggingFace doesn't serve manifests via /blobs/ endpoint, only via /manifests/.
-func isHuggingFaceRegistry(host string) bool {
-	return strings.Contains(host, "huggingface.co") || strings.Contains(host, "hf.co")
-}
-
-// Fetch fetches content by descriptor. For manifests, it uses /manifests/ endpoint
-// to support registries like HuggingFace that don't serve manifests via /blobs/.
-// For HuggingFace, we try /manifests/ first for ALL content types since they don't
-// serve any manifest-like content via /blobs/.
-func (f *manifestFetcher) Fetch(ctx context.Context, desc v1.Descriptor) (io.ReadCloser, error) {
-	registry := f.ref.Context().Registry
-	isHF := isHuggingFaceRegistry(registry.RegistryStr())
-
-	// For HuggingFace, try /manifests/ first for any JSON-like content
-	// since they don't serve manifests via /blobs/ at all
-	shouldUseManifestEndpoint := isHF && isManifestMediaType(desc.MediaType)
-
-	// For non-manifest content on non-HF registries, use the underlying fetcher
-	if !shouldUseManifestEndpoint {
-		return f.underlying.Fetch(ctx, desc)
-	}
-
-	// For manifests, fetch via /manifests/ endpoint to support HuggingFace
-	// Build the manifest URL: /v2/<repo>/manifests/<reference>
-	repo := f.ref.Context().RepositoryStr()
-
-	// Determine scheme based on plainHTTP flag or registry's default scheme
-	scheme := registry.Scheme()
-	if f.plainHTTP {
-		scheme = "http"
-	}
-
-	// For HuggingFace, use tag instead of digest because HF doesn't support
-	// fetching manifests by digest, only by tag
-	manifestRef := f.ref.Identifier()
-	if manifestRef == "" {
-		manifestRef = "latest"
-	}
-
-	url := fmt.Sprintf("%s://%s/v2/%s/manifests/%s",
-		scheme,
-		registry.RegistryStr(),
-		repo,
-		manifestRef)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("creating manifest request: %w", err)
-	}
-
-	// Set Accept header for the manifest media type
-	req.Header.Set("Accept", desc.MediaType)
-
-	// Add authorization if available
-	if f.authorizer != nil {
-		if err := f.authorizer.Authorize(ctx, req); err != nil {
-			return nil, fmt.Errorf("authorizing manifest request: %w", err)
-		}
-	}
-
-	resp, err := f.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching manifest: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		// If manifest endpoint fails, fall back to underlying fetcher (which uses /blobs/)
-		// This handles registries that do serve manifests via /blobs/
-		return f.underlying.Fetch(ctx, desc)
-	}
-
-	return resp.Body, nil
 }
 
 // resolverComponents holds the components created for a resolver.
@@ -487,14 +382,11 @@ func Image(ref reference.Reference, opts ...Option) (oci.Image, error) {
 	}
 
 	return &remoteImage{
-		ref:        ref,
-		resolver:   components.resolver,
-		desc:       desc,
-		store:      store,
-		ctx:        o.ctx,
-		httpClient: components.httpClient,
-		authorizer: components.authorizer,
-		plainHTTP:  components.plainHTTP,
+		ref:      ref,
+		resolver: components.resolver,
+		desc:     desc,
+		store:    store,
+		ctx:      o.ctx,
 	}, nil
 }
 
@@ -507,19 +399,9 @@ func (i *remoteImage) fetchManifest() error {
 		return nil
 	}
 
-	underlyingFetcher, err := i.resolver.Fetcher(i.ctx, i.ref.String())
+	fetcher, err := i.resolver.Fetcher(i.ctx, i.ref.String())
 	if err != nil {
 		return fmt.Errorf("getting fetcher: %w", err)
-	}
-
-	// Wrap with manifest-aware fetcher to handle registries like HuggingFace
-	// that don't serve manifests via /blobs/ endpoint
-	fetcher := &manifestFetcher{
-		underlying: underlyingFetcher,
-		ref:        i.ref,
-		httpClient: i.httpClient,
-		authorizer: i.authorizer,
-		plainHTTP:  i.plainHTTP,
 	}
 
 	// Fetch manifest

@@ -158,8 +158,6 @@ func (c *Client) normalizeModelName(model string) string {
 	)
 
 	model = strings.TrimSpace(model)
-
-	// If the model is empty, return as-is
 	if model == "" {
 		return model
 	}
@@ -169,37 +167,37 @@ func (c *Client) normalizeModelName(model string) string {
 		if fullID := c.resolveID(model); fullID != "" {
 			return fullID
 		}
-		// If not found, return as-is
 		return model
 	}
 
-	// Check if model contains a registry (domain with dot before first slash)
-	firstSlash := strings.Index(model, "/")
-	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
-		// Has a registry, just ensure tag
-		// Check for tag separator after the last "/" (to avoid matching port like :5000)
-		lastSlash := strings.LastIndex(model, "/")
-		afterLastSlash := model[lastSlash+1:]
-		if !strings.Contains(afterLastSlash, ":") {
-			return model + ":" + defaultTag
-		}
-		return model
-	}
+	// Split name vs tag, where ':' is a tag separator only if it's after the last '/'
+	lastSlash := strings.LastIndex(model, "/")
+	lastColon := strings.LastIndex(model, ":")
 
-	// Split by colon to check for tag
-	parts := strings.SplitN(model, ":", 2)
-	nameWithOrg := parts[0]
+	name := model
 	tag := defaultTag
-	if len(parts) == 2 && parts[1] != "" {
-		tag = parts[1]
+	hasTag := lastColon > lastSlash
+
+	if hasTag {
+		name = model[:lastColon]
+		// Preserve tag as-is; if empty, fall back to defaultTag
+		if t := model[lastColon+1:]; t != "" {
+			tag = t
+		}
 	}
 
-	// If name doesn't contain a slash, add the default org
-	if !strings.Contains(nameWithOrg, "/") {
-		nameWithOrg = defaultOrg + "/" + nameWithOrg
+	// If name has no registry (domain with dot before first slash), apply default org if missing slash
+	firstSlash := strings.Index(name, "/")
+	hasRegistry := firstSlash > 0 && strings.Contains(name[:firstSlash], ".")
+
+	if !hasRegistry && !strings.Contains(name, "/") {
+		name = defaultOrg + "/" + name
 	}
 
-	return nameWithOrg + ":" + tag
+	// Lowercase ONLY the name part (registry/org/repo). Tag stays unchanged.
+	name = strings.ToLower(name)
+
+	return name + ":" + tag
 }
 
 // looksLikeID returns true for short & long hex IDs (12 or 64 chars)
