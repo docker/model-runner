@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/files"
 )
@@ -33,15 +32,16 @@ func PackageFromDirectory(dirPath string) (safetensorsPaths []string, tempConfig
 		name := entry.Name()
 		fullPath := filepath.Join(dirPath, name)
 
-		// Collect safetensors files
-		lower := strings.ToLower(name)
-		if strings.HasSuffix(lower, ".safetensors") {
-			safetensorsPaths = append(safetensorsPaths, fullPath)
-		}
+		// Classify file using centralized files package
+		fileType := files.Classify(name)
 
-		// Collect config files
-		if isConfigFile(name) {
+		switch fileType {
+		case files.FileTypeSafetensors:
+			safetensorsPaths = append(safetensorsPaths, fullPath)
+		case files.FileTypeConfig, files.FileTypeChatTemplate:
 			configFiles = append(configFiles, fullPath)
+		case files.FileTypeUnknown, files.FileTypeGGUF, files.FileTypeLicense:
+			// Skip these file types
 		}
 	}
 
@@ -154,23 +154,4 @@ func addFileToTar(tw *tar.Writer, filePath string) error {
 	}
 
 	return nil
-}
-
-// isConfigFile checks if a file should be included as a config file based on its name.
-// It checks for extensions listed in ConfigExtensions and the special case of the tokenizer.model file.
-func isConfigFile(name string) bool {
-	lower := strings.ToLower(name)
-	for _, ext := range files.ConfigExtensions {
-		if strings.HasSuffix(lower, ext) {
-			return true
-		}
-	}
-
-	for _, special := range files.SpecialConfigFiles {
-		if strings.EqualFold(name, special) {
-			return true
-		}
-	}
-
-	return false
 }
