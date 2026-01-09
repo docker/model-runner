@@ -282,25 +282,30 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	reference = c.normalizeModelName(reference)
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
-	// Use the client's registry, or create a temporary one if bearer token is provided
-	registryClient := c.registry
+	// Handle bearer token for registry authentication
 	var token string
 	if len(bearerToken) > 0 && bearerToken[0] != "" {
 		token = bearerToken[0]
+	}
+
+	// HuggingFace references always use native pull (download raw files from HF Hub)
+	if isHuggingFaceReference(reference) {
+		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
+		// Pass original reference to preserve case-sensitivity for HuggingFace API
+		return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
+	}
+
+	// For non-HF references, use OCI registry
+	registryClient := c.registry
+	if token != "" {
 		// Create a temporary registry client with bearer token authentication
 		auth := authn.NewBearer(token)
 		registryClient = registry.FromClient(c.registry, registry.WithAuth(auth))
 	}
 
-	// First, fetch the remote model to get the manifest
+	// Fetch the remote model to get the manifest
 	remoteModel, err := registryClient.Model(ctx, reference)
 	if err != nil {
-		// Check if this is a HuggingFace reference and the error indicates no OCI manifest
-		if isHuggingFaceReference(reference) && isNotOCIError(err) {
-			c.log.Infoln("No OCI manifest found, attempting native HuggingFace pull")
-			// Pass original reference to preserve case-sensitivity for HuggingFace API
-			return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
-		}
 		// Check if the error should be converted to registry.ErrModelNotFound for API compatibility
 		// If the error already matches ErrModelNotFound, return it directly to preserve errors.Is compatibility
 		if errors.Is(err, registry.ErrModelNotFound) {
@@ -680,60 +685,6 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 // isHuggingFaceReference checks if a reference is a HuggingFace model reference
 func isHuggingFaceReference(reference string) bool {
 	return strings.HasPrefix(reference, "huggingface.co/")
-}
-
-// isNotOCIError checks if the error indicates the model is not OCI-formatted
-// This happens when the HuggingFace repository doesn't have an OCI manifest
-func isNotOCIError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for registry errors indicating no manifest
-	var regErr *registry.Error
-	if errors.As(err, &regErr) {
-		if regErr.Code == "MANIFEST_UNKNOWN" || regErr.Code == "NAME_UNKNOWN" {
-			return true
-		}
-	}
-
-	// Note: We intentionally don't treat ErrInvalidReference as "not OCI" - that's a format error
-	// that should be reported to the user, not interpreted as a native HF model.
-	// The model name is lowercased during normalization to ensure OCI compatibility.
-
-	// Also check error message for common patterns
-	errStr := err.Error()
-	errStrLower := strings.ToLower(errStr)
-	return strings.Contains(errStr, "MANIFEST_UNKNOWN") ||
-		strings.Contains(errStr, "NAME_UNKNOWN") ||
-		strings.Contains(errStrLower, "manifest unknown") ||
-		strings.Contains(errStrLower, "name unknown") ||
-		// HuggingFace returns this error for non-GGUF repositories
-		strings.Contains(errStr, "Repository is not GGUF") ||
-		strings.Contains(errStr, "not compatible with llama.cpp") ||
-		// Additional patterns that might indicate non-OCI format from registry
-		strings.Contains(errStrLower, "blob unknown") ||
-		strings.Contains(errStrLower, "tag unknown") ||
-		// Containerd resolver specific error patterns
-		strings.Contains(errStrLower, "not found") ||
-		strings.Contains(errStrLower, "status 404") ||
-		strings.Contains(errStrLower, "status code 404") ||
-		strings.Contains(errStrLower, "response status code") ||
-		strings.Contains(errStrLower, "no such host") ||
-		strings.Contains(errStrLower, "connection refused") ||
-		// Additional OCI-related patterns
-		strings.Contains(errStrLower, "no manifest found") ||
-		strings.Contains(errStrLower, "no image found") ||
-		strings.Contains(errStrLower, "image not found") ||
-		strings.Contains(errStrLower, "artifact not found") ||
-		// Additional HuggingFace-specific error patterns
-		strings.Contains(errStrLower, "repository not found") ||
-		strings.Contains(errStrLower, "resource not found") ||
-		strings.Contains(errStrLower, "endpoint not found") ||
-		strings.Contains(errStrLower, "model not found") ||
-		// More specific HuggingFace error patterns
-		strings.Contains(errStr, "401") ||
-		strings.Contains(errStr, "403")
 }
 
 // parseHFReference extracts repo and revision from a HF reference

@@ -28,15 +28,15 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 
-	// Step 2: Filter to model files (safetensors + configs)
-	safetensorsFiles, configFiles := FilterModelFiles(files)
+	// Step 2: Filter to model files (weights + configs)
+	weightFiles, configFiles := FilterModelFiles(files)
 
-	if len(safetensorsFiles) == 0 {
-		return nil, fmt.Errorf("no safetensors files found in repository %s", repo)
+	if len(weightFiles) == 0 {
+		return nil, fmt.Errorf("no model weight files (GGUF or SafeTensors) found in repository %s", repo)
 	}
 
 	// Combine all files to download
-	allFiles := append(safetensorsFiles, configFiles...)
+	allFiles := append(weightFiles, configFiles...)
 
 	if progressWriter != nil {
 		totalSize := TotalSize(allFiles)
@@ -57,7 +57,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, safetensorsFiles, configFiles, tempDir)
+	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -66,20 +66,20 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 }
 
 // buildModelFromFiles constructs an OCI model artifact from downloaded files
-func buildModelFromFiles(localPaths map[string]string, safetensorsFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
-	// Collect safetensors paths (sorted for reproducibility)
-	var safetensorsPaths []string
-	for _, f := range safetensorsFiles {
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+	// Collect weight file paths (sorted for reproducibility)
+	var weightPaths []string
+	for _, f := range weightFiles {
 		localPath, ok := localPaths[f.Path]
 		if !ok {
 			return nil, fmt.Errorf("missing local path for %s", f.Path)
 		}
-		safetensorsPaths = append(safetensorsPaths, localPath)
+		weightPaths = append(weightPaths, localPath)
 	}
-	sort.Strings(safetensorsPaths)
+	sort.Strings(weightPaths)
 
-	// Create builder from safetensors files using the unified FromPaths function
-	b, err := builder.FromPaths(safetensorsPaths)
+	// Create builder from weight files - auto-detects format (GGUF or SafeTensors)
+	b, err := builder.FromPaths(weightPaths)
 	if err != nil {
 		return nil, fmt.Errorf("create builder: %w", err)
 	}

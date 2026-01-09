@@ -36,23 +36,23 @@ func (f *RepoFile) Filename() string {
 }
 
 // FilterModelFiles filters repository files to only include files needed for model-runner
-// Returns safetensors files and config files separately
-func FilterModelFiles(repoFiles []RepoFile) (safetensors []RepoFile, configs []RepoFile) {
+// Returns weight files (GGUF or SafeTensors) and config files separately
+func FilterModelFiles(repoFiles []RepoFile) (weights []RepoFile, configs []RepoFile) {
 	for _, f := range repoFiles {
 		if f.Type != "file" {
 			continue
 		}
 
 		switch ft := files.Classify(f.Filename()); ft {
-		case files.FileTypeSafetensors:
-			safetensors = append(safetensors, f)
+		case files.FileTypeSafetensors, files.FileTypeGGUF:
+			weights = append(weights, f)
 		case files.FileTypeConfig, files.FileTypeChatTemplate:
 			configs = append(configs, f)
-		case files.FileTypeUnknown, files.FileTypeGGUF, files.FileTypeLicense:
+		case files.FileTypeUnknown, files.FileTypeLicense:
 			// Skip these file types
 		}
 	}
-	return safetensors, configs
+	return weights, configs
 }
 
 // TotalSize calculates the total size of files
