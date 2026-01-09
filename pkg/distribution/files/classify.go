@@ -58,11 +58,11 @@ var (
 	LicensePatterns = []string{"license", "licence", "copying", "notice"}
 )
 
-// Classify determines the file type based on filename.
+// Classify determines the file type based on the filename.
 // It examines the file extension and name patterns to classify the file.
-func Classify(filename string) FileType {
+func Classify(path string) FileType {
+	filename := filepath.Base(path)
 	lower := strings.ToLower(filename)
-	baseName := filepath.Base(lower)
 
 	// Check for GGUF files first (highest priority for model files)
 	if strings.HasSuffix(lower, ".gguf") {
@@ -88,7 +88,7 @@ func Classify(filename string) FileType {
 
 	// Check for license files
 	for _, pattern := range LicensePatterns {
-		if strings.Contains(baseName, pattern) {
+		if strings.Contains(lower, pattern) {
 			return FileTypeLicense
 		}
 	}
@@ -102,7 +102,7 @@ func Classify(filename string) FileType {
 
 	// Check for special config files
 	for _, special := range SpecialConfigFiles {
-		if strings.EqualFold(filename, special) {
+		if strings.EqualFold(lower, special) {
 			return FileTypeConfig
 		}
 	}

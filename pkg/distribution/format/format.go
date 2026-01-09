@@ -9,6 +9,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/internal/utils"
 )
 
 // Format defines the interface for model format-specific operations.
@@ -60,9 +61,9 @@ func DetectFromPath(path string) (Format, error) {
 	case files.FileTypeSafetensors:
 		return Get(types.FormatSafetensors)
 	case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
-		return nil, fmt.Errorf("unable to detect format from path: %s (file type: %s)", path, ft)
+		return nil, fmt.Errorf("unable to detect format from path: %s (file type: %s)", utils.SanitizeForLog(path), ft)
 	}
-	return nil, fmt.Errorf("unable to detect format from path: %s", path)
+	return nil, fmt.Errorf("unable to detect format from path: %s", utils.SanitizeForLog(path))
 }
 
 // DetectFromPaths determines the model format based on a list of file paths.
