@@ -2,65 +2,27 @@ package gguf
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/docker/model-runner/pkg/distribution/format"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
-	"github.com/docker/model-runner/pkg/distribution/oci"
-	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
 // NewModel creates a new GGUF model from a file path.
-// It delegates to the unified format package for shard discovery and config extraction.
+// It delegates to the unified builder package for model creation.
 func NewModel(path string) (*Model, error) {
-	// Get the GGUF format handler
-	f, err := format.Get(types.FormatGGUF)
+	// Delegate to builder which handles format detection, shard discovery, and config extraction
+	b, err := builder.FromPath(path)
 	if err != nil {
-		return nil, fmt.Errorf("get format: %w", err)
+		return nil, fmt.Errorf("create model from path: %w", err)
 	}
 
-	// Discover shards using the format package
-	shards, err := f.DiscoverShards(path)
-	if err != nil {
-		return nil, fmt.Errorf("discover shards: %w", err)
+	// Get the underlying model and wrap it in our type
+	baseModel, ok := b.Model().(*partial.BaseModel)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type: %T", b.Model())
 	}
 
-	// Create layers
-	layers := make([]oci.Layer, len(shards))
-	diffIDs := make([]oci.Hash, len(shards))
-	for i, shard := range shards {
-		layer, err := partial.NewLayer(shard, types.MediaTypeGGUF)
-		if err != nil {
-			return nil, fmt.Errorf("create gguf layer: %w", err)
-		}
-		diffID, err := layer.DiffID()
-		if err != nil {
-			return nil, fmt.Errorf("get gguf layer diffID: %w", err)
-		}
-		layers[i] = layer
-		diffIDs[i] = diffID
-	}
-
-	// Extract config using the format package
-	config, err := f.ExtractConfig(shards)
-	if err != nil {
-		return nil, fmt.Errorf("extract config: %w", err)
-	}
-
-	created := time.Now()
 	return &Model{
-		BaseModel: partial.BaseModel{
-			ModelConfigFile: types.ConfigFile{
-				Config: config,
-				Descriptor: types.Descriptor{
-					Created: &created,
-				},
-				RootFS: oci.RootFS{
-					Type:    "rootfs",
-					DiffIDs: diffIDs,
-				},
-			},
-			LayerList: layers,
-		},
+		BaseModel: *baseModel,
 	}, nil
 }
