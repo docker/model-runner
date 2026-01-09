@@ -17,7 +17,8 @@ import (
 
 // BuildModel downloads files from a HuggingFace repository and constructs an OCI model artifact
 // This is the main entry point for pulling native HuggingFace models
-func BuildModel(ctx context.Context, client *Client, repo, revision string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
+// The tag parameter is used for GGUF repos to select the requested quantization (e.g., "Q4_K_M")
+func BuildModel(ctx context.Context, client *Client, repo, revision, tag string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
 	// Step 1: List files in the repository
 	if progressWriter != nil {
 		_ = progress.WriteProgress(progressWriter, "Fetching file list...", 0, 0, 0, "")
@@ -35,8 +36,29 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		return nil, fmt.Errorf("no model weight files (GGUF or SafeTensors) found in repository %s", repo)
 	}
 
+	// For GGUF repos with multiple quantizations, select the appropriate files
+	var mmprojFile *RepoFile
+	if isGGUFModel(weightFiles) && len(weightFiles) > 1 {
+		// Use the tag as quantization hint (e.g., "Q4_K_M", "Q8_0", or "latest")
+		weightFiles, mmprojFile = SelectGGUFFiles(weightFiles, tag)
+		if len(weightFiles) == 0 {
+			return nil, fmt.Errorf("no GGUF files found matching quantization %q in repository %s", tag, repo)
+		}
+
+		if progressWriter != nil {
+			if tag == "" || tag == "latest" || tag == "main" {
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization (default)", DefaultGGUFQuantization), 0, 0, 0, "")
+			} else {
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization", tag), 0, 0, 0, "")
+			}
+		}
+	}
+
 	// Combine all files to download
 	allFiles := append(weightFiles, configFiles...)
+	if mmprojFile != nil {
+		allFiles = append(allFiles, *mmprojFile)
+	}
 
 	if progressWriter != nil {
 		totalSize := TotalSize(allFiles)

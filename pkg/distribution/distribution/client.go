@@ -680,11 +680,12 @@ func isHuggingFaceReference(reference string) bool {
 	return strings.HasPrefix(reference, "huggingface.co/") || strings.HasPrefix(reference, "hf.co/")
 }
 
-// parseHFReference extracts repo and revision from a HF reference
-// e.g., "huggingface.co/org/model:revision" -> ("org/model", "revision")
-// e.g., "hf.co/org/model:latest" -> ("org/model", "main")
-// Note: This preserves the original case of the repo name for HuggingFace API compatibility
-func parseHFReference(reference string) (repo, revision string) {
+// parseHFReference extracts repo, revision, and tag from a HF reference
+// e.g., "huggingface.co/org/model:revision" -> ("org/model", "main", "revision")
+// e.g., "hf.co/org/model:latest" -> ("org/model", "main", "latest")
+// e.g., "hf.co/org/model:Q4_K_M" -> ("org/model", "main", "Q4_K_M")
+// The tag is used for GGUF quantization selection, while revision is always "main" for HuggingFace
+func parseHFReference(reference string) (repo, revision, tag string) {
 	// Remove registry prefix (handle both hf.co and huggingface.co)
 	ref := strings.TrimPrefix(reference, "huggingface.co/")
 	ref = strings.TrimPrefix(ref, "hf.co/")
@@ -693,19 +694,24 @@ func parseHFReference(reference string) (repo, revision string) {
 	parts := strings.SplitN(ref, ":", 2)
 	repo = parts[0]
 
-	revision = "main"
-	if len(parts) == 2 && parts[1] != "" && parts[1] != "latest" {
-		revision = parts[1]
+	// Default tag is "latest"
+	tag = "latest"
+	if len(parts) == 2 && parts[1] != "" {
+		tag = parts[1]
 	}
 
-	return repo, revision
+	// Revision is always "main" for HuggingFace repos
+	// (the tag is used for quantization selection, not git revision)
+	revision = "main"
+
+	return repo, revision, tag
 }
 
 // pullNativeHuggingFace pulls a native HuggingFace repository (non-OCI format)
 // This is used when the model is stored as raw files (safetensors) on HuggingFace Hub
 func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, progressWriter io.Writer, token string) error {
-	repo, revision := parseHFReference(reference)
-	c.log.Infof("Pulling native HuggingFace model: repo=%s, revision=%s", utils.SanitizeForLog(repo), utils.SanitizeForLog(revision))
+	repo, revision, tag := parseHFReference(reference)
+	c.log.Infof("Pulling native HuggingFace model: repo=%s, revision=%s, tag=%s", utils.SanitizeForLog(repo), utils.SanitizeForLog(revision), utils.SanitizeForLog(tag))
 
 	// Create HuggingFace client
 	hfOpts := []huggingface.ClientOption{
@@ -724,7 +730,8 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 	defer os.RemoveAll(tempDir)
 
 	// Build model from HuggingFace repository
-	model, err := huggingface.BuildModel(ctx, hfClient, repo, revision, tempDir, progressWriter)
+	// The tag is used for GGUF quantization selection (e.g., "Q4_K_M", "Q8_0")
+	model, err := huggingface.BuildModel(ctx, hfClient, repo, revision, tag, tempDir, progressWriter)
 	if err != nil {
 		// Convert HuggingFace errors to registry errors for consistent handling
 		var authErr *huggingface.AuthError
