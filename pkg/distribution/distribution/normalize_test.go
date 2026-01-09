@@ -346,6 +346,11 @@ func TestIsHuggingFaceReference(t *testing.T) {
 		{"hf.co prefix (short form)", "hf.co/org/model", true}, // Short form is also recognized
 		{"hf.co with quantization", "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M", true},
 		{"empty", "", false},
+		// Full URL format with https://
+		{"https huggingface.co URL", "https://huggingface.co/HuggingFaceTB/SmolLM-135M", true},
+		{"https huggingface.co URL with tag", "https://huggingface.co/org/model:Q4_K_M", true},
+		{"https hf.co URL", "https://hf.co/org/model", true},
+		{"https hf.co URL with tag", "https://hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q8_0", true},
 	}
 
 	for _, tt := range tests {
@@ -404,6 +409,35 @@ func TestParseHFReference(t *testing.T) {
 		{
 			name:         "hf.co prefix with quantization",
 			input:        "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q8_0",
+			expectedRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+			expectedRev:  "main",
+			expectedTag:  "Q8_0",
+		},
+		// Full URL format with https://
+		{
+			name:         "https huggingface.co URL without tag",
+			input:        "https://huggingface.co/HuggingFaceTB/SmolLM-135M",
+			expectedRepo: "HuggingFaceTB/SmolLM-135M",
+			expectedRev:  "main",
+			expectedTag:  "latest",
+		},
+		{
+			name:         "https huggingface.co URL with tag",
+			input:        "https://huggingface.co/org/model:Q4_K_M",
+			expectedRepo: "org/model",
+			expectedRev:  "main",
+			expectedTag:  "Q4_K_M",
+		},
+		{
+			name:         "https hf.co URL without tag",
+			input:        "https://hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
+			expectedRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+			expectedRev:  "main",
+			expectedTag:  "latest",
+		},
+		{
+			name:         "https hf.co URL with tag",
+			input:        "https://hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q8_0",
 			expectedRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
 			expectedRev:  "main",
 			expectedTag:  "Q8_0",
