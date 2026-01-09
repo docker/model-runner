@@ -149,7 +149,7 @@ func NewClient(opts ...Option) (*Client, error) {
 }
 
 // normalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
-// It also converts Hugging Face model names to lowercase and resolves IDs to full IDs.
+// It also resolves IDs to full IDs.
 // This is a private method used internally by the Client.
 func (c *Client) normalizeModelName(model string) string {
 	const (
@@ -171,13 +171,6 @@ func (c *Client) normalizeModelName(model string) string {
 		}
 		// If not found, return as-is
 		return model
-	}
-
-	// Normalize HuggingFace model names
-	if strings.HasPrefix(model, "hf.co/") {
-		// Replace hf.co with huggingface.co to avoid losing the Authorization header on redirect.
-		// Lowercase for OCI compatibility (repository names must be lowercase)
-		model = "huggingface.co" + strings.ToLower(strings.TrimPrefix(model, "hf.co"))
 	}
 
 	// Check if model contains a registry (domain with dot before first slash)
@@ -289,7 +282,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	}
 
 	// HuggingFace references always use native pull (download raw files from HF Hub)
-	if isHuggingFaceReference(reference) {
+	if isHuggingFaceReference(originalReference) {
 		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
 		// Pass original reference to preserve case-sensitivity for HuggingFace API
 		return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
@@ -684,7 +677,7 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 
 // isHuggingFaceReference checks if a reference is a HuggingFace model reference
 func isHuggingFaceReference(reference string) bool {
-	return strings.HasPrefix(reference, "huggingface.co/")
+	return strings.HasPrefix(reference, "huggingface.co/") || strings.HasPrefix(reference, "hf.co/")
 }
 
 // parseHFReference extracts repo and revision from a HF reference
