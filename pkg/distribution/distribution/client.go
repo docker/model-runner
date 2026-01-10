@@ -676,21 +676,17 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 // isHuggingFaceReference checks if a reference is a HuggingFace model reference
 func isHuggingFaceReference(reference string) bool {
 	return strings.HasPrefix(reference, "huggingface.co/") ||
-		strings.HasPrefix(reference, "hf.co/") ||
-		strings.HasPrefix(reference, "https://hf.co/")
+		strings.HasPrefix(reference, "hf.co/")
 }
 
 // parseHFReference extracts repo, revision, and tag from a HF reference
 // e.g., "huggingface.co/org/model:revision" -> ("org/model", "main", "revision")
 // e.g., "hf.co/org/model:latest" -> ("org/model", "main", "latest")
 // e.g., "hf.co/org/model:Q4_K_M" -> ("org/model", "main", "Q4_K_M")
-// e.g., "https://huggingface.co/org/model" -> ("org/model", "main", "latest")
 // The tag is used for GGUF quantization selection, while revision is always "main" for HuggingFace
 func parseHFReference(reference string) (repo, revision, tag string) {
-	// Remove https:// prefix first (support full URLs)
-	ref := strings.TrimPrefix(reference, "https://")
 	// Remove registry prefix (handle both hf.co and huggingface.co)
-	ref = strings.TrimPrefix(ref, "huggingface.co/")
+	ref := strings.TrimPrefix(reference, "huggingface.co/")
 	ref = strings.TrimPrefix(ref, "hf.co/")
 
 	// Split by colon to get tag
