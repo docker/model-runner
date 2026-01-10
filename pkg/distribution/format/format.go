@@ -93,18 +93,3 @@ func DetectFromPaths(paths []string) (Format, error) {
 
 	return format, nil
 }
-
-// SupportedFormats returns a list of all registered format names.
-func SupportedFormats() []types.Format {
-	formats := make([]types.Format, 0, len(registry))
-	for name := range registry {
-		formats = append(formats, name)
-	}
-	return formats
-}
-
-// IsSupported checks if a format is registered and available.
-func IsSupported(name types.Format) bool {
-	_, ok := registry[name]
-	return ok
-}

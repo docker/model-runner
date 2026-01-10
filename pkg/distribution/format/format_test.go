@@ -6,25 +6,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
-func TestRegisteredFormats(t *testing.T) {
-	// Verify both formats are registered via init()
-	formats := SupportedFormats()
-
-	if len(formats) < 2 {
-		t.Errorf("Expected at least 2 formats registered, got %d", len(formats))
-	}
-
-	// Verify GGUF format is registered
-	if !IsSupported(types.FormatGGUF) {
-		t.Error("GGUF format should be registered")
-	}
-
-	// Verify Safetensors format is registered
-	if !IsSupported(types.FormatSafetensors) {
-		t.Error("Safetensors format should be registered")
-	}
-}
-
 func TestGetFormat(t *testing.T) {
 	tests := []struct {
 		name      string
