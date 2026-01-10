@@ -23,6 +23,7 @@ Docker Model Runner
 | [`restart-runner`](model_restart-runner.md)     | Restart Docker Model Runner (Docker Engine only)                                                |
 | [`rm`](model_rm.md)                             | Remove local models downloaded from Docker Hub                                                  |
 | [`run`](model_run.md)                           | Run a model and interact with it using a submitted prompt or chat mode                          |
+| [`search`](model_search.md)                     | Search for models on Docker Hub and HuggingFace                                                 |
 | [`start-runner`](model_start-runner.md)         | Start Docker Model Runner (Docker Engine only)                                                  |
 | [`status`](model_status.md)                     | Check if the Docker Model Runner is running                                                     |
 | [`stop-runner`](model_stop-runner.md)           | Stop Docker Model Runner (Docker Engine only)                                                   |
