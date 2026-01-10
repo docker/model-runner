@@ -677,7 +677,6 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 func isHuggingFaceReference(reference string) bool {
 	return strings.HasPrefix(reference, "huggingface.co/") ||
 		strings.HasPrefix(reference, "hf.co/") ||
-		strings.HasPrefix(reference, "https://huggingface.co/") ||
 		strings.HasPrefix(reference, "https://hf.co/")
 }
 
@@ -752,9 +751,8 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 		return fmt.Errorf("build model from HuggingFace: %w", err)
 	}
 
-	// Write model to store
-	// Lowercase the reference for storage since OCI tags don't allow uppercase
-	storageTag := strings.ToLower(reference)
+	// Write model to store with normalized tag
+	storageTag := c.normalizeModelName(reference)
 	c.log.Infof("Writing model to store with tag: %s", utils.SanitizeForLog(storageTag))
 	if err := c.store.Write(model, []string{storageTag}, progressWriter); err != nil {
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {

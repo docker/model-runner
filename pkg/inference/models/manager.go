@@ -81,7 +81,6 @@ func (m *Manager) GetLocal(ref string) (types.Model, error) {
 		return nil, fmt.Errorf("model distribution service unavailable")
 	}
 
-	// Query the model - first try without normalization (as ID), then with normalization
 	model, err := m.distributionClient.GetModel(ref)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting model: %w", err)
