@@ -2,6 +2,8 @@ package huggingface
 
 import (
 	"path"
+	"sort"
+	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/files"
 )
@@ -172,8 +174,8 @@ func filterByQuantization(modelFiles []RepoFile, quant string) []RepoFile {
 // Matches patterns like "model-Q4_K_M.gguf" or "model-Q4_K_M-00001-of-00003.gguf"
 func containsQuantization(filename, quant string) bool {
 	// Case-insensitive comparison
-	filenameLower := toLower(filename)
-	quantLower := toLower(quant)
+	filenameLower := strings.ToLower(filename)
+	quantLower := strings.ToLower(quant)
 
 	// Remove .gguf extension for cleaner matching
 	if hasSuffix(filenameLower, ".gguf") {
@@ -190,7 +192,7 @@ func containsQuantization(filename, quant string) bool {
 	separators := []string{"-", ".", "_"}
 	for _, sep := range separators {
 		pattern := sep + quantLower
-		idx := indexOfString(filenameLower, pattern)
+		idx := strings.Index(filenameLower, pattern)
 		if idx >= 0 {
 			// Check what comes after the quantization
 			afterIdx := idx + len(pattern)
@@ -224,7 +226,7 @@ func selectFirstGGUF(modelFiles []RepoFile) []RepoFile {
 	// Sort by filename for consistent ordering
 	sorted := make([]RepoFile, len(modelFiles))
 	copy(sorted, modelFiles)
-	sortByFilename(sorted)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Filename() < sorted[j].Filename() })
 
 	// Get the first file
 	first := sorted[0]
@@ -242,7 +244,7 @@ func selectFirstGGUF(modelFiles []RepoFile) []RepoFile {
 // e.g., "model-00001-of-00003.gguf"
 func isShardedFile(filename string) bool {
 	// Simple check: contains "-00001-of-" or similar pattern
-	return containsString(filename, "-of-") && containsString(filename, "-0")
+	return strings.Contains(filename, "-of-") && strings.Contains(filename, "-0")
 }
 
 // findAllShards finds all shards that belong to the same model
@@ -253,7 +255,7 @@ func findAllShards(files []RepoFile, firstShard string) []RepoFile {
 
 	var shards []RepoFile
 	for _, f := range files {
-		if hasPrefix(f.Filename(), prefix) && isShardedFile(f.Filename()) {
+		if strings.HasPrefix(f.Filename(), prefix) && isShardedFile(f.Filename()) {
 			shards = append(shards, f)
 		}
 	}
@@ -273,8 +275,8 @@ func extractShardPrefix(filename string) string {
 
 // isMMProjFile checks if a file is a multimodal projector file
 func isMMProjFile(filename string) bool {
-	lower := toLower(filename)
-	return containsString(lower, "mmproj")
+	lower := strings.ToLower(filename)
+	return strings.Contains(lower, "mmproj")
 }
 
 // selectMMProj selects the best mmproj file, preferring F16
@@ -285,58 +287,14 @@ func selectMMProj(mmprojFiles []RepoFile) *RepoFile {
 
 	// Prefer F16 over other formats
 	for i := range mmprojFiles {
-		filename := toLower(mmprojFiles[i].Filename())
-		if containsString(filename, "f16") {
+		filename := strings.ToLower(mmprojFiles[i].Filename())
+		if strings.Contains(filename, "f16") {
 			return &mmprojFiles[i]
 		}
 	}
 
 	// Fall back to first mmproj file
 	return &mmprojFiles[0]
-}
-
-// Helper functions to avoid importing strings/sort packages
-// (they'll be available after the import is added by the formatter)
-
-func toLower(s string) string {
-	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			result[i] = c + 32
-		} else {
-			result[i] = c
-		}
-	}
-	return string(result)
-}
-
-func containsString(s, substr string) bool {
-	return indexOfString(s, substr) >= 0
-}
-
-func indexOfString(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
-
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
-
-func sortByFilename(files []RepoFile) {
-	// Simple bubble sort (good enough for small lists)
-	for i := 0; i < len(files)-1; i++ {
-		for j := 0; j < len(files)-i-1; j++ {
-			if files[j].Filename() > files[j+1].Filename() {
-				files[j], files[j+1] = files[j+1], files[j]
-			}
-		}
-	}
 }
 
 func indexOfShardPattern(filename string) int {

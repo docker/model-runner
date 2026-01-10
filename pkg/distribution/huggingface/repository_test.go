@@ -2,43 +2,7 @@ package huggingface
 
 import (
 	"testing"
-
-	"github.com/docker/model-runner/pkg/distribution/files"
 )
-
-func TestClassifyFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		want     files.FileType
-	}{
-		{"safetensors file", "model.safetensors", files.FileTypeSafetensors},
-		{"safetensors uppercase", "model.SAFETENSORS", files.FileTypeSafetensors},
-		{"safetensors mixed case", "Model.SafeTensors", files.FileTypeSafetensors},
-		{"sharded safetensors", "model-00001-of-00003.safetensors", files.FileTypeSafetensors},
-
-		{"json config", "config.json", files.FileTypeConfig},
-		{"tokenizer json", "tokenizer.json", files.FileTypeConfig},
-		{"tokenizer config", "tokenizer_config.json", files.FileTypeConfig},
-		{"txt file", "README.txt", files.FileTypeConfig},
-		{"markdown file", "README.md", files.FileTypeConfig},
-		{"vocab file", "vocab.vocab", files.FileTypeConfig},
-		{"jinja template", "chat_template.jinja", files.FileTypeChatTemplate},
-		{"tokenizer model", "tokenizer.model", files.FileTypeConfig},
-
-		{"unknown extension", "model.bin", files.FileTypeUnknown},
-		{"python file", "model.py", files.FileTypeUnknown},
-		{"pytorch model", "pytorch_model.bin", files.FileTypeUnknown},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := files.Classify(tt.filename); got != tt.want {
-				t.Errorf("files.Classify(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestFilterModelFiles(t *testing.T) {
 	repoFiles := []RepoFile{
