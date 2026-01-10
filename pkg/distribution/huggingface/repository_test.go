@@ -4,42 +4,8 @@ import (
 	"testing"
 )
 
-func TestClassifyFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		want     fileType
-	}{
-		{"safetensors file", "model.safetensors", fileTypeSafetensors},
-		{"safetensors uppercase", "model.SAFETENSORS", fileTypeSafetensors},
-		{"safetensors mixed case", "Model.SafeTensors", fileTypeSafetensors},
-		{"sharded safetensors", "model-00001-of-00003.safetensors", fileTypeSafetensors},
-
-		{"json config", "config.json", fileTypeConfig},
-		{"tokenizer json", "tokenizer.json", fileTypeConfig},
-		{"tokenizer config", "tokenizer_config.json", fileTypeConfig},
-		{"txt file", "README.txt", fileTypeConfig},
-		{"markdown file", "README.md", fileTypeConfig},
-		{"vocab file", "vocab.vocab", fileTypeConfig},
-		{"jinja template", "chat_template.jinja", fileTypeConfig},
-		{"tokenizer model", "tokenizer.model", fileTypeConfig},
-
-		{"unknown extension", "model.bin", fileTypeUnknown},
-		{"python file", "model.py", fileTypeUnknown},
-		{"pytorch model", "pytorch_model.bin", fileTypeUnknown},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := classifyFile(tt.filename); got != tt.want {
-				t.Errorf("classifyFile(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestFilterModelFiles(t *testing.T) {
-	files := []RepoFile{
+	repoFiles := []RepoFile{
 		{Type: "file", Path: "model.safetensors", Size: 1000},
 		{Type: "file", Path: "config.json", Size: 100},
 		{Type: "file", Path: "tokenizer.json", Size: 200},
@@ -50,7 +16,7 @@ func TestFilterModelFiles(t *testing.T) {
 		{Type: "file", Path: "model-00002-of-00002.safetensors", Size: 2000},
 	}
 
-	safetensors, configs := FilterModelFiles(files)
+	safetensors, configs := FilterModelFiles(repoFiles)
 
 	if len(safetensors) != 3 {
 		t.Errorf("Expected 3 safetensors files, got %d", len(safetensors))
@@ -61,12 +27,12 @@ func TestFilterModelFiles(t *testing.T) {
 }
 
 func TestTotalSize(t *testing.T) {
-	files := []RepoFile{
+	repoFiles := []RepoFile{
 		{Type: "file", Path: "a.safetensors", Size: 1000},
 		{Type: "file", Path: "b.safetensors", Size: 2000, LFS: &LFSInfo{Size: 5000}},
 	}
 
-	total := TotalSize(files)
+	total := TotalSize(repoFiles)
 	if total != 6000 { // 1000 + 5000 (LFS size takes precedence)
 		t.Errorf("TotalSize() = %d, want 6000", total)
 	}

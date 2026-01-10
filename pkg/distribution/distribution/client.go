@@ -149,7 +149,7 @@ func NewClient(opts ...Option) (*Client, error) {
 }
 
 // normalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
-// It also converts Hugging Face model names to lowercase and resolves IDs to full IDs.
+// It also resolves IDs to full IDs.
 // This is a private method used internally by the Client.
 func (c *Client) normalizeModelName(model string) string {
 	const (
@@ -158,8 +158,6 @@ func (c *Client) normalizeModelName(model string) string {
 	)
 
 	model = strings.TrimSpace(model)
-
-	// If the model is empty, return as-is
 	if model == "" {
 		return model
 	}
@@ -169,44 +167,37 @@ func (c *Client) normalizeModelName(model string) string {
 		if fullID := c.resolveID(model); fullID != "" {
 			return fullID
 		}
-		// If not found, return as-is
 		return model
 	}
 
-	// Normalize HuggingFace model names
-	if strings.HasPrefix(model, "hf.co/") {
-		// Replace hf.co with huggingface.co to avoid losing the Authorization header on redirect.
-		// Lowercase for OCI compatibility (repository names must be lowercase)
-		model = "huggingface.co" + strings.ToLower(strings.TrimPrefix(model, "hf.co"))
-	}
+	// Split name vs tag, where ':' is a tag separator only if it's after the last '/'
+	lastSlash := strings.LastIndex(model, "/")
+	lastColon := strings.LastIndex(model, ":")
 
-	// Check if model contains a registry (domain with dot before first slash)
-	firstSlash := strings.Index(model, "/")
-	if firstSlash > 0 && strings.Contains(model[:firstSlash], ".") {
-		// Has a registry, just ensure tag
-		// Check for tag separator after the last "/" (to avoid matching port like :5000)
-		lastSlash := strings.LastIndex(model, "/")
-		afterLastSlash := model[lastSlash+1:]
-		if !strings.Contains(afterLastSlash, ":") {
-			return model + ":" + defaultTag
-		}
-		return model
-	}
-
-	// Split by colon to check for tag
-	parts := strings.SplitN(model, ":", 2)
-	nameWithOrg := parts[0]
+	name := model
 	tag := defaultTag
-	if len(parts) == 2 && parts[1] != "" {
-		tag = parts[1]
+	hasTag := lastColon > lastSlash
+
+	if hasTag {
+		name = model[:lastColon]
+		// Preserve tag as-is; if empty, fall back to defaultTag
+		if t := model[lastColon+1:]; t != "" {
+			tag = t
+		}
 	}
 
-	// If name doesn't contain a slash, add the default org
-	if !strings.Contains(nameWithOrg, "/") {
-		nameWithOrg = defaultOrg + "/" + nameWithOrg
+	// If name has no registry (domain with dot before first slash), apply default org if missing slash
+	firstSlash := strings.Index(name, "/")
+	hasRegistry := firstSlash > 0 && strings.Contains(name[:firstSlash], ".")
+
+	if !hasRegistry && !strings.Contains(name, "/") {
+		name = defaultOrg + "/" + name
 	}
 
-	return nameWithOrg + ":" + tag
+	// Lowercase ONLY the name part (registry/org/repo). Tag stays unchanged.
+	name = strings.ToLower(name)
+
+	return name + ":" + tag
 }
 
 // looksLikeID returns true for short & long hex IDs (12 or 64 chars)
@@ -282,25 +273,30 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	reference = c.normalizeModelName(reference)
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
-	// Use the client's registry, or create a temporary one if bearer token is provided
-	registryClient := c.registry
+	// Handle bearer token for registry authentication
 	var token string
 	if len(bearerToken) > 0 && bearerToken[0] != "" {
 		token = bearerToken[0]
+	}
+
+	// HuggingFace references always use native pull (download raw files from HF Hub)
+	if isHuggingFaceReference(originalReference) {
+		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
+		// Pass original reference to preserve case-sensitivity for HuggingFace API
+		return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
+	}
+
+	// For non-HF references, use OCI registry
+	registryClient := c.registry
+	if token != "" {
 		// Create a temporary registry client with bearer token authentication
 		auth := authn.NewBearer(token)
 		registryClient = registry.FromClient(c.registry, registry.WithAuth(auth))
 	}
 
-	// First, fetch the remote model to get the manifest
+	// Fetch the remote model to get the manifest
 	remoteModel, err := registryClient.Model(ctx, reference)
 	if err != nil {
-		// Check if this is a HuggingFace reference and the error indicates no OCI manifest
-		if isHuggingFaceReference(reference) && isNotOCIError(err) {
-			c.log.Infoln("No OCI manifest found, attempting native HuggingFace pull")
-			// Pass original reference to preserve case-sensitivity for HuggingFace API
-			return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
-		}
 		// Check if the error should be converted to registry.ErrModelNotFound for API compatibility
 		// If the error already matches ErrModelNotFound, return it directly to preserve errors.Is compatibility
 		if errors.Is(err, registry.ErrModelNotFound) {
@@ -679,68 +675,16 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 
 // isHuggingFaceReference checks if a reference is a HuggingFace model reference
 func isHuggingFaceReference(reference string) bool {
-	return strings.HasPrefix(reference, "huggingface.co/")
+	return strings.HasPrefix(reference, "huggingface.co/") ||
+		strings.HasPrefix(reference, "hf.co/")
 }
 
-// isNotOCIError checks if the error indicates the model is not OCI-formatted
-// This happens when the HuggingFace repository doesn't have an OCI manifest
-func isNotOCIError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for registry errors indicating no manifest
-	var regErr *registry.Error
-	if errors.As(err, &regErr) {
-		if regErr.Code == "MANIFEST_UNKNOWN" || regErr.Code == "NAME_UNKNOWN" {
-			return true
-		}
-	}
-
-	// Note: We intentionally don't treat ErrInvalidReference as "not OCI" - that's a format error
-	// that should be reported to the user, not interpreted as a native HF model.
-	// The model name is lowercased during normalization to ensure OCI compatibility.
-
-	// Also check error message for common patterns
-	errStr := err.Error()
-	errStrLower := strings.ToLower(errStr)
-	return strings.Contains(errStr, "MANIFEST_UNKNOWN") ||
-		strings.Contains(errStr, "NAME_UNKNOWN") ||
-		strings.Contains(errStrLower, "manifest unknown") ||
-		strings.Contains(errStrLower, "name unknown") ||
-		// HuggingFace returns this error for non-GGUF repositories
-		strings.Contains(errStr, "Repository is not GGUF") ||
-		strings.Contains(errStr, "not compatible with llama.cpp") ||
-		// Additional patterns that might indicate non-OCI format from registry
-		strings.Contains(errStrLower, "blob unknown") ||
-		strings.Contains(errStrLower, "tag unknown") ||
-		// Containerd resolver specific error patterns
-		strings.Contains(errStrLower, "not found") ||
-		strings.Contains(errStrLower, "status 404") ||
-		strings.Contains(errStrLower, "status code 404") ||
-		strings.Contains(errStrLower, "response status code") ||
-		strings.Contains(errStrLower, "no such host") ||
-		strings.Contains(errStrLower, "connection refused") ||
-		// Additional OCI-related patterns
-		strings.Contains(errStrLower, "no manifest found") ||
-		strings.Contains(errStrLower, "no image found") ||
-		strings.Contains(errStrLower, "image not found") ||
-		strings.Contains(errStrLower, "artifact not found") ||
-		// Additional HuggingFace-specific error patterns
-		strings.Contains(errStrLower, "repository not found") ||
-		strings.Contains(errStrLower, "resource not found") ||
-		strings.Contains(errStrLower, "endpoint not found") ||
-		strings.Contains(errStrLower, "model not found") ||
-		// More specific HuggingFace error patterns
-		strings.Contains(errStr, "401") ||
-		strings.Contains(errStr, "403")
-}
-
-// parseHFReference extracts repo and revision from a HF reference
-// e.g., "huggingface.co/org/model:revision" -> ("org/model", "revision")
-// e.g., "hf.co/org/model:latest" -> ("org/model", "main")
-// Note: This preserves the original case of the repo name for HuggingFace API compatibility
-func parseHFReference(reference string) (repo, revision string) {
+// parseHFReference extracts repo, revision, and tag from a HF reference
+// e.g., "huggingface.co/org/model:revision" -> ("org/model", "main", "revision")
+// e.g., "hf.co/org/model:latest" -> ("org/model", "main", "latest")
+// e.g., "hf.co/org/model:Q4_K_M" -> ("org/model", "main", "Q4_K_M")
+// The tag is used for GGUF quantization selection, while revision is always "main" for HuggingFace
+func parseHFReference(reference string) (repo, revision, tag string) {
 	// Remove registry prefix (handle both hf.co and huggingface.co)
 	ref := strings.TrimPrefix(reference, "huggingface.co/")
 	ref = strings.TrimPrefix(ref, "hf.co/")
@@ -749,19 +693,24 @@ func parseHFReference(reference string) (repo, revision string) {
 	parts := strings.SplitN(ref, ":", 2)
 	repo = parts[0]
 
-	revision = "main"
-	if len(parts) == 2 && parts[1] != "" && parts[1] != "latest" {
-		revision = parts[1]
+	// Default tag is "latest"
+	tag = "latest"
+	if len(parts) == 2 && parts[1] != "" {
+		tag = parts[1]
 	}
 
-	return repo, revision
+	// Revision is always "main" for HuggingFace repos
+	// (the tag is used for quantization selection, not git revision)
+	revision = "main"
+
+	return repo, revision, tag
 }
 
 // pullNativeHuggingFace pulls a native HuggingFace repository (non-OCI format)
 // This is used when the model is stored as raw files (safetensors) on HuggingFace Hub
 func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, progressWriter io.Writer, token string) error {
-	repo, revision := parseHFReference(reference)
-	c.log.Infof("Pulling native HuggingFace model: repo=%s, revision=%s", utils.SanitizeForLog(repo), utils.SanitizeForLog(revision))
+	repo, revision, tag := parseHFReference(reference)
+	c.log.Infof("Pulling native HuggingFace model: repo=%s, revision=%s, tag=%s", utils.SanitizeForLog(repo), utils.SanitizeForLog(revision), utils.SanitizeForLog(tag))
 
 	// Create HuggingFace client
 	hfOpts := []huggingface.ClientOption{
@@ -780,7 +729,8 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 	defer os.RemoveAll(tempDir)
 
 	// Build model from HuggingFace repository
-	model, err := huggingface.BuildModel(ctx, hfClient, repo, revision, tempDir, progressWriter)
+	// The tag is used for GGUF quantization selection (e.g., "Q4_K_M", "Q8_0")
+	model, err := huggingface.BuildModel(ctx, hfClient, repo, revision, tag, tempDir, progressWriter)
 	if err != nil {
 		// Convert HuggingFace errors to registry errors for consistent handling
 		var authErr *huggingface.AuthError
@@ -797,9 +747,8 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 		return fmt.Errorf("build model from HuggingFace: %w", err)
 	}
 
-	// Write model to store
-	// Lowercase the reference for storage since OCI tags don't allow uppercase
-	storageTag := strings.ToLower(reference)
+	// Write model to store with normalized tag
+	storageTag := c.normalizeModelName(reference)
 	c.log.Infof("Writing model to store with tag: %s", utils.SanitizeForLog(storageTag))
 	if err := c.store.Write(model, []string{storageTag}, progressWriter); err != nil {
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {

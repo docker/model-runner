@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 )
 
 func TestECRIntegration(t *testing.T) {
@@ -41,10 +41,11 @@ func TestECRIntegration(t *testing.T) {
 	}
 
 	t.Run("Push", func(t *testing.T) {
-		mdl, err := gguf.NewModel(testGGUFFile)
+		b, err := builder.FromPath(testGGUFFile)
 		if err != nil {
 			t.Fatalf("Failed to create model: %v", err)
 		}
+		mdl := b.Model()
 		if err := client.store.Write(mdl, []string{ecrTag}, nil); err != nil {
 			t.Fatalf("Failed to write model to store: %v", err)
 		}

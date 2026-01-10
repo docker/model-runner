@@ -241,7 +241,7 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 		}
 	} else if opts.ggufPath != "" {
 		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
-		pkg, err := builder.FromGGUF(opts.ggufPath)
+		pkg, err := builder.FromPath(opts.ggufPath)
 		if err != nil {
 			return nil, fmt.Errorf("add gguf file: %w", err)
 		}
@@ -262,7 +262,7 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 		}
 
 		cmd.PrintErrf("Found %d safetensors file(s)\n", len(safetensorsPaths))
-		pkg, err := builder.FromSafetensors(safetensorsPaths)
+		pkg, err := builder.FromPaths(safetensorsPaths)
 		if err != nil {
 			return nil, fmt.Errorf("create safetensors model: %w", err)
 		}

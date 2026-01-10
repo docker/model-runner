@@ -264,7 +264,7 @@ func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextS
 
 	// Create a builder from the GGUF file
 	t.Logf("Creating test model %s from %s", modelRef, absPath)
-	pkg, err := builder.FromGGUF(absPath)
+	pkg, err := builder.FromPath(absPath)
 	require.NoError(t, err)
 
 	// Set context size if specified

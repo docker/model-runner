@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -23,10 +23,11 @@ func TestBundle(t *testing.T) {
 	}
 
 	// Load dummy model from assets directory
-	mdl, err := gguf.NewModel(filepath.Join("..", "assets", "dummy.gguf"))
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
+	mdl := b.Model()
 	singleGGUFID, err := mdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -64,10 +65,11 @@ func TestBundle(t *testing.T) {
 	}
 
 	// Load sharded dummy model from asset directory
-	shardedMdl, err := gguf.NewModel(filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"))
+	shardedB, err := builder.FromPath(filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
+	shardedMdl := shardedB.Model()
 	shardedGGUFID, err := shardedMdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)

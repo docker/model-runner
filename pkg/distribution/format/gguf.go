@@ -1,11 +1,84 @@
-package gguf
+package format
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	parser "github.com/gpustack/gguf-parser-go"
 )
+
+// GGUFFormat implements the Format interface for GGUF model files.
+type GGUFFormat struct{}
+
+// init registers the GGUF format implementation.
+func init() {
+	Register(&GGUFFormat{})
+}
+
+// Name returns the format identifier for GGUF.
+func (g *GGUFFormat) Name() types.Format {
+	return types.FormatGGUF
+}
+
+// MediaType returns the OCI media type for GGUF layers.
+func (g *GGUFFormat) MediaType() oci.MediaType {
+	return types.MediaTypeGGUF
+}
+
+// DiscoverShards finds all GGUF shard files for a sharded model.
+// GGUF shards follow the pattern: <name>-00001-of-00015.gguf
+// For single-file models, returns a slice containing only the input path.
+func (g *GGUFFormat) DiscoverShards(path string) ([]string, error) {
+	// Use the external GGUF parser's shard discovery
+	shards := parser.CompleteShardGGUFFilename(path)
+	if len(shards) == 0 {
+		// Single file, not sharded
+		return []string{path}, nil
+	}
+	return shards, nil
+}
+
+// ExtractConfig parses GGUF file(s) and extracts model configuration metadata.
+func (g *GGUFFormat) ExtractConfig(paths []string) (types.Config, error) {
+	if len(paths) == 0 {
+		return types.Config{Format: types.FormatGGUF}, nil
+	}
+
+	// Parse the first shard/file to get metadata
+	gguf, err := parser.ParseGGUFFile(paths[0])
+	if err != nil {
+		// Return empty config if parsing fails, continue without metadata
+		return types.Config{Format: types.FormatGGUF}, nil
+	}
+
+	return types.Config{
+		Format:       types.FormatGGUF,
+		Parameters:   normalizeUnitString(gguf.Metadata().Parameters.String()),
+		Architecture: strings.TrimSpace(gguf.Metadata().Architecture),
+		Quantization: strings.TrimSpace(gguf.Metadata().FileType.String()),
+		Size:         normalizeUnitString(gguf.Metadata().Size.String()),
+		GGUF:         extractGGUFMetadata(&gguf.Header),
+	}, nil
+}
+
+var (
+	// spaceBeforeUnitRegex matches one or more spaces between a valid number and a letter (unit)
+	// Used to remove spaces between numbers and units (e.g., "16.78 M" -> "16.78M")
+	spaceBeforeUnitRegex = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)\s+([A-Za-z]+)`)
+)
+
+// normalizeUnitString removes spaces between numbers and units for consistent formatting
+// Examples: "16.78 M" -> "16.78M", "256.35 MiB" -> "256.35MiB", "409M" -> "409M"
+func normalizeUnitString(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	return spaceBeforeUnitRegex.ReplaceAllString(s, "$1$2")
+}
 
 const maxArraySize = 50
 
@@ -47,7 +120,7 @@ func extractGGUFMetadata(header *parser.GGUFHeader) map[string]string {
 		case parser.GGUFMetadataValueTypeString:
 			value = kv.ValueString()
 		case parser.GGUFMetadataValueTypeArray:
-			value = handleArray(kv.ValueArray())
+			value = handleGGUFArray(kv.ValueArray())
 		default:
 			value = fmt.Sprintf("[unknown type %d]", kv.ValueType)
 		}
@@ -57,8 +130,8 @@ func extractGGUFMetadata(header *parser.GGUFHeader) map[string]string {
 	return metadata
 }
 
-// handleArray processes an array value and returns its string representation
-func handleArray(arrayValue parser.GGUFMetadataKVArrayValue) string {
+// handleGGUFArray processes an array value and returns its string representation.
+func handleGGUFArray(arrayValue parser.GGUFMetadataKVArrayValue) string {
 	var values []string
 	for _, v := range arrayValue.Array {
 		switch arrayValue.Type {

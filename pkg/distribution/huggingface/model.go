@@ -17,8 +17,9 @@ import (
 
 // BuildModel downloads files from a HuggingFace repository and constructs an OCI model artifact
 // This is the main entry point for pulling native HuggingFace models
-func BuildModel(ctx context.Context, client *Client, repo, revision string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
-	// Step 1: List files in the repository
+// The tag parameter is used for GGUF repos to select the requested quantization (e.g., "Q4_K_M")
+func BuildModel(ctx context.Context, client *Client, repo, revision, tag string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
+	// List files in the repository
 	if progressWriter != nil {
 		_ = progress.WriteProgress(progressWriter, "Fetching file list...", 0, 0, 0, "")
 	}
@@ -28,15 +29,36 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 
-	// Step 2: Filter to model files (safetensors + configs)
-	safetensorsFiles, configFiles := FilterModelFiles(files)
+	// Filter to model files (weights + configs)
+	weightFiles, configFiles := FilterModelFiles(files)
 
-	if len(safetensorsFiles) == 0 {
-		return nil, fmt.Errorf("no safetensors files found in repository %s", repo)
+	if len(weightFiles) == 0 {
+		return nil, fmt.Errorf("no model weight files (GGUF or SafeTensors) found in repository %s", repo)
+	}
+
+	// For GGUF repos with multiple quantizations, select the appropriate files
+	var mmprojFile *RepoFile
+	if isGGUFModel(weightFiles) && len(weightFiles) > 1 {
+		// Use the tag as quantization hint (e.g., "Q4_K_M", "Q8_0", or "latest")
+		weightFiles, mmprojFile = SelectGGUFFiles(weightFiles, tag)
+		if len(weightFiles) == 0 {
+			return nil, fmt.Errorf("no GGUF files found matching quantization %q in repository %s", tag, repo)
+		}
+
+		if progressWriter != nil {
+			if tag == "" || tag == "latest" || tag == "main" {
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization (default)", DefaultGGUFQuantization), 0, 0, 0, "")
+			} else {
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization", tag), 0, 0, 0, "")
+			}
+		}
 	}
 
 	// Combine all files to download
-	allFiles := append(safetensorsFiles, configFiles...)
+	allFiles := append(weightFiles, configFiles...)
+	if mmprojFile != nil {
+		allFiles = append(allFiles, *mmprojFile)
+	}
 
 	if progressWriter != nil {
 		totalSize := TotalSize(allFiles)
@@ -57,7 +79,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, safetensorsFiles, configFiles, tempDir)
+	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -66,20 +88,20 @@ func BuildModel(ctx context.Context, client *Client, repo, revision string, temp
 }
 
 // buildModelFromFiles constructs an OCI model artifact from downloaded files
-func buildModelFromFiles(localPaths map[string]string, safetensorsFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
-	// Collect safetensors paths (sorted for reproducibility)
-	var safetensorsPaths []string
-	for _, f := range safetensorsFiles {
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+	// Collect weight file paths (sorted for reproducibility)
+	var weightPaths []string
+	for _, f := range weightFiles {
 		localPath, ok := localPaths[f.Path]
 		if !ok {
 			return nil, fmt.Errorf("missing local path for %s", f.Path)
 		}
-		safetensorsPaths = append(safetensorsPaths, localPath)
+		weightPaths = append(weightPaths, localPath)
 	}
-	sort.Strings(safetensorsPaths)
+	sort.Strings(weightPaths)
 
-	// Create builder from safetensors files
-	b, err := builder.FromSafetensors(safetensorsPaths)
+	// Create builder from weight files - auto-detects format (GGUF or SafeTensors)
+	b, err := builder.FromPaths(weightPaths)
 	if err != nil {
 		return nil, fmt.Errorf("create builder: %w", err)
 	}

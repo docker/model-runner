@@ -15,7 +15,7 @@ import (
 
 func TestBuilder(t *testing.T) {
 	// Create a builder from a GGUF file
-	b, err := builder.FromGGUF(filepath.Join("..", "assets", "dummy.gguf"))
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestBuilder(t *testing.T) {
 
 func TestWithMultimodalProjectorInvalidPath(t *testing.T) {
 	// Create a builder from a GGUF file
-	b, err := builder.FromGGUF(filepath.Join("..", "assets", "dummy.gguf"))
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestWithMultimodalProjectorInvalidPath(t *testing.T) {
 
 func TestWithMultimodalProjectorChaining(t *testing.T) {
 	// Create a builder from a GGUF file
-	b, err := builder.FromGGUF(filepath.Join("..", "assets", "dummy.gguf"))
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestWithMultimodalProjectorChaining(t *testing.T) {
 
 func TestFromModel(t *testing.T) {
 	// Step 1: Create an initial model from GGUF with context size 2048
-	initialBuilder, err := builder.FromGGUF(filepath.Join("..", "assets", "dummy.gguf"))
+	initialBuilder, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create initial builder from GGUF: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestFromModel(t *testing.T) {
 
 func TestFromModelWithAdditionalLayers(t *testing.T) {
 	// Create an initial model from GGUF
-	initialBuilder, err := builder.FromGGUF(filepath.Join("..", "assets", "dummy.gguf"))
+	initialBuilder, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
 	if err != nil {
 		t.Fatalf("Failed to create initial builder from GGUF: %v", err)
 	}

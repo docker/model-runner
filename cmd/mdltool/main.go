@@ -286,7 +286,7 @@ func cmdPackage(args []string) int {
 	var b *builder.Builder
 	if isSafetensors {
 		fmt.Println("Creating safetensors model")
-		b, err = builder.FromSafetensors(safetensorsPaths)
+		b, err = builder.FromPaths(safetensorsPaths)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating model from safetensors: %v\n", err)
 			return 1
@@ -302,7 +302,7 @@ func cmdPackage(args []string) int {
 			}
 		}
 	} else {
-		b, err = builder.FromGGUF(source)
+		b, err = builder.FromPath(source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating model from gguf: %v\n", err)
 			return 1
