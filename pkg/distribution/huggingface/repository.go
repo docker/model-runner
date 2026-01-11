@@ -240,12 +240,12 @@ func selectFirstGGUF(modelFiles []RepoFile) []RepoFile {
 	return []RepoFile{first}
 }
 
- // isShardedFile checks if a filename follows the sharded pattern
- // e.g., "model-00001-of-00003.gguf"
- func isShardedFile(filename string) bool {
- 	// Delegate to indexOfShardPattern so shard detection is precise and consistent
- 	return indexOfShardPattern(filename) >= 0
- }
+// isShardedFile checks if a filename follows the sharded pattern
+// e.g., "model-00001-of-00003.gguf"
+func isShardedFile(filename string) bool {
+	// Delegate to indexOfShardPattern so shard detection is precise and consistent
+	return indexOfShardPattern(filename) >= 0
+}
 
 // findAllShards finds all shards that belong to the same model
 func findAllShards(files []RepoFile, firstShard string) []RepoFile {
