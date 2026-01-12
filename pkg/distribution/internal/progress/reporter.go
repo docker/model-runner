@@ -100,7 +100,7 @@ func (r *Reporter) Updates() chan<- oci.Update {
 			} else { // In case of Push there is no layer yet
 				// Use imageSize as layer is not known at this point
 				layerSize = r.imageSize
-				layerID = "uploading" // Fake ID for push operations to enable progress display
+				layerID = oci.UploadingLayerID // Fake ID for push operations to enable progress display
 			}
 			incrementalBytes := p.Complete - lastComplete
 
