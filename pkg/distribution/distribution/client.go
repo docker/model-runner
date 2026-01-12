@@ -592,7 +592,7 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	}
 
 	// Push the model
-	c.log.Infoln("Pushing model:", tag)
+	c.log.Infoln("Pushing model:", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Errorln("Failed to push image:", err, "reference:", tag)
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {

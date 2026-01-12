@@ -400,8 +400,6 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 		isJSON:  isJSON,
 	}
 
-	// Pull the model using the Docker model distribution client
-	m.log.Infoln("Pushing model:", utils.SanitizeForLog(model, -1))
 	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
 	if err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)
