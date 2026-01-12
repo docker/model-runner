@@ -18,6 +18,7 @@ import (
 	"github.com/containerd/containerd/v2/core/remotes/docker"
 	"github.com/containerd/containerd/v2/plugins/content/local"
 	"github.com/containerd/errdefs"
+	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
@@ -771,7 +772,14 @@ func Write(ref reference.Reference, img oci.Image, opts ...Option) error {
 			return fmt.Errorf("pushing layer: %w", err)
 		}
 
-		if _, err := io.Copy(cw, rc); err != nil {
+		// Wrap the reader with progress tracking to report incremental upload progress
+		// Uses the shared progress.Reader from internal/progress package
+		var reader io.Reader = rc
+		if o.progress != nil {
+			reader = progress.NewReaderWithOffset(rc, o.progress, completed)
+		}
+
+		if _, err := io.Copy(cw, reader); err != nil {
 			cw.Close()
 			rc.Close()
 			closeProgress(o.progress)

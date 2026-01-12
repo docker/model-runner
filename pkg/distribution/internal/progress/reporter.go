@@ -84,7 +84,7 @@ func (r *Reporter) Updates() chan<- oci.Update {
 			now := time.Now()
 			var layerSize uint64
 			var layerID string
-			if r.layer != nil { // In case of Push there is no layer yet
+			if r.layer != nil { // In case of Pull
 				id, err := r.layer.DiffID()
 				if err != nil {
 					r.err = err
@@ -97,8 +97,10 @@ func (r *Reporter) Updates() chan<- oci.Update {
 					continue
 				}
 				layerSize = safeUint64(size)
-			} else {
-				layerSize = safeUint64(p.Total)
+			} else { // In case of Push there is no layer yet
+				// Use imageSize as layer is not known at this point
+				layerSize = r.imageSize
+				layerID = "uploading" // Fake ID for push operations to enable progress display
 			}
 			incrementalBytes := p.Complete - lastComplete
 
