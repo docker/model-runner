@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	credHelperClient "github.com/docker/docker-credential-helpers/client"
+	"github.com/docker/docker-credential-helpers/credentials"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 )
 
@@ -218,6 +219,11 @@ func getCredentialsFromHelper(helper, serverAddress string) (Authenticator, erro
 		return nil, err
 	}
 
+	// nil creds means credentials were not found (not an error)
+	if creds == nil {
+		return nil, nil
+	}
+
 	if creds.Username != "" && creds.Secret != "" {
 		return &Basic{Username: creds.Username, Password: creds.Secret}, nil
 	}
@@ -225,14 +231,16 @@ func getCredentialsFromHelper(helper, serverAddress string) (Authenticator, erro
 	return nil, nil
 }
 
-// credentialHelperGet is a variable to allow mocking in tests
-var credentialHelperGet = credentialHelperGetImpl
-
-// credentialHelperGetImpl uses the docker-credential-helpers/client library
-func credentialHelperGetImpl(helper, serverAddress string) (*credentialsResult, error) {
+// credentialHelperGet uses the docker-credential-helpers/client library
+func credentialHelperGet(helper, serverAddress string) (*credentialsResult, error) {
 	program := credHelperClient.NewShellProgramFunc("docker-credential-" + helper)
 	creds, err := credHelperClient.Get(program, serverAddress)
 	if err != nil {
+		// Treat "credentials not found" as a miss, not an error
+		// This allows fallback to other credential sources
+		if credentials.IsErrCredentialsNotFound(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &credentialsResult{

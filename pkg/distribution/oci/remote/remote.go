@@ -404,11 +404,20 @@ func createResolverWithPushScope(o *options, ref reference.Reference) (resolverC
 	client := &http.Client{Transport: bearerTransport}
 
 	// Create resolver with the pre-authorized token
-	// The BearerTransport already adds the token, so we return empty credentials
+	// We keep the original auth available for re-challenges (e.g., token expiry, additional scope)
+	// The BearerTransport will handle the primary auth, but if challenged, we can re-exchange
 	authorizer := docker.NewDockerAuthorizer(
 		docker.WithAuthCreds(func(host string) (string, string, error) {
-			// Return empty credentials since we're using bearer token in transport
-			return "", "", nil
+			// Return original credentials to handle potential re-challenges
+			// (token refresh, additional scope requests)
+			cfg, err := auth.Authorization()
+			if err != nil {
+				return "", "", err
+			}
+			if cfg.RegistryToken != "" {
+				return "", cfg.RegistryToken, nil
+			}
+			return cfg.Username, cfg.Password, nil
 		}))
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
