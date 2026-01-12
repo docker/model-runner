@@ -355,6 +355,76 @@ func createResolver(o *options, ref reference.Reference) resolverComponents {
 	}
 }
 
+// createResolverWithPushScope creates a docker resolver pre-authorized with push scope.
+func createResolverWithPushScope(o *options, ref reference.Reference) (resolverComponents, error) {
+	var auth authn.Authenticator
+	if o.auth != nil {
+		auth = o.auth
+	} else if o.keychain != nil {
+		var err error
+		auth, err = o.keychain.Resolve(authn.NewResource(ref))
+		if err != nil {
+			return resolverComponents{}, fmt.Errorf("resolving credentials: %w", err)
+		}
+	}
+
+	usePlainHTTP := o.plainHTTP || ref.Context().Registry.Scheme() == "http"
+
+	// If no auth is needed or using plain HTTP, use the standard resolver
+	if auth == nil || usePlainHTTP {
+		return createResolver(o, ref), nil
+	}
+
+	// Pre-authorize with push scope
+	pr, err := Ping(o.ctx, ref.Context().Registry, o.transport)
+	if err != nil {
+		// Ping failed, fall back to standard resolver
+		return createResolver(o, ref), nil
+	}
+
+	// If no WWW-Authenticate header, no token exchange needed
+	if pr.WWWAuthenticate.Realm == "" {
+		return createResolver(o, ref), nil
+	}
+
+	// Exchange credentials for a token with push scope
+	scope := ref.Scope(PushScope)
+	tok, err := Exchange(o.ctx, ref.Context().Registry, auth, o.transport,
+		[]string{scope}, pr)
+	if err != nil {
+		// Token exchange failed, fall back to standard resolver
+		return createResolver(o, ref), nil
+	}
+
+	// Create transport with the bearer token
+	bearerTransport := &BearerTransport{
+		Transport: &rangeTransport{base: o.transport, userAgent: o.userAgent},
+		Token:     tok.Token,
+	}
+	client := &http.Client{Transport: bearerTransport}
+
+	// Create resolver with the pre-authorized token
+	// The BearerTransport already adds the token, so we return empty credentials
+	authorizer := docker.NewDockerAuthorizer(
+		docker.WithAuthCreds(func(host string) (string, string, error) {
+			// Return empty credentials since we're using bearer token in transport
+			return "", "", nil
+		}))
+
+	resolver := docker.NewResolver(docker.ResolverOptions{
+		Hosts: docker.ConfigureDefaultRegistries(
+			docker.WithAuthorizer(authorizer),
+			docker.WithClient(client)),
+	})
+
+	return resolverComponents{
+		resolver:   resolver,
+		authorizer: authorizer,
+		httpClient: client,
+		plainHTTP:  usePlainHTTP,
+	}, nil
+}
+
 // Image fetches a remote image.
 func Image(ref reference.Reference, opts ...Option) (oci.Image, error) {
 	o := makeOptions(opts...)
@@ -618,8 +688,11 @@ func (l *remoteLayer) MediaType() (oci.MediaType, error) {
 func Write(ref reference.Reference, img oci.Image, opts ...Option) error {
 	o := makeOptions(opts...)
 
-	// Create resolver
-	components := createResolver(o, ref)
+	// Pre-authorize with push scope to ensure we have the right permissions
+	components, err := createResolverWithPushScope(o, ref)
+	if err != nil {
+		return fmt.Errorf("creating resolver with push scope: %w", err)
+	}
 
 	// Get pusher
 	pusher, err := components.resolver.Pusher(o.ctx, ref.String())

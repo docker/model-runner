@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	credHelperClient "github.com/docker/docker-credential-helpers/client"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 )
 
@@ -139,7 +140,29 @@ func getAuthFromConfig(registry string) (Authenticator, error) {
 		return nil, err
 	}
 
-	// Try to find matching registry
+	// Determine the server address to look up credentials for
+	// For Docker Hub, we need to use the full URL format
+	serverAddress := getServerAddressForRegistry(registry)
+
+	// Try credential helpers first (credHelpers for specific registries)
+	if helper, ok := cfg.CredHelpers[serverAddress]; ok {
+		auth, err := getCredentialsFromHelper(helper, serverAddress)
+		if err == nil && auth != nil {
+			return auth, nil
+		}
+		// If credential helper fails, continue to try other methods
+	}
+
+	// Try global credential store (credsStore)
+	if cfg.CredsStore != "" {
+		auth, err := getCredentialsFromHelper(cfg.CredsStore, serverAddress)
+		if err == nil && auth != nil {
+			return auth, nil
+		}
+		// If credential helper fails, fall through to check auths
+	}
+
+	// Try to find matching registry in auths
 	for host, auth := range cfg.Auths {
 		if matchRegistry(host, registry) {
 			// Decode the auth field if present
@@ -171,6 +194,59 @@ func getAuthFromConfig(registry string) (Authenticator, error) {
 	return nil, nil
 }
 
+// getServerAddressForRegistry returns the server address used for credential lookup.
+// Docker Hub credentials are stored under "https://index.docker.io/v1/".
+func getServerAddressForRegistry(registry string) string {
+	// Normalize the registry
+	normalized := normalizeRegistry(registry)
+
+	// For Docker Hub, use the standard credential key
+	if normalized == "index.docker.io" {
+		return "https://index.docker.io/v1/"
+	}
+
+	// For other registries, use the normalized registry name
+	return normalized
+}
+
+// getCredentialsFromHelper retrieves credentials using a Docker credential helper.
+// It uses the docker-credential-helpers library to interact with the credential helper.
+func getCredentialsFromHelper(helper, serverAddress string) (Authenticator, error) {
+	// Use the docker-credential-helpers/client library
+	creds, err := credentialHelperGet(helper, serverAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	if creds.Username != "" && creds.Secret != "" {
+		return &Basic{Username: creds.Username, Password: creds.Secret}, nil
+	}
+
+	return nil, nil
+}
+
+// credentialHelperGet is a variable to allow mocking in tests
+var credentialHelperGet = credentialHelperGetImpl
+
+// credentialHelperGetImpl uses the docker-credential-helpers/client library
+func credentialHelperGetImpl(helper, serverAddress string) (*credentialsResult, error) {
+	program := credHelperClient.NewShellProgramFunc("docker-credential-" + helper)
+	creds, err := credHelperClient.Get(program, serverAddress)
+	if err != nil {
+		return nil, err
+	}
+	return &credentialsResult{
+		Username: creds.Username,
+		Secret:   creds.Secret,
+	}, nil
+}
+
+// credentialsResult holds credentials from a credential helper
+type credentialsResult struct {
+	Username string
+	Secret   string
+}
+
 // matchRegistry checks if two registry hostnames match.
 func matchRegistry(host, registry string) bool {
 	// Normalize hostnames
@@ -186,10 +262,13 @@ func normalizeRegistry(registry string) string {
 	registry = strings.TrimPrefix(registry, "http://")
 	// Remove trailing slash
 	registry = strings.TrimSuffix(registry, "/")
+	// Remove /v1 or /v2 suffix (used by Docker Hub in config.json)
+	registry = strings.TrimSuffix(registry, "/v1")
+	registry = strings.TrimSuffix(registry, "/v2")
 
 	// Handle Docker Hub variations
 	switch registry {
-	case "docker.io", "registry-1.docker.io":
+	case "docker.io", "registry-1.docker.io", "index.docker.io":
 		return "index.docker.io"
 	}
 

@@ -7,6 +7,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.2
 	github.com/distribution/reference v0.6.0
+	github.com/docker/docker-credential-helpers v0.9.5
 	github.com/docker/go-units v0.5.0
 	github.com/gpustack/gguf-parser-go v0.23.1
 	github.com/jaypipes/ghw v0.21.2
