@@ -44,7 +44,7 @@ func TestGARIntegration(t *testing.T) {
 		if err := client.store.Write(mdl, []string{garTag}, nil); err != nil {
 			t.Fatalf("Failed to write model to store: %v", err)
 		}
-		if err := client.PushModel(t.Context(), garTag, nil); err != nil {
+		if err := client.PushModel(t.Context(), garTag, nil, nil); err != nil {
 			t.Fatalf("Failed to push model to ECR: %v", err)
 		}
 		if _, err := client.DeleteModel(garTag, false); err != nil { // cleanup
@@ -54,7 +54,7 @@ func TestGARIntegration(t *testing.T) {
 
 	// Test pull from GAR
 	t.Run("Pull without progress", func(t *testing.T) {
-		err := client.PullModel(t.Context(), garTag, nil)
+		err := client.PullModel(t.Context(), garTag, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to pull model from GAR: %v", err)
 		}

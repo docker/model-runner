@@ -207,7 +207,7 @@ func (m *Manager) Delete(reference string, force bool) (*distribution.DeleteMode
 
 // Pull pulls a model to local storage. Any error it returns is suitable
 // for writing back to the client.
-func (m *Manager) Pull(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
+func (m *Manager) Pull(model string, creds *distribution.Credentials, r *http.Request, w http.ResponseWriter) error {
 	// Restrict model pull concurrency.
 	select {
 	case <-m.pullTokens:
@@ -250,16 +250,7 @@ func (m *Manager) Pull(model string, bearerToken string, r *http.Request, w http
 	// Pull the model using the Docker model distribution client
 	m.log.Infoln("Pulling model:", utils.SanitizeForLog(model, -1))
 
-	// Use bearer token if provided
-	var err error
-	if bearerToken != "" {
-		m.log.Infoln("Using provided bearer token for authentication")
-		err = m.distributionClient.PullModel(r.Context(), model, progressWriter, bearerToken)
-	} else {
-		err = m.distributionClient.PullModel(r.Context(), model, progressWriter)
-	}
-
-	if err != nil {
+	if err := m.distributionClient.PullModel(r.Context(), model, progressWriter, creds); err != nil {
 		return fmt.Errorf("error while pulling model: %w", err)
 	}
 
@@ -369,7 +360,7 @@ func (m *Manager) Tag(ref, target string) error {
 }
 
 // Push pushes a model from the store to the registry.
-func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) error {
+func (m *Manager) Push(model string, creds *distribution.Credentials, r *http.Request, w http.ResponseWriter) error {
 	// Set up response headers for streaming
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -398,8 +389,7 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 		isJSON:  isJSON,
 	}
 
-	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
-	if err != nil {
+	if err := m.distributionClient.PushModel(r.Context(), model, progressWriter, creds); err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)
 	}
 

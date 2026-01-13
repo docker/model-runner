@@ -104,8 +104,17 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	var creds *distribution.Credentials
+	if request.Username != "" || request.Password != "" || request.BearerToken != "" {
+		creds = &distribution.Credentials{
+			Username:    request.Username,
+			Password:    request.Password,
+			BearerToken: request.BearerToken,
+		}
+	}
+
 	// Pull the model
-	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
+	if err := h.manager.Pull(request.From, creds, r, w); err != nil {
 		sanitizedFrom := utils.SanitizeForLog(request.From, -1)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			h.log.Infof("Request canceled/timed out while pulling model %q", sanitizedFrom)
@@ -417,7 +426,21 @@ func (h *HTTPHandler) handleTagModel(w http.ResponseWriter, r *http.Request, mod
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
 func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
-	if err := h.manager.Push(model, r, w); err != nil {
+	var creds *distribution.Credentials
+	var request ModelPushRequest
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&request); err == nil {
+			if request.Username != "" || request.Password != "" || request.BearerToken != "" {
+				creds = &distribution.Credentials{
+					Username:    request.Username,
+					Password:    request.Password,
+					BearerToken: request.BearerToken,
+				}
+			}
+		}
+	}
+
+	if err := h.manager.Push(model, creds, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
 			h.log.Warnf("Invalid model reference %q: %v", utils.SanitizeForLog(model, -1), err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)

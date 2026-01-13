@@ -43,7 +43,7 @@ func TestECRIntegration(t *testing.T) {
 		if err := client.store.Write(mdl, []string{ecrTag}, nil); err != nil {
 			t.Fatalf("Failed to write model to store: %v", err)
 		}
-		if err := client.PushModel(t.Context(), ecrTag, nil); err != nil {
+		if err := client.PushModel(t.Context(), ecrTag, nil, nil); err != nil {
 			t.Fatalf("Failed to push model to ECR: %v", err)
 		}
 		if _, err := client.DeleteModel(ecrTag, false); err != nil { // cleanup
@@ -53,7 +53,7 @@ func TestECRIntegration(t *testing.T) {
 
 	// Test pull from ECR
 	t.Run("Pull without progress", func(t *testing.T) {
-		err := client.PullModel(t.Context(), ecrTag, nil)
+		err := client.PullModel(t.Context(), ecrTag, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to pull model from ECR: %v", err)
 		}

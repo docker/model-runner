@@ -1,8 +1,6 @@
 package standalone
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -28,66 +26,6 @@ import (
 
 // controllerContainerName is the name to use for the controller container.
 const controllerContainerName = "docker-model-runner"
-
-// copyDockerConfigToContainer copies the Docker config file from the host to the container
-// and sets up proper ownership and permissions for the modelrunner user.
-// It does nothing for Desktop and Cloud engine kinds.
-func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Client, containerID string, engineKind types.ModelRunnerEngineKind) error {
-	// Do nothing for Desktop and Cloud engine kinds
-	if engineKind == types.ModelRunnerEngineKindDesktop || engineKind == types.ModelRunnerEngineKindCloud ||
-		os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") == "1" {
-		return nil
-	}
-
-	dockerConfigPath := os.ExpandEnv("$HOME/.docker/config.json")
-	if s, err := os.Stat(dockerConfigPath); err != nil || s.Mode()&os.ModeType != 0 {
-		return nil
-	}
-
-	configData, err := os.ReadFile(dockerConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read Docker config file: %w", err)
-	}
-
-	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
-	header := &tar.Header{
-		Name: ".docker/config.json",
-		Mode: 0600,
-		Size: int64(len(configData)),
-	}
-	if err := tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("failed to write tar header: %w", err)
-	}
-	if _, err := tw.Write(configData); err != nil {
-		return fmt.Errorf("failed to write config data to tar: %w", err)
-	}
-	if err := tw.Close(); err != nil {
-		return fmt.Errorf("failed to close tar writer: %w", err)
-	}
-
-	// Ensure the .docker directory exists
-	mkdirCmd := "mkdir -p /home/modelrunner/.docker && chown modelrunner:modelrunner /home/modelrunner/.docker"
-	if err := execInContainer(ctx, dockerClient, containerID, mkdirCmd, false); err != nil {
-		return err
-	}
-
-	// Copy directly into the .docker directory
-	err = dockerClient.CopyToContainer(ctx, containerID, "/home/modelrunner", &buf, container.CopyToContainerOptions{
-		CopyUIDGID: true,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to copy config file to container: %w", err)
-	}
-
-	// Set correct ownership and permissions
-	chmodCmd := "chown modelrunner:modelrunner /home/modelrunner/.docker/config.json && chmod 600 /home/modelrunner/.docker/config.json"
-	if err := execInContainer(ctx, dockerClient, containerID, chmodCmd, false); err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func execInContainer(ctx context.Context, dockerClient *client.Client, containerID, cmd string, asRoot bool) error {
 	execConfig := container.ExecOptions{
@@ -445,14 +383,6 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			_ = dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		}
 		return fmt.Errorf("failed to start container %s: %w", controllerContainerName, err)
-	}
-
-	// Copy Docker config file if it exists and we're the container creator.
-	if created && !vllmOnWSL {
-		if err := copyDockerConfigToContainer(ctx, dockerClient, resp.ID, engineKind); err != nil {
-			// Log warning but continue - don't fail container creation
-			printer.Printf("Warning: failed to copy Docker config: %v\n", err)
-		}
 	}
 
 	// Add proxy certificate to the system CA bundle (requires root for update-ca-certificates)

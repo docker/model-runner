@@ -23,6 +23,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Credentials holds authentication credentials for registry operations.
+type Credentials struct {
+	// Username for basic authentication.
+	Username string
+	// Password for basic authentication.
+	Password string
+	// BearerToken for token-based authentication (e.g., Hugging Face).
+	BearerToken string
+}
+
 // Client provides model distribution functionality
 type Client struct {
 	store    *store.LocalStore
@@ -227,32 +237,32 @@ func (c *Client) resolveID(id string) string {
 }
 
 // PullModel pulls a model from a registry and returns the local file path
-func (c *Client) PullModel(ctx context.Context, reference string, progressWriter io.Writer, bearerToken ...string) error {
+func (c *Client) PullModel(ctx context.Context, reference string, progressWriter io.Writer, creds *Credentials) error {
 	// Store original reference before normalization (needed for case-sensitive HuggingFace API)
 	originalReference := reference
 	// Normalize the model reference
 	reference = c.normalizeModelName(reference)
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
 
-	// Handle bearer token for registry authentication
-	var token string
-	if len(bearerToken) > 0 && bearerToken[0] != "" {
-		token = bearerToken[0]
-	}
-
 	// HuggingFace references always use native pull (download raw files from HF Hub)
 	if isHuggingFaceReference(originalReference) {
 		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
 		// Pass original reference to preserve case-sensitivity for HuggingFace API
+		var token string
+		if creds != nil && creds.BearerToken != "" {
+			token = creds.BearerToken
+		}
 		return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
 	}
 
 	// For non-HF references, use OCI registry
 	registryClient := c.registry
-	if token != "" {
-		// Create a temporary registry client with bearer token authentication
-		auth := authn.NewBearer(token)
-		registryClient = registry.FromClient(c.registry, registry.WithAuth(auth))
+	if creds != nil {
+		if creds.Username != "" && creds.Password != "" {
+			registryClient = registry.FromClient(c.registry, registry.WithAuthConfig(creds.Username, creds.Password))
+		} else if creds.BearerToken != "" {
+			registryClient = registry.FromClient(c.registry, registry.WithAuth(authn.NewBearer(creds.BearerToken)))
+		}
 	}
 
 	// Fetch the remote model to get the manifest
@@ -538,9 +548,18 @@ func (c *Client) Tag(source string, target string) error {
 }
 
 // PushModel pushes a tagged model from the content store to the registry.
-func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Writer) (err error) {
+func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Writer, creds *Credentials) (err error) {
+	registryClient := c.registry
+	if creds != nil {
+		if creds.BearerToken != "" {
+			registryClient = registry.FromClient(c.registry, registry.WithAuth(authn.NewBearer(creds.BearerToken)))
+		} else if creds.Username != "" && creds.Password != "" {
+			registryClient = registry.FromClient(c.registry, registry.WithAuthConfig(creds.Username, creds.Password))
+		}
+	}
+
 	// Parse the tag
-	target, err := c.registry.NewTarget(tag)
+	target, err := registryClient.NewTarget(tag)
 	if err != nil {
 		return fmt.Errorf("new tag: %w", err)
 	}
