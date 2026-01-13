@@ -11,9 +11,8 @@ on:
         default: false
       releaseTag:
         description: "Release tag"
-        required: false
+        required: true
         type: string
-        default: "test"
       llamaServerVersion:
         description: "llama-server version"
         required: false
