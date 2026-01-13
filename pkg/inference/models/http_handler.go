@@ -105,30 +105,26 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Pull the model
+	// Note: Pull() streams progress to the response writer, so after calling Pull(),
+	// headers have already been sent. We must NOT call http.Error() after this point
+	// as it would cause "superfluous response.WriteHeader call" and corrupt the HTTP/2 stream.
 	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
 		sanitizedFrom := utils.SanitizeForLog(request.From, -1)
+		sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			h.log.Infof("Request canceled/timed out while pulling model %q", sanitizedFrom)
 			return
 		}
 		if errors.Is(err, registry.ErrInvalidReference) {
-			h.log.Warnf("Invalid model reference %q: %v", sanitizedFrom, err)
-			http.Error(w, "Invalid model reference", http.StatusBadRequest)
+			h.log.Warnf("Invalid model reference %q: %s", sanitizedFrom, sanitizedErr)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			h.log.Warnf("Unauthorized to pull model %q: %v", sanitizedFrom, err)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			h.log.Warnf("Unauthorized to pull model %q: %s", sanitizedFrom, sanitizedErr)
 			return
 		}
-		if errors.Is(err, registry.ErrModelNotFound) {
-			h.log.Warnf("Failed to pull model %q: %v", sanitizedFrom, err)
-			http.Error(w, "Model not found", http.StatusNotFound)
-			return
-		}
-		// Note: ErrUnsupportedFormat is no longer treated as an error - it's a warning
-		// that's sent to the client via the progress stream
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Log any other errors - we can't send HTTP errors as headers are already sent
+		h.log.Warnf("Failed to pull model %q: %s", sanitizedFrom, sanitizedErr)
 		return
 	}
 }
