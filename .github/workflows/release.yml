@@ -40,6 +40,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Summary
+        run: |
+          echo "## Release Parameters" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Tag | \`${{ inputs.releaseTag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Push Latest | \`${{ inputs.pushLatest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| llama-server Version | \`${{ inputs.llamaServerVersion }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| vLLM Version | \`${{ inputs.vllmVersion }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| SGLang Version | \`${{ inputs.sglangVersion }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build MUSA/CANN | \`${{ inputs.buildMusaCann }}\` |" >> $GITHUB_STEP_SUMMARY
+
       - name: Checkout code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
