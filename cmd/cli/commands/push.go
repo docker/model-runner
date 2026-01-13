@@ -21,12 +21,7 @@ func newPushCmd() *cobra.Command {
 
 func pushModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	printer := asPrinter(cmd)
-	response, progressShown, err := desktopClient.Push(model, printer)
-
-	// Add a newline before any output (success or error) if progress was shown.
-	if progressShown {
-		cmd.Println()
-	}
+	response, _, err := desktopClient.Push(model, printer)
 
 	if err != nil {
 		return handleClientError(err, "Failed to push model")
