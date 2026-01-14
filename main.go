@@ -76,6 +76,7 @@ func main() {
 	vllmServerPath := os.Getenv("VLLM_SERVER_PATH")
 	sglangServerPath := os.Getenv("SGLANG_SERVER_PATH")
 	mlxServerPath := os.Getenv("MLX_SERVER_PATH")
+	diffusersServerPath := os.Getenv("DIFFUSERS_SERVER_PATH")
 
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
@@ -156,12 +157,18 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
 	}
 
+	diffusersBackend, err := initDiffusersBackend(log, modelManager, diffusersServerPath)
+	if err != nil {
+		log.Fatalf("unable to initialize diffusers backend: %v", err)
+	}
+
 	backends := map[string]inference.Backend{
 		llamacpp.Name: llamaCppBackend,
 		mlx.Name:      mlxBackend,
 		sglang.Name:   sglangBackend,
 	}
 	registerVLLMBackend(backends, vllmBackend)
+	registerDiffusersBackend(backends, diffusersBackend)
 
 	scheduler := scheduling.NewScheduler(
 		log,
