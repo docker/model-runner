@@ -21,28 +21,17 @@ DOCKER_BUILD_ARGS := \
 	--target $(DOCKER_TARGET) \
 	-t $(DOCKER_IMAGE)
 
-# Model distribution tool configuration
-MDL_TOOL_NAME := model-distribution-tool
-STORE_PATH ?= ./model-store
-SOURCE ?=
-TAG ?=
-LICENSE ?=
-
 # Test configuration
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint model-distribution-tool
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint
 # Default target
 .DEFAULT_GOAL := build
 
 # Build the Go application
 build:
 	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
-
-# Build model-distribution-tool
-model-distribution-tool:
-	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(MDL_TOOL_NAME) ./cmd/mdltool
 
 # Run the application locally
 run: build
@@ -56,7 +45,6 @@ run: build
 # Clean build artifacts
 clean:
 	rm -f $(APP_NAME)
-	rm -f $(MDL_TOOL_NAME)
 	rm -f model-runner.sock
 	rm -rf $(MODELS_PATH)
 
@@ -145,40 +133,10 @@ docker-run-impl:
 	DEBUG="${DEBUG}" \
 	scripts/docker-run.sh
 
-# Model distribution tool operations
-mdl-pull: model-distribution-tool
-	@echo "Pulling model from $(TAG)..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) pull $(TAG)
-
-mdl-package: model-distribution-tool
-	@echo "Packaging model $(SOURCE) to $(TAG)..."
-	./$(MDL_TOOL_NAME) package --tag $(TAG) $(if $(LICENSE),--licenses $(LICENSE)) $(SOURCE)
-
-mdl-list: model-distribution-tool
-	@echo "Listing models..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) list
-
-mdl-get: model-distribution-tool
-	@echo "Getting model $(TAG)..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) get $(TAG)
-
-mdl-get-path: model-distribution-tool
-	@echo "Getting path for model $(TAG)..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) get-path $(TAG)
-
-mdl-rm: model-distribution-tool
-	@echo "Removing model $(TAG)..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) rm $(TAG)
-
-mdl-tag: model-distribution-tool
-	@echo "Tagging model $(SOURCE) as $(TAG)..."
-	./$(MDL_TOOL_NAME) --store-path $(STORE_PATH) tag $(SOURCE) $(TAG)
-
 # Show help
 help:
 	@echo "Available targets:"
 	@echo "  build				- Build the Go application"
-	@echo "  model-distribution-tool	- Build the model distribution tool"
 	@echo "  run				- Run the application locally"
 	@echo "  clean				- Clean build artifacts"
 	@echo "  test				- Run tests"
@@ -195,15 +153,6 @@ help:
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
 	@echo "  help				- Show this help message"
 	@echo ""
-	@echo "Model distribution tool targets:"
-	@echo "  mdl-pull			- Pull a model (TAG=registry/model:tag)"
-	@echo "  mdl-package			- Package and push a model (SOURCE=path/to/model.gguf TAG=registry/model:tag LICENSE=path/to/license.txt)"
-	@echo "  mdl-list			- List all models"
-	@echo "  mdl-get			- Get model info (TAG=registry/model:tag)"
-	@echo "  mdl-get-path			- Get model path (TAG=registry/model:tag)"
-	@echo "  mdl-rm			- Remove a model (TAG=registry/model:tag)"
-	@echo "  mdl-tag			- Tag a model (SOURCE=registry/model:tag TAG=registry/model:newtag)"
-	@echo ""
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"
@@ -212,10 +161,3 @@ help:
 	@echo "  make run LLAMA_ARGS=\"--verbose --jinja -ngl 999 --ctx-size 2048\""
 	@echo "  make run LOCAL_LLAMA=1"
 	@echo "  make docker-run LLAMA_ARGS=\"--verbose --jinja -ngl 999 --threads 4 --ctx-size 2048\""
-	@echo ""
-	@echo "Model distribution tool examples:"
-	@echo "  make mdl-pull TAG=registry.example.com/models/llama:v1.0"
-	@echo "  make mdl-package SOURCE=./model.gguf TAG=registry.example.com/models/llama:v1.0 LICENSE=./license.txt"
-	@echo "  make mdl-package SOURCE=./qwen2.5-3b-instruct TAG=registry.example.com/models/qwen:v1.0"
-	@echo "  make mdl-list"
-	@echo "  make mdl-rm TAG=registry.example.com/models/llama:v1.0"
