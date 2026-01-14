@@ -743,8 +743,8 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		safeWriter = &syncWriter{w: w}
 	}
 
-	var completed int64
 	for _, layer := range layers {
+		var completed int64
 		digest, err := layer.Digest()
 		if err != nil {
 			return fmt.Errorf("getting layer digest: %w", err)
@@ -790,10 +790,13 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 						Complete: completed,
 						Total:    size,
 					}
+					closeProgress(progressChan)
+					closeReporter(pr)
 				}
 				continue
 			}
 			closeProgress(progressChan)
+			closeReporter(pr)
 			return fmt.Errorf("pushing layer: %w", err)
 		}
 
@@ -808,6 +811,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			cw.Close()
 			rc.Close()
 			closeProgress(progressChan)
+			closeReporter(pr)
 			return fmt.Errorf("writing layer: %w", err)
 		}
 
@@ -816,6 +820,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			rc.Close()
 			if !errdefs.IsAlreadyExists(err) && !strings.Contains(err.Error(), "already exists") {
 				closeProgress(progressChan)
+				closeReporter(pr)
 				return fmt.Errorf("committing layer: %w", err)
 			}
 			// If it already exists, we still want to update progress
@@ -837,6 +842,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			}
 		}
 		closeProgress(progressChan)
+		closeReporter(pr)
 		cw.Close()
 		rc.Close()
 	}
@@ -930,6 +936,15 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 func closeProgress(ch chan<- oci.Update) {
 	if ch != nil {
 		close(ch)
+	}
+}
+
+// closeReporter safely closes the progress reporter if not nil
+func closeReporter(pr *progress.Reporter) {
+	if pr != nil {
+		if waitErr := pr.Wait(); waitErr != nil {
+			fmt.Printf("reporter finished with non-fatal error: %v\n", waitErr)
+		}
 	}
 }
 
