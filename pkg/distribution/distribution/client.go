@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -40,13 +39,9 @@ type Option func(*options)
 
 // options holds the configuration for a new Client
 type options struct {
-	storeRootPath string
-	logger        *logrus.Entry
-	transport     http.RoundTripper
-	userAgent     string
-	username      string
-	password      string
-	plainHTTP     bool
+	storeRootPath  string
+	logger         *logrus.Entry
+	registryClient *registry.Client
 }
 
 // WithStoreRootPath sets the store root path
@@ -67,46 +62,18 @@ func WithLogger(logger *logrus.Entry) Option {
 	}
 }
 
-// WithTransport sets the HTTP transport to use when pulling and pushing models.
-func WithTransport(transport http.RoundTripper) Option {
+// WithRegistryClient sets the registry client to use for pulling and pushing models.
+func WithRegistryClient(client *registry.Client) Option {
 	return func(o *options) {
-		if transport != nil {
-			o.transport = transport
+		if client != nil {
+			o.registryClient = client
 		}
-	}
-}
-
-// WithUserAgent sets the User-Agent header to use when pulling and pushing models.
-func WithUserAgent(ua string) Option {
-	return func(o *options) {
-		if ua != "" {
-			o.userAgent = ua
-		}
-	}
-}
-
-// WithRegistryAuth sets the registry authentication credentials
-func WithRegistryAuth(username, password string) Option {
-	return func(o *options) {
-		if username != "" && password != "" {
-			o.username = username
-			o.password = password
-		}
-	}
-}
-
-// WithPlainHTTP allows connecting to registries using plain HTTP instead of HTTPS.
-func WithPlainHTTP(plain bool) Option {
-	return func(o *options) {
-		o.plainHTTP = plain
 	}
 }
 
 func defaultOptions() *options {
 	return &options{
-		logger:    logrus.NewEntry(logrus.StandardLogger()),
-		transport: registry.DefaultTransport,
-		userAgent: registry.DefaultUserAgent,
+		logger: logrus.NewEntry(logrus.StandardLogger()),
 	}
 }
 
@@ -128,23 +95,16 @@ func NewClient(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("initializing store: %w", err)
 	}
 
-	// Create registry client options
-	registryOpts := []registry.ClientOption{
-		registry.WithTransport(options.transport),
-		registry.WithUserAgent(options.userAgent),
-		registry.WithPlainHTTP(options.plainHTTP),
-	}
-
-	// Add auth if credentials are provided
-	if options.username != "" && options.password != "" {
-		registryOpts = append(registryOpts, registry.WithAuthConfig(options.username, options.password))
+	registryClient := options.registryClient
+	if registryClient == nil {
+		registryClient = registry.NewClient()
 	}
 
 	options.logger.Infoln("Successfully initialized store")
 	return &Client{
 		store:    s,
 		log:      options.logger,
-		registry: registry.NewClient(registryOpts...),
+		registry: registryClient,
 	}, nil
 }
 

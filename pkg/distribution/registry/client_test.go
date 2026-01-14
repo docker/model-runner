@@ -136,3 +136,28 @@ func resetOnceForTest() {
 	once = sync.Once{}
 	defaultRegistryOpts = nil
 }
+
+func TestWithTransportNil(t *testing.T) {
+	client := NewClient(WithTransport(nil))
+
+	if client.transport == nil {
+		t.Error("WithTransport with nil changed transport to nil")
+	}
+
+	if client.transport != DefaultTransport {
+		t.Error("WithTransport with nil changed the transport from default")
+	}
+}
+
+func TestWithUserAgentEmpty(t *testing.T) {
+	client := NewClient(WithUserAgent(""))
+
+	if client.userAgent == "" {
+		t.Error("WithUserAgent with empty string changed user agent to empty")
+	}
+
+	if client.userAgent != DefaultUserAgent {
+		t.Errorf("WithUserAgent with empty string changed the user agent: got %q, want %q",
+			client.userAgent, DefaultUserAgent)
+	}
+}
