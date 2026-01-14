@@ -291,6 +291,10 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 			registry.WithUserAgent("docker-model-cli/" + desktop.Version),
 		).NewTarget(opts.tag)
 	} else {
+		// Ensure standalone runner is available when loading locally
+		if _, err := ensureStandaloneRunnerAvailable(ctx, asPrinter(cmd), false); err != nil {
+			return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+		}
 		target, err = newModelRunnerTarget(client, opts.tag)
 	}
 	if err != nil {

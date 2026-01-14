@@ -101,7 +101,6 @@ func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 		newStatusCmd(),
 		newPullCmd(),
 		newPushCmd(),
-		newPackagedCmd(),
 		newListCmd(),
 		newLogsCmd(),
 		newRemoveCmd(),
@@ -121,6 +120,9 @@ func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 
 	// run command handles standalone runner initialization itself (needs debug flag)
 	rootCmd.AddCommand(newRunCmd())
+
+	// package command handles standalone runner initialization itself (only when not pushing)
+	rootCmd.AddCommand(newPackagedCmd())
 
 	return rootCmd
 }
