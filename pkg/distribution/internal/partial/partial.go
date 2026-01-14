@@ -124,6 +124,10 @@ func SafetensorsPaths(i WithLayers) ([]string, error) {
 	return layerPathsByMediaType(i, types.MediaTypeSafetensors)
 }
 
+func DDUFPaths(i WithLayers) ([]string, error) {
+	return layerPathsByMediaType(i, types.MediaTypeDDUF)
+}
+
 func ConfigArchivePath(i WithLayers) (string, error) {
 	paths, err := layerPathsByMediaType(i, types.MediaTypeVLLMConfigArchive)
 	if err != nil {

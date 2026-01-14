@@ -60,6 +60,8 @@ func DetectFromPath(path string) (Format, error) {
 		return Get(types.FormatGGUF)
 	case files.FileTypeSafetensors:
 		return Get(types.FormatSafetensors)
+	case files.FileTypeDDUF:
+		return Get(types.FormatDiffusers)
 	case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
 		return nil, fmt.Errorf("unable to detect format from path: %s (file type: %s)", utils.SanitizeForLog(path), ft)
 	}

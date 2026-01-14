@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -28,6 +29,7 @@ var (
 	ErrNotImplemented    = errors.New("not implemented")
 	ErrDiffusersNotFound = errors.New("diffusers package not installed")
 	ErrPythonNotFound    = errors.New("python3 not found in PATH")
+	ErrNoDDUFFile        = errors.New("no DDUF file found in model bundle")
 )
 
 // diffusers is the diffusers-based backend implementation for image generation.
@@ -72,9 +74,9 @@ func (d *diffusers) Name() string {
 }
 
 // UsesExternalModelManagement implements inference.Backend.UsesExternalModelManagement.
-// Diffusers uses the shared model manager but also supports loading models directly from HuggingFace.
+// Diffusers uses the shared model manager with bundled DDUF files.
 func (d *diffusers) UsesExternalModelManagement() bool {
-	return true // For now, we'll use external model management (HuggingFace downloads)
+	return false // Use the bundle system for DDUF files
 }
 
 // UsesTCP implements inference.Backend.UsesTCP.
@@ -131,7 +133,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 }
 
 // Run implements inference.Backend.Run.
-func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
+func (d *diffusers) Run(ctx context.Context, socket, model string, _ string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
 	if !platform.SupportsDiffusers() {
 		d.log.Warn("diffusers backend is not yet supported on this platform")
 		return ErrNotImplemented
@@ -142,7 +144,21 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("diffusers backend only supports image-generation mode, got %s", mode)
 	}
 
-	args, err := d.config.GetArgs(model, socket, mode, backendConfig)
+	// Get the model bundle to find the DDUF file path
+	bundle, err := d.modelManager.GetBundle(model)
+	if err != nil {
+		return fmt.Errorf("failed to get model bundle for %s: %w", model, err)
+	}
+
+	// Get the DDUF file path from the bundle
+	ddufPath := bundle.DDUFPath()
+	if ddufPath == "" {
+		return fmt.Errorf("%w: model %s", ErrNoDDUFFile, model)
+	}
+
+	d.log.Infof("Loading DDUF file from: %s", ddufPath)
+
+	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get diffusers arguments: %w", err)
 	}
@@ -154,8 +170,59 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", sanitizedModel)
 	}
 
+	d.log.Infof("Diffusers args: %v", args)
+
 	if d.pythonPath == "" {
-		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install?")
+		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
+	}
+
+	sandboxPath := ""
+	if _, err := os.Stat(diffusersDir); err == nil {
+		sandboxPath = diffusersDir
+	}
+
+	return backends.RunBackend(ctx, backends.RunnerConfig{
+		BackendName:     "Diffusers",
+		Socket:          socket,
+		BinaryPath:      d.pythonPath,
+		SandboxPath:     sandboxPath,
+		SandboxConfig:   "",
+		Args:            args,
+		Logger:          d.log,
+		ServerLogWriter: d.serverLog.Writer(),
+	})
+}
+
+// RunWithBundle implements inference.BackendWithBundle.RunWithBundle.
+// This method is called when the backend uses the bundle system.
+func (d *diffusers) RunWithBundle(ctx context.Context, socket string, bundle types.ModelBundle, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
+	if !platform.SupportsDiffusers() {
+		d.log.Warn("diffusers backend is not yet supported on this platform")
+		return ErrNotImplemented
+	}
+
+	// For diffusers, we support image generation mode
+	if mode != inference.BackendModeImageGeneration {
+		return fmt.Errorf("diffusers backend only supports image-generation mode, got %s", mode)
+	}
+
+	// Get the DDUF file path from the bundle
+	ddufPath := bundle.DDUFPath()
+	if ddufPath == "" {
+		return ErrNoDDUFFile
+	}
+
+	d.log.Infof("Loading DDUF file from bundle: %s", ddufPath)
+
+	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get diffusers arguments: %w", err)
+	}
+
+	d.log.Infof("Diffusers args: %v", args)
+
+	if d.pythonPath == "" {
+		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
 	}
 
 	sandboxPath := ""

@@ -9,6 +9,7 @@ import argparse
 import base64
 import io
 import logging
+import os
 import time
 from typing import Optional, List, Literal
 
@@ -72,8 +73,52 @@ def parse_size(size: str) -> tuple[int, int]:
         raise ValueError(f"Invalid size format '{size}'. Expected format like '512x512': {e}")
 
 
+def is_dduf_file(path: str) -> bool:
+    """Check if the given path is a DDUF file"""
+    return path.lower().endswith('.dduf') and os.path.isfile(path)
+
+
+def load_model_from_dduf(dduf_path: str, device: str, dtype: torch.dtype) -> DiffusionPipeline:
+    """Load a diffusion model from a DDUF (Diffusers Unified Format) file"""
+    logger.info(f"Loading model from DDUF file: {dduf_path}")
+    
+    try:
+        # Try importing DDUFFile - available in diffusers >= 0.32.0
+        from huggingface_hub import DDUFFile
+        
+        # Open the DDUF file
+        dduf_file = DDUFFile(dduf_path)
+        
+        # Load the pipeline from the DDUF file
+        # The DDUF file contains everything needed for the pipeline
+        pipe = DiffusionPipeline.from_pretrained(
+            dduf_path,
+            dduf_file=dduf_file,
+            torch_dtype=dtype,
+        )
+        
+        pipe = pipe.to(device)
+        logger.info(f"Model loaded successfully from DDUF on {device}")
+        return pipe
+        
+    except ImportError:
+        logger.warning("DDUFFile not available. Trying alternative loading method...")
+        # Fall back to trying to load directly
+        # Some versions of diffusers support loading DDUF directly
+        try:
+            pipe = DiffusionPipeline.from_pretrained(
+                dduf_path,
+                torch_dtype=dtype,
+            )
+            pipe = pipe.to(device)
+            logger.info(f"Model loaded successfully from DDUF (direct) on {device}")
+            return pipe
+        except Exception as e:
+            raise RuntimeError(f"Failed to load DDUF file: {e}. Please ensure diffusers >= 0.32.0 is installed.")
+
+
 def load_model(model_path: str) -> DiffusionPipeline:
-    """Load a diffusion model from the given path or HuggingFace model ID"""
+    """Load a diffusion model from the given path, DDUF file, or HuggingFace model ID"""
     global pipeline, current_model
     
     if pipeline is not None and current_model == model_path:
@@ -95,6 +140,16 @@ def load_model(model_path: str) -> DiffusionPipeline:
         device = "cpu"
         dtype = torch.float32
         logger.info("Using CPU device with float32")
+    
+    # Check if this is a DDUF file
+    if is_dduf_file(model_path):
+        pipeline = load_model_from_dduf(model_path, device, dtype)
+        current_model = model_path
+        return pipeline
+    
+    # Check if this is a directory containing a model
+    if os.path.isdir(model_path):
+        logger.info(f"Loading model from directory: {model_path}")
     
     try:
         # Try to load using AutoPipelineForText2Image which handles most model types
@@ -288,7 +343,7 @@ async def startup_event():
 def main():
     """Main entry point for the diffusers server"""
     parser = argparse.ArgumentParser(description="Diffusers Server - OpenAI Images API compatible server")
-    parser.add_argument("--model-path", type=str, required=True, help="Path to the diffusion model or HuggingFace model ID")
+    parser.add_argument("--model-path", type=str, required=True, help="Path to the diffusion model, DDUF file, or HuggingFace model ID")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--served-model-name", type=str, default=None, help="Name to serve the model as")

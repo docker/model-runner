@@ -8,6 +8,7 @@ type Model interface {
 	ID() (string, error)
 	GGUFPaths() ([]string, error)
 	SafetensorsPaths() ([]string, error)
+	DDUFPaths() ([]string, error)
 	ConfigArchivePath() (string, error)
 	MMPROJPath() (string, error)
 	Config() (ModelConfig, error)
@@ -27,6 +28,7 @@ type ModelBundle interface {
 	RootDir() string
 	GGUFPath() string
 	SafetensorsPath() string
+	DDUFPath() string
 	ChatTemplatePath() string
 	MMPROJPath() string
 	RuntimeConfig() ModelConfig
