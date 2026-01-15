@@ -50,7 +50,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	case inference.BackendModeEmbedding:
 		args = append(args, "--is-embedding")
 	case inference.BackendModeReranking:
-	default:
+		// SGLang does not have a specific flag for reranking
+	case inference.BackendModeImageGeneration:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}
 

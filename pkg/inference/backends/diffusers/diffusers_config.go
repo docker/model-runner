@@ -40,7 +40,7 @@ func (c *Config) GetArgs(model string, socket string, mode inference.BackendMode
 	switch mode {
 	case inference.BackendModeImageGeneration:
 		// Default mode for diffusers - image generation
-	default:
+	case inference.BackendModeCompletion, inference.BackendModeEmbedding, inference.BackendModeReranking:
 		return nil, fmt.Errorf("unsupported backend mode %q for diffusers", mode)
 	}
 
