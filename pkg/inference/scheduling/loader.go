@@ -288,6 +288,7 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeCompletion)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeEmbedding)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeReranking)
+				l.evictRunner(unload.Backend, modelID, inference.BackendModeImageGeneration)
 			}
 			return len(l.runners)
 		}
