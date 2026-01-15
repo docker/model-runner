@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/docker/go-units"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -62,16 +61,10 @@ func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 	return types.Config{
 		Format:       types.FormatDiffusers,
 		Architecture: "diffusers",
-		Size:         formatDDUFSize(totalSize),
+		Size:         formatSize(totalSize),
 		Diffusers: map[string]string{
 			"layout":    "dduf",
 			"dduf_file": ddufFile,
 		},
 	}, nil
-}
-
-// formatDDUFSize converts bytes to human-readable format matching Docker's style
-// Returns format like "256MB" (decimal units, no space, matching `docker images`)
-func formatDDUFSize(bytes int64) string {
-	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }
