@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
-	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 )
 
@@ -168,54 +168,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", modelRef)
 	}
 
-	d.log.Infof("Diffusers args: %v", args)
-
-	if d.pythonPath == "" {
-		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
-	}
-
-	sandboxPath := ""
-	if _, err := os.Stat(diffusersDir); err == nil {
-		sandboxPath = diffusersDir
-	}
-
-	return backends.RunBackend(ctx, backends.RunnerConfig{
-		BackendName:     "Diffusers",
-		Socket:          socket,
-		BinaryPath:      d.pythonPath,
-		SandboxPath:     sandboxPath,
-		SandboxConfig:   "",
-		Args:            args,
-		Logger:          d.log,
-		ServerLogWriter: d.serverLog.Writer(),
-	})
-}
-
-// RunWithBundle implements inference.BackendWithBundle.RunWithBundle.
-// This method is called when the backend uses the bundle system.
-func (d *diffusers) RunWithBundle(ctx context.Context, socket string, bundle types.ModelBundle, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
-	if !platform.SupportsDiffusers() {
-		d.log.Warn("diffusers backend is not yet supported on this platform")
-		return ErrNotImplemented
-	}
-
-	// For diffusers, we support image generation mode
-	if mode != inference.BackendModeImageGeneration {
-		return fmt.Errorf("diffusers backend only supports image-generation mode, got %s", mode)
-	}
-
-	// Get the DDUF file path from the bundle
-	ddufPath := bundle.DDUFPath()
-	if ddufPath == "" {
-		return ErrNoDDUFFile
-	}
-
-	d.log.Infof("Loading DDUF file from bundle: %s", ddufPath)
-
-	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
-	if err != nil {
-		return fmt.Errorf("failed to get diffusers arguments: %w", err)
-	}
+	d.log.Infof("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " ")))
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
