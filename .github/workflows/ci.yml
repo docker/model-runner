@@ -60,6 +60,3 @@ jobs:
 
       - name: validate
         run: make validate
-
-      - name: model-distribution # TODO: Create a single Makefile for the monorepo
-        run: make -C ./pkg/distribution/ all

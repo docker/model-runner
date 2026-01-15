@@ -32,6 +32,14 @@ var (
 	testGGUFFile = filepath.Join("..", "assets", "dummy.gguf")
 )
 
+// newTestClient creates a new client configured for testing with plain HTTP enabled.
+func newTestClient(storeRootPath string) (*Client, error) {
+	return NewClient(
+		WithStoreRootPath(storeRootPath),
+		WithRegistryClient(mdregistry.NewClient(mdregistry.WithPlainHTTP(true))),
+	)
+}
+
 func TestClientPullModel(t *testing.T) {
 	// Set up test registry
 	server := httptest.NewServer(testregistry.New())
@@ -50,7 +58,7 @@ func TestClientPullModel(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -152,7 +160,7 @@ func TestClientPullModel(t *testing.T) {
 		defer os.RemoveAll(tempDir)
 
 		// Create client with plainHTTP for test registry
-		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -205,7 +213,7 @@ func TestClientPullModel(t *testing.T) {
 		defer os.RemoveAll(tempDir)
 
 		// Create client with plainHTTP for test registry
-		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -309,7 +317,7 @@ func TestClientPullModel(t *testing.T) {
 		defer os.RemoveAll(tempDir)
 
 		// Create client with plainHTTP for test registry
-		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -460,7 +468,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 		defer os.RemoveAll(clientTempDir)
 
-		testClient, err := NewClient(WithStoreRootPath(clientTempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(clientTempDir)
 		if err != nil {
 			t.Fatalf("Failed to create test client: %v", err)
 		}
@@ -495,7 +503,7 @@ func TestClientPullModel(t *testing.T) {
 		defer os.RemoveAll(tempDir)
 
 		// Create client with plainHTTP for test registry
-		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -569,7 +577,7 @@ func TestClientPullModel(t *testing.T) {
 		defer os.RemoveAll(tempDir)
 
 		// Create client with plainHTTP for test registry
-		testClient, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+		testClient, err := newTestClient(tempDir)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -605,7 +613,7 @@ func TestClientGetModel(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -644,7 +652,7 @@ func TestClientGetModelNotFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -665,7 +673,7 @@ func TestClientListModels(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -746,7 +754,7 @@ func TestClientGetStorePath(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -844,44 +852,14 @@ func TestWithFunctionsNilChecks(t *testing.T) {
 		}
 	})
 
-	// Test WithTransport with nil
-	t.Run("WithTransport nil", func(t *testing.T) {
-		// Create options with default transport
+	t.Run("WithRegistryClient nil", func(t *testing.T) {
 		opts := defaultOptions()
-		defaultTransport := opts.transport
+		opts.registryClient = mdregistry.NewClient()
 
-		// Try to override with nil
-		WithTransport(nil)(opts)
+		WithRegistryClient(nil)(opts)
 
-		// Verify the transport wasn't changed to nil
-		if opts.transport == nil {
-			t.Error("WithTransport with nil changed transport to nil")
-		}
-
-		// Verify it's still the default transport
-		if opts.transport != defaultTransport {
-			t.Error("WithTransport with nil changed the transport")
-		}
-	})
-
-	// Test WithUserAgent with empty string
-	t.Run("WithUserAgent empty string", func(t *testing.T) {
-		// Create options with default user agent
-		opts := defaultOptions()
-		defaultUA := opts.userAgent
-
-		// Try to override with empty string
-		WithUserAgent("")(opts)
-
-		// Verify the user agent wasn't changed to empty
-		if opts.userAgent == "" {
-			t.Error("WithUserAgent with empty string changed user agent to empty")
-		}
-
-		// Verify it's still the default user agent
-		if opts.userAgent != defaultUA {
-			t.Errorf("WithUserAgent with empty string changed the user agent: got %q, want %q",
-				opts.userAgent, defaultUA)
+		if opts.registryClient == nil {
+			t.Error("WithRegistryClient with nil changed registryClient to nil")
 		}
 	})
 }
@@ -895,7 +873,7 @@ func TestNewReferenceError(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -921,7 +899,7 @@ func TestPush(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -989,7 +967,7 @@ func TestPushProgress(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1079,7 +1057,7 @@ func TestTag(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1140,7 +1118,7 @@ func TestTagNotFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1160,7 +1138,7 @@ func TestClientPushModelNotFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1179,7 +1157,7 @@ func TestIsModelInStoreNotFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1200,7 +1178,7 @@ func TestIsModelInStoreFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create client with plainHTTP for test registry
-	client, err := NewClient(WithStoreRootPath(tempDir), WithPlainHTTP(true))
+	client, err := newTestClient(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

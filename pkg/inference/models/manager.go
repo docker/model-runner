@@ -38,26 +38,24 @@ type Manager struct {
 
 // NewManager creates a new model models with the provided clients.
 func NewManager(log logging.Logger, c ClientConfig) *Manager {
+	// Create the registry client (shared between distribution and direct registry access).
+	registryClient := registry.NewClient(
+		registry.WithTransport(c.Transport),
+		registry.WithUserAgent(c.UserAgent),
+		registry.WithPlainHTTP(c.PlainHTTP),
+	)
+
 	// Create the model distribution client.
 	distributionClient, err := distribution.NewClient(
 		distribution.WithStoreRootPath(c.StoreRootPath),
 		distribution.WithLogger(c.Logger),
-		distribution.WithTransport(c.Transport),
-		distribution.WithUserAgent(c.UserAgent),
-		distribution.WithPlainHTTP(c.PlainHTTP),
+		distribution.WithRegistryClient(registryClient),
 	)
 	if err != nil {
 		log.Errorf("Failed to create distribution client: %v", err)
 		// Continue without distribution client. The model manager will still
 		// respond to requests, but may return errors if the client is required.
 	}
-
-	// Create the model registry client.
-	registryClient := registry.NewClient(
-		registry.WithTransport(c.Transport),
-		registry.WithUserAgent(c.UserAgent),
-		registry.WithPlainHTTP(c.PlainHTTP),
-	)
 
 	tokens := make(chan struct{}, maximumConcurrentModelPulls)
 

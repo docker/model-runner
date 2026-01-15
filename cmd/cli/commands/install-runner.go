@@ -79,6 +79,11 @@ func inspectStandaloneRunner(container container.Summary) *standaloneRunner {
 // use to initialize a default standalone model runner. It is a no-op in
 // unsupported contexts or if automatic installs have been disabled.
 func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.StatusPrinter, debug bool) (*standaloneRunner, error) {
+	// If the model runner context wasn't initialized, then don't do anything.
+	if modelRunner == nil {
+		return nil, nil
+	}
+
 	// If we're not in a supported model runner context, then don't do anything.
 	engineKind := modelRunner.EngineKind()
 	standaloneSupported := engineKind == types.ModelRunnerEngineKindMoby ||

@@ -92,12 +92,17 @@ func (k *defaultKeychain) Resolve(r Resource) (Authenticator, error) {
 	registry := r.RegistryStr()
 
 	// Try environment variables first
-	if username := os.Getenv("DOCKER_HUB_USER"); username != "" {
-		if password := os.Getenv("DOCKER_HUB_PASSWORD"); password != "" {
-			return &Basic{
-				Username: username,
-				Password: password,
-			}, nil
+	for _, envPair := range []struct{ user, pass string }{
+		{"DOCKER_USERNAME", "DOCKER_PASSWORD"},
+		{"DOCKER_HUB_USER", "DOCKER_HUB_PASSWORD"},
+	} {
+		if username := os.Getenv(envPair.user); username != "" {
+			if password := os.Getenv(envPair.pass); password != "" {
+				return &Basic{
+					Username: username,
+					Password: password,
+				}, nil
+			}
 		}
 	}
 

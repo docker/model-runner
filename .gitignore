@@ -1,21 +1,12 @@
 .idea/
-model-distribution-tool
 model-runner
 model-runner.sock
 docker-model
 # Default MODELS_PATH in Makefile
 models-store/
-# Default MODELS_PATH in mdltool
-model-store/
 # Directory where we store the updated llama.cpp
 updated-inference/
 vendor/
-
-# monorepo migration
-# model-distribution
-pkg/distribution/bin/
-/parallelget
-/cli
 
 llamacpp/build
 llamacpp/install
