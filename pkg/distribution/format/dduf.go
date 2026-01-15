@@ -1,8 +1,11 @@
 package format
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 
+	"github.com/docker/go-units"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -40,11 +43,18 @@ func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 		return types.Config{Format: types.FormatDiffusers}, nil
 	}
 
-	// Extract the filename for metadata
-	ddufFile := ""
-	if len(paths) > 0 {
-		ddufFile = filepath.Base(paths[0])
+	// Calculate total size across all files
+	var totalSize int64
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return types.Config{}, fmt.Errorf("failed to stat file %s: %w", path, err)
+		}
+		totalSize += info.Size()
 	}
+
+	// Extract the filename for metadata
+	ddufFile := filepath.Base(paths[0])
 
 	// Return config with diffusers-specific metadata
 	// In the future, we could extract model_index.json from the DDUF archive
@@ -52,9 +62,16 @@ func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 	return types.Config{
 		Format:       types.FormatDiffusers,
 		Architecture: "diffusers",
+		Size:         formatDDUFSize(totalSize),
 		Diffusers: map[string]string{
 			"layout":    "dduf",
 			"dduf_file": ddufFile,
 		},
 	}, nil
+}
+
+// formatDDUFSize converts bytes to human-readable format matching Docker's style
+// Returns format like "256MB" (decimal units, no space, matching `docker images`)
+func formatDDUFSize(bytes int64) string {
+	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }
