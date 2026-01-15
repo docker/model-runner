@@ -21,5 +21,6 @@ func SupportsSGLang() bool {
 // SupportsDiffusers returns true if diffusers is supported on the current platform.
 // Diffusers is supported on Linux (for Docker/CUDA) and macOS (for MPS/Apple Silicon).
 func SupportsDiffusers() bool {
-	return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
+	//return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
+	return runtime.GOOS == "linux" // Support for macOS disabled for now until we design a solution to distribute it via Docker Desktop.
 }
