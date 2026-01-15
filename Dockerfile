@@ -177,14 +177,11 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     "uvicorn[standard]" \
     "pillow"
 
-# Determine the Python site-packages directory dynamically and copy the Python server code
-RUN PYTHON_SITE_PACKAGES=$(/opt/diffusers-env/bin/python -c "import site; print(site.getsitepackages()[0])") && \
-    mkdir -p "$PYTHON_SITE_PACKAGES/diffusers_server"
-
-# Copy Python server code (needs to be done as root then chown, or use a multi-stage approach)
+# Copy Python server code
 USER root
 COPY python/diffusers_server /tmp/diffusers_server/
 RUN PYTHON_SITE_PACKAGES=$(/opt/diffusers-env/bin/python -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p "$PYTHON_SITE_PACKAGES/diffusers_server" && \
     cp -r /tmp/diffusers_server/* "$PYTHON_SITE_PACKAGES/diffusers_server/" && \
     chown -R modelrunner:modelrunner "$PYTHON_SITE_PACKAGES/diffusers_server/" && \
     rm -rf /tmp/diffusers_server
