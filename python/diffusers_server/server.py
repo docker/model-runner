@@ -83,17 +83,21 @@ def load_model_from_dduf(dduf_path: str, device: str, dtype: torch.dtype) -> Dif
     logger.info(f"Loading model from DDUF file: {dduf_path}")
     
     try:
-        # Try importing DDUFFile - available in diffusers >= 0.32.0
-        from huggingface_hub import DDUFFile
+        # Get the directory and filename from the DDUF path
+        # DiffusionPipeline.from_pretrained() expects:
+        #   - First arg: directory containing the DDUF file (or repo ID for HF Hub)
+        #   - dduf_file: the filename (string) of the DDUF file within that directory
+        dduf_dir = os.path.dirname(dduf_path)
+        dduf_filename = os.path.basename(dduf_path)
         
-        # Open the DDUF file
-        dduf_file = DDUFFile(dduf_path)
+        logger.info(f"Using directory: {dduf_dir}")
+        logger.info(f"Using DDUF filename: {dduf_filename}")
         
         # Load the pipeline from the DDUF file
-        # The DDUF file contains everything needed for the pipeline
+        # The diffusers library will internally read the DDUF file and extract components
         pipe = DiffusionPipeline.from_pretrained(
-            dduf_path,
-            dduf_file=dduf_file,
+            dduf_dir,
+            dduf_file=dduf_filename,
             torch_dtype=dtype,
         )
         
@@ -101,20 +105,9 @@ def load_model_from_dduf(dduf_path: str, device: str, dtype: torch.dtype) -> Dif
         logger.info(f"Model loaded successfully from DDUF on {device}")
         return pipe
         
-    except ImportError:
-        logger.warning("DDUFFile not available. Trying alternative loading method...")
-        # Fall back to trying to load directly
-        # Some versions of diffusers support loading DDUF directly
-        try:
-            pipe = DiffusionPipeline.from_pretrained(
-                dduf_path,
-                torch_dtype=dtype,
-            )
-            pipe = pipe.to(device)
-            logger.info(f"Model loaded successfully from DDUF (direct) on {device}")
-            return pipe
-        except Exception as e:
-            raise RuntimeError(f"Failed to load DDUF file: {e}. Please ensure diffusers >= 0.32.0 is installed.")
+    except Exception as e:
+        logger.exception("Error loading DDUF file")
+        raise RuntimeError(f"Failed to load DDUF file: {e}")
 
 
 def load_model(model_path: str) -> DiffusionPipeline:

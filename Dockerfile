@@ -171,6 +171,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     "transformers" \
     "accelerate" \
     "safetensors" \
+    "huggingface_hub>=0.27.0" \
+    "bitsandbytes" \
     "fastapi" \
     "uvicorn[standard]" \
     "pillow"

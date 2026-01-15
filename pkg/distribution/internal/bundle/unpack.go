@@ -116,6 +116,10 @@ func unpackDDUF(bundle *Bundle, mdl types.Model) error {
 
 	// DDUF is a single-file format
 	ddufFilename := filepath.Base(ddufPaths[0])
+	// Ensure the filename has the .dduf extension for proper detection by diffusers server
+	if !strings.HasSuffix(strings.ToLower(ddufFilename), ".dduf") {
+		ddufFilename = ddufFilename + ".dduf"
+	}
 	if err := unpackFile(filepath.Join(modelDir, ddufFilename), ddufPaths[0]); err != nil {
 		return err
 	}

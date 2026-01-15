@@ -133,7 +133,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 }
 
 // Run implements inference.Backend.Run.
-func (d *diffusers) Run(ctx context.Context, socket, model string, _ string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
+func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
 	if !platform.SupportsDiffusers() {
 		d.log.Warn("diffusers backend is not yet supported on this platform")
 		return ErrNotImplemented
@@ -163,11 +163,9 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, _ string, mod
 		return fmt.Errorf("failed to get diffusers arguments: %w", err)
 	}
 
-	// Add served model name
-	if model != "" {
-		// Replace colons with underscores to sanitize the model name
-		sanitizedModel := strings.ReplaceAll(model, ":", "_")
-		args = append(args, "--served-model-name", sanitizedModel)
+	// Add served model name using the human-readable model reference
+	if modelRef != "" {
+		args = append(args, "--served-model-name", modelRef)
 	}
 
 	d.log.Infof("Diffusers args: %v", args)
@@ -218,8 +216,6 @@ func (d *diffusers) RunWithBundle(ctx context.Context, socket string, bundle typ
 	if err != nil {
 		return fmt.Errorf("failed to get diffusers arguments: %w", err)
 	}
-
-	d.log.Infof("Diffusers args: %v", args)
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
