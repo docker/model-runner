@@ -75,7 +75,7 @@ ENV MODEL_RUNNER_PORT=12434
 ENV LLAMA_SERVER_PATH=/app/bin
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
@@ -148,8 +148,17 @@ RUN /opt/sglang-env/bin/python -c "import sglang; print(sglang.__version__)" > /
 # --- Diffusers variant ---
 FROM llamacpp AS diffusers
 
+# Python package versions for reproducible builds
 ARG DIFFUSERS_VERSION=0.36.0
 ARG TORCH_VERSION=2.9.1
+ARG TRANSFORMERS_VERSION=4.57.5
+ARG ACCELERATE_VERSION=1.3.0
+ARG SAFETENSORS_VERSION=0.5.2
+ARG HUGGINGFACE_HUB_VERSION=0.34.0
+ARG BITSANDBYTES_VERSION=0.45.4
+ARG FASTAPI_VERSION=0.115.12
+ARG UVICORN_VERSION=0.34.1
+ARG PILLOW_VERSION=11.2.1
 
 USER root
 
@@ -168,14 +177,14 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv pip install --python /opt/diffusers-env/bin/python \
     "diffusers==${DIFFUSERS_VERSION}" \
     "torch==${TORCH_VERSION}" \
-    "transformers" \
-    "accelerate" \
-    "safetensors" \
-    "huggingface_hub>=0.27.0" \
-    "bitsandbytes" \
-    "fastapi" \
-    "uvicorn[standard]" \
-    "pillow"
+    "transformers==${TRANSFORMERS_VERSION}" \
+    "accelerate==${ACCELERATE_VERSION}" \
+    "safetensors==${SAFETENSORS_VERSION}" \
+    "huggingface_hub==${HUGGINGFACE_HUB_VERSION}" \
+    "bitsandbytes==${BITSANDBYTES_VERSION}" \
+    "fastapi==${FASTAPI_VERSION}" \
+    "uvicorn[standard]==${UVICORN_VERSION}" \
+    "pillow==${PILLOW_VERSION}"
 
 # Copy Python server code
 USER root
