@@ -43,7 +43,7 @@ func Unpack(dir string, model types.Model) (*Bundle, error) {
 			return nil, fmt.Errorf("unpack DDUF file: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("no supported model weights found (neither GGUF nor safetensors)")
+		return nil, fmt.Errorf("no supported model weights found (expected GGUF, safetensors, or diffusers/DDUF)")
 	}
 
 	// Unpack optional components based on their presence
