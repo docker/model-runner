@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/spf13/cobra"
@@ -63,7 +64,8 @@ func newBenchCmd() *cobra.Command {
 
 This command runs a series of benchmarks with 1, 2, 4, and 8 concurrent requests by default,
 measuring the tokens per second (TPS) that the model can generate.`,
-		Args: cobra.ExactArgs(1),
+		Args:              requireExactArgs(1, "bench", "MODEL"),
+		ValidArgsFunction: completion.ModelNames(getDesktopClient, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model = args[0]
 
