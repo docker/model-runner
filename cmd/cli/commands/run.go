@@ -90,6 +90,7 @@ func readMultilineInput(cmd *cobra.Command, scanner *bufio.Scanner) (string, err
 func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "Available Commands:")
+		fmt.Fprintln(os.Stderr, "  /set system     Set or update the system message")
 		fmt.Fprintln(os.Stderr, "  /bye            Exit")
 		fmt.Fprintln(os.Stderr, "  /?, /help       Help for a command")
 		fmt.Fprintln(os.Stderr, "  /? shortcuts    Help for keyboard shortcuts")
@@ -154,6 +155,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 	var sb strings.Builder
 	var multiline bool
 	var conversationHistory []desktop.OpenAIChatMessage
+	var systemPrompt string
 
 	// Add a helper function to handle file inclusion when @ is pressed
 	// We'll implement a basic version here that shows a message when @ is pressed
@@ -217,6 +219,16 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 				usage()
 			}
 			continue
+		case strings.HasPrefix(line, "/set system ") || line == "/set system":
+			// Extract the system prompt text after "/set system "
+			systemPrompt = strings.TrimPrefix(line, "/set system ")
+			systemPrompt = strings.TrimSpace(systemPrompt)
+			if systemPrompt == "" {
+				fmt.Fprintln(os.Stderr, "Cleared system message.")
+			} else {
+				fmt.Fprintln(os.Stderr, "Set system message.")
+			}
+			continue
 		case strings.HasPrefix(line, "/exit"), strings.HasPrefix(line, "/bye"):
 			return nil
 		case strings.HasPrefix(line, "/"):
@@ -245,7 +257,20 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 				}
 			}()
 
-			assistantResponse, processedUserMessage, err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput, conversationHistory)
+			// Build message history with system prompt prepended if set
+			var messagesWithSystem []desktop.OpenAIChatMessage
+			if systemPrompt == "" {
+				messagesWithSystem = conversationHistory
+			} else {
+				messagesWithSystem = make([]desktop.OpenAIChatMessage, 1, 1+len(conversationHistory))
+				messagesWithSystem[0] = desktop.OpenAIChatMessage{
+					Role:    "system",
+					Content: systemPrompt,
+				}
+				messagesWithSystem = append(messagesWithSystem, conversationHistory...)
+			}
+
+			assistantResponse, processedUserMessage, err := chatWithMarkdownContext(chatCtx, cmd, desktopClient, model, userInput, messagesWithSystem)
 
 			// Clean up signal handler
 			signal.Stop(sigChan)
