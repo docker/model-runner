@@ -55,6 +55,52 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cpu
+            target: final-llamacpp
+            platforms: "linux/amd64, linux/arm64"
+            tag_suffix: ""
+            variant: ""
+            base_image: ""
+            extra_build_args: ""
+
+          - name: cuda
+            target: final-llamacpp
+            platforms: "linux/amd64, linux/arm64"
+            tag_suffix: "-cuda"
+            variant: "cuda"
+            base_image: "nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            extra_build_args: ""
+
+          - name: vllm-cuda
+            target: final-vllm
+            platforms: "linux/amd64, linux/arm64"
+            tag_suffix: "-vllm-cuda"
+            variant: "cuda"
+            base_image: "nvidia/cuda:13.0.2-runtime-ubuntu24.04"
+            extra_build_args: |
+              VLLM_CUDA_VERSION=cu130
+              VLLM_PYTHON_TAG=cp38-abi3
+
+          - name: sglang-cuda
+            target: final-sglang
+            platforms: "linux/amd64"
+            tag_suffix: "-sglang-cuda"
+            variant: "cuda"
+            base_image: "nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            extra_build_args: ""
+
+          - name: rocm
+            target: final-llamacpp
+            platforms: "linux/amd64"
+            tag_suffix: "-rocm"
+            variant: "rocm"
+            base_image: "rocm/dev-ubuntu-22.04"
+            extra_build_args: ""
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -63,46 +109,10 @@ jobs:
         id: tags
         shell: bash
         run: |
-          echo "cpu<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}" >> "$GITHUB_OUTPUT"
+          echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:${{ inputs.releaseTag }}${{ matrix.tag_suffix }}" >> "$GITHUB_OUTPUT"
           if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "vllm-cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-vllm-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "sglang-cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-sglang-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-rocm" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "musa<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-musa" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cann<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-cann" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
-            echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
+            echo "docker/model-runner:latest${{ matrix.tag_suffix }}" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
 
@@ -120,111 +130,118 @@ jobs:
           endpoint: "docker/make-product-smarter"
           install: true
 
-      - name: Build CPU image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.cpu }}
+      - name: Prepare build args
+        id: build_args
+        shell: bash
+        run: |
+          ARGS="LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
+          
+          if [ -n "${{ matrix.variant }}" ]; then
+            ARGS="${ARGS}
+          LLAMA_SERVER_VARIANT=${{ matrix.variant }}"
+          fi
+          
+          if [ -n "${{ matrix.base_image }}" ]; then
+            ARGS="${ARGS}
+          BASE_IMAGE=${{ matrix.base_image }}"
+          fi
+          
+          # Add vLLM version for vllm builds
+          if [ "${{ matrix.name }}" == "vllm-cuda" ]; then
+            ARGS="${ARGS}
+          VLLM_VERSION=${{ inputs.vllmVersion }}"
+          fi
+          
+          # Add SGLang version for sglang builds
+          if [ "${{ matrix.name }}" == "sglang-cuda" ]; then
+            ARGS="${ARGS}
+          SGLANG_VERSION=${{ inputs.sglangVersion }}"
+          fi
+          
+          # Add extra build args if present
+          if [ -n "${{ matrix.extra_build_args }}" ]; then
+            ARGS="${ARGS}
+          ${{ matrix.extra_build_args }}"
+          fi
+          
+          echo "args<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$ARGS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Build CUDA image
+      - name: Build and push ${{ matrix.name }} image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
+          build-args: ${{ steps.build_args.outputs.args }}
           push: true
           sbom: true
           provenance: mode=max
-          tags: ${{ steps.tags.outputs.cuda }}
+          tags: ${{ steps.tags.outputs.tags }}
 
-      - name: Build vLLM CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          file: Dockerfile
-          target: final-vllm
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
-            "VLLM_VERSION=${{ inputs.vllmVersion }}"
-            "VLLM_CUDA_VERSION=cu130"
-            "VLLM_PYTHON_TAG=cp38-abi3"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.vllm-cuda }}
+  build-musa-cann:
+    needs: test
+    if: ${{ inputs.buildMusaCann }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: musa
+            target: final-llamacpp
+            platforms: "linux/amd64"
+            tag_suffix: "-musa"
+            variant: "musa"
+            base_image: "mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
 
-      - name: Build SGLang CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          file: Dockerfile
-          target: final-sglang
-          platforms: linux/amd64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
-            "SGLANG_VERSION=${{ inputs.sglangVersion }}"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.sglang-cuda }}
+          - name: cann
+            target: final-llamacpp
+            platforms: "linux/arm64, linux/amd64"
+            tag_suffix: "-cann"
+            variant: "cann"
+            base_image: "ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
 
-      - name: Build ROCm image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/amd64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=rocm"
-            "BASE_IMAGE=rocm/dev-ubuntu-22.04"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.rocm }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
-      - name: Build MUSA image
-        if: ${{ inputs.buildMusaCann }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/amd64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=musa"
-            "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.musa }}
+      - name: Format tags
+        id: tags
+        shell: bash
+        run: |
+          echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:${{ inputs.releaseTag }}${{ matrix.tag_suffix }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+            echo "docker/model-runner:latest${{ matrix.tag_suffix }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo 'EOF' >> "$GITHUB_OUTPUT"
 
-      - name: Build CANN image
-        if: ${{ inputs.buildMusaCann }}
+      - name: Log in to DockerHub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+        with:
+          username: "docker"
+          password: ${{ secrets.ORG_ACCESS_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+        with:
+          version: "lab:latest"
+          driver: cloud
+          endpoint: "docker/make-product-smarter"
+          install: true
+
+      - name: Build and push ${{ matrix.name }} image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/arm64, linux/amd64
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
           build-args: |
-            "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
-            "LLAMA_SERVER_VARIANT=cann"
-            "BASE_IMAGE=ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
+            LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}
+            LLAMA_SERVER_VARIANT=${{ matrix.variant }}
+            BASE_IMAGE=${{ matrix.base_image }}
           push: true
           sbom: true
           provenance: mode=max
-          tags: ${{ steps.tags.outputs.cann }}
+          tags: ${{ steps.tags.outputs.tags }}
