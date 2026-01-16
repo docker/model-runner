@@ -17,6 +17,7 @@ type Bundle struct {
 	mmprojPath       string
 	ggufFile         string // path to GGUF file (first shard when model is split among files)
 	safetensorsFile  string // path to safetensors file (first shard when model is split among files)
+	ddufFile         string // path to DDUF file (Diffusers Unified Format)
 	runtimeConfig    types.ModelConfig
 	chatTemplatePath string
 }
@@ -57,6 +58,14 @@ func (b *Bundle) SafetensorsPath() string {
 		return ""
 	}
 	return filepath.Join(b.dir, ModelSubdir, b.safetensorsFile)
+}
+
+// DDUFPath returns the path to the DDUF file (Diffusers Unified Format) or "" if none is present.
+func (b *Bundle) DDUFPath() string {
+	if b.ddufFile == "" {
+		return ""
+	}
+	return filepath.Join(b.dir, ModelSubdir, b.ddufFile)
 }
 
 // RuntimeConfig returns config that should be respected by the backend at runtime.

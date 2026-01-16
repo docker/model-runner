@@ -41,6 +41,9 @@ func backendModeForRequest(path string) (inference.BackendMode, bool) {
 	} else if strings.HasSuffix(path, "/v1/messages") || strings.HasSuffix(path, "/v1/messages/count_tokens") {
 		// Anthropic Messages API - treated as completion mode
 		return inference.BackendModeCompletion, true
+	} else if strings.HasSuffix(path, "/v1/images/generations") {
+		// OpenAI Images API - image generation mode
+		return inference.BackendModeImageGeneration, true
 	}
 	return inference.BackendMode(0), false
 }

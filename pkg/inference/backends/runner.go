@@ -16,6 +16,11 @@ import (
 	"github.com/docker/model-runner/pkg/tailbuffer"
 )
 
+// ErrorTransformer is a function that transforms raw error output
+// into a more user-friendly message. Backends can provide their own
+// implementation to customize error presentation.
+type ErrorTransformer func(output string) string
+
 // RunnerConfig holds configuration for a backend runner
 type RunnerConfig struct {
 	// BackendName is the display name of the backend (e.g., "llama.cpp", "vLLM")
@@ -34,6 +39,9 @@ type RunnerConfig struct {
 	Logger Logger
 	// ServerLogWriter provides a writer for server logs
 	ServerLogWriter io.WriteCloser
+	// ErrorTransformer is an optional function to transform error output
+	// into a more user-friendly message. If nil, the raw output is used.
+	ErrorTransformer ErrorTransformer
 }
 
 // Logger interface for backend logging
@@ -103,7 +111,12 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 		}
 
 		if errOutput.String() != "" {
-			backendErr = fmt.Errorf("%s exit status: %w\nwith output: %s", config.BackendName, backendErr, errOutput.String())
+			errorMsg := errOutput.String()
+			// Apply error transformer if provided
+			if config.ErrorTransformer != nil {
+				errorMsg = config.ErrorTransformer(errorMsg)
+			}
+			backendErr = fmt.Errorf("%s failed: %s", config.BackendName, errorMsg)
 		} else {
 			backendErr = fmt.Errorf("%s exit status: %w", config.BackendName, backendErr)
 		}

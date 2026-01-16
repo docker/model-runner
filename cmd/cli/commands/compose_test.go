@@ -46,6 +46,12 @@ func TestParseBackendMode(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "image-generation mode",
+			input:       "image-generation",
+			expected:    inference.BackendModeImageGeneration,
+			expectError: false,
+		},
+		{
 			name:        "invalid mode",
 			input:       "invalid",
 			expected:    inference.BackendModeCompletion, // default on error

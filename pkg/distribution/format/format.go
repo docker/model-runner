@@ -6,6 +6,7 @@ package format
 import (
 	"fmt"
 
+	"github.com/docker/go-units"
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -60,6 +61,8 @@ func DetectFromPath(path string) (Format, error) {
 		return Get(types.FormatGGUF)
 	case files.FileTypeSafetensors:
 		return Get(types.FormatSafetensors)
+	case files.FileTypeDDUF:
+		return Get(types.FormatDiffusers)
 	case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
 		return nil, fmt.Errorf("unable to detect format from path: %s (file type: %s)", utils.SanitizeForLog(path), ft)
 	}
@@ -92,4 +95,16 @@ func DetectFromPaths(paths []string) (Format, error) {
 	}
 
 	return format, nil
+}
+
+// formatParameters converts parameter count to human-readable format
+// Returns format like "361.82M" or "1.5B" (no space before unit, base 1000, where B = Billion)
+func formatParameters(params int64) string {
+	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", "K", "M", "B", "T"})
+}
+
+// formatSize converts bytes to human-readable format matching Docker's style
+// Returns format like "256MB" (decimal units, no space, matching `docker images`)
+func formatSize(bytes int64) string {
+	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }

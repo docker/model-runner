@@ -18,6 +18,9 @@ const (
 	// mode.
 	BackendModeEmbedding
 	BackendModeReranking
+	// BackendModeImageGeneration indicates that the backend should run in
+	// image generation mode.
+	BackendModeImageGeneration
 )
 
 type ErrGGUFParse struct {
@@ -37,6 +40,8 @@ func (m BackendMode) String() string {
 		return "embedding"
 	case BackendModeReranking:
 		return "reranking"
+	case BackendModeImageGeneration:
+		return "image-generation"
 	default:
 		return "unknown"
 	}
@@ -72,6 +77,8 @@ func ParseBackendMode(mode string) (BackendMode, bool) {
 		return BackendModeEmbedding, true
 	case "reranking":
 		return BackendModeReranking, true
+	case "image-generation":
+		return BackendModeImageGeneration, true
 	default:
 		return BackendModeCompletion, false
 	}

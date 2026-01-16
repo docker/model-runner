@@ -17,6 +17,8 @@ const (
 	FileTypeGGUF
 	// FileTypeSafetensors is a safetensors model weight file
 	FileTypeSafetensors
+	// FileTypeDDUF is a DDUF (Diffusers Unified Format) file
+	FileTypeDDUF
 	// FileTypeConfig is a configuration file (json, txt, etc.)
 	FileTypeConfig
 	// FileTypeLicense is a license file
@@ -32,6 +34,8 @@ func (ft FileType) String() string {
 		return "gguf"
 	case FileTypeSafetensors:
 		return "safetensors"
+	case FileTypeDDUF:
+		return "dduf"
 	case FileTypeConfig:
 		return "config"
 	case FileTypeLicense:
@@ -72,6 +76,11 @@ func Classify(path string) FileType {
 	// Check for safetensors files
 	if strings.HasSuffix(lower, ".safetensors") {
 		return FileTypeSafetensors
+	}
+
+	// Check for DDUF files (Diffusers Unified Format)
+	if strings.HasSuffix(lower, ".dduf") {
+		return FileTypeDDUF
 	}
 
 	// Check for chat template files (before generic config check)

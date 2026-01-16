@@ -146,7 +146,7 @@ func (f *ConfigureFlags) RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.HFOverrides, "hf_overrides", "", "HuggingFace model config overrides (JSON) - vLLM only")
 	cmd.Flags().Var(NewFloat64PtrValue(&f.GPUMemoryUtilization), "gpu-memory-utilization", "fraction of GPU memory to use for the model executor (0.0-1.0) - vLLM only")
 	cmd.Flags().Var(NewBoolPtrValue(&f.Think), "think", "enable reasoning mode for thinking models")
-	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking)")
+	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking, image-generation)")
 }
 
 // BuildConfigureRequest builds a scheduling.ConfigureRequest from the flags.
@@ -243,7 +243,9 @@ func parseBackendMode(mode string) (inference.BackendMode, error) {
 		return inference.BackendModeEmbedding, nil
 	case "reranking":
 		return inference.BackendModeReranking, nil
+	case "image-generation":
+		return inference.BackendModeImageGeneration, nil
 	default:
-		return inference.BackendModeCompletion, fmt.Errorf("invalid mode %q: must be one of completion, embedding, reranking", mode)
+		return inference.BackendModeCompletion, fmt.Errorf("invalid mode %q: must be one of completion, embedding, reranking, image-generation", mode)
 	}
 }

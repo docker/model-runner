@@ -40,7 +40,7 @@ func PackageFromDirectory(dirPath string) (safetensorsPaths []string, tempConfig
 			safetensorsPaths = append(safetensorsPaths, fullPath)
 		case files.FileTypeConfig, files.FileTypeChatTemplate:
 			configFiles = append(configFiles, fullPath)
-		case files.FileTypeUnknown, files.FileTypeGGUF, files.FileTypeLicense:
+		case files.FileTypeUnknown, files.FileTypeGGUF, files.FileTypeLicense, files.FileTypeDDUF:
 			// Skip these file types
 		}
 	}

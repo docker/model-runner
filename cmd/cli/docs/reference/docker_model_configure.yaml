@@ -40,7 +40,8 @@ options:
       swarm: false
     - option: mode
       value_type: string
-      description: backend operation mode (completion, embedding, reranking)
+      description: |
+        backend operation mode (completion, embedding, reranking, image-generation)
       deprecated: false
       hidden: false
       experimental: false

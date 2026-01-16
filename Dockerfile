@@ -75,7 +75,7 @@ ENV MODEL_RUNNER_PORT=12434
 ENV LLAMA_SERVER_PATH=/app/bin
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
@@ -144,6 +144,60 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv pip install --python /opt/sglang-env/bin/python "sglang==${SGLANG_VERSION}"
 
 RUN /opt/sglang-env/bin/python -c "import sglang; print(sglang.__version__)" > /opt/sglang-env/version
+
+# --- Diffusers variant ---
+FROM llamacpp AS diffusers
+
+# Python package versions for reproducible builds
+ARG DIFFUSERS_VERSION=0.36.0
+ARG TORCH_VERSION=2.9.1
+ARG TRANSFORMERS_VERSION=4.57.5
+ARG ACCELERATE_VERSION=1.3.0
+ARG SAFETENSORS_VERSION=0.5.2
+ARG HUGGINGFACE_HUB_VERSION=0.34.0
+ARG BITSANDBYTES_VERSION=0.49.1
+ARG FASTAPI_VERSION=0.115.12
+ARG UVICORN_VERSION=0.34.1
+ARG PILLOW_VERSION=11.2.1
+
+USER root
+
+RUN apt update && apt install -y \
+    python3 python3-venv python3-dev \
+    curl ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/diffusers-env && chown -R modelrunner:modelrunner /opt/diffusers-env
+
+USER modelrunner
+
+# Install uv and diffusers as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/diffusers-env \
+    && ~/.local/bin/uv pip install --python /opt/diffusers-env/bin/python \
+    "diffusers==${DIFFUSERS_VERSION}" \
+    "torch==${TORCH_VERSION}" \
+    "transformers==${TRANSFORMERS_VERSION}" \
+    "accelerate==${ACCELERATE_VERSION}" \
+    "safetensors==${SAFETENSORS_VERSION}" \
+    "huggingface_hub==${HUGGINGFACE_HUB_VERSION}" \
+    "bitsandbytes==${BITSANDBYTES_VERSION}" \
+    "fastapi==${FASTAPI_VERSION}" \
+    "uvicorn[standard]==${UVICORN_VERSION}" \
+    "pillow==${PILLOW_VERSION}"
+
+# Copy Python server code
+USER root
+COPY python/diffusers_server /tmp/diffusers_server/
+RUN PYTHON_SITE_PACKAGES=$(/opt/diffusers-env/bin/python -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p "$PYTHON_SITE_PACKAGES/diffusers_server" && \
+    cp -r /tmp/diffusers_server/* "$PYTHON_SITE_PACKAGES/diffusers_server/" && \
+    chown -R modelrunner:modelrunner "$PYTHON_SITE_PACKAGES/diffusers_server/" && \
+    rm -rf /tmp/diffusers_server
+USER modelrunner
+
+RUN /opt/diffusers-env/bin/python -c "import diffusers; print(diffusers.__version__)" > /opt/diffusers-env/version
+
 FROM llamacpp AS final-llamacpp
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
@@ -155,3 +209,7 @@ COPY --from=builder /app/model-runner /app/model-runner
 FROM sglang AS final-sglang
 # Copy the built binary from builder-sglang (without vLLM)
 COPY --from=builder-sglang /app/model-runner /app/model-runner
+
+FROM diffusers AS final-diffusers
+# Copy the built binary from builder (with diffusers support)
+COPY --from=builder /app/model-runner /app/model-runner

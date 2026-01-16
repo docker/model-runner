@@ -8,6 +8,7 @@ VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
+DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 MODELS_PATH := $(shell pwd)/models-store
@@ -25,7 +26,7 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers
 # Default target
 .DEFAULT_GOAL := build
 
@@ -117,6 +118,16 @@ docker-build-sglang:
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
 
+# Build Diffusers Docker image
+docker-build-diffusers:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-diffusers \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
+
+# Run Diffusers Docker container with TCP port access and mounted model storage
+docker-run-diffusers: docker-build-diffusers
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
+
 # Common implementation for running Docker container
 docker-run-impl:
 	@echo ""
@@ -151,6 +162,8 @@ help:
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
+	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
+	@echo "  docker-run-diffusers		- Run Diffusers Docker container"
 	@echo "  help				- Show this help message"
 	@echo ""
 	@echo "Backend configuration options:"

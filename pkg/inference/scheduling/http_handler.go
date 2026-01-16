@@ -66,6 +66,9 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		"POST " + inference.InferencePrefix + "/rerank",
 		"POST " + inference.InferencePrefix + "/{backend}/score",
 		"POST " + inference.InferencePrefix + "/score",
+		// Image generation routes
+		"POST " + inference.InferencePrefix + "/{backend}/v1/images/generations",
+		"POST " + inference.InferencePrefix + "/v1/images/generations",
 	}
 
 	// Anthropic Messages API routes
