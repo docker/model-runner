@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
@@ -264,15 +263,12 @@ func (t *Target) Write(ctx context.Context, model types.ModelArtifact, progressW
 		}
 		imageSize += size
 	}
-	pr := progress.NewProgressReporter(progressWriter, progress.PushMsg, imageSize, nil)
-	defer pr.Wait()
 
 	// Set up authentication options
 	authOpts := []remote.Option{
 		remote.WithContext(ctx),
 		remote.WithTransport(t.transport),
 		remote.WithUserAgent(t.userAgent),
-		remote.WithProgress(pr.Updates()),
 		remote.WithPlainHTTP(t.plainHTTP),
 	}
 
@@ -283,7 +279,7 @@ func (t *Target) Write(ctx context.Context, model types.ModelArtifact, progressW
 		authOpts = append(authOpts, remote.WithAuthFromKeychain(t.keychain))
 	}
 
-	if err := remote.Write(t.reference, model, authOpts...); err != nil {
+	if err := remote.Write(t.reference, model, progressWriter, authOpts...); err != nil {
 		return fmt.Errorf("write to registry %q: %w", t.reference.String(), err)
 	}
 	return nil
