@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/readline"
+	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/fatih/color"
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
@@ -90,11 +93,12 @@ func readMultilineInput(cmd *cobra.Command, scanner *bufio.Scanner) (string, err
 func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "Available Commands:")
-		fmt.Fprintln(os.Stderr, "  /set system     Set or update the system message")
 		fmt.Fprintln(os.Stderr, "  /bye            Exit")
+		fmt.Fprintln(os.Stderr, "  /set            Set a session variable")
 		fmt.Fprintln(os.Stderr, "  /?, /help       Help for a command")
 		fmt.Fprintln(os.Stderr, "  /? shortcuts    Help for keyboard shortcuts")
 		fmt.Fprintln(os.Stderr, "  /? files        Help for file inclusion with @ symbol")
+		fmt.Fprintln(os.Stderr, "  /? set          Help for /set command")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, `Use """ to begin a multi-line message.`)
 		fmt.Fprintln(os.Stderr, "")
@@ -131,6 +135,14 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 		fmt.Fprintln(os.Stderr, "    @\"file with spaces.txt\" Include content of file with spaces in name")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  The file content will be embedded in your prompt when you press Enter.")
+		fmt.Fprintln(os.Stderr, "")
+	}
+
+	usageSet := func() {
+		fmt.Fprintln(os.Stderr, "Available /set commands:")
+		fmt.Fprintln(os.Stderr, "  /set system <message>       Set system message for the conversation")
+		fmt.Fprintln(os.Stderr, "  /set num_ctx <n>            Set context window size (in tokens)")
+		fmt.Fprintln(os.Stderr, "  /set parameter num_ctx <n>  Set context window size (in tokens) [deprecated]")
 		fmt.Fprintln(os.Stderr, "")
 	}
 
@@ -204,35 +216,102 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 		case scanner.Pasting:
 			fmt.Fprintln(&sb, line)
 			continue
-		case strings.HasPrefix(line, "/help"), strings.HasPrefix(line, "/?"):
+		case strings.HasPrefix(line, "/"):
 			args := strings.Fields(line)
-			if len(args) > 1 {
-				switch args[1] {
-				case "shortcut", "shortcuts":
-					usageShortcuts()
-				case "file", "files":
-					usageFiles()
-				default:
+			switch args[0] {
+			case "/help", "/?":
+				if len(args) > 1 {
+					switch args[1] {
+					case "shortcut", "shortcuts":
+						usageShortcuts()
+					case "file", "files":
+						usageFiles()
+					case "set":
+						usageSet()
+					default:
+						usage()
+					}
+				} else {
 					usage()
 				}
-			} else {
-				usage()
+			case "/exit", "/bye":
+				return nil
+			case "/set":
+				if len(args) < 2 {
+					usageSet()
+					continue
+				}
+				switch args[1] {
+				case "system":
+					// Extract the system prompt text after "/set system"
+					if len(args) > 2 {
+						systemPrompt = strings.Join(args[2:], " ")
+					} else {
+						systemPrompt = ""
+					}
+					if systemPrompt == "" {
+						fmt.Fprintln(os.Stderr, "Cleared system message.")
+					} else {
+						fmt.Fprintln(os.Stderr, "Set system message.")
+					}
+				case "num_ctx":
+					// Handle /set num_ctx <value> syntax
+					if len(args) < 3 {
+						fmt.Fprintln(os.Stderr, "Usage: /set num_ctx <value>")
+						continue
+					}
+					paramValue := args[2]
+					if val, err := strconv.ParseInt(paramValue, 10, 32); err == nil && val > 0 {
+						ctx := int32(val)
+						if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
+							Model: model,
+							BackendConfiguration: inference.BackendConfiguration{
+								ContextSize: &ctx,
+							},
+						}); err != nil {
+							fmt.Fprintf(os.Stderr, "Failed to set num_ctx: %v\n", err)
+						} else {
+							fmt.Fprintf(os.Stderr, "Set num_ctx to %d\n", val)
+						}
+					} else {
+						fmt.Fprintf(os.Stderr, "Invalid value for num_ctx: %s (must be a positive integer)\n", paramValue)
+					}
+				case "parameter":
+					// Handle legacy /set parameter <name> <value> syntax for backward compatibility
+					if len(args) < 4 {
+						fmt.Fprintln(os.Stderr, "Usage: /set parameter <name> <value>")
+						fmt.Fprintln(os.Stderr, "Available parameters: num_ctx")
+						continue
+					}
+					paramName, paramValue := args[2], args[3]
+					switch paramName {
+					case "num_ctx":
+						if val, err := strconv.ParseInt(paramValue, 10, 32); err == nil && val > 0 {
+							ctx := int32(val)
+							if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
+								Model: model,
+								BackendConfiguration: inference.BackendConfiguration{
+									ContextSize: &ctx,
+								},
+							}); err != nil {
+								fmt.Fprintf(os.Stderr, "Failed to set num_ctx: %v\n", err)
+							} else {
+								fmt.Fprintf(os.Stderr, "Set num_ctx to %d\n", val)
+							}
+						} else {
+							fmt.Fprintf(os.Stderr, "Invalid value for num_ctx: %s (must be a positive integer)\n", paramValue)
+						}
+					default:
+						fmt.Fprintf(os.Stderr, "Unknown parameter: %s\n", paramName)
+						fmt.Fprintln(os.Stderr, "Available parameters: num_ctx")
+					}
+				default:
+					fmt.Fprintf(os.Stderr, "Unknown /set option: %s\n", args[1])
+					usageSet()
+				}
+			default:
+				fmt.Printf("Unknown command '%s'. Type /? for help\n", args[0])
 			}
-			continue
-		case strings.HasPrefix(line, "/set system ") || line == "/set system":
-			// Extract the system prompt text after "/set system "
-			systemPrompt = strings.TrimPrefix(line, "/set system ")
-			systemPrompt = strings.TrimSpace(systemPrompt)
-			if systemPrompt == "" {
-				fmt.Fprintln(os.Stderr, "Cleared system message.")
-			} else {
-				fmt.Fprintln(os.Stderr, "Set system message.")
-			}
-			continue
-		case strings.HasPrefix(line, "/exit"), strings.HasPrefix(line, "/bye"):
-			return nil
-		case strings.HasPrefix(line, "/"):
-			fmt.Printf("Unknown command '%s'. Type /? for help\n", strings.Fields(line)[0])
 			continue
 		default:
 			sb.WriteString(line)
