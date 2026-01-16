@@ -5,7 +5,9 @@ add_accelerators() {
   if [[ "${DOCKER_IMAGE-}" == *"-cuda" ]] || \
      [[ "${DOCKER_IMAGE-}" == *"-diffusers" ]] || \
      [[ "${DOCKER_IMAGE-}" == *"-sglang" ]]; then
-    args+=("--gpus" "all" "--runtime=nvidia")
+      if docker info -f '{{range $k, $v := .Runtimes}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null | grep -qx "nvidia"; then
+        args+=("--gpus" "all" "--runtime=nvidia")
+      fi
   fi
 
   # Add GPU/accelerator devices if present
