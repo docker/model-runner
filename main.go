@@ -13,6 +13,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/anthropic"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
@@ -157,18 +158,25 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
 	}
 
-	diffusersBackend, err := initDiffusersBackend(log, modelManager, diffusersServerPath)
+	diffusersBackend, err := diffusers.New(
+		log,
+		modelManager,
+		log.WithFields(logrus.Fields{"component": diffusers.Name}),
+		nil,
+		diffusersServerPath,
+	)
+
 	if err != nil {
 		log.Fatalf("unable to initialize diffusers backend: %v", err)
 	}
 
 	backends := map[string]inference.Backend{
-		llamacpp.Name: llamaCppBackend,
-		mlx.Name:      mlxBackend,
-		sglang.Name:   sglangBackend,
+		llamacpp.Name:  llamaCppBackend,
+		mlx.Name:       mlxBackend,
+		sglang.Name:    sglangBackend,
+		diffusers.Name: diffusersBackend,
 	}
 	registerVLLMBackend(backends, vllmBackend)
-	registerDiffusersBackend(backends, diffusersBackend)
 
 	scheduler := scheduling.NewScheduler(
 		log,
