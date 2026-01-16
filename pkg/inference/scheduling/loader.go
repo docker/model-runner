@@ -426,8 +426,8 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
 			draftModelID = l.modelManager.ResolveID(runnerConfig.Speculative.DraftModel)
 		}
-	} else if mode == inference.BackendModeReranking {
-		// For reranking mode, fallback to completion config if specific config is not found.
+	} else if (mode == inference.BackendModeReranking) || (mode == inference.BackendModeImageGeneration) {
+		// For reranking or image-generation mode, fallback to completion config if specific config is not found.
 		if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, inference.BackendModeCompletion)]; ok {
 			runnerConfig = &rc
 			if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
