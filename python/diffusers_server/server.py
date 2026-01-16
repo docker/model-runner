@@ -346,12 +346,28 @@ def main():
     global served_model_name
     served_model_name = args.served_model_name or args.model_path
     
-    # Load the model at startup
-    load_model(args.model_path)
-    
-    # Start the server
-    logger.info(f"Starting server on {args.host}:{args.port}")
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    try:
+        # Load the model at startup
+        load_model(args.model_path)
+        
+        # Start the server
+        logger.info(f"Starting server on {args.host}:{args.port}")
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    except Exception as e:
+        # Extract the root cause error message for cleaner output
+        error_msg = str(e)
+        # If this is a chained exception, try to get the original cause
+        root_cause = e
+        while root_cause.__cause__ is not None:
+            root_cause = root_cause.__cause__
+        if root_cause is not e:
+            error_msg = str(root_cause)
+        
+        # Print a clean, single-line error message that can be easily parsed
+        # This format is recognized by the Go backend for better error reporting
+        import sys
+        print(f"DIFFUSERS_ERROR: {error_msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -180,14 +180,15 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 	}
 
 	return backends.RunBackend(ctx, backends.RunnerConfig{
-		BackendName:     "Diffusers",
-		Socket:          socket,
-		BinaryPath:      d.pythonPath,
-		SandboxPath:     sandboxPath,
-		SandboxConfig:   "",
-		Args:            args,
-		Logger:          d.log,
-		ServerLogWriter: d.serverLog.Writer(),
+		BackendName:      "Diffusers",
+		Socket:           socket,
+		BinaryPath:       d.pythonPath,
+		SandboxPath:      sandboxPath,
+		SandboxConfig:    "",
+		Args:             args,
+		Logger:           d.log,
+		ServerLogWriter:  d.serverLog.Writer(),
+		ErrorTransformer: ExtractPythonError,
 	})
 }
 
