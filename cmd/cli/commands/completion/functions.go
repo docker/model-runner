@@ -17,7 +17,9 @@ func ModelNames(desktopClient func() *desktop.Client, limit int) cobra.Completio
 		// HACK: Invoke rootCmd's PersistentPreRunE, which is needed for context
 		// detection and client initialization. This function isn't invoked
 		// automatically on autocompletion paths.
-		cmd.Parent().PersistentPreRunE(cmd, args)
+		if err := cmd.Parent().PersistentPreRunE(cmd, args); err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
 
 		if limit > 0 && len(args) >= limit {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -41,7 +43,9 @@ func ModelNamesAndTags(desktopClient func() *desktop.Client, limit int) cobra.Co
 		// HACK: Invoke rootCmd's PersistentPreRunE, which is needed for context
 		// detection and client initialization. This function isn't invoked
 		// automatically on autocompletion paths.
-		cmd.Parent().PersistentPreRunE(cmd, args)
+		if err := cmd.Parent().PersistentPreRunE(cmd, args); err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
 
 		if limit > 0 && len(args) >= limit {
 			return nil, cobra.ShellCompDirectiveNoFileComp
