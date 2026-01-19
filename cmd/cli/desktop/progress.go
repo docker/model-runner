@@ -12,7 +12,6 @@ import (
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-units"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
-	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 // DisplayProgress displays progress messages from a model pull/push operation
@@ -157,7 +156,7 @@ func writeDockerProgress(w io.Writer, msg *ProgressMessage, layerStatus map[stri
 	}
 
 	// Detect if this is a push operation based on the sentinel layer ID
-	isPush := layerID == oci.UploadingLayerID
+	isPush := msg.Mode == "push"
 
 	// Determine status based on progress
 	var status string
