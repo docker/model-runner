@@ -85,7 +85,7 @@ https://docs.docker.com/ai/model-runner/get-started/
 
 Before building from source, ensure you have the following installed:
 
-- **Go 1.24+** - Required for building both model-runner and model-cli
+- **Go 1.25+** - Required for building both model-runner and model-cli
 - **Git** - For cloning repositories
 - **Make** - For using the provided Makefiles
 - **Docker** (optional) - For building and running containerized versions
