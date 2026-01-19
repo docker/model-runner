@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 ARG LLAMA_SERVER_VERSION=latest
 ARG LLAMA_SERVER_VARIANT=cpu
 ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}

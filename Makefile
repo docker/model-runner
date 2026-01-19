@@ -1,6 +1,6 @@
 # Project variables
 APP_NAME := model-runner
-GO_VERSION := 1.24.3
+GO_VERSION := 1.25.6
 LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
