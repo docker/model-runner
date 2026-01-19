@@ -7,6 +7,7 @@ type ProgressMessage struct {
 	Total   uint64 `json:"total"`
 	Pulled  uint64 `json:"pulled"` // Deprecated: use Layer.Current
 	Layer   Layer  `json:"layer"`  // Current layer information
+	Mode    string `json:"mode"`   // "push", "pull"
 }
 
 type Layer struct {

@@ -769,7 +769,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		var pr *progress.Reporter
 		var progressChan chan<- oci.Update
 		if safeWriter != nil {
-			pr = progress.NewProgressReporter(safeWriter, progress.PushMsg, size, layer)
+			pr = progress.NewProgressReporter(safeWriter, progress.PushMsg, size, layer, "push")
 			progressChan = pr.Updates()
 		}
 

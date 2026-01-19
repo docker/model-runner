@@ -29,6 +29,7 @@ type Message struct {
 	Total   uint64 `json:"total"`
 	Pulled  uint64 `json:"pulled"` // Deprecated: use Layer.Current
 	Layer   Layer  `json:"layer"`  // Current layer information
+	Mode    string `json:"mode"`   // "push", "pull"
 }
 
 type Reporter struct {
@@ -39,6 +40,7 @@ type Reporter struct {
 	format    progressF
 	layer     oci.Layer
 	imageSize uint64
+	mode      string
 }
 
 type progressF func(update oci.Update) string
@@ -51,7 +53,7 @@ func PushMsg(update oci.Update) string {
 	return fmt.Sprintf("Uploaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
-func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci.Layer) *Reporter {
+func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci.Layer, mode string) *Reporter {
 	return &Reporter{
 		out:       w,
 		progress:  make(chan oci.Update, 1),
@@ -59,6 +61,7 @@ func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci
 		format:    msgF,
 		layer:     layer,
 		imageSize: safeUint64(imageSize),
+		mode:      mode,
 	}
 }
 
@@ -84,31 +87,26 @@ func (r *Reporter) Updates() chan<- oci.Update {
 			now := time.Now()
 			var layerSize uint64
 			var layerID string
-			if r.layer != nil { // In case of Pull
-				id, err := r.layer.DiffID()
-				if err != nil {
-					r.err = err
-					continue
-				}
-				layerID = id.String()
-				size, err := r.layer.Size()
-				if err != nil {
-					r.err = err
-					continue
-				}
-				layerSize = safeUint64(size)
-			} else { // In case of Push there is no layer yet
-				// Use imageSize as layer is not known at this point
-				layerSize = r.imageSize
-				layerID = oci.UploadingLayerID // Fake ID for push operations to enable progress display
+			id, err := r.layer.DiffID()
+			if err != nil {
+				r.err = err
+				continue
 			}
+			layerID = id.String()
+			size, err := r.layer.Size()
+			if err != nil {
+				r.err = err
+				continue
+			}
+			layerSize = safeUint64(size)
+
 			incrementalBytes := p.Complete - lastComplete
 
 			// Only update if enough time has passed or enough bytes downloaded or finished
 			if now.Sub(lastUpdate) >= UpdateInterval ||
 				incrementalBytes >= MinBytesForUpdate ||
 				safeUint64(p.Complete) == layerSize {
-				if err := WriteProgress(r.out, r.format(p), r.imageSize, layerSize, safeUint64(p.Complete), layerID); err != nil {
+				if err := WriteProgress(r.out, r.format(p), r.imageSize, layerSize, safeUint64(p.Complete), layerID, r.mode); err != nil {
 					r.err = err
 				}
 				lastUpdate = now
@@ -127,7 +125,7 @@ func (r *Reporter) Wait() error {
 }
 
 // WriteProgress writes a progress update message
-func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64, layerID string) error {
+func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64, layerID string, mode string) error {
 	return write(w, Message{
 		Type:    "progress",
 		Message: msg,
@@ -138,6 +136,7 @@ func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64
 			Size:    layerSize,
 			Current: current,
 		},
+		Mode: mode,
 	})
 }
 

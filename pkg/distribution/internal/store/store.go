@@ -325,7 +325,7 @@ func (s *LocalStore) Write(mdl oci.Image, tags []string, w io.Writer, opts ...Wr
 			var pr *progress.Reporter
 			var progressChan chan<- oci.Update
 			if safeWriter != nil {
-				pr = progress.NewProgressReporter(safeWriter, progress.PullMsg, imageSize, l)
+				pr = progress.NewProgressReporter(safeWriter, progress.PullMsg, imageSize, l, "pull")
 				progressChan = pr.Updates()
 			}
 
