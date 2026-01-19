@@ -87,19 +87,20 @@ func (r *Reporter) Updates() chan<- oci.Update {
 			now := time.Now()
 			var layerSize uint64
 			var layerID string
-			id, err := r.layer.DiffID()
-			if err != nil {
-				r.err = err
-				continue
+			if r.layer != nil {
+				id, err := r.layer.DiffID()
+				if err != nil {
+					r.err = err
+					continue
+				}
+				layerID = id.String()
+				size, err := r.layer.Size()
+				if err != nil {
+					r.err = err
+					continue
+				}
+				layerSize = safeUint64(size)
 			}
-			layerID = id.String()
-			size, err := r.layer.Size()
-			if err != nil {
-				r.err = err
-				continue
-			}
-			layerSize = safeUint64(size)
-
 			incrementalBytes := p.Complete - lastComplete
 
 			// Only update if enough time has passed or enough bytes downloaded or finished
