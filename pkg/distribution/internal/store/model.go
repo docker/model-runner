@@ -157,6 +157,10 @@ func (m *Model) SafetensorsPaths() ([]string, error) {
 	return mdpartial.SafetensorsPaths(m)
 }
 
+func (m *Model) DDUFPaths() ([]string, error) {
+	return mdpartial.DDUFPaths(m)
+}
+
 func (m *Model) ConfigArchivePath() (string, error) {
 	return mdpartial.ConfigArchivePath(m)
 }

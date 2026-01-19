@@ -13,6 +13,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/anthropic"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
@@ -76,6 +77,7 @@ func main() {
 	vllmServerPath := os.Getenv("VLLM_SERVER_PATH")
 	sglangServerPath := os.Getenv("SGLANG_SERVER_PATH")
 	mlxServerPath := os.Getenv("MLX_SERVER_PATH")
+	diffusersServerPath := os.Getenv("DIFFUSERS_SERVER_PATH")
 
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
@@ -156,10 +158,23 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
 	}
 
+	diffusersBackend, err := diffusers.New(
+		log,
+		modelManager,
+		log.WithFields(logrus.Fields{"component": diffusers.Name}),
+		nil,
+		diffusersServerPath,
+	)
+
+	if err != nil {
+		log.Fatalf("unable to initialize diffusers backend: %v", err)
+	}
+
 	backends := map[string]inference.Backend{
-		llamacpp.Name: llamaCppBackend,
-		mlx.Name:      mlxBackend,
-		sglang.Name:   sglangBackend,
+		llamacpp.Name:  llamaCppBackend,
+		mlx.Name:       mlxBackend,
+		sglang.Name:    sglangBackend,
+		diffusers.Name: diffusersBackend,
 	}
 	registerVLLMBackend(backends, vllmBackend)
 

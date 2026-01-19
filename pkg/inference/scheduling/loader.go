@@ -288,6 +288,7 @@ func (l *loader) Unload(ctx context.Context, unload UnloadRequest) int {
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeCompletion)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeEmbedding)
 				l.evictRunner(unload.Backend, modelID, inference.BackendModeReranking)
+				l.evictRunner(unload.Backend, modelID, inference.BackendModeImageGeneration)
 			}
 			return len(l.runners)
 		}
@@ -425,8 +426,8 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {
 			draftModelID = l.modelManager.ResolveID(runnerConfig.Speculative.DraftModel)
 		}
-	} else if mode == inference.BackendModeReranking {
-		// For reranking mode, fallback to completion config if specific config is not found.
+	} else if (mode == inference.BackendModeReranking) || (mode == inference.BackendModeImageGeneration) {
+		// For reranking or image-generation mode, fallback to completion config if specific config is not found.
 		if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, inference.BackendModeCompletion)]; ok {
 			runnerConfig = &rc
 			if runnerConfig.Speculative != nil && runnerConfig.Speculative.DraftModel != "" {

@@ -38,8 +38,12 @@ func Unpack(dir string, model types.Model) (*Bundle, error) {
 		if err := unpackSafetensors(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack safetensors files: %w", err)
 		}
+	case types.FormatDiffusers:
+		if err := unpackDDUF(bundle, model); err != nil {
+			return nil, fmt.Errorf("unpack DDUF file: %w", err)
+		}
 	default:
-		return nil, fmt.Errorf("no supported model weights found (neither GGUF nor safetensors)")
+		return nil, fmt.Errorf("no supported model weights found (expected GGUF, safetensors, or diffusers/DDUF)")
 	}
 
 	// Unpack optional components based on their presence
@@ -88,7 +92,39 @@ func detectModelFormat(model types.Model) types.Format {
 		return types.FormatSafetensors
 	}
 
+	// Check for DDUF files
+	ddufPaths, err := model.DDUFPaths()
+	if err == nil && len(ddufPaths) > 0 {
+		return types.FormatDiffusers
+	}
+
 	return ""
+}
+
+// unpackDDUF unpacks a DDUF (Diffusers Unified Format) file to the bundle.
+func unpackDDUF(bundle *Bundle, mdl types.Model) error {
+	ddufPaths, err := mdl.DDUFPaths()
+	if err != nil {
+		return fmt.Errorf("get DDUF files for model: %w", err)
+	}
+
+	if len(ddufPaths) == 0 {
+		return fmt.Errorf("no DDUF files found")
+	}
+
+	modelDir := filepath.Join(bundle.dir, ModelSubdir)
+
+	// DDUF is a single-file format
+	ddufFilename := filepath.Base(ddufPaths[0])
+	// Ensure the filename has the .dduf extension for proper detection by diffusers server
+	if !strings.HasSuffix(strings.ToLower(ddufFilename), ".dduf") {
+		ddufFilename = ddufFilename + ".dduf"
+	}
+	if err := unpackFile(filepath.Join(modelDir, ddufFilename), ddufPaths[0]); err != nil {
+		return err
+	}
+	bundle.ddufFile = ddufFilename
+	return nil
 }
 
 // hasLayerWithMediaType checks if the model contains a layer with the specified media type
