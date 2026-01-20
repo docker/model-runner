@@ -13,6 +13,7 @@ import (
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ const (
 	// installation will try to reach the model runner while waiting for it to
 	// be ready.
 	installWaitRetryInterval = 500 * time.Millisecond
-	backendUsage             = "Specify backend (" + llamacpp.Name + "|" + vllm.Name + "). Default: " + llamacpp.Name
+	backendUsage             = "Specify backend (" + llamacpp.Name + "|" + vllm.Name + "|" + diffusers.Name + "). Default: " + llamacpp.Name
 )
 
 // waitForStandaloneRunnerAfterInstall waits for a standalone model runner
@@ -316,8 +317,18 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 	}
 
 	// Validate backend selection
-	if opts.backend != "" && opts.backend != llamacpp.Name && opts.backend != vllm.Name {
-		return fmt.Errorf("unknown backend: %q (supported: %s, %s)", opts.backend, llamacpp.Name, vllm.Name)
+	validBackends := []string{llamacpp.Name, vllm.Name, diffusers.Name}
+	if opts.backend != "" {
+		isValid := false
+		for _, valid := range validBackends {
+			if opts.backend == valid {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			return fmt.Errorf("unknown backend: %q (supported: %s, %s, %s)", opts.backend, llamacpp.Name, vllm.Name, diffusers.Name)
+		}
 	}
 
 	// Validate backend-GPU compatibility
