@@ -28,7 +28,7 @@ const (
 const (
 	enableViaCLI = "Enable Docker Model Runner via the CLI → docker desktop enable model-runner"
 	enableViaGUI = "Enable Docker Model Runner via the GUI → Go to Settings->AI->Enable Docker Model Runner"
-	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model install-runner --vllm"
+	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model reinstall-runner --backend vllm --gpu cuda"
 )
 
 // getDefaultRegistry returns the default registry, checking for environment override
