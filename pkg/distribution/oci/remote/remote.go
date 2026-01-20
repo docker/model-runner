@@ -728,15 +728,6 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		return fmt.Errorf("getting layers: %w", err)
 	}
 
-	var totalSize int64
-	for _, layer := range layers {
-		size, err := layer.Size()
-		if err != nil {
-			return fmt.Errorf("getting layer size: %w", err)
-		}
-		totalSize += size
-	}
-
 	// Create a thread-safe writer wrapper for concurrent progress reporting
 	var safeWriter io.Writer
 	if w != nil {
