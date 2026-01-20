@@ -75,8 +75,16 @@ linters:
 
     forbidigo:
       forbid:
+        # General rule - applies everywhere (pkg: all preserves original behavior)
         - pkg: all
-          pattern: ^(fmt\.Print(|f|ln)|print|println)$
+          pattern: '^(fmt\.Print(|f|ln)|print|println)$'
+        # Test-specific rules (scoped to test files via exclusions below)
+        - pattern: '^os\.MkdirTemp$'
+          msg: "use t.TempDir() instead of os.MkdirTemp() in tests"
+        - pattern: '^os\.Setenv$'
+          msg: "use t.Setenv() instead of os.Setenv() in tests"
+        - pattern: '^context\.(Background|TODO)$'
+          msg: "use t.Context() instead of context.Background()/context.TODO() in tests"
       analyze-types: true
 
     gocritic:
@@ -221,6 +229,11 @@ linters:
         linters:
           - staticcheck
         text: "SA5011"
+      # Exclude test-specific forbidigo rules from non-test files
+      - path-except: '_test\.go$'
+        linters:
+          - forbidigo
+        text: 'use t\.'
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
