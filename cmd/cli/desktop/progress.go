@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-units"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 )
 
 // DisplayProgress displays progress messages from a model pull/push operation
@@ -40,7 +41,6 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 
 	// Convert progress messages to JSONMessage format
 	scanner := bufio.NewScanner(body)
-	layerStatus := make(map[string]string) // Track status of each layer
 	var finalMessage string
 	progressShown := false // Track if we actually showed any progress bars
 
@@ -50,7 +50,7 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 			continue
 		}
 
-		var progressMsg ProgressMessage
+		var progressMsg oci.ProgressMessage
 		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
 			// If we can't parse, just skip
 			continue
@@ -59,7 +59,7 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 		switch progressMsg.Type {
 		case "progress":
 			progressShown = true // We're showing actual progress
-			if err := writeDockerProgress(pw, &progressMsg, layerStatus); err != nil {
+			if err := writeDockerProgress(pw, &progressMsg); err != nil {
 				pw.Close()
 				return "", false, err
 			}
@@ -108,7 +108,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 			continue
 		}
 
-		var progressMsg ProgressMessage
+		var progressMsg oci.ProgressMessage
 		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
 			continue
 		}
@@ -149,7 +149,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 }
 
 // writeDockerProgress writes a progress update in Docker's JSONMessage format
-func writeDockerProgress(w io.Writer, msg *ProgressMessage, layerStatus map[string]string) error {
+func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 	layerID := msg.Layer.ID
 	if layerID == "" {
 		return nil

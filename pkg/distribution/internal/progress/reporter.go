@@ -16,21 +16,27 @@ const UpdateInterval = 100 * time.Millisecond
 // before sending a progress update
 const MinBytesForUpdate = 1024 * 1024 // 1MB
 
-type Layer struct {
-	ID      string // Layer ID
-	Size    uint64 // Layer size
-	Current uint64 // Current bytes transferred
-}
+// Re-export types from oci package for backward compatibility
+type (
+	// MessageType represents the type of progress message
+	MessageType = oci.MessageType
+	// Mode represents the operation mode (pull or push)
+	Mode = oci.Mode
+	// Layer represents layer information in a progress message
+	Layer = oci.ProgressLayer
+	// Message represents a structured message for progress reporting
+	Message = oci.ProgressMessage
+)
 
-// Message represents a structured message for progress reporting
-type Message struct {
-	Type    string `json:"type"`    // "progress", "success", "warning", or "error"
-	Message string `json:"message"` // Deprecated: the message should be defined by clients based on Message.Total and Message.Layer
-	Total   uint64 `json:"total"`
-	Pulled  uint64 `json:"pulled"` // Deprecated: use Layer.Current
-	Layer   Layer  `json:"layer"`  // Current layer information
-	Mode    string `json:"mode"`   // "push", "pull"
-}
+// Re-export constants from oci package for backward compatibility
+const (
+	TypeProgress = oci.TypeProgress
+	TypeSuccess  = oci.TypeSuccess
+	TypeWarning  = oci.TypeWarning
+	TypeError    = oci.TypeError
+	ModePull     = oci.ModePull
+	ModePush     = oci.ModePush
+)
 
 type Reporter struct {
 	progress  chan oci.Update
@@ -40,7 +46,7 @@ type Reporter struct {
 	format    progressF
 	layer     oci.Layer
 	imageSize uint64
-	mode      string
+	mode      Mode
 }
 
 type progressF func(update oci.Update) string
@@ -53,7 +59,7 @@ func PushMsg(update oci.Update) string {
 	return fmt.Sprintf("Uploaded: %.2f MB", float64(update.Complete)/1024/1024)
 }
 
-func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci.Layer, mode string) *Reporter {
+func NewProgressReporter(w io.Writer, msgF progressF, imageSize int64, layer oci.Layer, mode Mode) *Reporter {
 	return &Reporter{
 		out:       w,
 		progress:  make(chan oci.Update, 1),
@@ -126,42 +132,44 @@ func (r *Reporter) Wait() error {
 }
 
 // WriteProgress writes a progress update message
-func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64, layerID string, mode string) error {
+func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64, layerID string, mode Mode) error {
 	return write(w, Message{
-		Type:    "progress",
+		Type:    string(TypeProgress),
 		Message: msg,
 		Total:   imageSize,
-		Pulled:  current,
 		Layer: Layer{
 			ID:      layerID,
 			Size:    layerSize,
 			Current: current,
 		},
-		Mode: mode,
+		Mode: string(mode),
 	})
 }
 
 // WriteSuccess writes a success message
-func WriteSuccess(w io.Writer, message string) error {
+func WriteSuccess(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    "success",
+		Type:    string(TypeSuccess),
 		Message: message,
+		Mode:    string(mode),
 	})
 }
 
 // WriteError writes an error message
-func WriteError(w io.Writer, message string) error {
+func WriteError(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    "error",
+		Type:    string(TypeError),
 		Message: message,
+		Mode:    string(mode),
 	})
 }
 
 // WriteWarning writes a warning message
-func WriteWarning(w io.Writer, message string) error {
+func WriteWarning(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    "warning",
+		Type:    string(TypeWarning),
 		Message: message,
+		Mode:    string(mode),
 	})
 }
 

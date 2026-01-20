@@ -340,7 +340,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 			return fmt.Errorf("getting cached model config: %w", err)
 		}
 
-		err = progress.WriteSuccess(progressWriter, fmt.Sprintf("Using cached model: %s", cfg.GetSize()))
+		err = progress.WriteSuccess(progressWriter, fmt.Sprintf("Using cached model: %s", cfg.GetSize()), progress.ModePull)
 		if err != nil {
 			c.log.Warnf("Writing progress: %v", err)
 		}
@@ -362,13 +362,13 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 		writeOpts = append(writeOpts, store.WithRangeSuccess(rangeSuccess))
 	}
 	if err = c.store.Write(remoteModel, []string{reference}, progressWriter, writeOpts...); err != nil {
-		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {
+		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), progress.ModePull); writeErr != nil {
 			c.log.Warnf("Failed to write error message: %v", writeErr)
 		}
 		return fmt.Errorf("writing image to store: %w", err)
 	}
 
-	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully"); err != nil {
+	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully", progress.ModePull); err != nil {
 		c.log.Warnf("Failed to write success message: %v", err)
 	}
 
@@ -409,7 +409,7 @@ func (c *Client) LoadModel(r io.Reader, progressWriter io.Writer) (string, error
 	}
 	c.log.Infoln("Loaded model with ID:", digest.String())
 
-	if err := progress.WriteSuccess(progressWriter, "Model loaded successfully"); err != nil {
+	if err := progress.WriteSuccess(progressWriter, "Model loaded successfully", progress.ModePull); err != nil {
 		c.log.Warnf("Failed to write success message: %v", err)
 	}
 
@@ -555,14 +555,14 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	c.log.Infoln("Pushing model:", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Errorln("Failed to push image:", err, "reference:", tag)
-		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {
+		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), progress.ModePush); writeErr != nil {
 			c.log.Warnf("Failed to write error message: %v", writeErr)
 		}
 		return fmt.Errorf("pushing image: %w", err)
 	}
 
 	c.log.Infoln("Successfully pushed model:", tag)
-	if err := progress.WriteSuccess(progressWriter, "Model pushed successfully"); err != nil {
+	if err := progress.WriteSuccess(progressWriter, "Model pushed successfully", progress.ModePush); err != nil {
 		c.log.Warnf("Failed to write success message: %v", err)
 	}
 
@@ -624,7 +624,7 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 	} else if !slices.Contains(GetSupportedFormats(), config.GetFormat()) {
 		// Write warning but continue with pull
 		log.Warnln(warnUnsupportedFormat)
-		if err := progress.WriteWarning(progressWriter, warnUnsupportedFormat); err != nil {
+		if err := progress.WriteWarning(progressWriter, warnUnsupportedFormat, progress.ModePull); err != nil {
 			log.Warnf("Failed to write warning message: %v", err)
 		}
 		// Don't return an error - allow the pull to continue
@@ -701,7 +701,7 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 		if errors.As(err, &notFoundErr) {
 			return registry.ErrModelNotFound
 		}
-		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {
+		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), progress.ModePull); writeErr != nil {
 			c.log.Warnf("Failed to write error message: %v", writeErr)
 		}
 		return fmt.Errorf("build model from HuggingFace: %w", err)
@@ -711,13 +711,13 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 	storageTag := c.normalizeModelName(reference)
 	c.log.Infof("Writing model to store with tag: %s", utils.SanitizeForLog(storageTag))
 	if err := c.store.Write(model, []string{storageTag}, progressWriter); err != nil {
-		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error())); writeErr != nil {
+		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), progress.ModePull); writeErr != nil {
 			c.log.Warnf("Failed to write error message: %v", writeErr)
 		}
 		return fmt.Errorf("writing model to store: %w", err)
 	}
 
-	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully"); err != nil {
+	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully", progress.ModePull); err != nil {
 		c.log.Warnf("Failed to write success message: %v", err)
 	}
 
