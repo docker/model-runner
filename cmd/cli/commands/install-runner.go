@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -327,7 +328,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 			}
 		}
 		if !isValid {
-			return fmt.Errorf("unknown backend: %q (supported: %s, %s, %s)", opts.backend, llamacpp.Name, vllm.Name, diffusers.Name)
+			return fmt.Errorf("unknown backend: %q (supported: %s)", opts.backend, strings.Join(validBackends, ", "))
 		}
 	}
 
