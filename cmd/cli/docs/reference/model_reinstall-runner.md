@@ -7,7 +7,7 @@ Reinstall Docker Model Runner (Docker Engine only)
 
 | Name             | Type     | Default     | Description                                                                                            |
 |:-----------------|:---------|:------------|:-------------------------------------------------------------------------------------------------------|
-| `--backend`      | `string` |             | Specify backend (llama.cpp\|vllm). Default: llama.cpp                                                  |
+| `--backend`      | `string` |             | Specify backend (llama.cpp\|vllm\|diffusers). Default: llama.cpp                                       |
 | `--debug`        | `bool`   |             | Enable debug logging                                                                                   |
 | `--do-not-track` | `bool`   |             | Do not track models usage in Docker Model Runner                                                       |
 | `--gpu`          | `string` | `auto`      | Specify GPU support (none\|auto\|cuda\|rocm\|musa\|cann)                                               |

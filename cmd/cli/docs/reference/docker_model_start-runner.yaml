@@ -10,7 +10,7 @@ plink: docker_model.yaml
 options:
     - option: backend
       value_type: string
-      description: 'Specify backend (llama.cpp|vllm). Default: llama.cpp'
+      description: 'Specify backend (llama.cpp|vllm|diffusers). Default: llama.cpp'
       deprecated: false
       hidden: false
       experimental: false
