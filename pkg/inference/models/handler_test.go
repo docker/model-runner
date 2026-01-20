@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -72,7 +71,7 @@ func TestPullModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
 	}
-	err = license.Build(context.Background(), target, os.Stdout)
+	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
 		t.Fatalf("Failed to build model: %v", err)
 	}
@@ -166,7 +165,7 @@ func TestHandleGetModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
 	}
-	err = license.Build(context.Background(), target, os.Stdout)
+	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
 		t.Fatalf("Failed to build model: %v", err)
 	}

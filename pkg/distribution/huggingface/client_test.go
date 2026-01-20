@@ -1,7 +1,6 @@
 package huggingface
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -30,7 +29,7 @@ func TestClientListFiles(t *testing.T) {
 
 	client := NewClient(WithBaseURL(server.URL))
 
-	files, err := client.ListFiles(context.Background(), "test-org/test-model", "main")
+	files, err := client.ListFiles(t.Context(), "test-org/test-model", "main")
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err)
 	}
@@ -52,7 +51,7 @@ func TestClientListFilesDefaultRevision(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(WithBaseURL(server.URL))
-	_, err := client.ListFiles(context.Background(), "test/model", "")
+	_, err := client.ListFiles(t.Context(), "test/model", "")
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err)
 	}
@@ -73,7 +72,7 @@ func TestClientDownloadFile(t *testing.T) {
 
 	client := NewClient(WithBaseURL(server.URL))
 
-	reader, size, err := client.DownloadFile(context.Background(), "test-org/test-model", "main", "test.txt")
+	reader, size, err := client.DownloadFile(t.Context(), "test-org/test-model", "main", "test.txt")
 	if err != nil {
 		t.Fatalf("DownloadFile failed: %v", err)
 	}
@@ -101,7 +100,7 @@ func TestClientAuthError(t *testing.T) {
 
 	client := NewClient(WithBaseURL(server.URL))
 
-	_, err := client.ListFiles(context.Background(), "private/model", "main")
+	_, err := client.ListFiles(t.Context(), "private/model", "main")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -120,7 +119,7 @@ func TestClientNotFoundError(t *testing.T) {
 
 	client := NewClient(WithBaseURL(server.URL))
 
-	_, err := client.ListFiles(context.Background(), "nonexistent/model", "main")
+	_, err := client.ListFiles(t.Context(), "nonexistent/model", "main")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -146,7 +145,7 @@ func TestClientWithToken(t *testing.T) {
 		WithToken("test-token"),
 	)
 
-	_, err := client.ListFiles(context.Background(), "test/model", "main")
+	_, err := client.ListFiles(t.Context(), "test/model", "main")
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err)
 	}

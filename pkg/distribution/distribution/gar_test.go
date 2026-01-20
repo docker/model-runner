@@ -1,7 +1,6 @@
 package distribution
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -20,12 +19,7 @@ func TestGARIntegration(t *testing.T) {
 		t.Fatal("TEST_GAR_TAG environment variable is required")
 	}
 
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-gar-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client
 	client, err := NewClient(WithStoreRootPath(tempDir))
@@ -50,7 +44,7 @@ func TestGARIntegration(t *testing.T) {
 		if err := client.store.Write(mdl, []string{garTag}, nil); err != nil {
 			t.Fatalf("Failed to write model to store: %v", err)
 		}
-		if err := client.PushModel(context.Background(), garTag, nil); err != nil {
+		if err := client.PushModel(t.Context(), garTag, nil); err != nil {
 			t.Fatalf("Failed to push model to ECR: %v", err)
 		}
 		if _, err := client.DeleteModel(garTag, false); err != nil { // cleanup
@@ -60,7 +54,7 @@ func TestGARIntegration(t *testing.T) {
 
 	// Test pull from GAR
 	t.Run("Pull without progress", func(t *testing.T) {
-		err := client.PullModel(context.Background(), garTag, nil)
+		err := client.PullModel(t.Context(), garTag, nil)
 		if err != nil {
 			t.Fatalf("Failed to pull model from GAR: %v", err)
 		}

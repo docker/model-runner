@@ -68,9 +68,9 @@ const (
 
 // createDefunctMockRunner creates a mock runner with a closed done channel,
 // simulating a defunct (crashed/terminated) runner for testing
-func createDefunctMockRunner(log *logrus.Entry, backend inference.Backend) *runner {
+func createDefunctMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
 	defunctRunnerDone := make(chan struct{})
-	_, defunctRunnerCancel := context.WithCancel(context.Background())
+	_, defunctRunnerCancel := context.WithCancel(ctx)
 
 	// Create minimal HTTP client and transport to avoid nil pointer errors
 	transport := &http.Transport{}
@@ -97,8 +97,8 @@ func createDefunctMockRunner(log *logrus.Entry, backend inference.Backend) *runn
 
 // createAliveTerminableMockRunner creates a mock runner with an open done channel
 // (i.e., not defunct) that will close when cancel is invoked, so terminate() returns.
-func createAliveTerminableMockRunner(log *logrus.Entry, backend inference.Backend) *runner {
-	runCtx, cancel := context.WithCancel(context.Background())
+func createAliveTerminableMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
+	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 
 	// Create minimal HTTP client and transport to avoid nil pointer errors
@@ -233,18 +233,18 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 	loader := newLoader(log, backends, nil, nil)
 
 	// Enable loads directly under the lock (no background run loop needed)
-	if !loader.lock(context.Background()) {
+	if !loader.lock(t.Context()) {
 		t.Fatal("Failed to acquire loader lock to enable loads")
 	}
 	loader.loadsEnabled = true
 	loader.unlock()
 
 	// Set up a defunct runner in the loader's state to simulate an existing crashed runner
-	if !loader.lock(context.Background()) {
+	if !loader.lock(t.Context()) {
 		t.Fatal("Failed to acquire loader lock")
 	}
 
-	defunctRunner := createDefunctMockRunner(log, backend)
+	defunctRunner := createDefunctMockRunner(t.Context(), log, backend)
 
 	// Register the defunct runner in slot 0
 	slot := 0
@@ -259,7 +259,7 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 	loader.unlock()
 
 	// Attempt to load - with fastFail backend, this should return quickly after eviction+retry
-	_, err := loader.load(context.Background(), "test-backend", "model1", "model1:latest", inference.BackendModeCompletion)
+	_, err := loader.load(t.Context(), "test-backend", "model1", "model1:latest", inference.BackendModeCompletion)
 
 	// We expect an error (backend fails fast), but not a timeout/hang
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -289,18 +289,18 @@ func TestUnusedRunnerEvictionTriggersRetry(t *testing.T) {
 	loader := newLoader(log, backends, nil, nil)
 
 	// Enable loads directly
-	if !loader.lock(context.Background()) {
+	if !loader.lock(t.Context()) {
 		t.Fatal("Failed to acquire loader lock to enable loads")
 	}
 	loader.loadsEnabled = true
 	loader.unlock()
 
 	// Install an unused, alive runner under a different model key occupying all memory
-	if !loader.lock(context.Background()) {
+	if !loader.lock(t.Context()) {
 		t.Fatal("Failed to acquire loader lock")
 	}
 
-	aliveRunner := createAliveTerminableMockRunner(log, backend)
+	aliveRunner := createAliveTerminableMockRunner(t.Context(), log, backend)
 	slot := 0
 	loader.slots[slot] = aliveRunner
 	loader.runners[makeRunnerKey("test-backend", "modelX", "", inference.BackendModeCompletion)] = runnerInfo{
@@ -313,7 +313,7 @@ func TestUnusedRunnerEvictionTriggersRetry(t *testing.T) {
 	loader.unlock()
 
 	// Attempt to load a different model; eviction should occur and loop should retry immediately
-	_, err := loader.load(context.Background(), "test-backend", "model1", "model1:latest", inference.BackendModeCompletion)
+	_, err := loader.load(t.Context(), "test-backend", "model1", "model1:latest", inference.BackendModeCompletion)
 
 	if errors.Is(err, context.DeadlineExceeded) {
 		t.Error("load() timed out - eviction of unused runner did not trigger retry")

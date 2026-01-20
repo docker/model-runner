@@ -109,7 +109,7 @@ func generateReferenceTestCases(info modelInfo) []referenceTestCase {
 
 // setupTestEnv creates the complete test environment with registry and DMR
 func setupTestEnv(t *testing.T) *testEnv {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Set environment variables for the test process to match the DMR container.
 	// This ensures CLI functions use the same default registry when parsing references.
@@ -142,7 +142,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 func ociRegistry(t *testing.T, ctx context.Context, net *testcontainers.DockerNetwork) string {
 	t.Log("Starting OCI registry container...")
-	ctr, err := tc.Run(context.Background(), "registry:3",
+	ctr, err := tc.Run(t.Context(), "registry:3",
 		network.WithNetwork([]string{"registry.local"}, net),
 	)
 	require.NoError(t, err)
@@ -251,7 +251,7 @@ func verifyModelInspect(t *testing.T, client *desktop.Client, ref, expectedID, e
 // createAndPushTestModel creates a minimal test model and pushes it to the local registry.
 // Returns the model ID, FQDNs for host and network access, and the manifest digest.
 func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextSize *int32) (modelID, hostFQDN, networkFQDN, digest string) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Use the dummy GGUF file from assets
 	dummyGGUFPath := filepath.Join("../../../assets/dummy.gguf")
@@ -1157,7 +1157,7 @@ func int32ptr(n int32) *int32 {
 // the real Docker Hub (index.docker.io) as the default registry.
 // This is used to test that pulling from Docker Hub works correctly.
 func setupDockerHubTestEnv(t *testing.T) *testEnv {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a custom network for container communication
 	net, err := network.New(ctx)
