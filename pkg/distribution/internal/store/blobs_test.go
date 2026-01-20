@@ -12,11 +12,7 @@ import (
 )
 
 func TestBlobs(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "blob-test")
-	if err != nil {
-		t.Fatalf("error creating temp dir: %v", err)
-	}
-	rootDir := filepath.Join(tmpDir, "store")
+	rootDir := filepath.Join(t.TempDir(), "store")
 	store, err := New(Options{RootPath: rootDir})
 	if err != nil {
 		t.Fatalf("error creating store: %v", err)

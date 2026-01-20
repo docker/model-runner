@@ -23,12 +23,7 @@ import (
 
 // TestStoreAPI tests the store API directly
 func TestStoreAPI(t *testing.T) {
-	// Create a temporary directory for the test store
-	tempDir, err := os.MkdirTemp("", "store-api-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create store
 	storePath := filepath.Join(tempDir, "api-model-store")
@@ -388,11 +383,7 @@ func TestStoreAPI(t *testing.T) {
 }
 
 func TestWriteRollsBackOnTagFailure(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "store-rollback-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	storePath := filepath.Join(tempDir, "rollback-store")
 	s, err := store.New(store.Options{
@@ -470,11 +461,7 @@ func TestWriteRollsBackOnTagFailure(t *testing.T) {
 }
 
 func TestWriteRollsBackOnConfigFailure(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "store-config-failure")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	storePath := filepath.Join(tempDir, "config-failure-store")
 	s, err := store.New(store.Options{RootPath: storePath})
@@ -493,11 +480,7 @@ func TestWriteRollsBackOnConfigFailure(t *testing.T) {
 }
 
 func TestWriteRollsBackOnLayerFailure(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "store-layer-failure")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	storePath := filepath.Join(tempDir, "layer-failure-store")
 	s, err := store.New(store.Options{RootPath: storePath})
@@ -581,12 +564,7 @@ func (f failingLayer) Uncompressed() (io.ReadCloser, error) {
 
 // TestIncompleteFileHandling tests that files are created with .incomplete suffix and renamed on success
 func TestIncompleteFileHandling(t *testing.T) {
-	// Create a temporary directory for the test store
-	tempDir, err := os.MkdirTemp("", "incomplete-file-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a temporary model file with known content
 	modelContent := []byte("test model content for incomplete file test")
@@ -686,11 +664,7 @@ func containsTag(tags []string, tag string) bool {
 }
 
 func TestWriteHandlesExistingBlobsGracefully(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "store-existing-blob")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	storePath := filepath.Join(tempDir, "existing-blob-store")
 	s, err := store.New(store.Options{RootPath: storePath})
@@ -722,12 +696,7 @@ func TestWriteHandlesExistingBlobsGracefully(t *testing.T) {
 
 // TestStoreWithMultimodalProjector tests storing and retrieving models with multimodal projector files
 func TestStoreWithMultimodalProjector(t *testing.T) {
-	// Create a temporary directory for the test store
-	tempDir, err := os.MkdirTemp("", "store-mmproj-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create store
 	storePath := filepath.Join(tempDir, "mmproj-model-store")
@@ -833,12 +802,7 @@ func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
 	}
 
 	// Create dummy multimodal projector file for testing
-	tempDir, err := os.MkdirTemp("", "mmproj-test")
-	if err != nil {
-		t.Fatalf("failed to create temp directory: %v", err)
-	}
-
-	mmprojPath := filepath.Join(tempDir, "dummy.mmproj")
+	mmprojPath := filepath.Join(t.TempDir(), "dummy.mmproj")
 	mmprojContent := []byte("dummy multimodal projector content for testing")
 	if err := os.WriteFile(mmprojPath, mmprojContent, 0644); err != nil {
 		t.Fatalf("failed to create dummy multimodal projector file: %v", err)
@@ -871,12 +835,7 @@ func TestResetStore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary directory for the test store
-			tempDir, err := os.MkdirTemp("", "reset-store-test")
-			if err != nil {
-				t.Fatalf("Failed to create temp directory: %v", err)
-			}
-			defer os.RemoveAll(tempDir)
+			tempDir := t.TempDir()
 
 			// Create store
 			storePath := filepath.Join(tempDir, "reset-model-store")
@@ -1033,12 +992,7 @@ func TestResetStore(t *testing.T) {
 }
 
 func TestWriteLightweight(t *testing.T) {
-	// Create a temporary directory for the test store
-	tempDir, err := os.MkdirTemp("", "lightweight-write-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create store
 	storePath := filepath.Join(tempDir, "lightweight-model-store")

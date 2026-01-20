@@ -50,12 +50,7 @@ func TestClientPullModel(t *testing.T) {
 	}
 	registryHost := registryURL.Host
 
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -152,12 +147,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull non-existent model", func(t *testing.T) {
-		// Create temp directory for store
-		tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		tempDir := t.TempDir()
 
 		// Create client with plainHTTP for test registry
 		testClient, err := newTestClient(tempDir)
@@ -205,12 +195,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull with incomplete files", func(t *testing.T) {
-		// Create temp directory for store
-		tempDir, err := os.MkdirTemp("", "model-distribution-incomplete-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		tempDir := t.TempDir()
 
 		// Create client with plainHTTP for test registry
 		testClient, err := newTestClient(tempDir)
@@ -309,12 +294,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull updated model with same tag", func(t *testing.T) {
-		// Create temp directory for store
-		tempDir, err := os.MkdirTemp("", "model-distribution-update-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		tempDir := t.TempDir()
 
 		// Create client with plainHTTP for test registry
 		testClient, err := newTestClient(tempDir)
@@ -431,15 +411,10 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull safetensors model returns error on unsupported platforms", func(t *testing.T) {
-		// Create temp directory for the safetensors file
-		tempDir, err := os.MkdirTemp("", "safetensors-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		safetensorsTempDir := t.TempDir()
 
 		// Create a minimal safetensors file (just needs to exist for this test)
-		safetensorsPath := filepath.Join(tempDir, "model.safetensors")
+		safetensorsPath := filepath.Join(safetensorsTempDir, "model.safetensors")
 		safetensorsContent := []byte("fake safetensors content for testing")
 		if err := os.WriteFile(safetensorsPath, safetensorsContent, 0644); err != nil {
 			t.Fatalf("Failed to create safetensors file: %v", err)
@@ -462,11 +437,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Create a new client with a separate temp store
-		clientTempDir, err := os.MkdirTemp("", "client-safetensors-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create client temp directory: %v", err)
-		}
-		defer os.RemoveAll(clientTempDir)
+		clientTempDir := t.TempDir()
 
 		testClient, err := newTestClient(clientTempDir)
 		if err != nil {
@@ -495,12 +466,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull with JSON progress messages", func(t *testing.T) {
-		// Create temp directory for store
-		tempDir, err := os.MkdirTemp("", "model-distribution-json-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		tempDir := t.TempDir()
 
 		// Create client with plainHTTP for test registry
 		testClient, err := newTestClient(tempDir)
@@ -569,12 +535,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull with error and JSON progress messages", func(t *testing.T) {
-		// Create temp directory for store
-		tempDir, err := os.MkdirTemp("", "model-distribution-json-error-test-*")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer os.RemoveAll(tempDir)
+		tempDir := t.TempDir()
 
 		// Create client with plainHTTP for test registry
 		testClient, err := newTestClient(tempDir)
@@ -605,12 +566,7 @@ func TestClientPullModel(t *testing.T) {
 }
 
 func TestClientGetModel(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -644,12 +600,7 @@ func TestClientGetModel(t *testing.T) {
 }
 
 func TestClientGetModelNotFound(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -665,12 +616,7 @@ func TestClientGetModelNotFound(t *testing.T) {
 }
 
 func TestClientListModels(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -746,12 +692,7 @@ func TestClientListModels(t *testing.T) {
 }
 
 func TestClientGetStorePath(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -774,12 +715,7 @@ func TestClientGetStorePath(t *testing.T) {
 }
 
 func TestClientDefaultLogger(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client without specifying logger
 	client, err := NewClient(WithStoreRootPath(tempDir))
@@ -809,12 +745,7 @@ func TestClientDefaultLogger(t *testing.T) {
 }
 
 func TestWithFunctionsNilChecks(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Test WithStoreRootPath with empty string
 	t.Run("WithStoreRootPath empty string", func(t *testing.T) {
@@ -865,12 +796,7 @@ func TestWithFunctionsNilChecks(t *testing.T) {
 }
 
 func TestNewReferenceError(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -891,12 +817,7 @@ func TestNewReferenceError(t *testing.T) {
 }
 
 func TestPush(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -959,12 +880,7 @@ func TestPush(t *testing.T) {
 }
 
 func TestPushProgress(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -1049,12 +965,7 @@ func TestPushProgress(t *testing.T) {
 }
 
 func TestTag(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -1110,12 +1021,7 @@ func TestTag(t *testing.T) {
 }
 
 func TestTagNotFound(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -1130,12 +1036,7 @@ func TestTagNotFound(t *testing.T) {
 }
 
 func TestClientPushModelNotFound(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -1149,12 +1050,7 @@ func TestClientPushModelNotFound(t *testing.T) {
 }
 
 func TestIsModelInStoreNotFound(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
@@ -1170,12 +1066,7 @@ func TestIsModelInStoreNotFound(t *testing.T) {
 }
 
 func TestIsModelInStoreFound(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client with plainHTTP for test registry
 	client, err := newTestClient(tempDir)
