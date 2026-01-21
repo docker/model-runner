@@ -134,42 +134,43 @@ func (r *Reporter) Wait() error {
 // WriteProgress writes a progress update message
 func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64, layerID string, mode Mode) error {
 	return write(w, Message{
-		Type:    string(TypeProgress),
+		Type:    TypeProgress,
 		Message: msg,
 		Total:   imageSize,
+		Pulled:  current,
 		Layer: Layer{
 			ID:      layerID,
 			Size:    layerSize,
 			Current: current,
 		},
-		Mode: string(mode),
+		Mode: mode,
 	})
 }
 
 // WriteSuccess writes a success message
 func WriteSuccess(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    string(TypeSuccess),
+		Type:    TypeSuccess,
 		Message: message,
-		Mode:    string(mode),
+		Mode:    mode,
 	})
 }
 
 // WriteError writes an error message
 func WriteError(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    string(TypeError),
+		Type:    TypeError,
 		Message: message,
-		Mode:    string(mode),
+		Mode:    mode,
 	})
 }
 
 // WriteWarning writes a warning message
 func WriteWarning(w io.Writer, message string, mode Mode) error {
 	return write(w, Message{
-		Type:    string(TypeWarning),
+		Type:    TypeWarning,
 		Message: message,
-		Mode:    string(mode),
+		Mode:    mode,
 	})
 }
 

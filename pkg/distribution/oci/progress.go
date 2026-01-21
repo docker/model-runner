@@ -45,9 +45,10 @@ type ProgressLayer struct {
 
 // ProgressMessage represents a structured message for progress reporting
 type ProgressMessage struct {
-	Type    string        `json:"type"`    // "progress", "success", "warning", or "error"
+	Type    MessageType   `json:"type"`    // Message type: progress, success, warning, or error
 	Message string        `json:"message"` // Deprecated: the message should be defined by clients based on Message.Total and Message.Layer
 	Total   uint64        `json:"total"`
-	Layer   ProgressLayer `json:"layer"` // Current layer information
-	Mode    string        `json:"mode"`  // "push", "pull"
+	Pulled  uint64        `json:"pulled"` // Deprecated: use Layer.Current
+	Layer   ProgressLayer `json:"layer"`  // Current layer information
+	Mode    Mode          `json:"mode"`   // Operation mode: push or pull
 }
