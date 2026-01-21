@@ -149,22 +149,6 @@ type PSModel struct {
 	SizeVram  int64     `json:"size_vram,omitempty"`
 }
 
-// progressMessage represents the internal progress format from distribution client
-type progressMessage struct {
-	Type    string        `json:"type"`
-	Message string        `json:"message"`
-	Total   uint64        `json:"total"`
-	Pulled  uint64        `json:"pulled"`
-	Layer   progressLayer `json:"layer"`
-}
-
-// progressLayer represents layer information in progress messages
-type progressLayer struct {
-	ID      string `json:"id"`
-	Size    uint64 `json:"size"`
-	Current uint64 `json:"current"`
-}
-
 // ollamaPullStatus represents the Ollama pull status response format
 type ollamaPullStatus struct {
 	Status    string `json:"status,omitempty"`
