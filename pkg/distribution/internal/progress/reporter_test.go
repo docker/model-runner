@@ -59,12 +59,12 @@ func TestMessages(t *testing.T) {
 		layer1 := newMockLayer(2016)
 		layer2 := newMockLayer(1)
 
-		err := WriteProgress(&buf, PullMsg(update), uint64(layer1.size+layer2.size), uint64(layer1.size), uint64(update.Complete), layer1.diffID, ModePull)
+		err := WriteProgress(&buf, PullMsg(update), uint64(layer1.size+layer2.size), uint64(layer1.size), uint64(update.Complete), layer1.diffID, oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write progress message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
@@ -78,7 +78,7 @@ func TestMessages(t *testing.T) {
 		if msg.Total != uint64(2017) {
 			t.Errorf("Expected total 2017, got %d", msg.Total)
 		}
-		if msg.Layer == (Layer{}) {
+		if msg.Layer == (oci.ProgressLayer{}) {
 			t.Errorf("Expected layer to be set")
 		}
 		if msg.Layer.ID != "sha256:c7790a0a70161f1bfd441cf157313e9efb8fcd1f0831193101def035ead23b32" {
@@ -94,12 +94,12 @@ func TestMessages(t *testing.T) {
 
 	t.Run("writeSuccess", func(t *testing.T) {
 		var buf bytes.Buffer
-		err := WriteSuccess(&buf, "Model pulled successfully", ModePull)
+		err := WriteSuccess(&buf, "Model pulled successfully", oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write success message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
@@ -114,12 +114,12 @@ func TestMessages(t *testing.T) {
 
 	t.Run("writeError", func(t *testing.T) {
 		var buf bytes.Buffer
-		err := WriteError(&buf, "Error: something went wrong", ModePull)
+		err := WriteError(&buf, "Error: something went wrong", oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write error message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
@@ -221,7 +221,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 			var buf bytes.Buffer
 			layer := newMockLayer(tt.layerSize)
 
-			reporter := NewProgressReporter(&buf, PullMsg, 0, layer, ModePull)
+			reporter := NewProgressReporter(&buf, PullMsg, 0, layer, oci.ModePull)
 			updates := reporter.Updates()
 
 			// Send updates with delays
@@ -240,12 +240,12 @@ func TestProgressEmissionScenarios(t *testing.T) {
 
 			// Parse messages
 			lines := bytes.Split(buf.Bytes(), []byte("\n"))
-			var messages []Message
+			var messages []oci.ProgressMessage
 			for _, line := range lines {
 				if len(line) == 0 {
 					continue
 				}
-				var msg Message
+				var msg oci.ProgressMessage
 				if err := json.Unmarshal(line, &msg); err != nil {
 					t.Fatalf("Failed to parse JSON: %v", err)
 				}
