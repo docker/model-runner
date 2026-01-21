@@ -57,23 +57,23 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 		}
 
 		switch progressMsg.Type {
-		case "progress":
+		case oci.TypeProgress:
 			progressShown = true // We're showing actual progress
 			if err := writeDockerProgress(pw, &progressMsg); err != nil {
 				pw.Close()
 				return "", false, err
 			}
 
-		case "success":
+		case oci.TypeSuccess:
 			finalMessage = progressMsg.Message
 			// Don't write the success message here - let the caller print it
 			// to avoid duplicate output
 
-		case "warning":
+		case oci.TypeWarning:
 			// Print warning to stderr
 			printer.PrintErrf("Warning: %s\n", progressMsg.Message)
 
-		case "error":
+		case oci.TypeError:
 			pw.Close()
 			return "", false, fmt.Errorf("%s", progressMsg.Message)
 		}
@@ -114,7 +114,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 		}
 
 		switch progressMsg.Type {
-		case "progress":
+		case oci.TypeProgress:
 			progressShown = true // We're showing actual progress
 			layerID := progressMsg.Layer.ID
 			layerProgress[layerID] = progressMsg.Layer.Current
@@ -129,14 +129,14 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 				units.CustomSize("%.2f%s", float64(current), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}),
 				units.CustomSize("%.2f%s", float64(progressMsg.Total), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"})))
 
-		case "success":
+		case oci.TypeSuccess:
 			finalMessage = progressMsg.Message
 
-		case "warning":
+		case oci.TypeWarning:
 			// Print warning to stderr
 			printer.PrintErrf("Warning: %s\n", progressMsg.Message)
 
-		case "error":
+		case oci.TypeError:
 			return "", false, fmt.Errorf("%s", progressMsg.Message)
 		}
 	}

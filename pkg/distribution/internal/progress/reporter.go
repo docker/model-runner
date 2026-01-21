@@ -137,7 +137,6 @@ func WriteProgress(w io.Writer, msg string, imageSize, layerSize, current uint64
 		Type:    TypeProgress,
 		Message: msg,
 		Total:   imageSize,
-		Pulled:  current,
 		Layer: Layer{
 			ID:      layerID,
 			Size:    layerSize,
