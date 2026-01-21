@@ -69,8 +69,11 @@ func TestMessages(t *testing.T) {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "progress" {
-			t.Errorf("Expected type 'progress', got '%s'", msg.Type)
+		if msg.Type != oci.TypeProgress {
+			t.Errorf("Expected type %q, got %q", oci.TypeProgress, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Downloaded: 1.00 MB" {
 			t.Errorf("Expected message 'Downloaded: 1.00 MB', got '%s'", msg.Message)
@@ -104,8 +107,11 @@ func TestMessages(t *testing.T) {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "success" {
-			t.Errorf("Expected type 'success', got '%s'", msg.Type)
+		if msg.Type != oci.TypeSuccess {
+			t.Errorf("Expected type %q, got %q", oci.TypeSuccess, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Model pulled successfully" {
 			t.Errorf("Expected message 'Model pulled successfully', got '%s'", msg.Message)
@@ -124,8 +130,11 @@ func TestMessages(t *testing.T) {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "error" {
-			t.Errorf("Expected type 'error', got '%s'", msg.Type)
+		if msg.Type != oci.TypeError {
+			t.Errorf("Expected type %q, got %q", oci.TypeError, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Error: something went wrong" {
 			t.Errorf("Expected message 'Error: something went wrong', got '%s'", msg.Message)
@@ -258,8 +267,11 @@ func TestProgressEmissionScenarios(t *testing.T) {
 
 			// Verify message format for any messages received
 			for i, msg := range messages {
-				if msg.Type != "progress" {
-					t.Errorf("message %d: expected type 'progress', got '%s'", i, msg.Type)
+				if msg.Type != oci.TypeProgress {
+					t.Errorf("message %d: expected type %q, got %q", i, oci.TypeProgress, msg.Type)
+				}
+				if msg.Mode != oci.ModePull {
+					t.Errorf("message %d: expected mode %q, got %q", i, oci.ModePull, msg.Mode)
 				}
 				if msg.Layer.ID == "" {
 					t.Errorf("message %d: expected layer ID to be set", i)

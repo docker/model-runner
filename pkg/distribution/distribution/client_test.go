@@ -503,10 +503,17 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatal("No progress messages received")
 		}
 
+		// Verify all messages have the correct mode
+		for i, msg := range messages {
+			if msg.Mode != oci.ModePull {
+				t.Errorf("message %d: expected mode %q, got %q", i, oci.ModePull, msg.Mode)
+			}
+		}
+
 		// Check the last message is a success message
 		lastMsg := messages[len(messages)-1]
-		if lastMsg.Type != "success" {
-			t.Errorf("Expected last message to be success, got type: %s, message: %s", lastMsg.Type, lastMsg.Message)
+		if lastMsg.Type != oci.TypeSuccess {
+			t.Errorf("Expected last message to be success, got type: %q, message: %s", lastMsg.Type, lastMsg.Message)
 		}
 
 		// Verify model was pulled correctly
