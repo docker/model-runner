@@ -748,7 +748,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 
 	for i, layer := range layers {
 		wg.Add(1)
-		sem <- struct{}{} // Acquire semaphore
+		sem <- struct{}{}
 
 		go func(idx int, l oci.Layer) {
 			defer wg.Done()
