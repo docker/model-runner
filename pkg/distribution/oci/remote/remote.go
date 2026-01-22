@@ -859,7 +859,6 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 
 	wg.Wait()
 
-	// Collect errors
 	var allErrors []error
 	for i, result := range results {
 		if result != nil {
