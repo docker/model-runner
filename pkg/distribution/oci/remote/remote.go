@@ -752,7 +752,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 
 		go func(idx int, l oci.Layer) {
 			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore
+			defer func() { <-sem }()
 
 			var completed int64
 			digest, err := l.Digest()
