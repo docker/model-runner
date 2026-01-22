@@ -31,6 +31,12 @@ var (
 	DefaultTransport = http.DefaultTransport
 )
 
+const (
+	// maxConcurrentLayerPushes limits the number of layers that can be pushed in parallel
+	// to avoid overwhelming the registry or exhausting client resources.
+	maxConcurrentLayerPushes = 5
+)
+
 // Option configures remote operations.
 type Option func(*options)
 
@@ -735,14 +741,18 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		safeWriter = &syncWriter{w: w}
 	}
 
-	// Push layers in parallel
+	// Push layers in parallel with bounded concurrency
 	results := make([]error, len(layers))
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrentLayerPushes)
 
 	for i, layer := range layers {
 		wg.Add(1)
+		sem <- struct{}{} // Acquire semaphore
+
 		go func(idx int, l oci.Layer) {
 			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore
 
 			var completed int64
 			digest, err := l.Digest()
@@ -751,15 +761,18 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 				return
 			}
 
+			// Use digest string for error messages to make them more identifiable
+			digestStr := digest.String()
+
 			size, err := l.Size()
 			if err != nil {
-				results[idx] = fmt.Errorf("getting layer size: %w", err)
+				results[idx] = fmt.Errorf("layer %s: getting size: %w", digestStr, err)
 				return
 			}
 
 			mt, err := l.MediaType()
 			if err != nil {
-				results[idx] = fmt.Errorf("getting layer media type: %w", err)
+				results[idx] = fmt.Errorf("layer %s: getting media type: %w", digestStr, err)
 				return
 			}
 
@@ -780,7 +793,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			if err != nil {
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = fmt.Errorf("getting layer content: %w", err)
+				results[idx] = fmt.Errorf("layer %s: getting content: %w", digestStr, err)
 				return
 			}
 			defer rc.Close()
@@ -803,7 +816,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 				}
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = fmt.Errorf("pushing layer: %w", err)
+				results[idx] = fmt.Errorf("layer %s: pushing: %w", digestStr, err)
 				return
 			}
 			defer cw.Close()
@@ -818,7 +831,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			if _, err := io.Copy(cw, reader); err != nil {
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = fmt.Errorf("writing layer: %w", err)
+				results[idx] = fmt.Errorf("layer %s: writing: %w", digestStr, err)
 				return
 			}
 
@@ -826,7 +839,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 				if !errdefs.IsAlreadyExists(err) && !strings.Contains(err.Error(), "already exists") {
 					closeProgress(progressChan)
 					closeReporter(pr)
-					results[idx] = fmt.Errorf("committing layer: %w", err)
+					results[idx] = fmt.Errorf("layer %s: committing: %w", digestStr, err)
 					return
 				}
 			}
