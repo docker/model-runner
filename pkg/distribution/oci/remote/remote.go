@@ -778,7 +778,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 
 			desc := v1.Descriptor{
 				MediaType: string(mt),
-				Digest:    godigest.Digest(digest.String()),
+				Digest:    godigest.Digest(digestStr),
 				Size:      size,
 			}
 
