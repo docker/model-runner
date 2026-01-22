@@ -736,12 +736,7 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 	}
 
 	// Push layers in parallel
-	type pushLayerResult struct {
-		alreadyExists bool
-		err           error
-	}
-
-	results := make([]pushLayerResult, len(layers))
+	results := make([]error, len(layers))
 	var wg sync.WaitGroup
 
 	for i, layer := range layers {
@@ -752,19 +747,19 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			var completed int64
 			digest, err := l.Digest()
 			if err != nil {
-				results[idx] = pushLayerResult{err: fmt.Errorf("getting layer digest: %w", err)}
+				results[idx] = fmt.Errorf("getting layer digest: %w", err)
 				return
 			}
 
 			size, err := l.Size()
 			if err != nil {
-				results[idx] = pushLayerResult{err: fmt.Errorf("getting layer size: %w", err)}
+				results[idx] = fmt.Errorf("getting layer size: %w", err)
 				return
 			}
 
 			mt, err := l.MediaType()
 			if err != nil {
-				results[idx] = pushLayerResult{err: fmt.Errorf("getting layer media type: %w", err)}
+				results[idx] = fmt.Errorf("getting layer media type: %w", err)
 				return
 			}
 
@@ -785,14 +780,14 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			if err != nil {
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = pushLayerResult{err: fmt.Errorf("getting layer content: %w", err)}
+				results[idx] = fmt.Errorf("getting layer content: %w", err)
 				return
 			}
+			defer rc.Close()
 
 			// Create content writer for push
 			cw, err := pusher.Push(o.ctx, desc)
 			if err != nil {
-				rc.Close()
 				// If already exists, mark as success
 				if errdefs.IsAlreadyExists(err) || strings.Contains(err.Error(), "already exists") {
 					completed += size
@@ -801,17 +796,17 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 							Complete: completed,
 							Total:    size,
 						}
-						closeProgress(progressChan)
-						closeReporter(pr)
 					}
-					results[idx] = pushLayerResult{alreadyExists: true}
+					closeProgress(progressChan)
+					closeReporter(pr)
 					return
 				}
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = pushLayerResult{err: fmt.Errorf("pushing layer: %w", err)}
+				results[idx] = fmt.Errorf("pushing layer: %w", err)
 				return
 			}
+			defer cw.Close()
 
 			// Wrap the reader with progress tracking to report incremental upload progress
 			// Uses the shared progress.Reader from internal/progress package
@@ -821,46 +816,31 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 			}
 
 			if _, err := io.Copy(cw, reader); err != nil {
-				cw.Close()
-				rc.Close()
 				closeProgress(progressChan)
 				closeReporter(pr)
-				results[idx] = pushLayerResult{err: fmt.Errorf("writing layer: %w", err)}
+				results[idx] = fmt.Errorf("writing layer: %w", err)
 				return
 			}
 
 			if err := cw.Commit(o.ctx, size, desc.Digest); err != nil {
-				cw.Close()
-				rc.Close()
 				if !errdefs.IsAlreadyExists(err) && !strings.Contains(err.Error(), "already exists") {
 					closeProgress(progressChan)
 					closeReporter(pr)
-					results[idx] = pushLayerResult{err: fmt.Errorf("committing layer: %w", err)}
+					results[idx] = fmt.Errorf("committing layer: %w", err)
 					return
 				}
-				// If it already exists, we still want to update progress
-				completed += size
-				if progressChan != nil {
-					progressChan <- oci.Update{
-						Complete: completed,
-						Total:    size,
-					}
-				}
-			} else {
-				// Successfully committed, update progress
-				completed += size
-				if progressChan != nil {
-					progressChan <- oci.Update{
-						Complete: completed,
-						Total:    size,
-					}
+			}
+
+			// On success or "already exists", update progress to 100%
+			completed += size
+			if progressChan != nil {
+				progressChan <- oci.Update{
+					Complete: completed,
+					Total:    size,
 				}
 			}
 			closeProgress(progressChan)
 			closeReporter(pr)
-			cw.Close()
-			rc.Close()
-			results[idx] = pushLayerResult{alreadyExists: false}
 		}(i, layer)
 	}
 
@@ -869,8 +849,8 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 	// Collect errors
 	var allErrors []error
 	for i, result := range results {
-		if result.err != nil {
-			allErrors = append(allErrors, fmt.Errorf("pushing layer %d: %w", i, result.err))
+		if result != nil {
+			allErrors = append(allErrors, fmt.Errorf("pushing layer %d: %w", i, result))
 		}
 	}
 	if err := errors.Join(allErrors...); err != nil {
