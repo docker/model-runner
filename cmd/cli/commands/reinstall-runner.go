@@ -13,6 +13,10 @@ func newReinstallRunner() *cobra.Command {
 	var doNotTrack bool
 	var debug bool
 	var proxyCert string
+	var tlsEnabled bool
+	var tlsPort uint16
+	var tlsCert string
+	var tlsKey string
 	c := &cobra.Command{
 		Use:   "reinstall-runner",
 		Short: "Reinstall Docker Model Runner (Docker Engine only)",
@@ -26,6 +30,10 @@ func newReinstallRunner() *cobra.Command {
 				pullImage:       true,
 				pruneContainers: true,
 				proxyCert:       proxyCert,
+				tls:             tlsEnabled,
+				tlsPort:         tlsPort,
+				tlsCert:         tlsCert,
+				tlsKey:          tlsKey,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -38,6 +46,10 @@ func newReinstallRunner() *cobra.Command {
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
 		ProxyCert:  &proxyCert,
+		TLS:        &tlsEnabled,
+		TLSPort:    &tlsPort,
+		TLSCert:    &tlsCert,
+		TLSKey:     &tlsKey,
 	})
 	return c
 }

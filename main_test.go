@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -58,10 +57,8 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment
 			if tt.llamaArgs != "" {
-				os.Setenv("LLAMA_ARGS", tt.llamaArgs)
-				defer os.Unsetenv("LLAMA_ARGS")
+				t.Setenv("LLAMA_ARGS", tt.llamaArgs)
 			}
 
 			// Create a test logger that captures fatal errors

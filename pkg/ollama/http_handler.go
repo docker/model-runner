@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
@@ -100,7 +101,7 @@ func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
 	}
 
 	// Try to parse as progress message
-	var msg progressMessage
+	var msg oci.ProgressMessage
 	if parseErr := json.Unmarshal(p, &msg); parseErr != nil {
 		// If not JSON or doesn't match format, pass through
 		return w.writer.Write(p)
@@ -110,7 +111,7 @@ func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
 	var ollamaMsg ollamaPullStatus
 
 	switch msg.Type {
-	case "progress":
+	case oci.TypeProgress:
 		// Ollama progress format for layer download
 		ollamaMsg.Status = "pulling manifest"
 		if msg.Layer.ID != "" {
@@ -127,13 +128,13 @@ func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
 		ollamaMsg.Total = msg.Layer.Size
 		ollamaMsg.Completed = msg.Layer.Current
 
-	case "success":
+	case oci.TypeSuccess:
 		ollamaMsg.Status = "success"
 
-	case "error":
+	case oci.TypeError:
 		ollamaMsg.Error = msg.Message
 
-	case "warning":
+	case oci.TypeWarning:
 		// Pass warnings through with a status field
 		ollamaMsg.Status = msg.Message
 

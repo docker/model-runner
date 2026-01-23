@@ -14,6 +14,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/registry"
@@ -431,7 +432,7 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 		}
 
 		// Parse the progress message
-		var progressMsg desktop.ProgressMessage
+		var progressMsg oci.ProgressMessage
 		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
 			cmd.PrintErrln("Error displaying progress:", err)
 		}

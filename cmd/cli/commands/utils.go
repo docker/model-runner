@@ -28,7 +28,7 @@ const (
 const (
 	enableViaCLI = "Enable Docker Model Runner via the CLI → docker desktop enable model-runner"
 	enableViaGUI = "Enable Docker Model Runner via the GUI → Go to Settings->AI->Enable Docker Model Runner"
-	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model install-runner --vllm"
+	enableVLLM   = "It looks like you're trying to use a model for vLLM → docker model reinstall-runner --backend vllm --gpu cuda"
 )
 
 // getDefaultRegistry returns the default registry, checking for environment override
@@ -195,6 +195,10 @@ type runnerFlagOptions struct {
 	DoNotTrack *bool
 	Debug      *bool
 	ProxyCert  *string
+	TLS        *bool
+	TLSPort    *uint16
+	TLSCert    *string
+	TLSKey     *string
 }
 
 // addRunnerFlags adds common runner flags to a command
@@ -220,6 +224,19 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.ProxyCert != nil {
 		cmd.Flags().StringVar(opts.ProxyCert, "proxy-cert", "", "Path to a CA certificate file for proxy SSL inspection")
+	}
+	if opts.TLS != nil {
+		cmd.Flags().BoolVar(opts.TLS, "tls", false, "Enable TLS/HTTPS for Docker Model Runner API")
+	}
+	if opts.TLSPort != nil {
+		cmd.Flags().Uint16Var(opts.TLSPort, "tls-port", 0,
+			"TLS port for Docker Model Runner (default: 12444 for Docker Engine, 12445 for Cloud mode)")
+	}
+	if opts.TLSCert != nil {
+		cmd.Flags().StringVar(opts.TLSCert, "tls-cert", "", "Path to TLS certificate file (auto-generated if not provided)")
+	}
+	if opts.TLSKey != nil {
+		cmd.Flags().StringVar(opts.TLSKey, "tls-key", "", "Path to TLS private key file (auto-generated if not provided)")
 	}
 }
 

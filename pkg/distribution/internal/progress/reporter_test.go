@@ -59,18 +59,21 @@ func TestMessages(t *testing.T) {
 		layer1 := newMockLayer(2016)
 		layer2 := newMockLayer(1)
 
-		err := WriteProgress(&buf, PullMsg(update), uint64(layer1.size+layer2.size), uint64(layer1.size), uint64(update.Complete), layer1.diffID)
+		err := WriteProgress(&buf, PullMsg(update), uint64(layer1.size+layer2.size), uint64(layer1.size), uint64(update.Complete), layer1.diffID, oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write progress message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "progress" {
-			t.Errorf("Expected type 'progress', got '%s'", msg.Type)
+		if msg.Type != oci.TypeProgress {
+			t.Errorf("Expected type %q, got %q", oci.TypeProgress, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Downloaded: 1.00 MB" {
 			t.Errorf("Expected message 'Downloaded: 1.00 MB', got '%s'", msg.Message)
@@ -78,10 +81,7 @@ func TestMessages(t *testing.T) {
 		if msg.Total != uint64(2017) {
 			t.Errorf("Expected total 2017, got %d", msg.Total)
 		}
-		if msg.Pulled != uint64(1024*1024) {
-			t.Errorf("Expected pulled 1MB, got %d", msg.Pulled)
-		}
-		if msg.Layer == (Layer{}) {
+		if msg.Layer == (oci.ProgressLayer{}) {
 			t.Errorf("Expected layer to be set")
 		}
 		if msg.Layer.ID != "sha256:c7790a0a70161f1bfd441cf157313e9efb8fcd1f0831193101def035ead23b32" {
@@ -97,18 +97,21 @@ func TestMessages(t *testing.T) {
 
 	t.Run("writeSuccess", func(t *testing.T) {
 		var buf bytes.Buffer
-		err := WriteSuccess(&buf, "Model pulled successfully")
+		err := WriteSuccess(&buf, "Model pulled successfully", oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write success message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "success" {
-			t.Errorf("Expected type 'success', got '%s'", msg.Type)
+		if msg.Type != oci.TypeSuccess {
+			t.Errorf("Expected type %q, got %q", oci.TypeSuccess, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Model pulled successfully" {
 			t.Errorf("Expected message 'Model pulled successfully', got '%s'", msg.Message)
@@ -117,18 +120,21 @@ func TestMessages(t *testing.T) {
 
 	t.Run("writeError", func(t *testing.T) {
 		var buf bytes.Buffer
-		err := WriteError(&buf, "Error: something went wrong")
+		err := WriteError(&buf, "Error: something went wrong", oci.ModePull)
 		if err != nil {
 			t.Fatalf("Failed to write error message: %v", err)
 		}
 
-		var msg Message
+		var msg oci.ProgressMessage
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Failed to parse JSON: %v", err)
 		}
 
-		if msg.Type != "error" {
-			t.Errorf("Expected type 'error', got '%s'", msg.Type)
+		if msg.Type != oci.TypeError {
+			t.Errorf("Expected type %q, got %q", oci.TypeError, msg.Type)
+		}
+		if msg.Mode != oci.ModePull {
+			t.Errorf("Expected mode %q, got %q", oci.ModePull, msg.Mode)
 		}
 		if msg.Message != "Error: something went wrong" {
 			t.Errorf("Expected message 'Error: something went wrong', got '%s'", msg.Message)
@@ -224,7 +230,7 @@ func TestProgressEmissionScenarios(t *testing.T) {
 			var buf bytes.Buffer
 			layer := newMockLayer(tt.layerSize)
 
-			reporter := NewProgressReporter(&buf, PullMsg, 0, layer)
+			reporter := NewProgressReporter(&buf, PullMsg, 0, layer, oci.ModePull)
 			updates := reporter.Updates()
 
 			// Send updates with delays
@@ -243,12 +249,12 @@ func TestProgressEmissionScenarios(t *testing.T) {
 
 			// Parse messages
 			lines := bytes.Split(buf.Bytes(), []byte("\n"))
-			var messages []Message
+			var messages []oci.ProgressMessage
 			for _, line := range lines {
 				if len(line) == 0 {
 					continue
 				}
-				var msg Message
+				var msg oci.ProgressMessage
 				if err := json.Unmarshal(line, &msg); err != nil {
 					t.Fatalf("Failed to parse JSON: %v", err)
 				}
@@ -261,8 +267,11 @@ func TestProgressEmissionScenarios(t *testing.T) {
 
 			// Verify message format for any messages received
 			for i, msg := range messages {
-				if msg.Type != "progress" {
-					t.Errorf("message %d: expected type 'progress', got '%s'", i, msg.Type)
+				if msg.Type != oci.TypeProgress {
+					t.Errorf("message %d: expected type %q, got %q", i, oci.TypeProgress, msg.Type)
+				}
+				if msg.Mode != oci.ModePull {
+					t.Errorf("message %d: expected mode %q, got %q", i, oci.ModePull, msg.Mode)
 				}
 				if msg.Layer.ID == "" {
 					t.Errorf("message %d: expected layer ID to be set", i)

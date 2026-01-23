@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"os"
@@ -26,7 +27,13 @@ import (
 	"github.com/docker/model-runner/pkg/ollama"
 	"github.com/docker/model-runner/pkg/responses"
 	"github.com/docker/model-runner/pkg/routing"
+	modeltls "github.com/docker/model-runner/pkg/tls"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// DefaultTLSPort is the default TLS port for Moby
+	DefaultTLSPort = "12444"
 )
 
 var log = logrus.New()
@@ -256,6 +263,10 @@ func main() {
 	}
 	serverErrors := make(chan error, 1)
 
+	// TLS server (optional)
+	var tlsServer *http.Server
+	tlsServerErrors := make(chan error, 1)
+
 	// Check if we should use TCP port instead of Unix socket
 	tcpPort := os.Getenv("MODEL_RUNNER_PORT")
 	if tcpPort != "" {
@@ -282,21 +293,91 @@ func main() {
 		}()
 	}
 
+	// Start TLS server if enabled
+	if os.Getenv("MODEL_RUNNER_TLS_ENABLED") == "true" {
+		tlsPort := os.Getenv("MODEL_RUNNER_TLS_PORT")
+		if tlsPort == "" {
+			tlsPort = DefaultTLSPort // Default TLS port for Moby
+		}
+
+		// Get certificate paths
+		certPath := os.Getenv("MODEL_RUNNER_TLS_CERT")
+		keyPath := os.Getenv("MODEL_RUNNER_TLS_KEY")
+
+		// Auto-generate certificates if not provided and auto-cert is not disabled
+		if certPath == "" || keyPath == "" {
+			if os.Getenv("MODEL_RUNNER_TLS_AUTO_CERT") != "false" {
+				log.Info("Auto-generating TLS certificates...")
+				var err error
+				certPath, keyPath, err = modeltls.EnsureCertificates("", "")
+				if err != nil {
+					log.Fatalf("Failed to ensure TLS certificates: %v", err)
+				}
+				log.Infof("Using TLS certificate: %s", certPath)
+				log.Infof("Using TLS key: %s", keyPath)
+			} else {
+				log.Fatal("TLS enabled but no certificate provided and auto-cert is disabled")
+			}
+		}
+
+		// Load TLS configuration
+		tlsConfig, err := modeltls.LoadTLSConfig(certPath, keyPath)
+		if err != nil {
+			log.Fatalf("Failed to load TLS configuration: %v", err)
+		}
+
+		tlsServer = &http.Server{
+			Addr:              ":" + tlsPort,
+			Handler:           router,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+
+		log.Infof("Listening on TLS port %s", tlsPort)
+		go func() {
+			// Use ListenAndServeTLS with empty strings since TLSConfig already has the certs
+			ln, err := tls.Listen("tcp", tlsServer.Addr, tlsConfig)
+			if err != nil {
+				tlsServerErrors <- err
+				return
+			}
+			tlsServerErrors <- tlsServer.Serve(ln)
+		}()
+	}
+
 	schedulerErrors := make(chan error, 1)
 	go func() {
 		schedulerErrors <- scheduler.Run(ctx)
 	}()
+
+	var tlsServerErrorsChan <-chan error
+	if os.Getenv("MODEL_RUNNER_TLS_ENABLED") == "true" {
+		tlsServerErrorsChan = tlsServerErrors
+	} else {
+		// Use a nil channel which will block forever when TLS is disabled
+		tlsServerErrorsChan = nil
+	}
 
 	select {
 	case err := <-serverErrors:
 		if err != nil {
 			log.Errorf("Server error: %v", err)
 		}
+	case err := <-tlsServerErrorsChan:
+		if err != nil {
+			log.Errorf("TLS server error: %v", err)
+		}
 	case <-ctx.Done():
 		log.Infoln("Shutdown signal received")
 		log.Infoln("Shutting down the server")
 		if err := server.Close(); err != nil {
 			log.Errorf("Server shutdown error: %v", err)
+		}
+		if tlsServer != nil {
+			log.Infoln("Shutting down the TLS server")
+			if err := tlsServer.Close(); err != nil {
+				log.Errorf("TLS server shutdown error: %v", err)
+			}
 		}
 		log.Infoln("Waiting for the scheduler to stop")
 		if err := <-schedulerErrors; err != nil {

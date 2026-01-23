@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -41,12 +40,7 @@ func getProjectRoot(t *testing.T) string {
 }
 
 func TestPullModel(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a test registry
 	server := httptest.NewServer(testregistry.New())
@@ -77,7 +71,7 @@ func TestPullModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
 	}
-	err = license.Build(context.Background(), target, os.Stdout)
+	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
 		t.Fatalf("Failed to build model: %v", err)
 	}
@@ -141,12 +135,7 @@ func TestPullModel(t *testing.T) {
 }
 
 func TestHandleGetModel(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a test registry
 	server := httptest.NewServer(testregistry.New())
@@ -176,7 +165,7 @@ func TestHandleGetModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create model target: %v", err)
 	}
-	err = license.Build(context.Background(), target, os.Stdout)
+	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
 		t.Fatalf("Failed to build model: %v", err)
 	}
@@ -287,15 +276,9 @@ func TestHandleGetModel(t *testing.T) {
 }
 
 func TestCors(t *testing.T) {
-	// Verify that preflight requests work against non-existing handlers or
-	// method-specific handlers that do not support OPTIONS
 	t.Parallel()
 
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	tests := []struct {
 		name string

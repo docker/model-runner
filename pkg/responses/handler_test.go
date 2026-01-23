@@ -697,8 +697,7 @@ func BenchmarkHandler_CreateResponse(b *testing.B) {
 	handler := newTestHandler(mock)
 	reqBody := []byte(`{"model": "gpt-4", "input": "Hello"}`)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

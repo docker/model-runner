@@ -104,7 +104,11 @@ func jsonStatus(printer standalone.StatusPrinter, runner *standaloneRunner, stat
 		endpoint = makeEndpoint(gatewayIP, int(gatewayPort))
 		endpointHost = makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud)
 	case types.ModelRunnerEngineKindMoby:
-		endpoint = makeEndpoint("host.docker.internal", standalone.DefaultControllerPortMoby)
+		gatewayIP := "host.docker.internal"
+		if runner != nil && runner.gatewayIP != "" {
+			gatewayIP = runner.gatewayIP
+		}
+		endpoint = makeEndpoint(gatewayIP, standalone.DefaultControllerPortMoby)
 		endpointHost = makeEndpoint("127.0.0.1", standalone.DefaultControllerPortMoby)
 	default:
 		return fmt.Errorf("unhandled engine kind: %v", kind)

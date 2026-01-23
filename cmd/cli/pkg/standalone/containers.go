@@ -274,8 +274,23 @@ func tryGetBindAscendMounts(printer StatusPrinter, debug bool) []mount.Mount {
 // This location is used by update-ca-certificates to add the cert to the system trust store.
 const proxyCertContainerPath = "/usr/local/share/ca-certificates/proxy-ca.crt"
 
+// TLSOptions holds TLS configuration for the controller container.
+type TLSOptions struct {
+	// Enabled indicates whether TLS is enabled.
+	Enabled bool
+	// Port is the TLS port (0 to use default).
+	Port uint16
+	// CertPath is the path to the TLS certificate file.
+	CertPath string
+	// KeyPath is the path to the TLS key file.
+	KeyPath string
+}
+
+// tlsCertContainerPath is the path where TLS certificates will be mounted in the container.
+const tlsCertContainerPath = "/etc/model-runner/certs"
+
 // CreateControllerContainer creates and starts a controller container.
-func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool, proxyCert string) error {
+func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool, proxyCert string, tlsOpts TLSOptions) error {
 	imageName := controllerImageName(gpu, backend)
 
 	// Set up the container configuration.
@@ -296,12 +311,51 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		}
 	}
 
+	// Determine TLS port
+	tlsPort := tlsOpts.Port
+	if tlsOpts.Enabled && tlsPort == 0 {
+		if engineKind == types.ModelRunnerEngineKindCloud {
+			tlsPort = DefaultTLSPortCloud
+		} else {
+			tlsPort = DefaultTLSPortMoby
+		}
+	}
+
+	// Add TLS environment variables if TLS is enabled
+	if tlsOpts.Enabled {
+		env = append(env, "MODEL_RUNNER_TLS_ENABLED=true")
+		env = append(env, "MODEL_RUNNER_TLS_PORT="+strconv.Itoa(int(tlsPort)))
+		if tlsOpts.CertPath != "" && tlsOpts.KeyPath != "" {
+			// Determine the actual file names in the container
+			certContainerPath := tlsCertContainerPath + "/server.crt"
+			keyContainerPath := tlsCertContainerPath + "/server.key"
+
+			// If cert and key are in the same directory, use their actual file names
+			certDir := filepath.Dir(tlsOpts.CertPath)
+			keyDir := filepath.Dir(tlsOpts.KeyPath)
+			if certDir == keyDir {
+				certContainerPath = tlsCertContainerPath + "/" + filepath.Base(tlsOpts.CertPath)
+				keyContainerPath = tlsCertContainerPath + "/" + filepath.Base(tlsOpts.KeyPath)
+			}
+
+			// Use mounted certificates
+			env = append(env, "MODEL_RUNNER_TLS_CERT="+certContainerPath)
+			env = append(env, "MODEL_RUNNER_TLS_KEY="+keyContainerPath)
+		}
+		// If no cert paths, auto-cert will be used inside the container
+	}
+
+	exposedPorts := nat.PortSet{
+		nat.Port(portStr + "/tcp"): struct{}{},
+	}
+	if tlsOpts.Enabled {
+		exposedPorts[nat.Port(strconv.Itoa(int(tlsPort))+"/tcp")] = struct{}{}
+	}
+
 	config := &container.Config{
-		Image: imageName,
-		Env:   env,
-		ExposedPorts: nat.PortSet{
-			nat.Port(portStr + "/tcp"): struct{}{},
-		},
+		Image:        imageName,
+		Env:          env,
+		ExposedPorts: exposedPorts,
 		Labels: map[string]string{
 			labelDesktopService: serviceModelRunner,
 			labelRole:           roleController,
@@ -333,18 +387,74 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		})
 	}
 
-	portBindings := []nat.PortBinding{{HostIP: host, HostPort: portStr}}
-	if os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") != "1" {
-		// Don't bind the bridge gateway IP if we're treating Docker Desktop as Moby.
-		// Only add bridge gateway IP binding if host is 127.0.0.1 and not in rootless mode
-		if host == "127.0.0.1" && !isRootless(ctx, dockerClient) && !vllmOnWSL {
-			if bridgeGatewayIP, err := determineBridgeGatewayIP(ctx, dockerClient); err == nil && bridgeGatewayIP != "" {
-				portBindings = append(portBindings, nat.PortBinding{HostIP: bridgeGatewayIP, HostPort: portStr})
-			}
+	// Mount TLS certificates if custom paths are provided
+	if tlsOpts.Enabled && tlsOpts.CertPath != "" && tlsOpts.KeyPath != "" {
+		// Get the directory containing the certificates
+		certDir := filepath.Dir(tlsOpts.CertPath)
+		keyDir := filepath.Dir(tlsOpts.KeyPath)
+
+		if certDir == keyDir {
+			// Both files in same directory, mount each file individually with their actual names
+			certFileName := filepath.Base(tlsOpts.CertPath)
+			keyFileName := filepath.Base(tlsOpts.KeyPath)
+
+			hostConfig.Mounts = append(hostConfig.Mounts,
+				mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   tlsOpts.CertPath,
+					Target:   tlsCertContainerPath + "/" + certFileName,
+					ReadOnly: true,
+				},
+				mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   tlsOpts.KeyPath,
+					Target:   tlsCertContainerPath + "/" + keyFileName,
+					ReadOnly: true,
+				},
+			)
+		} else {
+			// Files in different directories, mount each file individually
+			hostConfig.Mounts = append(hostConfig.Mounts,
+				mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   tlsOpts.CertPath,
+					Target:   tlsCertContainerPath + "/server.crt",
+					ReadOnly: true,
+				},
+				mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   tlsOpts.KeyPath,
+					Target:   tlsCertContainerPath + "/server.key",
+					ReadOnly: true,
+				},
+			)
 		}
 	}
+
+	// Helper function to create port bindings with optional bridge gateway IP
+	createPortBindings := func(port string) []nat.PortBinding {
+		portBindings := []nat.PortBinding{{HostIP: host, HostPort: port}}
+		if os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") != "1" {
+			// Don't bind the bridge gateway IP if we're treating Docker Desktop as Moby.
+			// Only add bridge gateway IP binding if host is 127.0.0.1 and not in rootless mode
+			if host == "127.0.0.1" && !isRootless(ctx, dockerClient) && !vllmOnWSL {
+				if bridgeGatewayIP, err := determineBridgeGatewayIP(ctx, dockerClient); err == nil && bridgeGatewayIP != "" {
+					portBindings = append(portBindings, nat.PortBinding{HostIP: bridgeGatewayIP, HostPort: port})
+				}
+			}
+		}
+		return portBindings
+	}
+
+	// Create port bindings for the main port
 	hostConfig.PortBindings = nat.PortMap{
-		nat.Port(portStr + "/tcp"): portBindings,
+		nat.Port(portStr + "/tcp"): createPortBindings(portStr),
+	}
+
+	// Add TLS port bindings if TLS is enabled
+	if tlsOpts.Enabled {
+		tlsPortStr := strconv.Itoa(int(tlsPort))
+		hostConfig.PortBindings[nat.Port(tlsPortStr+"/tcp")] = createPortBindings(tlsPortStr)
 	}
 	switch gpu {
 	case gpupkg.GPUSupportNone:

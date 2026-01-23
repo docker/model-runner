@@ -117,7 +117,7 @@ func (t *Target) addLayer(layer oci.Layer, tw *tar.Writer, progressWriter io.Wri
 	if progressWriter != nil {
 		pr = progress.NewProgressReporter(progressWriter, func(update oci.Update) string {
 			return fmt.Sprintf("Transferred: %.2f MB", float64(update.Complete)/1024/1024)
-		}, imageSize, layer)
+		}, imageSize, layer, "pull")
 		progressChan = pr.Updates()
 		defer func() {
 			close(progressChan)

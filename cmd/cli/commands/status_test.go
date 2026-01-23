@@ -136,6 +136,7 @@ func TestJsonStatus(t *testing.T) {
 		name             string
 		engineKind       types.ModelRunnerEngineKind
 		urlPrefix        string
+		runner           *standaloneRunner
 		expectedKind     string
 		expectedEndpoint string
 		expectedHostEnd  string
@@ -157,9 +158,22 @@ func TestJsonStatus(t *testing.T) {
 			expectedHostEnd:  makeEndpoint("127.0.0.1", standalone.DefaultControllerPortMoby),
 		},
 		{
+			name:       "Docker Engine with bridge gateway",
+			engineKind: types.ModelRunnerEngineKindMoby,
+			urlPrefix:  "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby),
+			runner: &standaloneRunner{
+				gatewayIP:   "172.17.0.1",
+				gatewayPort: standalone.DefaultControllerPortMoby,
+			},
+			expectedKind:     "Docker Engine",
+			expectedEndpoint: makeEndpoint("172.17.0.1", standalone.DefaultControllerPortMoby),
+			expectedHostEnd:  makeEndpoint("127.0.0.1", standalone.DefaultControllerPortMoby),
+		},
+		{
 			name:             "Docker Cloud",
 			engineKind:       types.ModelRunnerEngineKindCloud,
 			urlPrefix:        "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud),
+			runner:           &standaloneRunner{},
 			expectedKind:     "Docker Cloud",
 			expectedEndpoint: makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud),
 			expectedHostEnd:  makeEndpoint("127.0.0.1", standalone.DefaultControllerPortCloud),
@@ -187,13 +201,7 @@ func TestJsonStatus(t *testing.T) {
 			status := desktop.Status{Running: true}
 			backendStatus := map[string]string{"llama.cpp": "running"}
 
-			// Cloud kind needs a runner for gateway IP/port
-			var runner *standaloneRunner
-			if test.engineKind == types.ModelRunnerEngineKindCloud {
-				runner = &standaloneRunner{}
-			}
-
-			err = jsonStatus(printer, runner, status, backendStatus)
+			err = jsonStatus(printer, test.runner, status, backendStatus)
 			require.NoError(t, err)
 
 			var result map[string]any

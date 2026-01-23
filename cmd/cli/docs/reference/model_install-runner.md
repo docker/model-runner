@@ -14,6 +14,10 @@ Install Docker Model Runner (Docker Engine only)
 | `--host`         | `string` | `127.0.0.1` | Host address to bind Docker Model Runner                                                               |
 | `--port`         | `uint16` | `0`         | Docker container port for Docker Model Runner (default: 12434 for Docker Engine, 12435 for Cloud mode) |
 | `--proxy-cert`   | `string` |             | Path to a CA certificate file for proxy SSL inspection                                                 |
+| `--tls`          | `bool`   |             | Enable TLS/HTTPS for Docker Model Runner API                                                           |
+| `--tls-cert`     | `string` |             | Path to TLS certificate file (auto-generated if not provided)                                          |
+| `--tls-key`      | `string` |             | Path to TLS private key file (auto-generated if not provided)                                          |
+| `--tls-port`     | `uint16` | `0`         | TLS port for Docker Model Runner (default: 12444 for Docker Engine, 12445 for Cloud mode)              |
 
 
 <!---MARKER_GEN_END-->

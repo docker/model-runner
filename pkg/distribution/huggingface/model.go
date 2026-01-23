@@ -21,7 +21,7 @@ import (
 func BuildModel(ctx context.Context, client *Client, repo, revision, tag string, tempDir string, progressWriter io.Writer) (types.ModelArtifact, error) {
 	// List files in the repository
 	if progressWriter != nil {
-		_ = progress.WriteProgress(progressWriter, "Fetching file list...", 0, 0, 0, "")
+		_ = progress.WriteProgress(progressWriter, "Fetching file list...", 0, 0, 0, "", "pull")
 	}
 
 	files, err := client.ListFiles(ctx, repo, revision)
@@ -47,9 +47,9 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 
 		if progressWriter != nil {
 			if tag == "" || tag == "latest" || tag == "main" {
-				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization (default)", DefaultGGUFQuantization), 0, 0, 0, "")
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization (default)", DefaultGGUFQuantization), 0, 0, 0, "", "pull")
 			} else {
-				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization", tag), 0, 0, 0, "")
+				_ = progress.WriteProgress(progressWriter, fmt.Sprintf("Selected %s quantization", tag), 0, 0, 0, "", "pull")
 			}
 		}
 	}
@@ -64,7 +64,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		totalSize := TotalSize(allFiles)
 		msg := fmt.Sprintf("Found %d files (%.2f MB total)",
 			len(allFiles), float64(totalSize)/1024/1024)
-		_ = progress.WriteProgress(progressWriter, msg, uint64(totalSize), 0, 0, "")
+		_ = progress.WriteProgress(progressWriter, msg, uint64(totalSize), 0, 0, "", "pull")
 	}
 
 	// Step 3: Download all files
@@ -76,7 +76,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 
 	// Step 4: Build the model artifact
 	if progressWriter != nil {
-		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "")
+		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "", "pull")
 	}
 
 	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir)

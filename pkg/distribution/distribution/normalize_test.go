@@ -1,7 +1,6 @@
 package distribution
 
 import (
-	"context"
 	"io"
 	"path/filepath"
 	"strings"
@@ -450,8 +449,7 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
 
-	ctx := context.Background()
-	if err := bldr.Build(ctx, target, nil); err != nil {
+	if err := bldr.Build(t.Context(), target, nil); err != nil {
 		t.Fatalf("Failed to build model: %v", err)
 	}
 

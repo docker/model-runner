@@ -184,7 +184,7 @@ func (d *Downloader) downloadFileWithProgress(ctx context.Context, file RepoFile
 
 	// Write final progress for this file (100% complete)
 	if progressWriter != nil {
-		_ = progress.WriteProgress(progressWriter, "", totalImageSize, fileSize, fileSize, fileID)
+		_ = progress.WriteProgress(progressWriter, "", totalImageSize, fileSize, fileSize, fileID, "pull")
 	}
 
 	return localPath, nil
@@ -208,7 +208,7 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 
 		// Report progress periodically (every 1MB or when complete)
 		if pr.progressWriter != nil && (pr.bytesRead-pr.lastReported >= progress.MinBytesForUpdate || pr.bytesRead == pr.fileSize) {
-			_ = progress.WriteProgress(pr.progressWriter, "", pr.totalImageSize, pr.fileSize, pr.bytesRead, pr.fileID)
+			_ = progress.WriteProgress(pr.progressWriter, "", pr.totalImageSize, pr.fileSize, pr.bytesRead, pr.fileID, "pull")
 			pr.lastReported = pr.bytesRead
 		}
 	}

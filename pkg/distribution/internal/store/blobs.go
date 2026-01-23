@@ -258,12 +258,11 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 	defer f.Close()
 
 	if _, err := io.Copy(f, r); err != nil {
-		// On copy failure, only delete the incomplete file if it's not a context
-		// cancellation. Context cancellation is a normal interruption and the file
-		// should be preserved for future download attempts.
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			_ = os.Remove(incompletePath)
-		}
+		// Preserve incomplete file for all errors to allow resume attempts.
+		// Transient network errors (HTTP/2 stream errors, connection resets, etc.)
+		// should not cause the downloaded data to be discarded.
+		// Stale incomplete files are cleaned up during store initialization
+		// (CleanupStaleIncompleteFiles removes files older than 7 days).
 		return fmt.Errorf("copy blob %q to store: %w", diffID.String(), err)
 	}
 

@@ -145,7 +145,9 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 		port = standalone.DefaultControllerPortCloud
 		environment = "cloud"
 	}
-	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug, false, ""); err != nil {
+	// TLS is disabled by default for auto-installation
+	tlsOpts := standalone.TLSOptions{Enabled: false}
+	if err := standalone.CreateControllerContainer(ctx, dockerClient, port, host, environment, false, gpu, "", modelStorageVolume, printer, engineKind, debug, false, "", tlsOpts); err != nil {
 		return nil, fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -227,6 +229,10 @@ type runnerOptions struct {
 	pullImage       bool
 	pruneContainers bool
 	proxyCert       string
+	tls             bool
+	tlsPort         uint16
+	tlsCert         string
+	tlsKey          string
 }
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
@@ -349,8 +355,17 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 	if err != nil {
 		return fmt.Errorf("unable to initialize standalone model storage: %w", err)
 	}
+
+	// Build TLS options
+	tlsOpts := standalone.TLSOptions{
+		Enabled:  opts.tls,
+		Port:     opts.tlsPort,
+		CertPath: opts.tlsCert,
+		KeyPath:  opts.tlsKey,
+	}
+
 	// Create the model runner container.
-	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind, debug, vllmOnWSL, opts.proxyCert); err != nil {
+	if err := standalone.CreateControllerContainer(cmd.Context(), dockerClient, port, opts.host, environment, opts.doNotTrack, gpu, opts.backend, modelStorageVolume, asPrinter(cmd), engineKind, debug, vllmOnWSL, opts.proxyCert, tlsOpts); err != nil {
 		return fmt.Errorf("unable to initialize standalone model runner container: %w", err)
 	}
 
@@ -366,6 +381,10 @@ func newInstallRunner() *cobra.Command {
 	var doNotTrack bool
 	var debug bool
 	var proxyCert string
+	var tlsEnabled bool
+	var tlsPort uint16
+	var tlsCert string
+	var tlsKey string
 	c := &cobra.Command{
 		Use:   "install-runner",
 		Short: "Install Docker Model Runner (Docker Engine only)",
@@ -379,6 +398,10 @@ func newInstallRunner() *cobra.Command {
 				pullImage:       true,
 				pruneContainers: false,
 				proxyCert:       proxyCert,
+				tls:             tlsEnabled,
+				tlsPort:         tlsPort,
+				tlsCert:         tlsCert,
+				tlsKey:          tlsKey,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
@@ -391,6 +414,10 @@ func newInstallRunner() *cobra.Command {
 		DoNotTrack: &doNotTrack,
 		Debug:      &debug,
 		ProxyCert:  &proxyCert,
+		TLS:        &tlsEnabled,
+		TLSPort:    &tlsPort,
+		TLSCert:    &tlsCert,
+		TLSKey:     &tlsKey,
 	})
 	return c
 }

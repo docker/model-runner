@@ -2,7 +2,6 @@ package distribution
 
 import (
 	"io"
-	"os"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
@@ -10,12 +9,7 @@ import (
 )
 
 func TestLoadModel(t *testing.T) {
-	// Create temp directory for store
-	tempDir, err := os.MkdirTemp("", "model-distribution-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create client
 	client, err := NewClient(WithStoreRootPath(tempDir))

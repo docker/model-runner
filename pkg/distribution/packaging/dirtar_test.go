@@ -10,12 +10,7 @@ import (
 )
 
 func TestCreateDirTarArchive(t *testing.T) {
-	// Create a temporary directory with some test files
-	tempDir, err := os.MkdirTemp("", "dirtar-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create test directory structure
 	testDir := filepath.Join(tempDir, "test_directory")
@@ -125,12 +120,7 @@ func TestCreateDirTarArchive_NotADirectory(t *testing.T) {
 }
 
 func TestDirTarProcessor_ValidRelativePaths(t *testing.T) {
-	// Create a temporary base directory with subdirectories
-	tempDir, err := os.MkdirTemp("", "dirtar-processor-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create test subdirectories
 	subDir1 := filepath.Join(tempDir, "config")
@@ -180,11 +170,7 @@ func TestDirTarProcessor_ValidRelativePaths(t *testing.T) {
 }
 
 func TestDirTarProcessor_DirectoryTraversal_DoubleDot(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-security-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Test various directory traversal attempts using OS-specific path separator
 	sep := string(os.PathSeparator)
@@ -213,11 +199,7 @@ func TestDirTarProcessor_DirectoryTraversal_DoubleDot(t *testing.T) {
 }
 
 func TestDirTarProcessor_AbsolutePathRejection(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-absolute-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Test absolute path rejection
 	absolutePaths := []string{
@@ -241,14 +223,8 @@ func TestDirTarProcessor_AbsolutePathRejection(t *testing.T) {
 }
 
 func TestDirTarProcessor_NonExistentDirectory(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-nonexistent-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	processor := NewDirTarProcessor([]string{"nonexistent"}, tempDir)
-	_, _, err = processor.Process()
+	processor := NewDirTarProcessor([]string{"nonexistent"}, t.TempDir())
+	_, _, err := processor.Process()
 	if err == nil {
 		t.Error("Expected error for non-existent directory, got nil")
 	}
@@ -258,11 +234,7 @@ func TestDirTarProcessor_NonExistentDirectory(t *testing.T) {
 }
 
 func TestDirTarProcessor_FileInsteadOfDirectory(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-file-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a file instead of directory
 	filePath := filepath.Join(tempDir, "not-a-dir.txt")
@@ -271,7 +243,7 @@ func TestDirTarProcessor_FileInsteadOfDirectory(t *testing.T) {
 	}
 
 	processor := NewDirTarProcessor([]string{"not-a-dir.txt"}, tempDir)
-	_, _, err = processor.Process()
+	_, _, err := processor.Process()
 	if err == nil {
 		t.Error("Expected error for file instead of directory, got nil")
 	}
@@ -281,11 +253,7 @@ func TestDirTarProcessor_FileInsteadOfDirectory(t *testing.T) {
 }
 
 func TestDirTarProcessor_BaseDirItself(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-basedir-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a file in the base directory
 	if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("content"), 0644); err != nil {
@@ -306,13 +274,7 @@ func TestDirTarProcessor_BaseDirItself(t *testing.T) {
 }
 
 func TestDirTarProcessor_EmptyList(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-empty-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	processor := NewDirTarProcessor([]string{}, tempDir)
+	processor := NewDirTarProcessor([]string{}, t.TempDir())
 	tarPaths, cleanup, err := processor.Process()
 	if err != nil {
 		t.Fatalf("Process failed for empty list: %v", err)
@@ -325,12 +287,7 @@ func TestDirTarProcessor_EmptyList(t *testing.T) {
 }
 
 func TestDirTarProcessor_DoubleDotPrefixedDirectories(t *testing.T) {
-	// Test that legitimate directories with names starting with ".." are accepted
-	tempDir, err := os.MkdirTemp("", "dirtar-doubledot-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create directories with names that start with ".." but are not traversal attempts
 	doubleDotDirs := []string{
@@ -376,11 +333,7 @@ func TestDirTarProcessor_DoubleDotPrefixedDirectories(t *testing.T) {
 }
 
 func TestDirTarProcessor_SymlinkedDirectory(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "dirtar-symlink-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Create a real directory
 	realDir := filepath.Join(tempDir, "realdir")
@@ -399,7 +352,7 @@ func TestDirTarProcessor_SymlinkedDirectory(t *testing.T) {
 
 	// Test that the symlink is rejected
 	processor := NewDirTarProcessor([]string{"symlink"}, tempDir)
-	_, _, err = processor.Process()
+	_, _, err := processor.Process()
 	if err == nil {
 		t.Error("Expected error for symlinked directory, got nil")
 	}

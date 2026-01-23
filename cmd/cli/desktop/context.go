@@ -19,6 +19,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
+	modeltls "github.com/docker/model-runner/pkg/tls"
 	"github.com/moby/moby/client"
 )
 
@@ -102,6 +103,12 @@ type ModelRunnerContext struct {
 	// For internal Docker Model Runner, this is "/engines/v1".
 	// For external OpenAI-compatible endpoints, this is empty (the URL already includes the version path).
 	openaiPathPrefix string
+	// useTLS indicates whether TLS is being used for connections.
+	useTLS bool
+	// tlsURLPrefix is the TLS URL prefix (if TLS is enabled).
+	tlsURLPrefix *url.URL
+	// tlsClient is the TLS-enabled HTTP client (if TLS is enabled).
+	tlsClient DockerHttpClient
 }
 
 // NewContextForMock is a ModelRunnerContext constructor exposed only for the
@@ -216,6 +223,11 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 	// testing purposes.
 	treatDesktopAsMoby := os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") == "1"
 
+	// Check if TLS should be used
+	useTLS := os.Getenv("MODEL_RUNNER_TLS") == "true"
+	tlsSkipVerify := os.Getenv("MODEL_RUNNER_TLS_SKIP_VERIFY") == "true"
+	tlsCACert := os.Getenv("MODEL_RUNNER_TLS_CA_CERT")
+
 	// Detect the associated engine type.
 	kind := types.ModelRunnerEngineKindMoby
 	if modelRunnerHost != "" {
@@ -238,15 +250,42 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 
 	// Compute the URL prefix based on the associated engine kind.
 	var rawURLPrefix string
+	var rawTLSURLPrefix string
 	switch kind {
 	case types.ModelRunnerEngineKindMoby:
 		rawURLPrefix = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+		rawTLSURLPrefix = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
 	case types.ModelRunnerEngineKindCloud:
 		rawURLPrefix = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+		rawTLSURLPrefix = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
 	case types.ModelRunnerEngineKindMobyManual:
-		rawURLPrefix = modelRunnerHost
+		normalizedHost := modelRunnerHost
+
+		// Ensure the manual host has a scheme.
+		// Default to https when TLS is requested, otherwise http.
+		if !strings.HasPrefix(normalizedHost, "http://") && !strings.HasPrefix(normalizedHost, "https://") {
+			if useTLS {
+				normalizedHost = "https://" + normalizedHost
+			} else {
+				normalizedHost = "http://" + normalizedHost
+			}
+		}
+
+		rawURLPrefix = normalizedHost
+
+		// Derive TLS URL from the normalized host, ensuring https when TLS is enabled.
+		if useTLS {
+			if strings.HasPrefix(normalizedHost, "http://") {
+				rawTLSURLPrefix = "https://" + strings.TrimPrefix(normalizedHost, "http://")
+			} else {
+				rawTLSURLPrefix = normalizedHost
+			}
+		} else {
+			rawTLSURLPrefix = normalizedHost
+		}
 	case types.ModelRunnerEngineKindDesktop:
 		rawURLPrefix = "http://localhost" + inference.ExperimentalEndpointsPrefix
+		rawTLSURLPrefix = rawURLPrefix // TLS not typically used with Desktop
 		if IsDesktopWSLContext(ctx, cli) {
 			dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
 			if err != nil {
@@ -257,6 +296,7 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 			containerID, _, _, err := standalone.FindControllerContainer(ctx, dockerClient)
 			if err == nil && containerID != "" {
 				rawURLPrefix = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+				rawTLSURLPrefix = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
 				kind = types.ModelRunnerEngineKindMoby
 			}
 		}
@@ -266,28 +306,72 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 		return nil, fmt.Errorf("invalid model runner URL (%s): %w", rawURLPrefix, err)
 	}
 
+	var tlsURLPrefix *url.URL
+	if useTLS {
+		tlsURLPrefix, err = url.Parse(rawTLSURLPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("invalid model runner TLS URL (%s): %w", rawTLSURLPrefix, err)
+		}
+
+		// Validate that TLS URL uses HTTPS when TLS is enabled
+		if tlsURLPrefix.Scheme != "https" {
+			return nil, fmt.Errorf("TLS requested but URL scheme is not HTTPS: %s", rawTLSURLPrefix)
+		}
+	}
+
 	// Construct the HTTP client.
-	var client DockerHttpClient
+	var httpClient DockerHttpClient
 	if kind == types.ModelRunnerEngineKindDesktop {
 		dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
 		if err != nil {
 			return nil, fmt.Errorf("unable to create model runner client: %w", err)
 		}
-		client = dockerClient.HTTPClient()
+		httpClient = dockerClient.HTTPClient()
 	} else {
-		client = http.DefaultClient
+		httpClient = http.DefaultClient
 	}
 
 	if userAgent := os.Getenv("USER_AGENT"); userAgent != "" {
-		setUserAgent(client, userAgent)
+		setUserAgent(httpClient, userAgent)
+	}
+
+	// Construct TLS client if TLS is enabled
+	var tlsClient DockerHttpClient
+	if useTLS {
+		if kind == types.ModelRunnerEngineKindDesktop {
+			// For Desktop context, if TLS is enabled, we should either fully support it or fail fast
+			// Since Desktop context uses Docker client, we need to handle TLS differently
+			// For now, we'll fail fast to make the behavior clear
+			return nil, fmt.Errorf("TLS is not supported for Desktop contexts")
+		}
+
+		tlsConfig, err := modeltls.LoadClientTLSConfig(tlsCACert, tlsSkipVerify)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load TLS configuration: %w", err)
+		}
+
+		tlsTransport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
+		}
+		tlsClient = &http.Client{
+			Transport: tlsTransport,
+		}
+
+		if userAgent := os.Getenv("USER_AGENT"); userAgent != "" {
+			setUserAgent(tlsClient, userAgent)
+		}
 	}
 
 	// Success.
 	return &ModelRunnerContext{
 		kind:             kind,
 		urlPrefix:        urlPrefix,
-		client:           client,
+		client:           httpClient,
 		openaiPathPrefix: inference.InferencePrefix + "/v1",
+		useTLS:           useTLS,
+		tlsURLPrefix:     tlsURLPrefix,
+		tlsClient:        tlsClient,
 	}, nil
 }
 
@@ -297,9 +381,45 @@ func (c *ModelRunnerContext) EngineKind() types.ModelRunnerEngineKind {
 }
 
 // URL constructs a URL string appropriate for the model runner.
+// If TLS is enabled, returns the TLS URL.
 func (c *ModelRunnerContext) URL(path string) string {
+	prefix := c.urlPrefix
+	if c.useTLS && c.tlsURLPrefix != nil {
+		prefix = c.tlsURLPrefix
+	}
+	return c.buildURL(prefix, path)
+}
+
+// Client returns an HTTP client appropriate for accessing the model runner.
+// If TLS is enabled, returns the TLS client.
+func (c *ModelRunnerContext) Client() DockerHttpClient {
+	if c.useTLS && c.tlsClient != nil {
+		return c.tlsClient
+	}
+	return c.client
+}
+
+// UseTLS returns whether TLS is enabled for this context.
+func (c *ModelRunnerContext) UseTLS() bool {
+	return c.useTLS
+}
+
+// TLSURL constructs a TLS URL string for the model runner.
+// Returns an empty string if TLS is not enabled.
+func (c *ModelRunnerContext) TLSURL(path string) string {
+	if c.tlsURLPrefix == nil {
+		return ""
+	}
+	return c.buildURL(c.tlsURLPrefix, path)
+}
+
+// buildURL constructs a URL string from a prefix and path, handling query parameters.
+func (c *ModelRunnerContext) buildURL(prefix *url.URL, path string) string {
+	if prefix == nil {
+		return ""
+	}
 	components := strings.Split(path, "?")
-	result := c.urlPrefix.JoinPath(components[0]).String()
+	result := prefix.JoinPath(components[0]).String()
 	if len(components) > 1 {
 		components[0] = result
 		result = strings.Join(components, "?")
@@ -307,9 +427,9 @@ func (c *ModelRunnerContext) URL(path string) string {
 	return result
 }
 
-// Client returns an HTTP client appropriate for accessing the model runner.
-func (c *ModelRunnerContext) Client() DockerHttpClient {
-	return c.client
+// TLSClient returns the TLS HTTP client, or nil if TLS is not enabled.
+func (c *ModelRunnerContext) TLSClient() DockerHttpClient {
+	return c.tlsClient
 }
 
 // OpenAIPathPrefix returns the path prefix for OpenAI-compatible endpoints.

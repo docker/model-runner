@@ -83,6 +83,7 @@ type RequestResponsePair struct {
 	Timestamp  int64  `json:"timestamp"`
 	StatusCode int    `json:"status_code"`
 	UserAgent  string `json:"user_agent,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 }
 
 type ModelData struct {
@@ -239,6 +240,7 @@ func (r *OpenAIRecorder) RecordRequest(model string, req *http.Request, body []b
 		Request:   string(r.truncateMediaFields(body)),
 		Timestamp: time.Now().Unix(),
 		UserAgent: req.UserAgent(),
+		Origin:    req.Header.Get(inference.RequestOriginHeader),
 	}
 
 	modelData := r.records[modelID]
@@ -336,6 +338,19 @@ func (r *OpenAIRecorder) serializeStreamingError(err error) string {
 	return r.normalizeErrorToJSON(err.Error())
 }
 
+func (r *OpenAIRecorder) getRecordOrigin(id, modelID string) string {
+	r.m.RLock()
+	defer r.m.RUnlock()
+	if modelData, exists := r.records[modelID]; exists {
+		for _, record := range modelData.Records {
+			if record.ID == id {
+				return record.Origin
+			}
+		}
+	}
+	return ""
+}
+
 func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter) {
 	rr := rw.(*responseRecorder)
 
@@ -346,15 +361,20 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 		statusCode = http.StatusRequestTimeout
 	}
 
+	modelID := r.modelManager.ResolveID(model)
+
 	var response string
 	var streamingErr error
 	if strings.Contains(responseBody, "data: ") {
-		response, streamingErr = r.convertStreamingResponse(responseBody)
+		origin := r.getRecordOrigin(id, modelID)
+		if origin == inference.OriginAnthropicMessages {
+			response, streamingErr = r.convertAnthropicStreamingResponse(responseBody)
+		} else {
+			response, streamingErr = r.convertStreamingResponse(responseBody)
+		}
 	} else {
 		response = responseBody
 	}
-
-	modelID := r.modelManager.ResolveID(model)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -500,6 +520,112 @@ func (r *OpenAIRecorder) convertStreamingResponse(streamingBody string) (string,
 	}
 
 	finalResponse["object"] = "chat.completion"
+
+	jsonResult, err := json.Marshal(finalResponse)
+	if err != nil {
+		return streamingBody, nil
+	}
+
+	return string(jsonResult), nil
+}
+
+// convertAnthropicStreamingResponse converts an Anthropic streaming response body into a standard JSON response.
+func (r *OpenAIRecorder) convertAnthropicStreamingResponse(streamingBody string) (string, error) {
+	lines := strings.Split(streamingBody, "\n")
+	var contentBuilder strings.Builder
+	var messageData map[string]interface{}
+	var currentEvent string
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "event: ") {
+			currentEvent = strings.TrimPrefix(line, "event: ")
+			continue
+		}
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "" {
+			continue
+		}
+
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		chunkType, _ := chunk["type"].(string)
+
+		if currentEvent == "error" || chunkType == "error" {
+			streamingErr := &StreamingError{
+				StatusCode: defaultStreamingErrorCode,
+				Message:    "streaming error",
+			}
+
+			if errorObj, ok := chunk["error"].(map[string]interface{}); ok {
+				if message, ok := errorObj["message"].(string); ok {
+					streamingErr.Message = message
+				}
+				if errorType, ok := errorObj["type"].(string); ok {
+					streamingErr.Type = errorType
+				}
+			}
+
+			streamingErr.Details = data
+			return streamingBody, streamingErr
+		}
+
+		if chunkType == "message_start" {
+			if message, ok := chunk["message"].(map[string]interface{}); ok {
+				messageData = message
+			}
+		}
+
+		if chunkType == "content_block_delta" {
+			if delta, ok := chunk["delta"].(map[string]interface{}); ok {
+				if deltaType, ok := delta["type"].(string); ok && deltaType == "text_delta" {
+					if text, ok := delta["text"].(string); ok {
+						contentBuilder.WriteString(text)
+					}
+				}
+			}
+		}
+
+		if chunkType == "message_delta" {
+			if messageData != nil {
+				if usage, ok := chunk["usage"].(map[string]interface{}); ok {
+					messageData["usage"] = usage
+				}
+				if stopReason, ok := chunk["delta"].(map[string]interface{}); ok {
+					if reason, ok := stopReason["stop_reason"].(string); ok {
+						messageData["stop_reason"] = reason
+					}
+				}
+			}
+		}
+	}
+
+	if messageData == nil {
+		return streamingBody, nil
+	}
+
+	finalResponse := make(map[string]interface{})
+	for key, value := range messageData {
+		finalResponse[key] = value
+	}
+
+	finalResponse["content"] = []interface{}{
+		map[string]interface{}{
+			"type": "text",
+			"text": contentBuilder.String(),
+		},
+	}
+
+	if _, ok := finalResponse["stop_reason"]; !ok {
+		finalResponse["stop_reason"] = "end_turn"
+	}
 
 	jsonResult, err := json.Marshal(finalResponse)
 	if err != nil {

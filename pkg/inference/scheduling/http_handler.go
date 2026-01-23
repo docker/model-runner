@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
@@ -140,6 +141,12 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		http.Error(w, "unknown request path", http.StatusInternalServerError)
 		return
+	}
+
+	// Set origin header for Anthropic Messages API requests if not already set.
+	// This enables proper response format detection in the recorder.
+	if strings.HasSuffix(r.URL.Path, "/v1/messages") && r.Header.Get(inference.RequestOriginHeader) == "" {
+		r.Header.Set(inference.RequestOriginHeader, inference.OriginAnthropicMessages)
 	}
 
 	// Decode the model specification portion of the request body.
