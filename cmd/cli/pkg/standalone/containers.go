@@ -566,7 +566,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			_ = dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		}
 		if isPortBindingError(err) {
-			return fmt.Errorf("failed to start container %s: %w\n\nThe port may already be in use by Docker Desktop's model runner.\nTry running: docker desktop disable model-runner", controllerContainerName, err)
+			return fmt.Errorf("failed to start container %s: %w\n\nThe port may already be in use by Docker Desktop's Model Runner.\nTry running: docker desktop disable model-runner", controllerContainerName, err)
 		}
 		return fmt.Errorf("failed to start container %s: %w", controllerContainerName, err)
 	}
