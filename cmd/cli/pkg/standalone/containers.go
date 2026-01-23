@@ -289,6 +289,17 @@ type TLSOptions struct {
 // tlsCertContainerPath is the path where TLS certificates will be mounted in the container.
 const tlsCertContainerPath = "/etc/model-runner/certs"
 
+// isPortBindingError checks if the error indicates a port is already in use
+func isPortBindingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "ports are not available") &&
+		(strings.Contains(errStr, "address already in use") ||
+			strings.Contains(errStr, "Only one usage of each socket address"))
+}
+
 // CreateControllerContainer creates and starts a controller container.
 func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool, proxyCert string, tlsOpts TLSOptions) error {
 	imageName := controllerImageName(gpu, backend)
@@ -553,6 +564,9 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	if err := ensureContainerStarted(ctx, dockerClient, controllerContainerName); err != nil {
 		if created {
 			_ = dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		}
+		if isPortBindingError(err) {
+			return fmt.Errorf("failed to start container %s: %w\n\nThe port may already be in use by Docker Desktop's model runner.\nTry running: docker desktop disable model-runner", controllerContainerName, err)
 		}
 		return fmt.Errorf("failed to start container %s: %w", controllerContainerName, err)
 	}
