@@ -62,7 +62,7 @@ func TestBlobs(t *testing.T) {
 		}
 	})
 
-	t.Run("WriteBlob fails", func(t *testing.T) {
+	t.Run("WriteBlob fails and preserves incomplete file", func(t *testing.T) {
 		// simulate lingering incomplete blob file (if program crashed)
 		hash := oci.Hash{
 			Algorithm: "sha256",
@@ -72,15 +72,16 @@ func TestBlobs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error getting blob path: %v", err)
 		}
-		if err := writeFile(incompletePath(blobPath), []byte("incomplete")); err != nil {
-			t.Fatalf("error creating incomplete blob file for test: %v", err)
-		}
+		incomplete := incompletePath(blobPath)
+		// ensure incomplete file doesn't exist before test
+		_ = os.Remove(incomplete)
+		defer os.Remove(incomplete) // cleanup after test
 
 		if err := store.WriteBlob(hash, &errorReader{}); err == nil {
 			t.Fatalf("expected error writing blob")
 		}
 
-		// ensure blob file does not exist
+		// ensure blob file does not exist (not completed)
 		blobPath2, err := store.blobPath(hash)
 		if err != nil {
 			t.Fatalf("error getting blob path: %v", err)
@@ -89,13 +90,36 @@ func TestBlobs(t *testing.T) {
 			t.Fatalf("expected blob file not to exist")
 		}
 
-		// ensure incomplete file is not left behind
-		blobPath3, err := store.blobPath(hash)
+		// ensure incomplete file IS preserved for resume attempts
+		// (changed behavior: we now preserve incomplete files for all errors
+		// to allow resume attempts; stale files are cleaned up during store initialization)
+		if _, err := os.Stat(incomplete); err != nil {
+			t.Fatalf("expected incomplete blob file to exist for resume attempts, but got error: %v", err)
+		}
+	})
+
+	t.Run("WriteBlobWithResume fails and preserves file", func(t *testing.T) {
+		hash := oci.Hash{
+			Algorithm: "sha256",
+			Hex:       "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		}
+		blobPath, err := store.blobPath(hash)
 		if err != nil {
 			t.Fatalf("error getting blob path: %v", err)
 		}
-		if _, err := os.ReadFile(incompletePath(blobPath3)); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("expected incomplete blob file not to exist")
+		incomplete := incompletePath(blobPath)
+		// ensure file doesn't exist before test
+		_ = os.Remove(incomplete)
+		defer os.Remove(incomplete) // cleanup after test
+
+		// Use a nil rangeSuccess tracker for simplicity
+		if err := store.WriteBlobWithResume(hash, &errorReader{}, "", nil); err == nil {
+			t.Fatalf("expected error writing blob")
+		}
+
+		// ensure incomplete file is left behind for resume attempts
+		if _, err := os.Stat(incomplete); err != nil {
+			t.Fatalf("expected incomplete blob file to exist for resume attempts, but got error: %v", err)
 		}
 	})
 
