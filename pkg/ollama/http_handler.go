@@ -651,7 +651,7 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the model manager's Pull method with the wrapped writer
-	if err := h.modelManager.Pull(modelName, "", r, ollamaWriter); err != nil {
+	if err := h.modelManager.Pull(modelName, nil, r, ollamaWriter); err != nil {
 		h.log.Errorf("Failed to pull model: %s", utils.SanitizeForLog(err.Error(), -1))
 
 		// Send error in Ollama JSON format

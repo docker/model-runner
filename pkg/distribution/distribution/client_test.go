@@ -79,7 +79,7 @@ func TestClientPullModel(t *testing.T) {
 
 	t.Run("pull without progress writer", func(t *testing.T) {
 		// Pull model from registry without progress writer
-		err := client.PullModel(t.Context(), tag, nil)
+		err := client.PullModel(t.Context(), tag, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to pull model: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Pull model from registry with progress writer
-		if err := client.PullModel(t.Context(), tag, &progressBuffer); err != nil {
+		if err := client.PullModel(t.Context(), tag, &progressBuffer, nil); err != nil {
 			t.Fatalf("Failed to pull model: %v", err)
 		}
 
@@ -160,7 +160,7 @@ func TestClientPullModel(t *testing.T) {
 
 		// Test with non-existent repository
 		nonExistentRef := registryHost + "/nonexistent/model:v1.0.0"
-		err = testClient.PullModel(t.Context(), nonExistentRef, &progressBuffer)
+		err = testClient.PullModel(t.Context(), nonExistentRef, &progressBuffer, nil)
 		if err == nil {
 			t.Fatal("Expected error for non-existent model, got nil")
 		}
@@ -216,7 +216,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push model to registry
-		if err := testClient.PushModel(t.Context(), testTag, nil); err != nil {
+		if err := testClient.PushModel(t.Context(), testTag, nil, nil); err != nil {
 			t.Fatalf("Failed to pull model: %v", err)
 		}
 
@@ -262,7 +262,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Pull the model again - this should detect the incomplete file and pull again
-		if err := testClient.PullModel(t.Context(), testTag, &progressBuffer); err != nil {
+		if err := testClient.PullModel(t.Context(), testTag, &progressBuffer, nil); err != nil {
 			t.Fatalf("Failed to pull model: %v", err)
 		}
 
@@ -315,7 +315,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Pull first version of model
-		if err := testClient.PullModel(t.Context(), testTag, nil); err != nil {
+		if err := testClient.PullModel(t.Context(), testTag, nil, nil); err != nil {
 			t.Fatalf("Failed to pull first version of model: %v", err)
 		}
 
@@ -359,7 +359,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Pull model again - should get the updated version
-		if err := testClient.PullModel(t.Context(), testTag, &progressBuffer); err != nil {
+		if err := testClient.PullModel(t.Context(), testTag, &progressBuffer, nil); err != nil {
 			t.Fatalf("Failed to pull updated model: %v", err)
 		}
 
@@ -405,7 +405,7 @@ func TestClientPullModel(t *testing.T) {
 		if err := remote.Write(ref, newMdl, nil, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push model: %v", err)
 		}
-		if err := client.PullModel(t.Context(), testTag, nil); err == nil || !errors.Is(err, ErrUnsupportedMediaType) {
+		if err := client.PullModel(t.Context(), testTag, nil, nil); err == nil || !errors.Is(err, ErrUnsupportedMediaType) {
 			t.Fatalf("Expected artifact version error, got %v", err)
 		}
 	})
@@ -446,7 +446,7 @@ func TestClientPullModel(t *testing.T) {
 
 		// Try to pull the safetensors model with a progress writer to capture warnings
 		var progressBuf bytes.Buffer
-		err = testClient.PullModel(t.Context(), testTag, &progressBuf)
+		err = testClient.PullModel(t.Context(), testTag, &progressBuf, nil)
 
 		// Pull should succeed on all platforms now (with a warning on non-Linux)
 		if err != nil {
@@ -478,7 +478,7 @@ func TestClientPullModel(t *testing.T) {
 		var progressBuffer bytes.Buffer
 
 		// Pull model from registry with progress writer
-		if err := testClient.PullModel(t.Context(), tag, &progressBuffer); err != nil {
+		if err := testClient.PullModel(t.Context(), tag, &progressBuffer, nil); err != nil {
 			t.Fatalf("Failed to pull model: %v", err)
 		}
 
@@ -555,7 +555,7 @@ func TestClientPullModel(t *testing.T) {
 
 		// Test with non-existent model
 		nonExistentRef := registryHost + "/nonexistent/model:v1.0.0"
-		err = testClient.PullModel(t.Context(), nonExistentRef, &progressBuffer)
+		err = testClient.PullModel(t.Context(), nonExistentRef, &progressBuffer, nil)
 
 		// Expect an error
 		if err == nil {
@@ -813,7 +813,7 @@ func TestNewReferenceError(t *testing.T) {
 
 	// Test with invalid reference
 	invalidRef := "invalid:reference:format"
-	err = client.PullModel(t.Context(), invalidRef, nil)
+	err = client.PullModel(t.Context(), invalidRef, nil, nil)
 	if err == nil {
 		t.Fatal("Expected error for invalid reference, got nil")
 	}
@@ -858,7 +858,7 @@ func TestPush(t *testing.T) {
 	}
 
 	// Push the model to the registry
-	if err := client.PushModel(t.Context(), tag, nil); err != nil {
+	if err := client.PushModel(t.Context(), tag, nil, nil); err != nil {
 		t.Fatalf("Failed to push model: %v", err)
 	}
 
@@ -868,7 +868,7 @@ func TestPush(t *testing.T) {
 	}
 
 	// Test that model can be pulled successfully
-	if err := client.PullModel(t.Context(), tag, nil); err != nil {
+	if err := client.PullModel(t.Context(), tag, nil, nil); err != nil {
 		t.Fatalf("Failed to pull model: %v", err)
 	}
 
@@ -929,7 +929,7 @@ func TestPushProgress(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		defer pw.Close()
-		done <- client.PushModel(t.Context(), tag, pw)
+		done <- client.PushModel(t.Context(), tag, pw, nil)
 		close(done)
 	}()
 
@@ -1051,7 +1051,7 @@ func TestClientPushModelNotFound(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	if err := client.PushModel(t.Context(), "non-existent-model:latest", nil); !errors.Is(err, ErrModelNotFound) {
+	if err := client.PushModel(t.Context(), "non-existent-model:latest", nil, nil); !errors.Is(err, ErrModelNotFound) {
 		t.Fatalf("Expected ErrModelNotFound got: %v", err)
 	}
 }
