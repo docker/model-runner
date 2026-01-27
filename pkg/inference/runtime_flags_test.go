@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -213,13 +214,13 @@ func TestValidateRuntimeFlags_ErrorMessages(t *testing.T) {
 		}
 
 		errMsg := err.Error()
-		if !contains(errMsg, "--log-file") {
+		if !strings.Contains(errMsg, "--log-file") {
 			t.Errorf("Error message should contain the offending flag, got: %s", errMsg)
 		}
-		if !contains(errMsg, "not allowed") {
+		if !strings.Contains(errMsg, "not allowed") {
 			t.Errorf("Error message should explain rejection, got: %s", errMsg)
 		}
-		if !contains(errMsg, "llama.cpp") {
+		if !strings.Contains(errMsg, "llama.cpp") {
 			t.Errorf("Error message should mention the backend, got: %s", errMsg)
 		}
 	})
@@ -232,10 +233,10 @@ func TestValidateRuntimeFlags_ErrorMessages(t *testing.T) {
 		}
 
 		errMsg := err.Error()
-		if !contains(errMsg, "/var/log/test.log") {
+		if !strings.Contains(errMsg, "/var/log/test.log") {
 			t.Errorf("Error message should contain the offending value, got: %s", errMsg)
 		}
-		if !contains(errMsg, "paths are not allowed") {
+		if !strings.Contains(errMsg, "paths are not allowed") {
 			t.Errorf("Error message should explain why it failed, got: %s", errMsg)
 		}
 	})
@@ -285,20 +286,4 @@ func TestValidatePathSafety(t *testing.T) {
 			}
 		})
 	}
-}
-
-// contains is a helper function to check if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || substr == "" ||
-		(s != "" && indexOf(s, substr) >= 0))
-}
-
-// indexOf returns the index of substr in s, or -1 if not found
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
