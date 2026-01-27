@@ -186,6 +186,57 @@ func TestValidateRuntimeFlags(t *testing.T) {
 			expectError: false,
 			description: "Flags with dots and numbers (no slash) should pass",
 		},
+
+		// Flag injection tests (smuggling flags via = separator)
+		{
+			name:        "llama.cpp: reject long flag injection via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--seed=--log-file=container-to-host.log"},
+			expectError: true,
+			description: "Smuggled long flags via = separator should be rejected",
+		},
+		{
+			name:        "llama.cpp: reject short flag injection via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--seed=-l"},
+			expectError: true,
+			description: "Smuggled short flags via = separator should be rejected",
+		},
+		{
+			name:        "llama.cpp: reject dash-only value via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--seed=-"},
+			expectError: true,
+			description: "Single dash as value should be rejected",
+		},
+		{
+			name:        "llama.cpp: reject dash-dot value via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--temp=-.5"},
+			expectError: true,
+			description: "Dash followed by non-digit should be rejected",
+		},
+		{
+			name:        "llama.cpp: allow negative integer via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads=-1"},
+			expectError: false,
+			description: "Negative integer values should be allowed",
+		},
+		{
+			name:        "llama.cpp: allow negative float via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--temp=-0.5"},
+			expectError: false,
+			description: "Negative float values should be allowed",
+		},
+		{
+			name:        "llama.cpp: allow zero via equals",
+			backend:     "llama.cpp",
+			flags:       []string{"--seed=0"},
+			expectError: false,
+			description: "Zero value should be allowed",
+		},
 	}
 
 	for _, tt := range tests {

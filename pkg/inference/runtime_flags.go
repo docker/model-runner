@@ -22,6 +22,11 @@ func ValidateRuntimeFlags(backendName string, flags []string) error {
 		}
 	}
 
+	// Check for flags in values (e.g., --seed=--log-file=foo or --seed=-l)
+	if err := validateNoFlagInjection(flags); err != nil {
+		return err
+	}
+
 	// still check for path characters in values
 	return validatePathSafety(flags)
 }
@@ -45,4 +50,28 @@ func validatePathSafety(flags []string) error {
 		}
 	}
 	return nil
+}
+
+// validateNoFlagInjection checks for flags in values when using the = format.
+// This prevents attacks like --seed=--log-file=foo or --seed=-l where disallowed flags
+// are embedded as values.
+// Values starting with - are only allowed if followed by a digit (negative numbers like -1, -0.5).
+func validateNoFlagInjection(flags []string) error {
+	for _, flag := range flags {
+		if idx := strings.Index(flag, "="); idx != -1 {
+			value := flag[idx+1:]
+			if strings.HasPrefix(value, "-") {
+				// Allow negative numbers (-1, -0.5) but reject flags (-l, --flag)
+				if len(value) < 2 || !isDigit(value[1]) {
+					return fmt.Errorf("invalid flag %q: value cannot start with '-' unless followed by a digit", flag)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// isDigit returns true if the byte is an ASCII digit (0-9)
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
