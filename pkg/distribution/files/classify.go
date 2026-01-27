@@ -53,7 +53,14 @@ var (
 	ConfigExtensions = []string{".md", ".txt", ".json", ".vocab"}
 
 	// SpecialConfigFiles are specific filenames treated as config files
-	SpecialConfigFiles = []string{"tokenizer.model"}
+	// These are common HuggingFace model files that should be included in config archives
+	SpecialConfigFiles = []string{
+		"tokenizer.model",         // SentencePiece tokenizer model
+		"merges.txt",              // BPE merges for tokenizers
+		"vocab.txt",               // Vocabulary file
+		"sentencepiece.bpe.model", // SentencePiece BPE model
+		"spiece.model",            // Alternative SentencePiece naming
+	}
 
 	// ChatTemplateExtensions defines extensions for chat template files
 	ChatTemplateExtensions = []string{".jinja"}

@@ -18,6 +18,14 @@ type Layer struct {
 }
 
 func NewLayer(path string, mt oci.MediaType) (*Layer, error) {
+	return NewLayerWithRelativePath(path, filepath.Base(path), mt)
+}
+
+// NewLayerWithRelativePath creates a layer with a specific relative path stored in annotations.
+// This is useful for preserving directory structure when packaging nested model files.
+// The relativePath parameter specifies the path that will be used when unpacking the layer,
+// allowing files from subdirectories to be correctly placed.
+func NewLayerWithRelativePath(path string, relativePath string, mt oci.MediaType) (*Layer, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -51,9 +59,12 @@ func NewLayer(path string, mt oci.MediaType) (*Layer, error) {
 		return nil, err
 	}
 
+	// Use forward slashes for cross-platform compatibility in annotations
+	annotationPath := filepath.ToSlash(relativePath)
+
 	// Create annotations
 	annotations := map[string]string{
-		types.AnnotationFilePath:          filepath.Base(path),
+		types.AnnotationFilePath:          annotationPath,
 		types.AnnotationFileMetadata:      string(metadataJSON),
 		types.AnnotationMediaTypeUntested: "false", // Media types are tested in this implementation
 	}

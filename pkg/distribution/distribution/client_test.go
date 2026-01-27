@@ -395,7 +395,7 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull unsupported (newer) version", func(t *testing.T) {
-		newMdl := mutate.ConfigMediaType(model, "application/vnd.docker.ai.model.config.v0.2+json")
+		newMdl := mutate.ConfigMediaType(model, "application/vnd.docker.ai.model.config.v99.0+json")
 		// Push model to local store
 		testTag := registryHost + "/unsupported-test/model:v1.0.0"
 		ref, err := reference.ParseReference(testTag)

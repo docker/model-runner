@@ -234,6 +234,116 @@ func unpackSafetensors(bundle *Bundle, mdl types.Model) error {
 
 	modelDir := filepath.Join(bundle.dir, ModelSubdir)
 
+	// Check config version to determine unpacking strategy
+	// v0.2+ models use filepath annotations for nested directory support
+	artifact, ok := mdl.(types.ModelArtifact)
+	if ok {
+		manifest, err := artifact.Manifest()
+		if err == nil && manifest.Config.MediaType == types.MediaTypeModelConfigV02 {
+			// v0.2 model: use filepath annotations for nested directory support
+			layers, layerErr := artifact.Layers()
+			if layerErr == nil {
+				return unpackSafetensorsWithAnnotations(bundle, modelDir, safetensorsPaths, layers)
+			}
+		}
+	}
+
+	// v0.1 (legacy) or fallback: use flat file naming
+	return unpackSafetensorsLegacy(bundle, modelDir, safetensorsPaths)
+}
+
+// unpackSafetensorsWithAnnotations unpacks safetensors files using their filepath annotations
+// to preserve nested directory structure
+func unpackSafetensorsWithAnnotations(bundle *Bundle, modelDir string, safetensorsPaths []string, layers []oci.Layer) error {
+	// Build a map of blob paths to their filepath annotations
+	pathAnnotations := make(map[string]string)
+	for _, layer := range layers {
+		mediaType, err := layer.MediaType()
+		if err != nil || mediaType != types.MediaTypeSafetensors {
+			continue
+		}
+
+		// Get the layer's annotations
+		desc, ok := layer.(interface{ Descriptor() oci.Descriptor })
+		if !ok {
+			continue
+		}
+		annotations := desc.Descriptor().Annotations
+		if annotations == nil {
+			continue
+		}
+
+		filePath, hasPath := annotations[types.AnnotationFilePath]
+		if !hasPath || filePath == "" {
+			continue
+		}
+
+		// Get the layer's digest to match with blob paths
+		digest, err := layer.Digest()
+		if err != nil {
+			continue
+		}
+
+		// Store the annotation keyed by digest
+		pathAnnotations[digest.String()] = filePath
+	}
+
+	// Now unpack each safetensors file
+	for i, blobPath := range safetensorsPaths {
+		// Try to find the annotation for this file
+		var destRelPath string
+
+		// Check if we have an annotation for this file
+		// We need to match blob paths to their annotations
+		for digest, annoPath := range pathAnnotations {
+			// The blob path should contain the digest
+			if strings.Contains(blobPath, strings.TrimPrefix(digest, "sha256:")) {
+				destRelPath = annoPath
+				break
+			}
+		}
+
+		// If we found an annotation with a path, use it
+		if destRelPath != "" {
+			// Convert forward slashes to OS-specific path separators
+			destRelPath = filepath.FromSlash(destRelPath)
+			destPath := filepath.Join(modelDir, destRelPath)
+
+			// Create parent directories if needed
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return fmt.Errorf("create directory for %s: %w", destRelPath, err)
+			}
+
+			if err := unpackFile(destPath, blobPath); err != nil {
+				return fmt.Errorf("unpack %s: %w", destRelPath, err)
+			}
+
+			// Set bundle path to first file
+			if i == 0 {
+				bundle.safetensorsFile = destRelPath
+			}
+		} else {
+			// Fall back to legacy naming if no annotation found
+			var name string
+			if len(safetensorsPaths) == 1 {
+				name = "model.safetensors"
+			} else {
+				name = fmt.Sprintf("model-%05d-of-%05d.safetensors", i+1, len(safetensorsPaths))
+			}
+			if err := unpackFile(filepath.Join(modelDir, name), blobPath); err != nil {
+				return err
+			}
+			if i == 0 {
+				bundle.safetensorsFile = name
+			}
+		}
+	}
+
+	return nil
+}
+
+// unpackSafetensorsLegacy unpacks safetensors files using legacy flat naming
+func unpackSafetensorsLegacy(bundle *Bundle, modelDir string, safetensorsPaths []string) error {
 	if len(safetensorsPaths) == 1 {
 		if err := unpackFile(filepath.Join(modelDir, "model.safetensors"), safetensorsPaths[0]); err != nil {
 			return err

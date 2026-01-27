@@ -10,8 +10,12 @@ import (
 type MediaType = oci.MediaType
 
 const (
-	// MediaTypeModelConfigV01 is the media type for the model config json.
+	// MediaTypeModelConfigV01 is the media type for the model config json (legacy flat file structure).
 	MediaTypeModelConfigV01 MediaType = "application/vnd.docker.ai.model.config.v0.1+json"
+
+	// MediaTypeModelConfigV02 is the media type for models with nested directory support.
+	// Models with this config version use filepath annotations to preserve directory structure.
+	MediaTypeModelConfigV02 MediaType = "application/vnd.docker.ai.model.config.v0.2+json"
 
 	// MediaTypeGGUF indicates a file in GGUF version 3 format, containing a tensor model.
 	MediaTypeGGUF MediaType = "application/vnd.docker.ai.gguf.v3"

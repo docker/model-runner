@@ -20,7 +20,7 @@ func TestPackageFromDirectory_WithTokenizerModel(t *testing.T) {
 		"config.json":           `{"model_type": "test"}`,
 		"tokenizer.model":       "tokenizer model binary content",
 		"tokenizer_config.json": `{"tokenizer_class": "TestTokenizer"}`,
-		"not.included":          `not included content`,
+		"unknown.file":          `not included content`,
 	}
 
 	for name, content := range files {
@@ -57,17 +57,18 @@ func TestPackageFromDirectory_WithTokenizerModel(t *testing.T) {
 		t.Fatalf("Failed to read tar archive: %v", err)
 	}
 
-	expectedFiles := []string{"config.json", "tokenizer.model", "tokenizer_config.json"}
+	// The new behavior includes small unknown files (like "unknown.file") in the config archive
+	expectedFiles := []string{"config.json", "unknown.file", "tokenizer.model", "tokenizer_config.json"}
 	sort.Strings(expectedFiles)
 	sort.Strings(archiveFiles)
 
 	if len(archiveFiles) != len(expectedFiles) {
-		t.Errorf("Expected %d files in archive, got %d", len(expectedFiles), len(archiveFiles))
+		t.Errorf("Expected %d files in archive, got %d: %v", len(expectedFiles), len(archiveFiles), archiveFiles)
 	}
 
 	for i, expected := range expectedFiles {
 		if i >= len(archiveFiles) || archiveFiles[i] != expected {
-			t.Errorf("Expected file %s in archive, got %v", expected, archiveFiles)
+			t.Errorf("Expected file %s in archive at position %d, got %v", expected, i, archiveFiles)
 		}
 	}
 }
@@ -167,10 +168,11 @@ func TestPackageFromDirectory_NoSafetensorsFiles(t *testing.T) {
 	// Call PackageFromDirectory
 	_, _, err := PackageFromDirectory(tempDir)
 	if err == nil {
-		t.Fatal("Expected error when no safetensors files found, got nil")
+		t.Fatal("Expected error when no weight files found, got nil")
 	}
 
-	expectedError := "no safetensors files found"
+	// The new behavior uses a more general error message that covers all weight file types
+	expectedError := "no weight files"
 	if !strings.Contains(err.Error(), expectedError) {
 		t.Errorf("Expected error containing %q, got: %v", expectedError, err)
 	}
@@ -210,7 +212,7 @@ func TestPackageFromDirectory_OnlySafetensorsFiles(t *testing.T) {
 	}
 }
 
-func TestPackageFromDirectory_SkipsSubdirectories(t *testing.T) {
+func TestPackageFromDirectory_IncludesSubdirectories(t *testing.T) {
 	// Create temporary directory
 	tempDir := t.TempDir()
 
@@ -227,15 +229,15 @@ func TestPackageFromDirectory_SkipsSubdirectories(t *testing.T) {
 		}
 	}
 
-	// Create subdirectory with files that should be ignored
+	// Create subdirectory with files that should now be INCLUDED (recursive behavior)
 	subDir := filepath.Join(tempDir, "subdir")
 	if err := os.Mkdir(subDir, 0755); err != nil {
 		t.Fatalf("Failed to create subdirectory: %v", err)
 	}
 
 	subFiles := map[string]string{
-		"ignored.safetensors": "should be ignored",
-		"ignored.json":        `{"ignored": true}`,
+		"nested.safetensors": "nested safetensors content",
+		"nested.json":        `{"nested": true}`,
 	}
 
 	for name, content := range subFiles {
@@ -256,9 +258,10 @@ func TestPackageFromDirectory_SkipsSubdirectories(t *testing.T) {
 		defer os.Remove(tempConfigArchive)
 	}
 
-	// Verify only root-level files were processed
-	if len(safetensorsPaths) != 1 {
-		t.Errorf("Expected 1 safetensors file from root directory, got %d", len(safetensorsPaths))
+	// The new recursive behavior includes files from subdirectories
+	// We expect 2 safetensors files: model.safetensors and subdir/nested.safetensors
+	if len(safetensorsPaths) != 2 {
+		t.Errorf("Expected 2 safetensors files (including from subdir), got %d", len(safetensorsPaths))
 	}
 
 	archiveFiles, err := readTarArchive(tempConfigArchive)
@@ -266,8 +269,20 @@ func TestPackageFromDirectory_SkipsSubdirectories(t *testing.T) {
 		t.Fatalf("Failed to read tar archive: %v", err)
 	}
 
-	if len(archiveFiles) != 1 || archiveFiles[0] != "config.json" {
-		t.Errorf("Expected only config.json from root directory, got %v", archiveFiles)
+	// We expect 2 config files: config.json and subdir/nested.json
+	expectedConfigFiles := []string{"config.json", "subdir/nested.json"}
+	sort.Strings(expectedConfigFiles)
+	sort.Strings(archiveFiles)
+
+	if len(archiveFiles) != len(expectedConfigFiles) {
+		t.Errorf("Expected %d config files (including from subdir), got %d: %v",
+			len(expectedConfigFiles), len(archiveFiles), archiveFiles)
+	}
+
+	for i, expected := range expectedConfigFiles {
+		if i >= len(archiveFiles) || archiveFiles[i] != expected {
+			t.Errorf("Expected file %s in archive at position %d, got %v", expected, i, archiveFiles)
+		}
 	}
 }
 

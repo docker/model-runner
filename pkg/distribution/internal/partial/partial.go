@@ -191,7 +191,18 @@ func matchesMediaType(layerMT, targetMT oci.MediaType) bool {
 	}
 }
 
+// ManifestForLayers creates a manifest using the default config version (v0.1).
 func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
+	return ManifestForLayersWithVersion(i, types.MediaTypeModelConfigV01)
+}
+
+// ManifestForLayersV02 creates a manifest using config version v0.2 (nested directory support).
+func ManifestForLayersV02(i WithLayers) (*oci.Manifest, error) {
+	return ManifestForLayersWithVersion(i, types.MediaTypeModelConfigV02)
+}
+
+// ManifestForLayersWithVersion creates a manifest with the specified config media type version.
+func ManifestForLayersWithVersion(i WithLayers, configMediaType types.MediaType) (*oci.Manifest, error) {
 	raw, err := i.RawConfigFile()
 	if err != nil {
 		return nil, fmt.Errorf("get raw config file: %w", err)
@@ -201,7 +212,7 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 		return nil, fmt.Errorf("compute config hash: %w", err)
 	}
 	cfgDsc := oci.Descriptor{
-		MediaType: types.MediaTypeModelConfigV01,
+		MediaType: configMediaType,
 		Size:      int64(len(raw)),
 		Digest:    cfgHash,
 	}

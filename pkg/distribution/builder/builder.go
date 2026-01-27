@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -249,4 +251,198 @@ func (b *Builder) HasOnlyConfigChanges() bool {
 	}
 
 	return true
+}
+
+// FromDirectoryResult contains the result of creating a builder from a directory,
+// including a cleanup function that must be called when done.
+type FromDirectoryResult struct {
+	Builder *Builder
+	Cleanup func()
+}
+
+// FromDirectory creates a Builder from a HuggingFace-style model directory.
+// It recursively scans the directory, packaging large weight files as separate OCI layers
+// with their relative paths preserved in annotations, while grouping small config files
+// into a tar archive.
+//
+// The returned cleanup function MUST be called after building to remove temporary files.
+//
+// Example usage:
+//
+//	result, err := builder.FromDirectory("/path/to/model")
+//	if err != nil {
+//	    return err
+//	}
+//	defer result.Cleanup()
+//	err = result.Builder.Build(ctx, target, progressWriter)
+func FromDirectory(dirPath string) (*FromDirectoryResult, error) {
+	return FromDirectoryWithOptions(dirPath, DefaultDirectoryOptions())
+}
+
+// DirectoryOptions configures how a directory is packaged into a model artifact
+type DirectoryOptions struct {
+	// Format specifies the expected model format. If empty, it will be auto-detected.
+	Format string
+}
+
+// DefaultDirectoryOptions returns the default options for directory packaging
+func DefaultDirectoryOptions() DirectoryOptions {
+	return DirectoryOptions{}
+}
+
+// FromDirectoryWithOptions creates a Builder from a model directory with custom options.
+// See FromDirectory for usage details.
+func FromDirectoryWithOptions(dirPath string, opts DirectoryOptions) (*FromDirectoryResult, error) {
+	// Import packaging here to avoid circular dependencies
+	// This is done inline to keep the import minimal
+	result, err := packDirectory(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("package directory: %w", err)
+	}
+
+	// Cleanup function to remove temporary files
+	cleanup := func() {
+		if result.ConfigTarPath != "" {
+			removeFile(result.ConfigTarPath)
+		}
+	}
+
+	// Determine format from result or options
+	modelFormat := result.Format
+	if opts.Format != "" {
+		modelFormat = opts.Format
+	}
+
+	// Create layers for weight files with relative path annotations
+	layers := make([]oci.Layer, 0, len(result.WeightFiles))
+	diffIDs := make([]oci.Hash, 0, len(result.WeightFiles))
+
+	// Determine media type based on format
+	mediaType := mediaTypeForFormat(modelFormat)
+
+	for _, wf := range result.WeightFiles {
+		// Use NewLayerWithRelativePath to preserve the directory structure
+		layer, err := partial.NewLayerWithRelativePath(wf.AbsPath, wf.RelPath, mediaType)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("create layer for %q: %w", wf.RelPath, err)
+		}
+		diffID, err := layer.DiffID()
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("get diffID for %q: %w", wf.RelPath, err)
+		}
+		layers = append(layers, layer)
+		diffIDs = append(diffIDs, diffID)
+	}
+
+	// Extract config from the first weight file for format-specific metadata
+	var config types.Config
+	if len(result.WeightFiles) > 0 {
+		f, err := format.DetectFromPath(result.WeightFiles[0].AbsPath)
+		if err == nil {
+			paths := make([]string, len(result.WeightFiles))
+			for i, wf := range result.WeightFiles {
+				paths[i] = wf.AbsPath
+			}
+			config, _ = f.ExtractConfig(paths)
+		}
+	}
+	if config.Format == "" {
+		config.Format = types.Format(modelFormat)
+	}
+
+	// Build the base model with v0.2 config version for nested directory support
+	created := time.Now()
+	mdl := &partial.BaseModel{
+		ModelConfigFile: types.ConfigFile{
+			Config: config,
+			Descriptor: types.Descriptor{
+				Created: &created,
+			},
+			RootFS: oci.RootFS{
+				Type:    "rootfs",
+				DiffIDs: diffIDs,
+			},
+		},
+		LayerList: layers,
+		// Use v0.2 config version to indicate this model has filepath annotations
+		// for nested directory support
+		ConfigMediaType: types.MediaTypeModelConfigV02,
+	}
+
+	builder := &Builder{
+		model: mdl,
+	}
+
+	// Add config tar as a DirTar layer if it exists
+	if result.ConfigTarPath != "" {
+		builder, err = builder.WithDirTar(result.ConfigTarPath)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("add config archive: %w", err)
+		}
+	}
+
+	return &FromDirectoryResult{
+		Builder: builder,
+		Cleanup: cleanup,
+	}, nil
+}
+
+// packDirectory wraps the packaging.PackageFromDirectoryRecursive function
+func packDirectory(dirPath string) (*directoryPackageResult, error) {
+	pkgResult, err := packaging.PackageFromDirectoryRecursive(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to our internal type
+	result := &directoryPackageResult{
+		ConfigTarPath: pkgResult.ConfigTarPath,
+		Format:        pkgResult.Format,
+		WeightFiles:   make([]weightFileInfo, len(pkgResult.WeightFiles)),
+	}
+	for i, wf := range pkgResult.WeightFiles {
+		result.WeightFiles[i] = weightFileInfo{
+			AbsPath: wf.AbsPath,
+			RelPath: wf.RelPath,
+			Size:    wf.Size,
+		}
+	}
+	return result, nil
+}
+
+// directoryPackageResult mirrors packaging.PackageResult to avoid import in type signature
+type directoryPackageResult struct {
+	WeightFiles   []weightFileInfo
+	ConfigTarPath string
+	Format        string
+}
+
+type weightFileInfo struct {
+	AbsPath string
+	RelPath string
+	Size    int64
+}
+
+// mediaTypeForFormat returns the OCI media type for a given format string
+func mediaTypeForFormat(formatStr string) oci.MediaType {
+	switch formatStr {
+	case "safetensors":
+		return types.MediaTypeSafetensors
+	case "gguf":
+		return types.MediaTypeGGUF
+	case "dduf":
+		return types.MediaTypeDDUF
+	default:
+		return types.MediaTypeSafetensors // default
+	}
+}
+
+// removeFile is a helper to remove a file, ignoring errors
+func removeFile(path string) {
+	if path != "" {
+		_ = os.Remove(path)
+	}
 }

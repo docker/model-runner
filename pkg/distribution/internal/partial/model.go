@@ -14,6 +14,10 @@ import (
 type BaseModel struct {
 	ModelConfigFile types.ConfigFile
 	LayerList       []oci.Layer
+	// ConfigMediaType specifies the config version to use in the manifest.
+	// If empty, defaults to MediaTypeModelConfigV01 (legacy flat structure).
+	// Use MediaTypeModelConfigV02 for models with nested directory support.
+	ConfigMediaType types.MediaType
 }
 
 var _ types.ModelArtifact = &BaseModel{}
@@ -65,7 +69,12 @@ func (m *BaseModel) Digest() (oci.Hash, error) {
 }
 
 func (m *BaseModel) Manifest() (*oci.Manifest, error) {
-	return ManifestForLayers(m)
+	// Use specified config version, or default to v0.1
+	configMediaType := m.ConfigMediaType
+	if configMediaType == "" {
+		configMediaType = types.MediaTypeModelConfigV01
+	}
+	return ManifestForLayersWithVersion(m, configMediaType)
 }
 
 func (m *BaseModel) LayerByDigest(hash oci.Hash) (oci.Layer, error) {
