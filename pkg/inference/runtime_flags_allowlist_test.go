@@ -78,13 +78,13 @@ func TestGetAllowedFlags(t *testing.T) {
 			name:       "llama.cpp backend",
 			backend:    "llama.cpp",
 			expectNil:  false,
-			checkFlags: []string{"--threads", "-t", "--ctx-size", "-ngl", "--verbose", "-v"},
+			checkFlags: []string{"--threads", "-t", "--ctx-size", "-ngl", "--verbose", "-v", "--cache-type-k", "--cache-type-v"},
 		},
 		{
 			name:       "vllm backend",
 			backend:    "vllm",
 			expectNil:  false,
-			checkFlags: []string{"--tensor-parallel-size", "-tp", "--max-model-len", "--dtype"},
+			checkFlags: []string{"--tensor-parallel-size", "-tp", "--max-model-len", "--dtype", "--gpu-memory-utilization"},
 		},
 		{
 			name:      "unknown backend",
@@ -122,68 +122,88 @@ func TestGetAllowedFlags(t *testing.T) {
 	}
 }
 
-func TestLlamaCppAllowedFlags(t *testing.T) {
-	expectedFlags := []string{
-		// Threading
-		"-t", "--threads", "-tb", "--threads-batch",
-		// Context
-		"-c", "--ctx-size", "-n", "--n-predict", "-b", "--batch-size", "-ub", "--ubatch-size",
-		// Sampling
-		"--temp", "--temperature", "--top-k", "--top-p", "--min-p",
-		"--repeat-last-n", "--repeat-penalty", "--presence-penalty", "--frequency-penalty",
-		"--seed", "-s",
-		// GPU
-		"-ngl", "--gpu-layers", "--n-gpu-layers", "-sm", "--split-mode",
-		"-ts", "--tensor-split", "-mg", "--main-gpu",
-		"--mlock", "--mmap", "--no-mmap",
-		// Server
-		"-np", "--parallel", "--timeout", "-to",
-		"-cb", "--cont-batching", "-fa", "--flash-attn", "--cache-prompt",
-		// KV cache
-		"--cache-type-k", "--cache-type-v",
-		// Mode
-		"--embeddings", "--embedding", "--reranking",
-		"--metrics", "--no-metrics", "--jinja",
-		"-v", "--verbose", "--reasoning-budget",
-		// RoPE
-		"--rope-scaling", "--rope-scale", "--rope-freq-base", "--rope-freq-scale",
+func TestLlamaCppAllowedFlags_Categories(t *testing.T) {
+	// Test that key flags from each category are present
+	categories := map[string][]string{
+		"threading": {"-t", "--threads", "-tb", "--threads-batch", "-C", "--cpu-mask", "--prio"},
+		"context":   {"-c", "--ctx-size", "-n", "--n-predict", "--keep"},
+		"batching":  {"-b", "--batch-size", "-ub", "--ubatch-size", "-fa", "--flash-attn"},
+		"sampling": {
+			"--samplers", "-s", "--seed", "--temp", "--temperature",
+			"--top-k", "--top-p", "--min-p", "--typical",
+			"--repeat-last-n", "--repeat-penalty",
+			"--presence-penalty", "--frequency-penalty",
+			"--mirostat", "--mirostat-lr", "--mirostat-ent",
+			"--dynatemp-range", "--dynatemp-exp",
+		},
+		"gpu": {
+			"-ngl", "--gpu-layers", "--n-gpu-layers",
+			"-sm", "--split-mode", "-ts", "--tensor-split",
+			"-mg", "--main-gpu", "-dev", "--device",
+		},
+		"memory": {
+			"--mlock", "--mmap", "--no-mmap",
+			"-ctk", "--cache-type-k", "-ctv", "--cache-type-v",
+			"-kvo", "--kv-offload", "-nkvo", "--no-kv-offload",
+			"-cram", "--cache-ram",
+		},
+		"rope": {
+			"--rope-scaling", "--rope-scale",
+			"--rope-freq-base", "--rope-freq-scale",
+			"--yarn-orig-ctx", "--yarn-ext-factor",
+		},
+		"server": {
+			"-np", "--parallel", "-to", "--timeout",
+			"-cb", "--cont-batching", "--cache-prompt",
+			"--threads-http", "--warmup", "--no-warmup",
+		},
+		"mode": {
+			"--embeddings", "--embedding", "--reranking", "--rerank",
+			"--metrics", "--no-metrics", "--jinja", "--no-jinja",
+		},
+		"speculative": {
+			"--draft", "--draft-max", "--draft-min",
+			"-cd", "--ctx-size-draft",
+			"-ngld", "--gpu-layers-draft",
+		},
 	}
 
-	for _, flag := range expectedFlags {
-		if !LlamaCppAllowedFlags[flag] {
-			t.Errorf("LlamaCppAllowedFlags missing expected flag %q", flag)
-		}
+	for category, flags := range categories {
+		t.Run(category, func(t *testing.T) {
+			for _, flag := range flags {
+				if !LlamaCppAllowedFlags[flag] {
+					t.Errorf("LlamaCppAllowedFlags missing %s flag %q", category, flag)
+				}
+			}
+		})
 	}
 }
 
-func TestVLLMAllowedFlags(t *testing.T) {
-	expectedFlags := []string{
-		// Parallelism
-		"--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp",
-		// Model config
-		"--max-model-len", "--max-num-batched-tokens", "--max-num-seqs",
-		"--block-size", "--swap-space", "--seed",
-		// Data types
-		"--dtype", "--quantization", "-q", "--kv-cache-dtype",
-		// Performance
-		"--enforce-eager", "--enable-prefix-caching", "--enable-chunked-prefill",
-		"--disable-custom-all-reduce", "--use-v2-block-manager",
-		// Tokenizer
-		"--tokenizer-mode", "--trust-remote-code", "--max-logprobs",
-		// Misc
-		"--revision", "--load-format", "--disable-log-stats", "--served-model-name",
+func TestVLLMAllowedFlags_Categories(t *testing.T) {
+	categories := map[string][]string{
+		"parallelism": {"--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp"},
+		"model":       {"--max-model-len", "--max-num-batched-tokens", "--max-num-seqs", "--block-size", "--swap-space", "--seed"},
+		"dtype":       {"--dtype", "--quantization", "-q", "--kv-cache-dtype"},
+		"performance": {"--enforce-eager", "--enable-prefix-caching", "--enable-chunked-prefill"},
+		"tokenizer":   {"--tokenizer-mode", "--trust-remote-code", "--max-logprobs"},
+		"misc":        {"--revision", "--load-format", "--disable-log-stats", "--served-model-name", "--gpu-memory-utilization"},
 	}
 
-	for _, flag := range expectedFlags {
-		if !VLLMAllowedFlags[flag] {
-			t.Errorf("VLLMAllowedFlags missing expected flag %q", flag)
-		}
+	for category, flags := range categories {
+		t.Run(category, func(t *testing.T) {
+			for _, flag := range flags {
+				if !VLLMAllowedFlags[flag] {
+					t.Errorf("VLLMAllowedFlags missing %s flag %q", category, flag)
+				}
+			}
+		})
 	}
 }
 
 func TestDangerousFlagsNotAllowed(t *testing.T) {
-	// Ensure dangerous flags are NOT in the allowlists
+	// Ensure dangerous flags involving file paths are NOT in the allowlists
 	dangerousFlags := []string{
+		// File path flags
 		"--log-file",
 		"--output-file",
 		"--model-path",
@@ -191,6 +211,24 @@ func TestDangerousFlagsNotAllowed(t *testing.T) {
 		"--lora-path",
 		"--grammar-file",
 		"--prompt-file",
+		// llama.cpp specific path flags
+		"--slot-save-path",
+		"-mm", "--mmproj",
+		"-mmu", "--mmproj-url",
+		"-jf", "--json-schema-file",
+		"--chat-template-file",
+		"--path",
+		"--webui-config-file",
+		"--api-key-file",
+		"--ssl-key-file",
+		"--ssl-cert-file",
+		"--models-dir",
+		"--models-preset",
+		"-md", "--model-draft",
+		"--lora",
+		"--lora-scaled",
+		"--control-vector",
+		"--control-vector-scaled",
 	}
 
 	for _, flag := range dangerousFlags {
@@ -199,6 +237,31 @@ func TestDangerousFlagsNotAllowed(t *testing.T) {
 		}
 		if VLLMAllowedFlags[flag] {
 			t.Errorf("Dangerous flag %q should not be in VLLMAllowedFlags", flag)
+		}
+	}
+}
+
+func TestIssue515Flags(t *testing.T) {
+	// Verify all flags from GitHub issue #515 are allowed
+	issue515Flags := []string{
+		"--n-gpu-layers",
+		"--no-mmap",
+		"--flash-attn",
+		"--jinja",
+		"--top-p",
+		"--top-k",
+		"--temp",
+		"--min-p",
+		"--presence-penalty",
+		"--cache-type-k",
+		"--cache-type-v",
+		"--n-predict",
+		"--threads",
+	}
+
+	for _, flag := range issue515Flags {
+		if !LlamaCppAllowedFlags[flag] {
+			t.Errorf("Flag %q from issue #515 should be in LlamaCppAllowedFlags", flag)
 		}
 	}
 }

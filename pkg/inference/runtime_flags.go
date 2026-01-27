@@ -7,10 +7,6 @@ import (
 
 // ValidateRuntimeFlags validates runtime flags against the backend's allowlist
 // and checks for path characters as defense-in-depth.
-//
-// The allowlist is the primary defense - only explicitly permitted flags are accepted.
-// Path validation is secondary defense-in-depth against edge cases.
-// For unknown backends, it falls back to path-only validation (conservative).
 func ValidateRuntimeFlags(backendName string, flags []string) error {
 	// Get allowlist for this backend
 	allowedFlags := GetAllowedFlags(backendName)
