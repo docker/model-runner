@@ -139,6 +139,8 @@ func TestLlamaCppAllowedFlags(t *testing.T) {
 		// Server
 		"-np", "--parallel", "--timeout", "-to",
 		"-cb", "--cont-batching", "-fa", "--flash-attn", "--cache-prompt",
+		// KV cache
+		"--cache-type-k", "--cache-type-v",
 		// Mode
 		"--embeddings", "--embedding", "--reranking",
 		"--metrics", "--no-metrics", "--jinja",

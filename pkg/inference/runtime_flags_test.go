@@ -90,6 +90,25 @@ func TestValidateRuntimeFlags(t *testing.T) {
 			expectError: false,
 			description: "Sampling flags should be allowed",
 		},
+		{
+			name:    "llama.cpp: real-world flags from issue 515",
+			backend: "llama.cpp",
+			flags: []string{
+				"--n-gpu-layers", "99",
+				"--jinja",
+				"--top-p", "0.8",
+				"--top-k", "20",
+				"--temp", "0.7",
+				"--min-p", "0.0",
+				"--presence-penalty", "1.5",
+				"--no-mmap",
+				"--flash-attn",
+				"--cache-type-k", "q8_0",
+				"--cache-type-v", "q8_0",
+			},
+			expectError: false,
+			description: "Real-world flags from GitHub issue 515 should be allowed",
+		},
 
 		// Tests for vLLM backend with allowlist
 		{

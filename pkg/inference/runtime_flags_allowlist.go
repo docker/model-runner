@@ -35,6 +35,9 @@ var LlamaCppAllowedFlags = map[string]bool{
 	"-fa": true, "--flash-attn": true,
 	"--cache-prompt": true,
 
+	// KV cache quantization
+	"--cache-type-k": true, "--cache-type-v": true,
+
 	// Mode flags (already handled but safe to allow)
 	"--embeddings": true, "--embedding": true,
 	"--reranking": true,
