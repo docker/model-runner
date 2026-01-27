@@ -5,7 +5,32 @@ import (
 	"strings"
 )
 
-// ValidateRuntimeFlags ensures runtime flags don't contain paths (forward slash "/" or backslash "\")
+// ValidateRuntimeFlags validates runtime flags against the backend's allowlist
+// and checks for path characters as defense-in-depth.
+//
+// The allowlist is the primary defense - only explicitly permitted flags are accepted.
+// Path validation is secondary defense-in-depth against edge cases.
+// For unknown backends, it falls back to path-only validation (conservative).
+func ValidateRuntimeFlags(backendName string, flags []string) error {
+	// Get allowlist for this backend
+	allowedFlags := GetAllowedFlags(backendName)
+
+	// Check each flag against allowlist
+	for _, flag := range flags {
+		flagKey := ParseFlagKey(flag)
+		if flagKey == "" {
+			continue // Skip values, only validate flag keys
+		}
+		if !allowedFlags[flagKey] {
+			return fmt.Errorf("runtime flag %q is not allowed for backend %q", flagKey, backendName)
+		}
+	}
+
+	// still check for path characters in values
+	return validatePathSafety(flags)
+}
+
+// validatePathSafety ensures runtime flags don't contain paths (forward slash "/" or backslash "\")
 // to prevent malicious users from overwriting host files via arguments like
 // --log-file /some/path, --output-file /etc/passwd, or --log-file C:\Windows\file.
 //
@@ -17,7 +42,7 @@ import (
 // - UNC paths: \\network\share\file
 //
 // Returns an error if any flag contains a forward slash or backslash.
-func ValidateRuntimeFlags(flags []string) error {
+func validatePathSafety(flags []string) error {
 	for _, flag := range flags {
 		if strings.Contains(flag, "/") || strings.Contains(flag, "\\") {
 			return fmt.Errorf("invalid runtime flag %q: paths are not allowed (contains '/' or '\\\\')", flag)

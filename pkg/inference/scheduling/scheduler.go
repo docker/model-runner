@@ -246,8 +246,8 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 		}
 	}
 
-	// Validate runtime flags to prevent path-based security issues
-	if err := inference.ValidateRuntimeFlags(runtimeFlags); err != nil {
+	// Validate runtime flags against backend allowlist and path safety
+	if err := inference.ValidateRuntimeFlags(backend.Name(), runtimeFlags); err != nil {
 		return nil, err
 	}
 

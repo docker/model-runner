@@ -7,159 +7,170 @@ import (
 func TestValidateRuntimeFlags(t *testing.T) {
 	tests := []struct {
 		name        string
+		backend     string
 		flags       []string
 		expectError bool
 		description string
 	}{
+		// Tests for llama.cpp backend with allowlist
 		{
-			name:        "empty flags",
+			name:        "llama.cpp: empty flags",
+			backend:     "llama.cpp",
 			flags:       []string{},
 			expectError: false,
 			description: "Empty array should pass validation",
 		},
 		{
-			name:        "nil flags",
+			name:        "llama.cpp: nil flags",
+			backend:     "llama.cpp",
 			flags:       nil,
 			expectError: false,
 			description: "Nil array should pass validation",
 		},
 		{
-			name:        "valid flags without paths",
-			flags:       []string{"--verbose", "--debug", "--threads", "4"},
+			name:        "llama.cpp: valid allowed flags",
+			backend:     "llama.cpp",
+			flags:       []string{"--verbose", "--threads", "4"},
 			expectError: false,
-			description: "Simple flags without paths should pass",
+			description: "Allowed flags should pass",
 		},
 		{
-			name:        "valid single character flags",
-			flags:       []string{"-v", "-d", "-t", "4"},
+			name:        "llama.cpp: valid single character flags",
+			backend:     "llama.cpp",
+			flags:       []string{"-v", "-t", "4"},
 			expectError: false,
-			description: "Single character flags should pass",
+			description: "Single character allowed flags should pass",
 		},
 		{
-			name:        "valid flags with numbers and hyphens",
-			flags:       []string{"--gpu-memory-utilization", "0.9", "--max-tokens", "1024"},
+			name:        "llama.cpp: flag with equals format",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads=4", "--ctx-size=2048"},
 			expectError: false,
-			description: "Flags with hyphens and numeric values should pass",
+			description: "Flags with = format should pass",
 		},
 		{
-			name:        "reject absolute path in value",
-			flags:       []string{"--log-file", "/var/log/model.log"},
+			name:        "llama.cpp: reject non-allowed flag",
+			backend:     "llama.cpp",
+			flags:       []string{"--log-file", "test.log"},
 			expectError: true,
-			description: "Absolute paths should be rejected",
+			description: "Non-allowed flags should be rejected",
 		},
 		{
-			name:        "reject absolute path in flag=value format",
-			flags:       []string{"--log-file=/var/log/model.log"},
+			name:        "llama.cpp: reject path in allowed flag value",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "/etc/passwd"},
+			expectError: true,
+			description: "Paths in values should be rejected",
+		},
+		{
+			name:        "llama.cpp: reject path in flag=value format",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads=/var/log/test"},
 			expectError: true,
 			description: "Paths in flag=value format should be rejected",
 		},
 		{
-			name:        "reject relative path with parent directory",
-			flags:       []string{"--output", "../file.txt"},
+			name:        "llama.cpp: multiple allowed flags",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "4", "--ctx-size", "2048", "--verbose", "--flash-attn"},
+			expectError: false,
+			description: "Multiple allowed flags should pass",
+		},
+		{
+			name:        "llama.cpp: GPU flags allowed",
+			backend:     "llama.cpp",
+			flags:       []string{"-ngl", "99", "--main-gpu", "0"},
+			expectError: false,
+			description: "GPU-related flags should be allowed",
+		},
+		{
+			name:        "llama.cpp: sampling flags allowed",
+			backend:     "llama.cpp",
+			flags:       []string{"--temp", "0.7", "--top-p", "0.9", "--seed", "42"},
+			expectError: false,
+			description: "Sampling flags should be allowed",
+		},
+
+		// Tests for vLLM backend with allowlist
+		{
+			name:        "vllm: valid allowed flags",
+			backend:     "vllm",
+			flags:       []string{"--tensor-parallel-size", "2", "--max-model-len", "4096"},
+			expectError: false,
+			description: "Allowed vLLM flags should pass",
+		},
+		{
+			name:        "vllm: reject non-allowed flag",
+			backend:     "vllm",
+			flags:       []string{"--output-file", "test.log"},
+			expectError: true,
+			description: "Non-allowed flags should be rejected for vLLM",
+		},
+		{
+			name:        "vllm: short flags allowed",
+			backend:     "vllm",
+			flags:       []string{"-tp", "2", "-q", "awq"},
+			expectError: false,
+			description: "Short vLLM flags should be allowed",
+		},
+
+		// Tests for unknown backend
+		{
+			name:        "unknown backend: valid flags without paths",
+			backend:     "unknown-backend",
+			flags:       []string{"--verbose", "--debug", "--threads", "4"},
+			expectError: true,
+			description: "Unknown backend should reject all flags (no allowlist)",
+		},
+
+		// Path safety tests (defense-in-depth)
+		{
+			name:        "llama.cpp: reject relative path with parent directory",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "../file.txt"},
 			expectError: true,
 			description: "Relative paths with ../ should be rejected",
 		},
 		{
-			name:        "reject relative path with current directory",
-			flags:       []string{"--config", "./config.yaml"},
+			name:        "llama.cpp: reject relative path with current directory",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "./config.yaml"},
 			expectError: true,
 			description: "Relative paths with ./ should be rejected",
 		},
 		{
-			name:        "reject Windows-style path with forward slash",
-			flags:       []string{"--file", "C:/Users/file.txt"},
-			expectError: true,
-			description: "Windows-style paths with forward slash should be rejected",
-		},
-		{
-			name:        "reject Windows-style path with backslash",
-			flags:       []string{"--file", "C:\\Users\\file.txt"},
+			name:        "llama.cpp: reject Windows-style path with backslash",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "C:\\Users\\file.txt"},
 			expectError: true,
 			description: "Windows-style paths with backslash should be rejected",
 		},
 		{
-			name:        "reject Windows relative path with backslash",
-			flags:       []string{"--config", "..\\config.yaml"},
-			expectError: true,
-			description: "Windows relative paths with backslash should be rejected",
-		},
-		{
-			name:        "reject Windows current directory path",
-			flags:       []string{"--output", ".\\output.txt"},
-			expectError: true,
-			description: "Windows current directory paths should be rejected",
-		},
-		{
-			name:        "reject UNC network path",
-			flags:       []string{"--share", "\\\\server\\share\\file.txt"},
+			name:        "llama.cpp: reject UNC network path",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "\\\\server\\share\\file.txt"},
 			expectError: true,
 			description: "UNC network paths should be rejected",
 		},
 		{
-			name:        "reject Windows system path",
-			flags:       []string{"--log", "C:\\Windows\\System32\\log.txt"},
-			expectError: true,
-			description: "Windows system paths should be rejected",
-		},
-		{
-			name:        "reject URL with http",
-			flags:       []string{"--endpoint", "http://example.com/api"},
+			name:        "llama.cpp: reject URL with http",
+			backend:     "llama.cpp",
+			flags:       []string{"--threads", "http://example.com/api"},
 			expectError: true,
 			description: "URLs should be rejected (conservative approach)",
 		},
 		{
-			name:        "reject URL with https",
-			flags:       []string{"--api-url", "https://api.example.com/v1"},
-			expectError: true,
-			description: "HTTPS URLs should be rejected (conservative approach)",
-		},
-		{
-			name:        "reject path in middle of flag list",
-			flags:       []string{"--verbose", "--log-file", "/tmp/log.txt", "--debug"},
-			expectError: true,
-			description: "Path anywhere in flag list should be rejected",
-		},
-		{
-			name:        "reject multiple paths",
-			flags:       []string{"--input", "/path/to/input", "--output", "/path/to/output"},
-			expectError: true,
-			description: "Multiple paths should be rejected",
-		},
-		{
-			name:        "reject path traversal attempt",
-			flags:       []string{"--file", "../../etc/passwd"},
-			expectError: true,
-			description: "Path traversal attempts should be rejected",
-		},
-		{
-			name:        "reject root directory",
-			flags:       []string{"--root", "/"},
-			expectError: true,
-			description: "Root directory should be rejected",
-		},
-		{
-			name:        "reject home directory path",
-			flags:       []string{"--home", "/home/user/.config"},
-			expectError: true,
-			description: "Home directory paths should be rejected",
-		},
-		{
-			name:        "valid flag with special characters except slash",
-			flags:       []string{"--model-name", "llama-3.2-1b", "--temperature", "0.7"},
+			name:        "llama.cpp: valid flag with special characters except slash",
+			backend:     "llama.cpp",
+			flags:       []string{"--temp", "0.7", "--seed", "42"},
 			expectError: false,
-			description: "Flags with dots, hyphens, and numbers (no slash) should pass",
-		},
-		{
-			name:        "valid flag with underscore",
-			flags:       []string{"--max_tokens", "512", "--use_cache"},
-			expectError: false,
-			description: "Flags with underscores should pass",
+			description: "Flags with dots and numbers (no slash) should pass",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateRuntimeFlags(tt.flags)
+			err := ValidateRuntimeFlags(tt.backend, tt.flags)
 
 			if tt.expectError {
 				if err == nil {
@@ -174,21 +185,86 @@ func TestValidateRuntimeFlags(t *testing.T) {
 	}
 }
 
-func TestValidateRuntimeFlags_ErrorMessage(t *testing.T) {
-	// Test that error messages are helpful
-	flags := []string{"--log-file", "/var/log/test.log"}
-	err := ValidateRuntimeFlags(flags)
+func TestValidateRuntimeFlags_ErrorMessages(t *testing.T) {
+	// Test that allowlist error messages are helpful
+	t.Run("allowlist rejection message", func(t *testing.T) {
+		err := ValidateRuntimeFlags("llama.cpp", []string{"--log-file", "test.log"})
+		if err == nil {
+			t.Fatal("Expected error but got none")
+		}
 
-	if err == nil {
-		t.Fatal("Expected error but got none")
+		errMsg := err.Error()
+		if !contains(errMsg, "--log-file") {
+			t.Errorf("Error message should contain the offending flag, got: %s", errMsg)
+		}
+		if !contains(errMsg, "not allowed") {
+			t.Errorf("Error message should explain rejection, got: %s", errMsg)
+		}
+		if !contains(errMsg, "llama.cpp") {
+			t.Errorf("Error message should mention the backend, got: %s", errMsg)
+		}
+	})
+
+	// Test that path safety error messages are helpful
+	t.Run("path rejection message", func(t *testing.T) {
+		err := ValidateRuntimeFlags("llama.cpp", []string{"--threads", "/var/log/test.log"})
+		if err == nil {
+			t.Fatal("Expected error but got none")
+		}
+
+		errMsg := err.Error()
+		if !contains(errMsg, "/var/log/test.log") {
+			t.Errorf("Error message should contain the offending value, got: %s", errMsg)
+		}
+		if !contains(errMsg, "paths are not allowed") {
+			t.Errorf("Error message should explain why it failed, got: %s", errMsg)
+		}
+	})
+}
+
+func TestValidatePathSafety(t *testing.T) {
+	tests := []struct {
+		name        string
+		flags       []string
+		expectError bool
+	}{
+		{
+			name:        "no paths",
+			flags:       []string{"--verbose", "--threads", "4"},
+			expectError: false,
+		},
+		{
+			name:        "forward slash",
+			flags:       []string{"--file", "/etc/passwd"},
+			expectError: true,
+		},
+		{
+			name:        "backslash",
+			flags:       []string{"--file", "C:\\Windows\\file"},
+			expectError: true,
+		},
+		{
+			name:        "relative path forward",
+			flags:       []string{"../file"},
+			expectError: true,
+		},
+		{
+			name:        "relative path backward",
+			flags:       []string{"..\\file"},
+			expectError: true,
+		},
 	}
 
-	errMsg := err.Error()
-	if !contains(errMsg, "/var/log/test.log") {
-		t.Errorf("Error message should contain the offending flag value, got: %s", errMsg)
-	}
-	if !contains(errMsg, "paths are not allowed") {
-		t.Errorf("Error message should explain why it failed, got: %s", errMsg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePathSafety(tt.flags)
+			if tt.expectError && err == nil {
+				t.Error("expected error but got none")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
