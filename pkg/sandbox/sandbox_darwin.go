@@ -117,39 +117,43 @@ func (s *sandbox) Close() error {
 // configuration, for which a pre-defined value should be used. The modifier
 // function allows for an optional callback (which may be nil) to configure the
 // command before it is started.
+// If configuration is empty, the process is started without sandboxing.
 func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd), updatedBinPath, name string, arg ...string) (Sandbox, error) {
-	// Look up the user's home directory.
-	currentUser, err := user.Current()
-	if err != nil {
-		return nil, fmt.Errorf("unable to lookup user: %w", err)
-	}
-
-	// Look up the working directory.
-	currentDirectory, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("unable to determine working directory: %w", err)
-	}
-
-	// Process template arguments in the configuration. We should switch to
-	// text/template if this gets any more complex.
-	profile := strings.ReplaceAll(configuration, "[HOMEDIR]", currentUser.HomeDir)
-	profile = strings.ReplaceAll(profile, "[WORKDIR]", currentDirectory)
-	profile = strings.ReplaceAll(profile, "[UPDATEDBINPATH]", updatedBinPath)
-	profile = strings.ReplaceAll(profile, "[UPDATEDLIBPATH]", filepath.Join(filepath.Dir(updatedBinPath), "lib"))
-
-	// Create a subcontext we can use to regulate the process lifetime.
 	ctx, cancel := context.WithCancel(ctx)
 
-	// Create and configure the command.
-	sandboxedArgs := make([]string, 0, len(arg)+3)
-	sandboxedArgs = append(sandboxedArgs, "-p", profile, name)
-	sandboxedArgs = append(sandboxedArgs, arg...)
-	command := exec.CommandContext(ctx, "sandbox-exec", sandboxedArgs...)
+	var command *exec.Cmd
+
+	if configuration == "" {
+		command = exec.CommandContext(ctx, name, arg...)
+	} else {
+		currentUser, err := user.Current()
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("unable to lookup user: %w", err)
+		}
+
+		currentDirectory, err := os.Getwd()
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("unable to determine working directory: %w", err)
+		}
+
+		// TODO: switch to text/template if this gets any more complex
+		profile := strings.ReplaceAll(configuration, "[HOMEDIR]", currentUser.HomeDir)
+		profile = strings.ReplaceAll(profile, "[WORKDIR]", currentDirectory)
+		profile = strings.ReplaceAll(profile, "[UPDATEDBINPATH]", updatedBinPath)
+		profile = strings.ReplaceAll(profile, "[UPDATEDLIBPATH]", filepath.Join(filepath.Dir(updatedBinPath), "lib"))
+
+		sandboxedArgs := make([]string, 0, len(arg)+3)
+		sandboxedArgs = append(sandboxedArgs, "-p", profile, name)
+		sandboxedArgs = append(sandboxedArgs, arg...)
+		command = exec.CommandContext(ctx, "sandbox-exec", sandboxedArgs...)
+	}
+
 	if modifier != nil {
 		modifier(command)
 	}
 
-	// Start the process.
 	if err := command.Start(); err != nil {
 		cancel()
 		return nil, fmt.Errorf("unable to start sandboxed process: %w", err)
