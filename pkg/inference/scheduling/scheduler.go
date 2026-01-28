@@ -11,8 +11,10 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
@@ -92,7 +94,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 // selectBackendForModel selects the appropriate backend for a model based on its format.
-// If the model is in safetensors format, it will prefer vLLM if available.
+// If the model is in safetensors format, it will prefer the best available backend:
+// - On macOS: vllm-metal > MLX
+// - On Linux: vLLM > SGLang
 func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.Backend, modelRef string) inference.Backend {
 	config, err := model.Config()
 	if err != nil {
@@ -101,7 +105,15 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 	}
 
 	if config.GetFormat() == types.FormatSafetensors {
-		// Prefer vLLM for safetensors models
+		// Prefer vllm-metal for safetensors models on macOS (most feature-rich for Metal)
+		if vllmMetalBackend, ok := s.backends[vllmmetal.Name]; ok && vllmMetalBackend != nil {
+			return vllmMetalBackend
+		}
+		// Fall back to MLX on macOS
+		if mlxBackend, ok := s.backends[mlx.Name]; ok && mlxBackend != nil {
+			return mlxBackend
+		}
+		// Prefer vLLM for safetensors models on Linux
 		if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
 			return vllmBackend
 		}
@@ -109,7 +121,7 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
 			return sglangBackend
 		}
-		s.log.Warnf("Model %s is in safetensors format but vLLM and SGLang backends are not available. "+
+		s.log.Warnf("Model %s is in safetensors format but no compatible backend is available. "+
 			"Backend %s may not support this format and could fail at runtime.",
 			utils.SanitizeForLog(modelRef), backend.Name())
 	}

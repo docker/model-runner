@@ -26,7 +26,7 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-clean
 # Default target
 .DEFAULT_GOAL := build
 
@@ -144,7 +144,51 @@ docker-run-impl:
 	DEBUG="${DEBUG}" \
 	scripts/docker-run.sh
 
-# Show help
+# vllm-metal (macOS ARM64 only, requires Python 3.12 for wheel compatibility)
+VLLM_METAL_VERSION ?= v0.1.0
+VLLM_METAL_INSTALL_DIR := $(HOME)/.model-runner/vllm-metal
+VLLM_METAL_TARBALL := vllm-metal-macos-arm64-$(VLLM_METAL_VERSION).tar.gz
+
+vllm-metal-build:
+	@echo "Building vllm-metal tarball..."
+	@scripts/build-vllm-metal-tarball.sh $(VLLM_METAL_VERSION) .
+	@echo "Tarball created: $(VLLM_METAL_TARBALL)"
+
+vllm-metal-install:
+	@if [ ! -f "$(VLLM_METAL_TARBALL)" ]; then \
+		echo "Error: $(VLLM_METAL_TARBALL) not found. Run 'make vllm-metal-build' first."; \
+		exit 1; \
+	fi
+	@echo "Installing vllm-metal to $(VLLM_METAL_INSTALL_DIR)..."
+	@PYTHON_BIN=""; \
+	if command -v python3.12 >/dev/null 2>&1; then \
+		PYTHON_BIN="python3.12"; \
+	elif command -v python3 >/dev/null 2>&1; then \
+		version=$$(python3 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+'); \
+		if [ "$$version" = "3.12" ]; then \
+			PYTHON_BIN="python3"; \
+		fi; \
+	fi; \
+	if [ -z "$$PYTHON_BIN" ]; then \
+		echo "Error: Python 3.12 required (vllm-metal wheel is built for cp312)"; \
+		echo "Install with: brew install python@3.12"; \
+		exit 1; \
+	fi; \
+	echo "Using Python 3.12 from $$(which $$PYTHON_BIN)"; \
+	rm -rf "$(VLLM_METAL_INSTALL_DIR)"; \
+	$$PYTHON_BIN -m venv "$(VLLM_METAL_INSTALL_DIR)"; \
+	SITE_PACKAGES="$(VLLM_METAL_INSTALL_DIR)/lib/python3.12/site-packages"; \
+	mkdir -p "$$SITE_PACKAGES"; \
+	tar -xzf "$(VLLM_METAL_TARBALL)" -C "$$SITE_PACKAGES"; \
+	echo "vllm-metal installed successfully!"
+	@echo "Test with: $(VLLM_METAL_INSTALL_DIR)/bin/python3 -c 'import vllm_metal; print(vllm_metal.__version__)'"
+
+vllm-metal-clean:
+	@echo "Removing vllm-metal installation and build artifacts..."
+	rm -rf "$(VLLM_METAL_INSTALL_DIR)"
+	rm -f $(VLLM_METAL_TARBALL)
+	@echo "vllm-metal cleaned!"
+
 help:
 	@echo "Available targets:"
 	@echo "  build				- Build the Go application"
@@ -164,6 +208,9 @@ help:
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
 	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
 	@echo "  docker-run-diffusers		- Run Diffusers Docker container"
+	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
+	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
+	@echo "  vllm-metal-clean		- Clean vllm-metal installation and tarball"
 	@echo "  help				- Show this help message"
 	@echo ""
 	@echo "Backend configuration options:"
@@ -174,3 +221,6 @@ help:
 	@echo "  make run LLAMA_ARGS=\"--verbose --jinja -ngl 999 --ctx-size 2048\""
 	@echo "  make run LOCAL_LLAMA=1"
 	@echo "  make docker-run LLAMA_ARGS=\"--verbose --jinja -ngl 999 --threads 4 --ctx-size 2048\""
+	@echo ""
+	@echo "vllm-metal (macOS ARM64 only):"
+	@echo "  make vllm-metal-build && make vllm-metal-install && make run"
