@@ -123,6 +123,28 @@ func TestNormalizeModelName(t *testing.T) {
 			input:    "MyModel",
 			expected: "ai/mymodel:latest",
 		},
+
+		// HuggingFace URL normalization
+		{
+			name:     "hf.co normalized to huggingface.co",
+			input:    "hf.co/org/model",
+			expected: "huggingface.co/org/model:latest",
+		},
+		{
+			name:     "hf.co with tag normalized to huggingface.co",
+			input:    "hf.co/org/model:Q4_K_M",
+			expected: "huggingface.co/org/model:Q4_K_M",
+		},
+		{
+			name:     "huggingface.co stays unchanged",
+			input:    "huggingface.co/org/model",
+			expected: "huggingface.co/org/model:latest",
+		},
+		{
+			name:     "huggingface.co with tag stays unchanged",
+			input:    "huggingface.co/org/model:Q4_K_M",
+			expected: "huggingface.co/org/model:Q4_K_M",
+		},
 	}
 
 	for _, tt := range tests {
