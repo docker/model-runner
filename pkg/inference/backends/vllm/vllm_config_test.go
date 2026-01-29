@@ -46,6 +46,7 @@ func (m *mockModelBundle) RootDir() string {
 func TestGetArgs(t *testing.T) {
 	tests := []struct {
 		name        string
+		mode        inference.BackendMode
 		config      *inference.BackendConfiguration
 		bundle      *mockModelBundle
 		expected    []string
@@ -356,12 +357,52 @@ func TestGetArgs(t *testing.T) {
 				`{"model_type":"llama"}`,
 			},
 		},
+		{
+			name: "embedding mode adds --runner pooling",
+			mode: inference.BackendModeEmbedding,
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: nil,
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--runner",
+				"pooling",
+			},
+		},
+		{
+			name: "embedding mode with other config",
+			mode: inference.BackendModeEmbedding,
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(4096),
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--runner",
+				"pooling",
+				"--max-model-len",
+				"4096",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := NewDefaultVLLMConfig()
-			args, err := config.GetArgs(tt.bundle, "/tmp/socket", inference.BackendModeCompletion, tt.config)
+			mode := tt.mode
+			if mode == 0 {
+				mode = inference.BackendModeCompletion
+			}
+			args, err := config.GetArgs(tt.bundle, "/tmp/socket", mode, tt.config)
 
 			if tt.expectError {
 				if err == nil {
