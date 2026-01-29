@@ -74,13 +74,40 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
-// ListFiles returns all files in a repository at a given revision
+// ListFiles returns all files in a repository at a given revision, recursively traversing all directories
 func (c *Client) ListFiles(ctx context.Context, repo, revision string) ([]RepoFile, error) {
-	return c.ListFilesInPath(ctx, repo, revision, "")
+	if revision == "" {
+		revision = "main"
+	}
+
+	return c.listFilesRecursive(ctx, repo, revision, "")
 }
 
-// ListFilesInPath returns all files in a repository at a given revision and path
-// If path is empty, it lists files at the repository root
+// listFilesRecursive recursively lists all files starting from the given path
+func (c *Client) listFilesRecursive(ctx context.Context, repo, revision, path string) ([]RepoFile, error) {
+	entries, err := c.ListFilesInPath(ctx, repo, revision, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var allFiles []RepoFile
+	for _, entry := range entries {
+		if entry.Type == "file" {
+			allFiles = append(allFiles, entry)
+		} else if entry.Type == "directory" {
+			// Recursively list files in subdirectory
+			subFiles, err := c.listFilesRecursive(ctx, repo, revision, entry.Path)
+			if err != nil {
+				return nil, fmt.Errorf("list files in %s: %w", entry.Path, err)
+			}
+			allFiles = append(allFiles, subFiles...)
+		}
+	}
+
+	return allFiles, nil
+}
+
+// ListFilesInPath returns files and directories at a specific path in the repository
 func (c *Client) ListFilesInPath(ctx context.Context, repo, revision, path string) ([]RepoFile, error) {
 	if revision == "" {
 		revision = "main"

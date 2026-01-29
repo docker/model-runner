@@ -220,3 +220,71 @@ func TestClientListFilesInPathEmptyPath(t *testing.T) {
 		t.Errorf("Expected 2 files, got %d", len(files))
 	}
 }
+
+func TestClientListFilesRecursive(t *testing.T) {
+	// Test that ListFiles recursively traverses directories
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/models/test-org/test-model/tree/main":
+			// Root level: one file and one directory
+			json.NewEncoder(w).Encode([]RepoFile{
+				{Type: "file", Path: "README.md", Size: 100},
+				{Type: "directory", Path: "models"},
+			})
+		case "/api/models/test-org/test-model/tree/main/models":
+			// Subdirectory: one file and another nested directory
+			json.NewEncoder(w).Encode([]RepoFile{
+				{Type: "file", Path: "models/config.json", Size: 200},
+				{Type: "directory", Path: "models/weights"},
+			})
+		case "/api/models/test-org/test-model/tree/main/models/weights":
+			// Nested subdirectory: two files
+			json.NewEncoder(w).Encode([]RepoFile{
+				{Type: "file", Path: "models/weights/model-00001-of-00002.safetensors", Size: 5000000},
+				{Type: "file", Path: "models/weights/model-00002-of-00002.safetensors", Size: 5000000},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+
+	files, err := client.ListFiles(t.Context(), "test-org/test-model", "main")
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err)
+	}
+
+	// Should return all 4 files from all levels
+	if len(files) != 4 {
+		t.Errorf("Expected 4 files, got %d", len(files))
+		for _, f := range files {
+			t.Logf("  - %s", f.Path)
+		}
+	}
+
+	// Verify all expected files are present
+	expectedPaths := map[string]bool{
+		"README.md":          false,
+		"models/config.json": false,
+		"models/weights/model-00001-of-00002.safetensors": false,
+		"models/weights/model-00002-of-00002.safetensors": false,
+	}
+
+	for _, f := range files {
+		if _, ok := expectedPaths[f.Path]; ok {
+			expectedPaths[f.Path] = true
+		} else {
+			t.Errorf("Unexpected file: %s", f.Path)
+		}
+	}
+
+	for path, found := range expectedPaths {
+		if !found {
+			t.Errorf("Expected file not found: %s", path)
+		}
+	}
+}
