@@ -102,3 +102,101 @@ func TestIsSafetensorsModel(t *testing.T) {
 		})
 	}
 }
+
+func TestFindMatchingSubdirectory(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []RepoFile
+		tag   string
+		want  string
+	}{
+		{
+			name: "finds matching directory",
+			files: []RepoFile{
+				{Type: "directory", Path: "UD-Q4_K_XL"},
+				{Type: "directory", Path: "Q4_K_M"},
+				{Type: "file", Path: "README.md"},
+			},
+			tag:  "UD-Q4_K_XL",
+			want: "UD-Q4_K_XL",
+		},
+		{
+			name: "case insensitive matching",
+			files: []RepoFile{
+				{Type: "directory", Path: "UD-Q4_K_XL"},
+				{Type: "directory", Path: "Q4_K_M"},
+			},
+			tag:  "ud-q4_k_xl",
+			want: "UD-Q4_K_XL",
+		},
+		{
+			name: "no matching directory",
+			files: []RepoFile{
+				{Type: "directory", Path: "Q4_K_M"},
+				{Type: "file", Path: "README.md"},
+			},
+			tag:  "UD-Q4_K_XL",
+			want: "",
+		},
+		{
+			name: "file with same name is not matched",
+			files: []RepoFile{
+				{Type: "file", Path: "UD-Q4_K_XL"},
+			},
+			tag:  "UD-Q4_K_XL",
+			want: "",
+		},
+		{
+			name:  "empty files list",
+			files: []RepoFile{},
+			tag:   "Q4_K_M",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := findMatchingSubdirectory(tt.files, tt.tag); got != tt.want {
+				t.Errorf("findMatchingSubdirectory() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrefixPaths(t *testing.T) {
+	files := []RepoFile{
+		{Type: "file", Path: "model-00001-of-00003.gguf", Size: 1000},
+		{Type: "file", Path: "model-00002-of-00003.gguf", Size: 1000},
+		{Type: "file", Path: "model-00003-of-00003.gguf", Size: 1000},
+	}
+
+	result := prefixPaths(files, "UD-Q4_K_XL")
+
+	if len(result) != 3 {
+		t.Fatalf("Expected 3 files, got %d", len(result))
+	}
+
+	expectedPaths := []string{
+		"UD-Q4_K_XL/model-00001-of-00003.gguf",
+		"UD-Q4_K_XL/model-00002-of-00003.gguf",
+		"UD-Q4_K_XL/model-00003-of-00003.gguf",
+	}
+
+	for i, f := range result {
+		if f.Path != expectedPaths[i] {
+			t.Errorf("File[%d].Path = %q, want %q", i, f.Path, expectedPaths[i])
+		}
+		// Verify original file properties are preserved
+		if f.Size != 1000 {
+			t.Errorf("File[%d].Size = %d, want 1000", i, f.Size)
+		}
+		if f.Type != "file" {
+			t.Errorf("File[%d].Type = %q, want 'file'", i, f.Type)
+		}
+	}
+
+	// Verify original slice is not modified
+	if files[0].Path != "model-00001-of-00003.gguf" {
+		t.Error("Original slice was modified")
+	}
+}

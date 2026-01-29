@@ -32,6 +32,24 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 	// Filter to model files (weights + configs)
 	weightFiles, configFiles := FilterModelFiles(files)
 
+	// If no weight files found and a specific tag is requested, check for a matching subdirectory
+	// Some HuggingFace repos organize GGUF files in subdirectories named after the quantization
+	// e.g., unsloth/Kimi-K2-Instruct-0905-GGUF has UD-Q4_K_XL/ subdirectory with the GGUF files
+	if len(weightFiles) == 0 && tag != "" && tag != "latest" && tag != "main" {
+		subdir := findMatchingSubdirectory(files, tag)
+		if subdir != "" {
+			subFiles, subErr := client.ListFilesInPath(ctx, repo, revision, subdir)
+			if subErr == nil {
+				subWeightFiles, subConfigFiles := FilterModelFiles(subFiles)
+				if len(subWeightFiles) > 0 {
+					// Prefix paths with subdirectory for correct download
+					weightFiles = prefixPaths(subWeightFiles, subdir)
+					configFiles = prefixPaths(subConfigFiles, subdir)
+				}
+			}
+		}
+	}
+
 	if len(weightFiles) == 0 {
 		return nil, fmt.Errorf("no model weight files (GGUF or SafeTensors) found in repository %s", repo)
 	}
@@ -181,4 +199,27 @@ func isChatTemplate(path string) bool {
 	return strings.HasSuffix(lower, ".jinja") ||
 		strings.Contains(lower, "chat_template") ||
 		filename == "tokenizer_config.json" // Often contains chat_template
+}
+
+// findMatchingSubdirectory looks for a directory in the file list that matches the tag
+// Used to find quantization-named subdirectories in HuggingFace repos
+func findMatchingSubdirectory(files []RepoFile, tag string) string {
+	tagLower := strings.ToLower(tag)
+	for _, f := range files {
+		if f.Type == "directory" && strings.ToLower(f.Path) == tagLower {
+			return f.Path
+		}
+	}
+	return ""
+}
+
+// prefixPaths adds a directory prefix to all file paths
+// Used when files are found in a subdirectory but need to be downloaded with full paths
+func prefixPaths(files []RepoFile, prefix string) []RepoFile {
+	result := make([]RepoFile, len(files))
+	for i, f := range files {
+		result[i] = f
+		result[i].Path = prefix + "/" + f.Path
+	}
+	return result
 }

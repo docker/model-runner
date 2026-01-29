@@ -76,12 +76,23 @@ func NewClient(opts ...ClientOption) *Client {
 
 // ListFiles returns all files in a repository at a given revision
 func (c *Client) ListFiles(ctx context.Context, repo, revision string) ([]RepoFile, error) {
+	return c.ListFilesInPath(ctx, repo, revision, "")
+}
+
+// ListFilesInPath returns all files in a repository at a given revision and path
+// If path is empty, it lists files at the repository root
+func (c *Client) ListFilesInPath(ctx context.Context, repo, revision, path string) ([]RepoFile, error) {
 	if revision == "" {
 		revision = "main"
 	}
 
 	// HuggingFace API endpoint for listing files
-	url := fmt.Sprintf("%s/api/models/%s/tree/%s", c.baseURL, repo, revision)
+	var url string
+	if path == "" {
+		url = fmt.Sprintf("%s/api/models/%s/tree/%s", c.baseURL, repo, revision)
+	} else {
+		url = fmt.Sprintf("%s/api/models/%s/tree/%s/%s", c.baseURL, repo, revision, path)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {

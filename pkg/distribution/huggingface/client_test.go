@@ -154,3 +154,69 @@ func TestClientWithToken(t *testing.T) {
 		t.Errorf("Expected 'Bearer test-token', got %q", receivedToken)
 	}
 }
+
+func TestClientListFilesInPath(t *testing.T) {
+	// Mock HuggingFace API response for subdirectory
+	mockFilesInSubdir := []RepoFile{
+		{Type: "file", Path: "model-UD-Q4_K_XL-00001-of-00003.gguf", Size: 5000000},
+		{Type: "file", Path: "model-UD-Q4_K_XL-00002-of-00003.gguf", Size: 5000000},
+		{Type: "file", Path: "model-UD-Q4_K_XL-00003-of-00003.gguf", Size: 5000000},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/models/test-org/test-model/tree/main/UD-Q4_K_XL" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mockFilesInSubdir)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+
+	files, err := client.ListFilesInPath(t.Context(), "test-org/test-model", "main", "UD-Q4_K_XL")
+	if err != nil {
+		t.Fatalf("ListFilesInPath failed: %v", err)
+	}
+
+	if len(files) != 3 {
+		t.Errorf("Expected 3 files, got %d", len(files))
+	}
+
+	// Verify the first file
+	if files[0].Path != "model-UD-Q4_K_XL-00001-of-00003.gguf" {
+		t.Errorf("Expected first file path 'model-UD-Q4_K_XL-00001-of-00003.gguf', got %q", files[0].Path)
+	}
+}
+
+func TestClientListFilesInPathEmptyPath(t *testing.T) {
+	// Verify that empty path uses root endpoint
+	mockFiles := []RepoFile{
+		{Type: "directory", Path: "UD-Q4_K_XL"},
+		{Type: "file", Path: "README.md", Size: 100},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should use root endpoint without trailing slash
+		if r.URL.Path == "/api/models/test-org/test-model/tree/main" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mockFiles)
+			return
+		}
+		t.Errorf("Unexpected path: %s", r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+
+	files, err := client.ListFilesInPath(t.Context(), "test-org/test-model", "main", "")
+	if err != nil {
+		t.Fatalf("ListFilesInPath with empty path failed: %v", err)
+	}
+
+	if len(files) != 2 {
+		t.Errorf("Expected 2 files, got %d", len(files))
+	}
+}
