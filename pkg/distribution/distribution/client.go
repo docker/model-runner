@@ -125,8 +125,8 @@ func (c *Client) normalizeModelName(model string) string {
 
 	// Normalize HuggingFace short URL (hf.co) to canonical form (huggingface.co)
 	// This ensures that hf.co/org/model and huggingface.co/org/model are treated as the same model
-	if strings.HasPrefix(model, "hf.co/") {
-		model = "huggingface.co/" + strings.TrimPrefix(model, "hf.co/")
+	if rest, found := strings.CutPrefix(model, "hf.co/"); found {
+		model = "huggingface.co/" + rest
 	}
 
 	// If it looks like an ID or digest, try to resolve it to full ID
