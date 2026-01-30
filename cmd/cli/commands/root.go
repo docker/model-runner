@@ -106,6 +106,7 @@ func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 		newRemoveCmd(),
 		newInspectCmd(),
 		newComposeCmd(),
+		newLaunchCmd(),
 		newTagCmd(),
 		newConfigureCmd(),
 		newPSCmd(),
