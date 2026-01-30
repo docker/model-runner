@@ -34,21 +34,6 @@ Docker Model Runner
 | [`version`](model_version.md)                   | Show the Docker Model Runner version                                                                       |
 
 
-### Options
-
-| Name                | Type     | Default                             | Description                                                                                                                           |
-|:--------------------|:---------|:------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------|
-| `--config`          | `string` | `/Users/yuxuanche/.docker`          | Location of client config files                                                                                                       |
-| `-c`, `--context`   | `string` |                                     | Name of the context to use to connect to the daemon (overrides DOCKER_HOST env var and default context set with "docker context use") |
-| `-D`, `--debug`     | `bool`   |                                     | Enable debug mode                                                                                                                     |
-| `-H`, `--host`      | `string` |                                     | Daemon socket to connect to                                                                                                           |
-| `-l`, `--log-level` | `string` | `info`                              | Set the logging level ("debug", "info", "warn", "error", "fatal")                                                                     |
-| `--tls`             | `bool`   |                                     | Use TLS; implied by --tlsverify                                                                                                       |
-| `--tlscacert`       | `string` | `/Users/yuxuanche/.docker/ca.pem`   | Trust certs signed only by this CA                                                                                                    |
-| `--tlscert`         | `string` | `/Users/yuxuanche/.docker/cert.pem` | Path to TLS certificate file                                                                                                          |
-| `--tlskey`          | `string` | `/Users/yuxuanche/.docker/key.pem`  | Path to TLS key file                                                                                                                  |
-| `--tlsverify`       | `bool`   |                                     | Use TLS and verify the remote                                                                                                         |
-
 
 <!---MARKER_GEN_END-->
 
