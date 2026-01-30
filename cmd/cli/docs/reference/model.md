@@ -24,6 +24,7 @@ Docker Model Runner
 | [`rm`](model_rm.md)                             | Remove local models downloaded from Docker Hub                                                             |
 | [`run`](model_run.md)                           | Run a model and interact with it using a submitted prompt or chat mode                                     |
 | [`search`](model_search.md)                     | Search for models on Docker Hub and HuggingFace                                                            |
+| [`show`](model_show.md)                         | Show information for a model                                                                               |
 | [`start-runner`](model_start-runner.md)         | Start Docker Model Runner (Docker Engine only)                                                             |
 | [`status`](model_status.md)                     | Check if the Docker Model Runner is running                                                                |
 | [`stop-runner`](model_stop-runner.md)           | Stop Docker Model Runner (Docker Engine only)                                                              |
@@ -32,6 +33,21 @@ Docker Model Runner
 | [`unload`](model_unload.md)                     | Unload running models                                                                                      |
 | [`version`](model_version.md)                   | Show the Docker Model Runner version                                                                       |
 
+
+### Options
+
+| Name                | Type     | Default                             | Description                                                                                                                           |
+|:--------------------|:---------|:------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------|
+| `--config`          | `string` | `/Users/yuxuanche/.docker`          | Location of client config files                                                                                                       |
+| `-c`, `--context`   | `string` |                                     | Name of the context to use to connect to the daemon (overrides DOCKER_HOST env var and default context set with "docker context use") |
+| `-D`, `--debug`     | `bool`   |                                     | Enable debug mode                                                                                                                     |
+| `-H`, `--host`      | `string` |                                     | Daemon socket to connect to                                                                                                           |
+| `-l`, `--log-level` | `string` | `info`                              | Set the logging level ("debug", "info", "warn", "error", "fatal")                                                                     |
+| `--tls`             | `bool`   |                                     | Use TLS; implied by --tlsverify                                                                                                       |
+| `--tlscacert`       | `string` | `/Users/yuxuanche/.docker/ca.pem`   | Trust certs signed only by this CA                                                                                                    |
+| `--tlscert`         | `string` | `/Users/yuxuanche/.docker/cert.pem` | Path to TLS certificate file                                                                                                          |
+| `--tlskey`          | `string` | `/Users/yuxuanche/.docker/key.pem`  | Path to TLS key file                                                                                                                  |
+| `--tlsverify`       | `bool`   |                                     | Use TLS and verify the remote                                                                                                         |
 
 
 <!---MARKER_GEN_END-->

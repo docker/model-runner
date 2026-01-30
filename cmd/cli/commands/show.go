@@ -63,48 +63,41 @@ func formatModelInfo(model dmrm.Model) string {
 		sb.WriteString("\n")
 
 		if cfg, ok := model.Config.(*types.Config); ok {
-			if cfg.Format != "" {
-				sb.WriteString(fmt.Sprintf("Format:       %s\n", cfg.Format))
+			// Config fields using data-driven approach
+			fields := []struct {
+				label string
+				value string
+			}{
+				{"Format:", string(cfg.Format)},
+				{"Architecture:", cfg.Architecture},
+				{"Parameters:", cfg.Parameters},
+				{"Size:", cfg.Size},
+				{"Quantization:", cfg.Quantization},
 			}
-			if cfg.Architecture != "" {
-				sb.WriteString(fmt.Sprintf("Architecture: %s\n", cfg.Architecture))
+
+			for _, field := range fields {
+				if field.value != "" {
+					sb.WriteString(fmt.Sprintf("%-14s%s\n", field.label, field.value))
+				}
 			}
-			if cfg.Parameters != "" {
-				sb.WriteString(fmt.Sprintf("Parameters:   %s\n", cfg.Parameters))
-			}
-			if cfg.Size != "" {
-				sb.WriteString(fmt.Sprintf("Size:         %s\n", cfg.Size))
-			}
-			if cfg.Quantization != "" {
-				sb.WriteString(fmt.Sprintf("Quantization: %s\n", cfg.Quantization))
-			}
+
 			if cfg.ContextSize != nil {
-				sb.WriteString(fmt.Sprintf("Context Size: %d\n", *cfg.ContextSize))
+				sb.WriteString(fmt.Sprintf("%-14s%d\n", "Context Size:", *cfg.ContextSize))
 			}
 
-			// GGUF metadata
-			if len(cfg.GGUF) > 0 {
-				sb.WriteString("\nGGUF Metadata:\n")
-				for k, v := range cfg.GGUF {
-					sb.WriteString(fmt.Sprintf("  %s: %s\n", k, v))
+			// Helper function to print metadata sections
+			printMetadata := func(title string, data map[string]string) {
+				if len(data) > 0 {
+					sb.WriteString(fmt.Sprintf("\n%s:\n", title))
+					for k, v := range data {
+						sb.WriteString(fmt.Sprintf("  %s: %s\n", k, v))
+					}
 				}
 			}
 
-			// Safetensors metadata
-			if len(cfg.Safetensors) > 0 {
-				sb.WriteString("\nSafetensors Metadata:\n")
-				for k, v := range cfg.Safetensors {
-					sb.WriteString(fmt.Sprintf("  %s: %s\n", k, v))
-				}
-			}
-
-			// Diffusers metadata
-			if len(cfg.Diffusers) > 0 {
-				sb.WriteString("\nDiffusers Metadata:\n")
-				for k, v := range cfg.Diffusers {
-					sb.WriteString(fmt.Sprintf("  %s: %s\n", k, v))
-				}
-			}
+			printMetadata("GGUF Metadata", cfg.GGUF)
+			printMetadata("Safetensors Metadata", cfg.Safetensors)
+			printMetadata("Diffusers Metadata", cfg.Diffusers)
 		}
 	}
 
