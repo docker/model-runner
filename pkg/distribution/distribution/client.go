@@ -251,7 +251,8 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
 
 		// Check if model already exists in local store (reference is already normalized)
-		if localModel, err := c.store.Read(reference); err == nil {
+		localModel, err := c.store.Read(reference)
+		if err == nil {
 			c.log.Infoln("HuggingFace model found in local store:", utils.SanitizeForLog(reference))
 			cfg, err := localModel.Config()
 			if err != nil {
@@ -261,6 +262,9 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 				c.log.Warnf("Writing progress: %v", err)
 			}
 			return nil
+		}
+		if !errors.Is(err, ErrModelNotFound) {
+			return fmt.Errorf("checking for cached HuggingFace model: %w", err)
 		}
 
 		// Pass original reference to preserve case-sensitivity for HuggingFace API
