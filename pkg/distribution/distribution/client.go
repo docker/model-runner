@@ -123,6 +123,12 @@ func (c *Client) normalizeModelName(model string) string {
 		return model
 	}
 
+	// Normalize HuggingFace short URL (hf.co) to canonical form (huggingface.co)
+	// This ensures that hf.co/org/model and huggingface.co/org/model are treated as the same model
+	if rest, found := strings.CutPrefix(model, "hf.co/"); found {
+		model = "huggingface.co/" + rest
+	}
+
 	// If it looks like an ID or digest, try to resolve it to full ID
 	if c.looksLikeID(model) || c.looksLikeDigest(model) {
 		if fullID := c.resolveID(model); fullID != "" {
@@ -243,6 +249,20 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	// HuggingFace references always use native pull (download raw files from HF Hub)
 	if isHuggingFaceReference(originalReference) {
 		c.log.Infoln("Using native HuggingFace pull for:", utils.SanitizeForLog(reference))
+
+		// Check if model already exists in local store (reference is already normalized)
+		if localModel, err := c.store.Read(reference); err == nil {
+			c.log.Infoln("HuggingFace model found in local store:", utils.SanitizeForLog(reference))
+			cfg, err := localModel.Config()
+			if err != nil {
+				return fmt.Errorf("getting cached model config: %w", err)
+			}
+			if err := progress.WriteSuccess(progressWriter, fmt.Sprintf("Using cached model: %s", cfg.GetSize()), oci.ModePull); err != nil {
+				c.log.Warnf("Writing progress: %v", err)
+			}
+			return nil
+		}
+
 		// Pass original reference to preserve case-sensitivity for HuggingFace API
 		return c.pullNativeHuggingFace(ctx, originalReference, progressWriter, token)
 	}
