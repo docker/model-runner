@@ -11,4 +11,8 @@ vendor/
 llamacpp/build
 llamacpp/install
 
+# vllm-metal build artifacts
+.vllm-metal/
+vllm-metal-macos-arm64-*.tar.gz
+
 .DS_Store

@@ -440,74 +440,131 @@ func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conv
 		TotalTokens      int `json:"total_tokens"`
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		// Check if context was cancelled
-		select {
-		case <-ctx.Done():
-			return assistantResponse.String(), ctx.Err()
-		default:
+	// Read the first line to detect if this is SSE streaming or a regular JSON response
+	reader := bufio.NewReader(resp.Body)
+	firstLine, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return assistantResponse.String(), fmt.Errorf("error reading response: %w", err)
+	}
+	firstLine = strings.TrimSpace(firstLine)
+
+	// Check if this is a non-streaming JSON response (doesn't start with "data: ")
+	if firstLine != "" && !strings.HasPrefix(firstLine, "data: ") {
+		// This might be a regular JSON response - read the rest and try to parse it
+		restOfBody, readErr := io.ReadAll(reader)
+		if readErr != nil {
+			return assistantResponse.String(), fmt.Errorf("error reading response body: %w", readErr)
+		}
+		fullBody := firstLine + string(restOfBody)
+
+		var nonStreamResp OpenAIChatResponse
+		if err := json.Unmarshal([]byte(fullBody), &nonStreamResp); err != nil {
+			return assistantResponse.String(), fmt.Errorf("error parsing response: %w", err)
 		}
 
-		line := scanner.Text()
-		if line == "" {
-			continue
+		// Extract content from non-streaming response
+		if len(nonStreamResp.Choices) > 0 && nonStreamResp.Choices[0].Message.Content != "" {
+			content := nonStreamResp.Choices[0].Message.Content
+			outputFunc(content)
+			assistantResponse.WriteString(content)
 		}
 
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+		if nonStreamResp.Usage != nil {
+			finalUsage = nonStreamResp.Usage
 		}
+	} else {
+		// SSE streaming response - process line by line
+		scanner := bufio.NewScanner(reader)
 
-		data := strings.TrimPrefix(line, "data: ")
-
-		if data == "[DONE]" {
-			break
-		}
-
-		var streamResp OpenAIChatResponse
-		if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
-			return assistantResponse.String(), fmt.Errorf("error parsing stream response: %w", err)
-		}
-
-		if streamResp.Usage != nil {
-			finalUsage = streamResp.Usage
-		}
-
-		if len(streamResp.Choices) > 0 {
-			if streamResp.Choices[0].Delta.ReasoningContent != "" {
-				chunk := streamResp.Choices[0].Delta.ReasoningContent
-				if printerState == chatPrinterContent {
-					outputFunc("\n\n")
-				}
-				if printerState != chatPrinterReasoning {
-					const thinkingHeader = "Thinking:\n"
-					if reasoningFmt != nil {
-						reasoningFmt.Print(thinkingHeader)
-					} else {
-						outputFunc(thinkingHeader)
+		// Process the first line if it was SSE data
+		if strings.HasPrefix(firstLine, "data: ") {
+			data := strings.TrimPrefix(firstLine, "data: ")
+			if data != "[DONE]" {
+				var streamResp OpenAIChatResponse
+				if err := json.Unmarshal([]byte(data), &streamResp); err == nil {
+					if streamResp.Usage != nil {
+						finalUsage = streamResp.Usage
+					}
+					if len(streamResp.Choices) > 0 {
+						if streamResp.Choices[0].Delta.Content != "" {
+							chunk := streamResp.Choices[0].Delta.Content
+							printerState = chatPrinterContent
+							outputFunc(chunk)
+							assistantResponse.WriteString(chunk)
+						}
 					}
 				}
-				printerState = chatPrinterReasoning
-				if reasoningFmt != nil {
-					reasoningFmt.Print(chunk)
-				} else {
-					outputFunc(chunk)
-				}
-			}
-			if streamResp.Choices[0].Delta.Content != "" {
-				chunk := streamResp.Choices[0].Delta.Content
-				if printerState == chatPrinterReasoning {
-					outputFunc("\n\n--\n\n")
-				}
-				printerState = chatPrinterContent
-				outputFunc(chunk)
-				assistantResponse.WriteString(chunk)
 			}
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		return assistantResponse.String(), fmt.Errorf("error reading response stream: %w", err)
+		for scanner.Scan() {
+			// Check if context was cancelled
+			select {
+			case <-ctx.Done():
+				return assistantResponse.String(), ctx.Err()
+			default:
+			}
+
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+
+			if data == "[DONE]" {
+				break
+			}
+
+			var streamResp OpenAIChatResponse
+			if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
+				return assistantResponse.String(), fmt.Errorf("error parsing stream response: %w", err)
+			}
+
+			if streamResp.Usage != nil {
+				finalUsage = streamResp.Usage
+			}
+
+			if len(streamResp.Choices) > 0 {
+				if streamResp.Choices[0].Delta.ReasoningContent != "" {
+					chunk := streamResp.Choices[0].Delta.ReasoningContent
+					if printerState == chatPrinterContent {
+						outputFunc("\n\n")
+					}
+					if printerState != chatPrinterReasoning {
+						const thinkingHeader = "Thinking:\n"
+						if reasoningFmt != nil {
+							reasoningFmt.Print(thinkingHeader)
+						} else {
+							outputFunc(thinkingHeader)
+						}
+					}
+					printerState = chatPrinterReasoning
+					if reasoningFmt != nil {
+						reasoningFmt.Print(chunk)
+					} else {
+						outputFunc(chunk)
+					}
+				}
+				if streamResp.Choices[0].Delta.Content != "" {
+					chunk := streamResp.Choices[0].Delta.Content
+					if printerState == chatPrinterReasoning {
+						outputFunc("\n\n--\n\n")
+					}
+					printerState = chatPrinterContent
+					outputFunc(chunk)
+					assistantResponse.WriteString(chunk)
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return assistantResponse.String(), fmt.Errorf("error reading response stream: %w", err)
+		}
 	}
 
 	if finalUsage != nil {

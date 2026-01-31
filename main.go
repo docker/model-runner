@@ -19,8 +19,10 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/middleware"
@@ -85,6 +87,7 @@ func main() {
 	sglangServerPath := os.Getenv("SGLANG_SERVER_PATH")
 	mlxServerPath := os.Getenv("MLX_SERVER_PATH")
 	diffusersServerPath := os.Getenv("DIFFUSERS_SERVER_PATH")
+	vllmMetalServerPath := os.Getenv("VLLM_METAL_SERVER_PATH")
 
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
@@ -116,6 +119,9 @@ func main() {
 	}
 	if mlxServerPath != "" {
 		log.Infof("MLX_SERVER_PATH: %s", mlxServerPath)
+	}
+	if vllmMetalServerPath != "" {
+		log.Infof("VLLM_METAL_SERVER_PATH: %s", vllmMetalServerPath)
 	}
 
 	// Create llama.cpp configuration from environment variables
@@ -177,6 +183,19 @@ func main() {
 		log.Fatalf("unable to initialize diffusers backend: %v", err)
 	}
 
+	var vllmMetalBackend inference.Backend
+	if platform.SupportsVLLMMetal() {
+		vllmMetalBackend, err = vllmmetal.New(
+			log,
+			modelManager,
+			log.WithFields(logrus.Fields{"component": vllmmetal.Name}),
+			vllmMetalServerPath,
+		)
+		if err != nil {
+			log.Warnf("Failed to initialize vllm-metal backend: %v", err)
+		}
+	}
+
 	backends := map[string]inference.Backend{
 		llamacpp.Name:  llamaCppBackend,
 		mlx.Name:       mlxBackend,
@@ -184,6 +203,10 @@ func main() {
 		diffusers.Name: diffusersBackend,
 	}
 	registerVLLMBackend(backends, vllmBackend)
+
+	if vllmMetalBackend != nil {
+		backends[vllmmetal.Name] = vllmMetalBackend
+	}
 
 	scheduler := scheduling.NewScheduler(
 		log,
