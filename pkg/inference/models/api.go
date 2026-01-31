@@ -16,6 +16,20 @@ import (
 type ModelCreateRequest struct {
 	// From is the name of the model to pull.
 	From string `json:"from"`
+	// BearerToken is an optional bearer token for authentication (e.g., for Hugging Face).
+	BearerToken string `json:"bearer-token,omitempty"`
+	// Username is an optional username for registry authentication.
+	Username string `json:"username,omitempty"`
+	// Password is an optional password for registry authentication.
+	Password string `json:"password,omitempty"`
+}
+
+// ModelPushRequest represents a model push request.
+type ModelPushRequest struct {
+	// Username is an optional username for registry authentication.
+	Username string `json:"username,omitempty"`
+	// Password is an optional password for registry authentication.
+	Password string `json:"password,omitempty"`
 	// BearerToken is an optional bearer token for authentication.
 	BearerToken string `json:"bearer-token,omitempty"`
 }

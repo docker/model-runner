@@ -16,6 +16,9 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
+	"github.com/docker/model-runner/pkg/distribution/oci/authn"
+	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	"github.com/docker/model-runner/pkg/inference"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
@@ -28,6 +31,78 @@ var (
 	ErrNotFound           = errors.New("model not found")
 	ErrServiceUnavailable = errors.New("service unavailable")
 )
+
+// resolveCredentials resolves Docker registry credentials for a model reference
+// and exchanges them for a short-lived bearer token.
+// Returns nil if no credentials are found (anonymous access).
+func resolveCredentials(ctx context.Context, model string) *distribution.Credentials {
+	// Skip credential resolution for Hugging Face models (use HF_TOKEN env var instead).
+	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
+		if hfToken := os.Getenv("HF_TOKEN"); hfToken != "" {
+			return &distribution.Credentials{BearerToken: hfToken}
+		}
+		return nil
+	}
+
+	ref, err := reference.ParseReference(model)
+	if err != nil {
+		return nil
+	}
+
+	resource := authn.NewResource(ref)
+	auth, err := authn.DefaultKeychain.Resolve(resource)
+	if err != nil {
+		return nil
+	}
+
+	authConfig, err := auth.Authorization()
+	if err != nil || authConfig == nil {
+		return nil
+	}
+
+	if authConfig.RegistryToken != "" {
+		return &distribution.Credentials{BearerToken: authConfig.RegistryToken}
+	}
+	if authConfig.IdentityToken != "" {
+		return &distribution.Credentials{BearerToken: authConfig.IdentityToken}
+	}
+
+	if authConfig.Username != "" && authConfig.Password != "" {
+		token, err := exchangeForToken(ctx, ref, auth)
+		if err != nil {
+			return &distribution.Credentials{
+				Username: authConfig.Username,
+				Password: authConfig.Password,
+			}
+		}
+		return &distribution.Credentials{BearerToken: token}
+	}
+
+	return nil
+}
+
+// exchangeForToken exchanges credentials for a short-lived bearer token.
+func exchangeForToken(ctx context.Context, ref reference.Reference, auth authn.Authenticator) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	pr, err := remote.Ping(ctx, ref.Context().Registry, nil)
+	if err != nil {
+		return "", fmt.Errorf("pinging registry: %w", err)
+	}
+
+	if pr.WWWAuthenticate.Realm == "" {
+		return "", fmt.Errorf("no auth required")
+	}
+
+	scope := ref.Scope(remote.PushScope)
+	token, err := remote.Exchange(ctx, ref.Context().Registry, auth, nil, []string{scope}, pr)
+	if err != nil {
+		return "", fmt.Errorf("exchanging credentials: %w", err)
+	}
+
+	return token.Token, nil
+}
 
 type otelErrorSilencer struct{}
 
@@ -98,17 +173,16 @@ func (c *Client) Status() Status {
 }
 
 func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, bool, error) {
-	// Check if this is a Hugging Face model and if HF_TOKEN is set
-	var hfToken string
-	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
-		hfToken = os.Getenv("HF_TOKEN")
-	}
+	creds := resolveCredentials(context.Background(), model)
 
 	return c.withRetries("download", 3, printer, func(attempt int) (string, bool, error, bool) {
-		jsonData, err := json.Marshal(dmrm.ModelCreateRequest{
-			From:        model,
-			BearerToken: hfToken,
-		})
+		req := dmrm.ModelCreateRequest{From: model}
+		if creds != nil {
+			req.Username = creds.Username
+			req.Password = creds.Password
+			req.BearerToken = creds.BearerToken
+		}
+		jsonData, err := json.Marshal(req)
 		if err != nil {
 			// Marshaling errors are not retryable
 			return "", false, fmt.Errorf("error marshaling request: %w", err), false
@@ -223,12 +297,27 @@ func (c *Client) withRetries(
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
+	creds := resolveCredentials(context.Background(), model)
+
 	return c.withRetries("push", 3, printer, func(attempt int) (string, bool, error, bool) {
+		var body io.Reader
+		if creds != nil {
+			jsonData, err := json.Marshal(dmrm.ModelPushRequest{
+				Username:    creds.Username,
+				Password:    creds.Password,
+				BearerToken: creds.BearerToken,
+			})
+			if err != nil {
+				return "", false, fmt.Errorf("error marshaling request: %w", err), false
+			}
+			body = bytes.NewReader(jsonData)
+		}
+
 		pushPath := inference.ModelsPrefix + "/" + model + "/push"
 		resp, err := c.doRequest(
 			http.MethodPost,
 			pushPath,
-			nil, // Assuming no body is needed for the push request
+			body,
 		)
 		if err != nil {
 			// Only retry on network errors, not on client errors
