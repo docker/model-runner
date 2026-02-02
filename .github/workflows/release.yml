@@ -113,7 +113,7 @@ jobs:
           echo 'EOF' >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
