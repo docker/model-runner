@@ -5,7 +5,7 @@ go 1.25.6
 require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/containerd/errdefs v1.0.0
-	github.com/docker/cli v29.1.5+incompatible
+	github.com/docker/cli v29.2.0+incompatible
 	github.com/docker/cli-docs-tool v0.11.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.6.0
@@ -14,7 +14,7 @@ require (
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
 	github.com/fatih/color v1.18.0
 	github.com/mattn/go-runewidth v0.0.19
-	github.com/moby/moby/client v0.2.1
+	github.com/moby/moby/client v0.2.2
 	github.com/moby/term v0.5.2
 	github.com/muesli/termenv v0.16.0
 	github.com/nxadm/tail v1.4.11
@@ -92,7 +92,7 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
-	github.com/moby/moby/api v1.52.0 // indirect
+	github.com/moby/moby/api v1.53.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
