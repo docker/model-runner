@@ -415,6 +415,115 @@ in the form of [a Helm chart and static YAML](charts/docker-model-runner/README.
 If you are interested in a specific Kubernetes use-case, please start a
 discussion on the issue tracker.
 
+## dmrlet: Container Orchestrator for AI Inference
+
+dmrlet is a purpose-built container orchestrator for AI inference workloads. Unlike Kubernetes, it focuses exclusively on running stateless inference containers with zero configuration overhead. Multi-GPU mapping "just works" without YAML, device plugins, or node selectors.
+
+### Key Features
+
+| Feature | Kubernetes | dmrlet |
+|---------|------------|--------|
+| Multi-GPU setup | Device plugins + node selectors + resource limits YAML | `dmrlet serve llama3 --gpus all` |
+| Config overhead | 50+ lines of YAML minimum | Zero YAML, CLI-only |
+| Time to first inference | Minutes (pod scheduling, image pull) | Seconds (model already local) |
+| Model management | External (mount PVCs, manage yourself) | Integrated with Docker Model Runner store |
+
+### Building dmrlet
+
+```bash
+# Build the dmrlet binary
+go build -o dmrlet ./cmd/dmrlet
+
+# Verify it works
+./dmrlet --help
+```
+
+### Usage
+
+**Start the daemon:**
+```bash
+# Start in foreground
+dmrlet daemon
+
+# With custom socket path
+dmrlet daemon --socket /tmp/dmrlet.sock
+```
+
+**Serve a model:**
+```bash
+# Auto-detect backend and GPUs
+dmrlet serve llama3.2
+
+# Specify backend
+dmrlet serve llama3.2 --backend vllm
+
+# Specify GPU allocation
+dmrlet serve llama3.2 --gpus 0,1
+dmrlet serve llama3.2 --gpus all
+
+# Multiple replicas
+dmrlet serve llama3.2 --replicas 2
+
+# Backend-specific options
+dmrlet serve llama3.2 --ctx-size 4096      # llama.cpp context size
+dmrlet serve llama3.2 --gpu-memory 0.8     # vLLM GPU memory utilization
+```
+
+**List running models:**
+```bash
+dmrlet ps
+# MODEL          BACKEND    REPLICAS   GPUS      ENDPOINTS              STATUS
+# llama3.2       llama.cpp  1          [0,1,2,3] localhost:30000        healthy
+```
+
+**View logs:**
+```bash
+dmrlet logs llama3.2        # Last 100 lines
+dmrlet logs llama3.2 -f     # Follow logs
+```
+
+**Scale replicas:**
+```bash
+dmrlet scale llama3.2 4     # Scale to 4 replicas
+```
+
+**Stop a model:**
+```bash
+dmrlet stop llama3.2
+dmrlet stop --all           # Stop all models
+```
+
+**Check status:**
+```bash
+dmrlet status
+# DAEMON: running
+# SOCKET: /var/run/dmrlet.sock
+#
+# GPUs:
+#   GPU 0:  NVIDIA A100 80GB  81920MB  (in use: llama3.2)
+#   GPU 1:  NVIDIA A100 80GB  81920MB  (available)
+#
+# MODELS: 1 running
+```
+
+### Supported Backends
+
+- **llama.cpp** - Default backend for GGUF models
+- **vLLM** - High-throughput serving for safetensors models
+- **SGLang** - Fast serving with RadixAttention
+
+### Architecture
+
+```
+dmrlet daemon
+  ├── GPU Manager      - Auto-detect and allocate GPUs
+  ├── Container Manager - Docker-based container lifecycle
+  ├── Service Registry  - Endpoint discovery with load balancing
+  ├── Health Monitor    - Auto-restart unhealthy containers
+  ├── Auto-scaler       - Scale based on QPS/latency/GPU utilization
+  └── Log Aggregator    - Centralized log collection
+```
+
 ## Community
 
 For general questions and discussion, please use [Docker Model Runner's Slack channel](https://dockercommunity.slack.com/archives/C09H9P5E57B).

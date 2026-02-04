@@ -26,13 +26,23 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
+.PHONY: build build-dmrlet run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 # Default target
 .DEFAULT_GOAL := build
 
 # Build the Go application
 build:
 	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
+
+# Build dmrlet binary
+build-dmrlet:
+	@echo "Building dmrlet..."
+	@VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo "dev"); \
+	GIT_COMMIT=$$(git rev-parse HEAD 2>/dev/null || echo "unknown"); \
+	BUILD_DATE=$$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown"); \
+	cd cmd/dmrlet && CGO_ENABLED=0 go build -ldflags="-s -w -X 'main.Version=$${VERSION}' -X 'main.GitCommit=$${GIT_COMMIT}' -X 'main.BuildDate=$${BUILD_DATE}'" -o dmrlet .
+	mv cmd/dmrlet/dmrlet .
+	@echo "Built: dmrlet"
 
 # Run the application locally
 run: build
@@ -46,6 +56,7 @@ run: build
 # Clean build artifacts
 clean:
 	rm -f $(APP_NAME)
+	rm -f dmrlet
 	rm -f model-runner.sock
 	rm -rf $(MODELS_PATH)
 
@@ -219,6 +230,7 @@ vllm-metal-clean:
 help:
 	@echo "Available targets:"
 	@echo "  build				- Build the Go application"
+	@echo "  build-dmrlet			- Build dmrlet binary (lightweight node agent)"
 	@echo "  run				- Run the application locally"
 	@echo "  clean				- Clean build artifacts"
 	@echo "  test				- Run tests"
