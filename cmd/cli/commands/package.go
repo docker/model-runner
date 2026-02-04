@@ -26,6 +26,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// modelfileInstructionAliases defines supported Modelfile instruction aliases.
+// It is defined at package scope to avoid re-allocation on each applyModelfile call.
+var modelfileInstructionAliases = map[string]string{
+	"SAFETENSORS-DIR": "SAFETENSORS_DIR",
+	"CHAT-TEMPLATE":   "CHAT_TEMPLATE",
+	"MM-PROJ":         "MMPROJ",
+	"DIR-TAR":         "DIR_TAR",
+	"CONTEXT-SIZE":    "CONTEXT",
+	"CTX":             "CONTEXT",
+}
+
+// pathInstructions defines Modelfile instructions that expect a file or directory path.
+var pathInstructions = map[string]struct{}{
+	"GGUF":            {},
+	"SAFETENSORS_DIR": {},
+	"DDUF":            {},
+	"LICENSE":         {},
+	"CHAT_TEMPLATE":   {},
+	"MMPROJ":          {},
+}
+
 // validateAbsolutePath validates that a path is absolute and returns the cleaned path
 func validateAbsolutePath(path, name string) (string, error) {
 	if !filepath.IsAbs(path) {
@@ -541,16 +562,6 @@ func applyModelfile(opts *packageOptions) error {
 	scanner := bufio.NewScanner(f)
 	lineNum := 0
 
-	// Alias map for instruction variants
-	alias := map[string]string{
-		"SAFETENSORS-DIR": "SAFETENSORS_DIR",
-		"CHAT-TEMPLATE":   "CHAT_TEMPLATE",
-		"MM-PROJ":         "MMPROJ",
-		"DIR-TAR":         "DIR_TAR",
-		"CONTEXT-SIZE":    "CONTEXT",
-		"CTX":             "CONTEXT",
-	}
-
 	for scanner.Scan() {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
@@ -561,15 +572,16 @@ func applyModelfile(opts *packageOptions) error {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			return fmt.Errorf(
-				"invalid Modelfile syntax at line %d: expected at least 2 fields, got: %q",
+				"invalid Modelfile syntax at line %d: expected an instruction and a value, got: %q",
 				lineNum, line,
 			)
 		}
 
 		instruction := strings.ToUpper(fields[0])
-		if aliased, ok := alias[instruction]; ok {
+		if aliased, ok := modelfileInstructionAliases[instruction]; ok {
 			instruction = aliased
 		}
+
 		value := strings.Join(fields[1:], " ") // allow spaces in values
 
 		var absPath string
@@ -692,15 +704,10 @@ func normalizePath(path, baseDir string) (string, error) {
 	return cleanPath, nil
 }
 
-// needsPath returns true if the instruction expects a file/directory path.
+// needsPath returns true if the instruction expects a file or directory path.
 func needsPath(instruction string) bool {
-	switch instruction {
-	case "GGUF", "SAFETENSORS_DIR", "DDUF",
-		"LICENSE", "CHAT_TEMPLATE", "MMPROJ":
-		return true
-	default:
-		return false
-	}
+	_, ok := pathInstructions[instruction]
+	return ok
 }
 
 // contains checks if a string slice contains the given value.
