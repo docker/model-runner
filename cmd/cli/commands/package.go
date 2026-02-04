@@ -55,6 +55,10 @@ func newPackagedCmd() *cobra.Command {
 				return err
 			}
 
+			if err := applyModelfile(&opts); err != nil {
+				return err
+			}
+
 			// Validate that exactly one of --gguf, --safetensors-dir, --dduf, or --from is provided (mutually exclusive)
 			sourcesProvided := 0
 			if opts.ggufPath != "" {
@@ -583,12 +587,15 @@ func applyModelfile(opts *packageOptions) error {
 			}
 
 			// Directory vs file check for specific cases
-			if instruction == "SAFETENSORS_DIR" && !info.IsDir() {
-				return fmt.Errorf("line %d: SAFETENSORS_DIR must be a directory: %q", lineNum, absPath)
-			}
-			if (instruction == "GGUF" || instruction == "DDUF" || instruction == "LICENSE" ||
-				instruction == "CHAT_TEMPLATE" || instruction == "MMPROJ") && info.IsDir() {
-				return fmt.Errorf("line %d: %s must be a file, not a directory: %q", lineNum, instruction, absPath)
+			switch instruction {
+			case "SAFETENSORS_DIR":
+				if !info.IsDir() {
+					return fmt.Errorf("line %d: SAFETENSORS_DIR must be a directory: %q", lineNum, absPath)
+				}
+			case "GGUF", "DDUF", "LICENSE", "CHAT_TEMPLATE", "MMPROJ":
+				if info.IsDir() {
+					return fmt.Errorf("line %d: %s must be a file, not a directory: %q", lineNum, instruction, absPath)
+				}
 			}
 		}
 
@@ -636,11 +643,12 @@ func applyModelfile(opts *packageOptions) error {
 			if filepath.IsAbs(relPath) {
 				return fmt.Errorf("DIR_TAR at line %d must be a relative path, got absolute: %q", lineNum, relPath)
 			}
-			if strings.Contains(relPath, "..") {
+			cleanRelPath := filepath.Clean(relPath)
+			if strings.HasPrefix(cleanRelPath, "..") || cleanRelPath == ".." {
 				return fmt.Errorf("DIR_TAR at line %d contains path traversal (..): %q", lineNum, relPath)
 			}
-			if !contains(opts.dirTarPaths, relPath) {
-				opts.dirTarPaths = append(opts.dirTarPaths, relPath)
+			if !contains(opts.dirTarPaths, cleanRelPath) {
+				opts.dirTarPaths = append(opts.dirTarPaths, cleanRelPath)
 			}
 
 		// Parameters
@@ -669,7 +677,7 @@ func applyModelfile(opts *packageOptions) error {
 }
 
 // normalizePath resolves relative paths relative to the Modelfile's directory and cleans them.
-// Rejects path traversal attempts.
+// Returns an absolute, cleaned path without restricting paths outside the Modelfile's directory.
 func normalizePath(path, baseDir string) (string, error) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(baseDir, path)
@@ -681,15 +689,6 @@ func normalizePath(path, baseDir string) (string, error) {
 	}
 
 	cleanPath := filepath.Clean(abs)
-	// Extra security: reject any '..' segments after normalization
-	rel, err := filepath.Rel(baseDir, cleanPath)
-	if err != nil {
-		return "", err
-	}
-	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("path traversal detected after normalization: %q", cleanPath)
-	}
-
 	return cleanPath, nil
 }
 
