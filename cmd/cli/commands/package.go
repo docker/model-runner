@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
@@ -67,12 +70,13 @@ func newPackagedCmd() *cobra.Command {
 				sourcesProvided++
 			}
 
-			if sourcesProvided == 0 {
+			if sourcesProvided == 0 && opts.modelfile == "" {
 				return fmt.Errorf(
-					"One of --gguf, --safetensors-dir, --dduf, or --from is required.\n\n" +
+					"One of --gguf, --safetensors-dir, --dduf, --from, or --file is required.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
+
 			if sourcesProvided > 1 {
 				return fmt.Errorf(
 					"Cannot specify more than one of --gguf, --safetensors-dir, --dduf, or --from. Please use only one source.\n\n" +
@@ -189,6 +193,8 @@ func newPackagedCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.mmprojPath, "mmproj", "", "absolute path to multimodal projector file")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
+	c.Flags().StringVarP(&opts.modelfile, "file", "f", "", "path to Modelfile")
+
 	return c
 }
 
@@ -204,6 +210,7 @@ type packageOptions struct {
 	mmprojPath       string
 	push             bool
 	tag              string
+	modelfile        string
 }
 
 // builderInitResult contains the result of initializing a builder from various sources
@@ -512,4 +519,197 @@ func (t *modelRunnerTarget) Write(ctx context.Context, mdl types.ModelArtifact, 
 		}
 	}
 	return nil
+}
+
+// applyModelfile parses a Modelfile and applies its directives to the options.
+// CLI flags have higher priority; values from Modelfile are only applied if the field is still empty.
+func applyModelfile(opts *packageOptions) error {
+	if opts.modelfile == "" {
+		return nil
+	}
+
+	f, err := os.Open(opts.modelfile)
+	if err != nil {
+		return fmt.Errorf("cannot open Modelfile %q: %w", opts.modelfile, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+
+	// Alias map for instruction variants
+	alias := map[string]string{
+		"SAFETENSORS-DIR": "SAFETENSORS_DIR",
+		"CHAT-TEMPLATE":   "CHAT_TEMPLATE",
+		"MM-PROJ":         "MMPROJ",
+		"DIR-TAR":         "DIR_TAR",
+		"CONTEXT-SIZE":    "CONTEXT",
+		"CTX":             "CONTEXT",
+	}
+
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return fmt.Errorf(
+				"invalid Modelfile syntax at line %d: expected at least 2 fields, got: %q",
+				lineNum, line,
+			)
+		}
+
+		instruction := strings.ToUpper(fields[0])
+		if aliased, ok := alias[instruction]; ok {
+			instruction = aliased
+		}
+		value := strings.Join(fields[1:], " ") // allow spaces in values
+
+		var absPath string
+		if needsPath(instruction) {
+			var err error
+			absPath, err = normalizePath(value, filepath.Dir(opts.modelfile))
+			if err != nil {
+				return fmt.Errorf("line %d: invalid path for %s: %w", lineNum, instruction, err)
+			}
+
+			// Early existence check for paths that are almost certainly required
+			info, err := os.Stat(absPath)
+			if err != nil {
+				return fmt.Errorf("line %d: path for %s does not exist: %q (%w)", lineNum, instruction, absPath, err)
+			}
+
+			// Directory vs file check for specific cases
+			if instruction == "SAFETENSORS_DIR" && !info.IsDir() {
+				return fmt.Errorf("line %d: SAFETENSORS_DIR must be a directory: %q", lineNum, absPath)
+			}
+			if (instruction == "GGUF" || instruction == "DDUF" || instruction == "LICENSE" ||
+				instruction == "CHAT_TEMPLATE" || instruction == "MMPROJ") && info.IsDir() {
+				return fmt.Errorf("line %d: %s must be a file, not a directory: %q", lineNum, instruction, absPath)
+			}
+		}
+
+		switch instruction {
+		// Model sources
+		case "FROM":
+			if opts.fromModel == "" {
+				opts.fromModel = value
+			}
+
+		case "GGUF":
+			if opts.ggufPath == "" {
+				opts.ggufPath = absPath
+			}
+
+		case "SAFETENSORS_DIR":
+			if opts.safetensorsDir == "" {
+				opts.safetensorsDir = absPath
+			}
+
+		case "DDUF":
+			if opts.ddufPath == "" {
+				opts.ddufPath = absPath
+			}
+
+		// Optional assets (validate existence early since they are standalone files)
+		case "LICENSE":
+			if !contains(opts.licensePaths, absPath) {
+				opts.licensePaths = append(opts.licensePaths, absPath)
+			}
+
+		case "CHAT_TEMPLATE":
+			if opts.chatTemplatePath == "" {
+				opts.chatTemplatePath = absPath
+			}
+
+		case "MMPROJ":
+			if opts.mmprojPath == "" {
+				opts.mmprojPath = absPath
+			}
+
+		// DIR_TAR remains relative — check for safety but defer existence
+		case "DIR_TAR":
+			relPath := value
+			if filepath.IsAbs(relPath) {
+				return fmt.Errorf("DIR_TAR at line %d must be a relative path, got absolute: %q", lineNum, relPath)
+			}
+			if strings.Contains(relPath, "..") {
+				return fmt.Errorf("DIR_TAR at line %d contains path traversal (..): %q", lineNum, relPath)
+			}
+			if !contains(opts.dirTarPaths, relPath) {
+				opts.dirTarPaths = append(opts.dirTarPaths, relPath)
+			}
+
+		// Parameters
+		case "CONTEXT":
+			if opts.contextSize == 0 {
+				v, err := strconv.ParseUint(value, 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid CONTEXT value at line %d: %q → %w", lineNum, value, err)
+				}
+				if v == 0 || v > math.MaxInt32 {
+					return fmt.Errorf("invalid CONTEXT size at line %d: %d (must be 1 to %d)", lineNum, v, math.MaxInt32)
+				}
+				opts.contextSize = v
+			}
+
+		default:
+			return fmt.Errorf("unknown Modelfile instruction at line %d: %s", lineNum, instruction)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading Modelfile %q: %w", opts.modelfile, err)
+	}
+
+	return nil
+}
+
+// normalizePath resolves relative paths relative to the Modelfile's directory and cleans them.
+// Rejects path traversal attempts.
+func normalizePath(path, baseDir string) (string, error) {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(baseDir, path)
+	}
+
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	cleanPath := filepath.Clean(abs)
+	// Extra security: reject any '..' segments after normalization
+	rel, err := filepath.Rel(baseDir, cleanPath)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("path traversal detected after normalization: %q", cleanPath)
+	}
+
+	return cleanPath, nil
+}
+
+// needsPath returns true if the instruction expects a file/directory path.
+func needsPath(instruction string) bool {
+	switch instruction {
+	case "GGUF", "SAFETENSORS_DIR", "DDUF",
+		"LICENSE", "CHAT_TEMPLATE", "MMPROJ":
+		return true
+	default:
+		return false
+	}
+}
+
+// contains checks if a string slice contains the given value.
+func contains(slice []string, value string) bool {
+	for _, s := range slice {
+		if s == value {
+			return true
+		}
+	}
+	return false
 }
