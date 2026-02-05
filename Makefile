@@ -13,6 +13,7 @@ DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 MODELS_PATH := $(shell pwd)/models-store
 LLAMA_ARGS ?=
+EXTRA_DOCKER_BUILD_ARGS ?=
 DOCKER_BUILD_ARGS := \
 	--load \
 	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
@@ -84,11 +85,11 @@ lint:
 
 # Build Docker image
 docker-build:
-	docker buildx build $(DOCKER_BUILD_ARGS) .
+	docker buildx build $(DOCKER_BUILD_ARGS) $(EXTRA_DOCKER_BUILD_ARGS) .
 
 # Build multi-platform Docker image
 docker-build-multiplatform:
-	docker buildx build --platform linux/amd64,linux/arm64 $(DOCKER_BUILD_ARGS) .
+	docker buildx build --platform linux/amd64,linux/arm64 $(DOCKER_BUILD_ARGS) $(EXTRA_DOCKER_BUILD_ARGS) .
 
 # Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build

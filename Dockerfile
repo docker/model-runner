@@ -85,26 +85,54 @@ ENTRYPOINT ["/app/model-runner"]
 # --- vLLM variant ---
 FROM llamacpp AS vllm
 
-ARG VLLM_VERSION=0.12.0
+ARG VLLM_VERSION=0.15.1
 ARG VLLM_CUDA_VERSION=cu130
 ARG VLLM_PYTHON_TAG=cp38-abi3
 ARG TARGETARCH
+# Build vLLM from source on ARM64 for CUDA 13 compatibility (e.g., NVIDIA DGX).
+# Set to "false" to use prebuilt wheels instead (faster build, but may not work on CUDA 13).
+ARG VLLM_ARM64_BUILD_FROM_SOURCE=true
 
 USER root
 
-RUN apt update && apt install -y python3 python3-venv python3-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+# Install build dependencies including CUDA toolkit for compiling vLLM from source on ARM64
+# Note: Base image already has CUDA repo configured, just install cuda-toolkit directly
+RUN apt update && apt install -y \
+    python3 python3-venv python3-dev \
+    curl ca-certificates build-essential \
+    git cmake ninja-build \
+    && if [ "$(uname -m)" = "aarch64" ] && [ "$VLLM_ARM64_BUILD_FROM_SOURCE" = "true" ]; then \
+    apt install -y cuda-toolkit-13-0; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set CUDA paths for ARM64 builds
+ENV PATH=/usr/local/cuda-13.0/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH
 
 RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
 
 USER modelrunner
 
 # Install uv and vLLM as modelrunner user
+# For AMD64: Use prebuilt CUDA 13 wheels (PyTorch pulled as dependency)
+# For ARM64 with VLLM_ARM64_BUILD_FROM_SOURCE=true: Build from source against PyTorch nightly
+# For ARM64 with VLLM_ARM64_BUILD_FROM_SOURCE=false: Use prebuilt wheel (old behavior)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
     && if [ "$TARGETARCH" = "amd64" ]; then \
-    WHEEL_ARCH="manylinux_2_31_x86_64"; \
+    WHEEL_ARCH="manylinux_2_35_x86_64"; \
     WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
     ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
+    elif [ "$VLLM_ARM64_BUILD_FROM_SOURCE" = "true" ]; then \
+    ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu130 \
+    && git clone --depth 1 --branch v${VLLM_VERSION} https://github.com/vllm-project/vllm.git /tmp/vllm \
+    && cd /tmp/vllm \
+    && /opt/vllm-env/bin/python use_existing_torch.py \
+    && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python -r requirements/build.txt \
+    && VLLM_TARGET_DEVICE=cuda ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python . --no-build-isolation \
+    && rm -rf /tmp/vllm; \
     else \
     ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"; \
     fi
