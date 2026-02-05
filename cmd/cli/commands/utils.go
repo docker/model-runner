@@ -172,7 +172,7 @@ func normalizeModelIdentifier(model string) string {
 	}
 
 	// If no tag is provided, assume the default tag.
-	if !strings.Contains(model, ":") {
+if lastSlash := strings.LastIndex(model, "/"); !strings.Contains(model[lastSlash+1:], ":") {
 		model = model + ":" + defaultTag
 	}
 
