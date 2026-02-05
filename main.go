@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -85,6 +86,18 @@ func main() {
 	sglangServerPath := os.Getenv("SGLANG_SERVER_PATH")
 	mlxServerPath := os.Getenv("MLX_SERVER_PATH")
 	diffusersServerPath := os.Getenv("DIFFUSERS_SERVER_PATH")
+
+	// Parse default context length from environment
+	var defaultContextLength *int32
+	if ctxStr := os.Getenv("DMR_CONTEXT_LENGTH"); ctxStr != "" {
+		if parsed, err := strconv.ParseInt(ctxStr, 10, 32); err == nil && parsed > 0 {
+			ctx := int32(parsed)
+			defaultContextLength = &ctx
+			log.Infof("DMR_CONTEXT_LENGTH: %d", ctx)
+		} else {
+			log.Warnf("Invalid DMR_CONTEXT_LENGTH: %s (must be a positive integer)", ctxStr)
+		}
+	}
 
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
@@ -197,6 +210,7 @@ func main() {
 			"",
 			false,
 		),
+		defaultContextLength,
 	)
 
 	// Create the HTTP handler for the scheduler

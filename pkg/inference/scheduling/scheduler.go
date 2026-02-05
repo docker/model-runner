@@ -40,6 +40,8 @@ type Scheduler struct {
 	tracker *metrics.Tracker
 	// openAIRecorder is used to record OpenAI API inference requests and responses.
 	openAIRecorder *metrics.OpenAIRecorder
+	// defaultContextLength is the default context length from environment variable.
+	defaultContextLength *int32
 }
 
 // NewScheduler creates a new inference scheduler.
@@ -50,19 +52,21 @@ func NewScheduler(
 	modelManager *models.Manager,
 	httpClient *http.Client,
 	tracker *metrics.Tracker,
+	defaultContextLength *int32,
 ) *Scheduler {
 	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
 
 	// Create the scheduler.
 	s := &Scheduler{
-		log:            log,
-		backends:       backends,
-		defaultBackend: defaultBackend,
-		modelManager:   modelManager,
-		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager, openAIRecorder),
-		tracker:        tracker,
-		openAIRecorder: openAIRecorder,
+		log:                  log,
+		backends:             backends,
+		defaultBackend:       defaultBackend,
+		modelManager:         modelManager,
+		installer:            newInstaller(log, backends, httpClient),
+		loader:               newLoader(log, backends, modelManager, openAIRecorder),
+		tracker:              tracker,
+		openAIRecorder:       openAIRecorder,
+		defaultContextLength: defaultContextLength,
 	}
 
 	// Scheduler successfully initialized.
@@ -253,7 +257,12 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Build runner configuration with shared settings
 	var runnerConfig inference.BackendConfiguration
-	runnerConfig.ContextSize = req.ContextSize
+	// Use request context size if provided, otherwise fall back to default from env var
+	if req.ContextSize != nil {
+		runnerConfig.ContextSize = req.ContextSize
+	} else if s.defaultContextLength != nil {
+		runnerConfig.ContextSize = s.defaultContextLength
+	}
 	runnerConfig.Speculative = req.Speculative
 	runnerConfig.RuntimeFlags = runtimeFlags
 
