@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/huggingface"
+	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -612,6 +613,59 @@ func (c *Client) ResetStore() error {
 		c.log.Errorln("Failed to reset store:", err)
 		return fmt.Errorf("resetting store: %w", err)
 	}
+	return nil
+}
+
+func (c *Client) ExportModel(reference string, w io.Writer) error {
+	c.log.Infoln("Exporting model:", utils.SanitizeForLog(reference))
+	normalizedRef := c.normalizeModelName(reference)
+	mdl, err := c.store.Read(normalizedRef)
+	if err != nil {
+		c.log.Errorln("Failed to get model for export:", err, "reference:", utils.SanitizeForLog(reference))
+		return fmt.Errorf("get model '%q': %w", utils.SanitizeForLog(reference), err)
+	}
+
+	target, err := tarball.NewTarget(w)
+	if err != nil {
+		return fmt.Errorf("create tarball target: %w", err)
+	}
+
+	if err := target.Write(context.Background(), mdl, nil); err != nil {
+		c.log.Errorln("Failed to export model:", err, "reference:", utils.SanitizeForLog(reference))
+		return fmt.Errorf("export model: %w", err)
+	}
+
+	c.log.Infoln("Successfully exported model:", utils.SanitizeForLog(reference))
+	return nil
+}
+
+type RepackageOptions struct {
+	ContextSize *uint64
+}
+
+func (c *Client) RepackageModel(sourceRef string, targetRef string, opts RepackageOptions) error {
+	c.log.Infoln("Repackaging model:", utils.SanitizeForLog(sourceRef), "->", utils.SanitizeForLog(targetRef))
+
+	normalizedSource := c.normalizeModelName(sourceRef)
+	normalizedTarget := c.normalizeModelName(targetRef)
+
+	mdl, err := c.store.Read(normalizedSource)
+	if err != nil {
+		c.log.Errorln("Failed to get model for repackaging:", err, "reference:", utils.SanitizeForLog(sourceRef))
+		return fmt.Errorf("get model '%q': %w", utils.SanitizeForLog(sourceRef), err)
+	}
+
+	var modifiedModel types.ModelArtifact = mdl
+	if opts.ContextSize != nil {
+		modifiedModel = mutate.ContextSize(modifiedModel, int32(*opts.ContextSize))
+	}
+
+	if err := c.store.WriteLightweight(modifiedModel, []string{normalizedTarget}); err != nil {
+		c.log.Errorln("Failed to write repackaged model:", err, "target:", utils.SanitizeForLog(targetRef))
+		return fmt.Errorf("write repackaged model: %w", err)
+	}
+
+	c.log.Infoln("Successfully repackaged model:", utils.SanitizeForLog(sourceRef), "->", utils.SanitizeForLog(targetRef))
 	return nil
 }
 

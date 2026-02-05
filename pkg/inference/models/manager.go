@@ -416,3 +416,23 @@ func (m *Manager) Purge() error {
 	}
 	return nil
 }
+
+func (m *Manager) Export(ref string, w io.Writer) error {
+	if m.distributionClient == nil {
+		return fmt.Errorf("model distribution service unavailable")
+	}
+	return m.distributionClient.ExportModel(ref, w)
+}
+
+type RepackageOptions struct {
+	ContextSize *uint64 `json:"context_size,omitempty"`
+}
+
+func (m *Manager) Repackage(sourceRef string, targetRef string, opts RepackageOptions) error {
+	if m.distributionClient == nil {
+		return fmt.Errorf("model distribution service unavailable")
+	}
+	return m.distributionClient.RepackageModel(sourceRef, targetRef, distribution.RepackageOptions{
+		ContextSize: opts.ContextSize,
+	})
+}

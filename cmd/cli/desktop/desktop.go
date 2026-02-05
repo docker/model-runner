@@ -938,3 +938,66 @@ func (c *Client) LoadModel(ctx context.Context, r io.Reader) error {
 	}
 	return nil
 }
+
+func (c *Client) ExportModel(ctx context.Context, model string) (io.ReadCloser, error) {
+	exportPath := fmt.Sprintf("%s/%s/export", inference.ModelsPrefix, model)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.modelRunner.URL(exportPath), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "docker-model-cli/"+Version)
+
+	resp, err := c.modelRunner.Client().Do(req)
+	if err != nil {
+		return nil, c.handleQueryError(err, exportPath)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, errors.Wrap(ErrNotFound, model)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("export failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return resp.Body, nil
+}
+
+type RepackageOptions struct {
+	ContextSize *uint64 `json:"context_size,omitempty"`
+}
+
+func (c *Client) RepackageModel(ctx context.Context, source, target string, opts RepackageOptions) error {
+	repackagePath := fmt.Sprintf("%s/%s/repackage", inference.ModelsPrefix, source)
+
+	reqBody := struct {
+		Target      string  `json:"target"`
+		ContextSize *uint64 `json:"context_size,omitempty"`
+	}{
+		Target:      target,
+		ContextSize: opts.ContextSize,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	resp, err := c.doRequestWithAuthContext(ctx, http.MethodPost, repackagePath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, repackagePath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return errors.Wrap(ErrNotFound, source)
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("repackage failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
