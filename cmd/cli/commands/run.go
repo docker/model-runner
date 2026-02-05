@@ -608,7 +608,7 @@ func newRunCmd() *cobra.Command {
 			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model := args[0]
+			model := normalizeModelIdentifier(args[0])
 			prompt := ""
 			argsLen := len(args)
 			if argsLen > 1 {

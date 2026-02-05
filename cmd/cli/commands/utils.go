@@ -156,6 +156,29 @@ func stripDefaultsFromModelName(model string) string {
 	return model
 }
 
+// normalizeModelIdentifier expands a user-provided model reference into a fully
+// qualified model identifier expected by the engine.
+//
+// The CLI intentionally strips default values (org and tag) when displaying
+// models to improve readability. However, users should be able to pass the same
+// shorthand forms back to the CLI (e.g. "mxbai-embed-large").
+//
+// This function restores the implicit defaults to ensure round-trip consistency
+// between `docker model list` output and subsequent CLI commands.
+func normalizeModelIdentifier(model string) string {
+	// If no organization is provided, assume the default org.
+	if !strings.Contains(model, "/") {
+		model = defaultOrg + "/" + model
+	}
+
+	// If no tag is provided, assume the default tag.
+	if !strings.Contains(model, ":") {
+		model = model + ":" + defaultTag
+	}
+
+	return model
+}
+
 // requireExactArgs returns a cobra.PositionalArgs validator that ensures exactly n arguments are provided
 func requireExactArgs(n int, cmdName string, usageArgs string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
