@@ -239,25 +239,27 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	// Normalize the model reference
 	reference = c.normalizeModelName(reference)
 
-	// Fast-path: if the model already exists locally by normalized reference,
-	// do not hit the registry or re-download.
-	if localModel, err := c.store.Read(reference); err == nil {
-		c.log.Infoln("Model found in local store by tag:", utils.SanitizeForLog(reference))
+	// Fast-path only for immutable digest references.
+	// Tags may be mutable and must be checked against the registry.
+	if strings.Contains(reference, "@") {
+		if localModel, err := c.store.Read(reference); err == nil {
+			c.log.Infoln("Model found in local store by digest:", utils.SanitizeForLog(reference))
 
-		cfg, err := localModel.Config()
-		if err != nil {
-			return fmt.Errorf("getting cached model config: %w", err)
+			cfg, err := localModel.Config()
+			if err != nil {
+				return fmt.Errorf("getting cached model config: %w", err)
+			}
+
+			if err := progress.WriteSuccess(
+				progressWriter,
+				fmt.Sprintf("Using cached model: %s", cfg.GetSize()),
+				oci.ModePull,
+			); err != nil {
+				c.log.Warnf("Writing progress: %v", err)
+			}
+
+			return nil
 		}
-
-		if err := progress.WriteSuccess(
-			progressWriter,
-			fmt.Sprintf("Using cached model: %s", cfg.GetSize()),
-			oci.ModePull,
-		); err != nil {
-			c.log.Warnf("Writing progress: %v", err)
-		}
-
-		return nil
 	}
 
 	c.log.Infoln("Starting model pull:", utils.SanitizeForLog(reference))
