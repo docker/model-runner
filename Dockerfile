@@ -111,6 +111,27 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 
 RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
+# --- vLLM ROCm variant ---
+FROM llamacpp AS vllm-rocm
+
+ARG VLLM_VERSION=0.15.1
+
+USER root
+
+RUN apt update && apt install -y python3 python3-venv python3-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
+
+USER modelrunner
+
+# Install uv and vLLM with ROCm support
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ~/.local/bin/uv venv --python /usr/bin/python3 --system-site-packages /opt/vllm-env \
+    && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python \
+    vllm==${VLLM_VERSION} --extra-index-url https://wheels.vllm.ai/rocm/
+
+RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
+
 # --- SGLang variant ---
 FROM llamacpp AS sglang
 
@@ -203,6 +224,10 @@ FROM llamacpp AS final-llamacpp
 COPY --from=builder /app/model-runner /app/model-runner
 
 FROM vllm AS final-vllm
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner
+
+FROM vllm-rocm AS final-vllm-rocm
 # Copy the built binary from builder
 COPY --from=builder /app/model-runner /app/model-runner
 

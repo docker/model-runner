@@ -5,8 +5,10 @@ LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
+VLLM_ROCM_BASE_IMAGE := rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.6.0
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
+DOCKER_IMAGE_VLLM_ROCM := docker/model-runner:latest-vllm-rocm
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
 DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
 DOCKER_TARGET ?= final-llamacpp
@@ -26,7 +28,7 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-vllm-rocm docker-run-vllm-rocm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers
 # Default target
 .DEFAULT_GOAL := build
 
@@ -106,6 +108,18 @@ docker-build-vllm:
 docker-run-vllm: docker-build-vllm
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
 
+# Build vLLM ROCm Docker image
+docker-build-vllm-rocm:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-vllm-rocm \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM) \
+		LLAMA_SERVER_VARIANT=rocm \
+		BASE_IMAGE=$(VLLM_ROCM_BASE_IMAGE)
+
+# Run vLLM ROCm Docker container with TCP port access and mounted model storage
+docker-run-vllm-rocm: docker-build-vllm-rocm
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM)
+
 # Build SGLang Docker image
 docker-build-sglang:
 	@$(MAKE) docker-build \
@@ -160,6 +174,8 @@ help:
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
 	@echo "  docker-build-vllm		- Build vLLM Docker image"
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
+	@echo "  docker-build-vllm-rocm	- Build vLLM ROCm Docker image"
+	@echo "  docker-run-vllm-rocm		- Run vLLM ROCm Docker container"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
 	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
