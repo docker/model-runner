@@ -24,3 +24,9 @@ func SupportsDiffusers() bool {
 	// return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
 	return runtime.GOOS == "linux" // Support for macOS disabled for now until we design a solution to distribute it via Docker Desktop.
 }
+
+// SupportsVLLMMetal returns true if vllm-metal is supported on the current platform.
+// vllm-metal requires macOS with ARM64 architecture (Apple Silicon) for Metal acceleration.
+func SupportsVLLMMetal() bool {
+	return runtime.GOOS == "darwin" && runtime.GOARCH == "arm64"
+}
