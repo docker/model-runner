@@ -743,11 +743,7 @@ func newRunCmd() *cobra.Command {
 
 			// Handle --detach flag: just load the model without interaction
 			if detach {
-				// Make a minimal request to load the model into memory
-				err := desktopClient.Chat(model, "", nil, func(content string) {
-					// Silently discard output in detach mode
-				}, false)
-				if err != nil {
+				if err := desktopClient.Preload(cmd.Context(), model); err != nil {
 					return handleClientError(err, "Failed to load model")
 				}
 				if debug {
@@ -763,6 +759,14 @@ func newRunCmd() *cobra.Command {
 				cmd.Println()
 				return nil
 			}
+
+			// For interactive mode, eagerly load the model in the background
+			// while the user types their first query
+			go func() {
+				if err := desktopClient.Preload(cmd.Context(), model); err != nil {
+					cmd.PrintErrf("background model preload failed: %v\n", err)
+				}
+			}()
 
 			// Initialize termenv with color caching before starting interactive session.
 			// This queries the terminal background color once and caches it, preventing

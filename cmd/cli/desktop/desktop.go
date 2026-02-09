@@ -350,6 +350,45 @@ func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(
 	return c.ChatWithContext(context.Background(), model, prompt, imageURLs, outputFunc, shouldUseMarkdown)
 }
 
+// Preload loads a model into memory without running inference.
+// The model stays loaded for the idle timeout period.
+func (c *Client) Preload(ctx context.Context, model string) error {
+	reqBody := OpenAIChatRequest{
+		Model:    model,
+		Messages: []OpenAIChatMessage{},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	completionsPath := c.modelRunner.OpenAIPathPrefix() + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.modelRunner.URL(completionsPath), bytes.NewReader(jsonData))
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "docker-model-cli/"+Version)
+	req.Header.Set("X-Preload-Only", "true")
+
+	resp, err := c.modelRunner.Client().Do(req)
+	if err != nil {
+		return c.handleQueryError(err, completionsPath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("preload failed with status %d and could not read response body: %w", resp.StatusCode, err)
+		}
+		return fmt.Errorf("preload failed: status=%d body=%s", resp.StatusCode, body)
+	}
+
+	return nil
+}
+
 // ChatWithMessagesContext performs a chat request with conversation history and returns the assistant's response.
 // This allows maintaining conversation context across multiple exchanges.
 func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conversationHistory []OpenAIChatMessage, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) (string, error) {
@@ -897,5 +936,68 @@ func (c *Client) LoadModel(ctx context.Context, r io.Reader) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("load failed with status %s: %s", resp.Status, string(body))
 	}
+	return nil
+}
+
+func (c *Client) ExportModel(ctx context.Context, model string) (io.ReadCloser, error) {
+	exportPath := fmt.Sprintf("%s/%s/export", inference.ModelsPrefix, model)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.modelRunner.URL(exportPath), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "docker-model-cli/"+Version)
+
+	resp, err := c.modelRunner.Client().Do(req)
+	if err != nil {
+		return nil, c.handleQueryError(err, exportPath)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, errors.Wrap(ErrNotFound, model)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("export failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return resp.Body, nil
+}
+
+type RepackageOptions struct {
+	ContextSize *uint64 `json:"context_size,omitempty"`
+}
+
+func (c *Client) RepackageModel(ctx context.Context, source, target string, opts RepackageOptions) error {
+	repackagePath := fmt.Sprintf("%s/%s/repackage", inference.ModelsPrefix, source)
+
+	reqBody := struct {
+		Target      string  `json:"target"`
+		ContextSize *uint64 `json:"context_size,omitempty"`
+	}{
+		Target:      target,
+		ContextSize: opts.ContextSize,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	resp, err := c.doRequestWithAuthContext(ctx, http.MethodPost, repackagePath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, repackagePath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return errors.Wrap(ErrNotFound, source)
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("repackage failed with status %s: %s", resp.Status, string(body))
+	}
+
 	return nil
 }

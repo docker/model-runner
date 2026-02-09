@@ -17,7 +17,16 @@ type Layer struct {
 	oci.Descriptor
 }
 
+// NewLayer creates a new layer from a file path.
+// The AnnotationFilePath annotation is set to the basename of the file.
 func NewLayer(path string, mt oci.MediaType) (*Layer, error) {
+	return NewLayerWithRelativePath(path, filepath.Base(path), mt)
+}
+
+// NewLayerWithRelativePath creates a new layer with a custom relative path annotation.
+// The relativePath parameter allows preserving nested directory structure (e.g., "text_encoder/model.safetensors").
+// This relative path is stored in the AnnotationFilePath annotation and used during unpacking.
+func NewLayerWithRelativePath(path string, relativePath string, mt oci.MediaType) (*Layer, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -51,9 +60,12 @@ func NewLayer(path string, mt oci.MediaType) (*Layer, error) {
 		return nil, err
 	}
 
+	// Normalize relative path to use forward slashes for cross-platform compatibility
+	normalizedPath := filepath.ToSlash(relativePath)
+
 	// Create annotations
 	annotations := map[string]string{
-		types.AnnotationFilePath:          filepath.Base(path),
+		types.AnnotationFilePath:          normalizedPath,
 		types.AnnotationFileMetadata:      string(metadataJSON),
 		types.AnnotationMediaTypeUntested: "false", // Media types are tested in this implementation
 	}
@@ -91,4 +103,16 @@ func (l Layer) Size() (int64, error) {
 
 func (l Layer) MediaType() (oci.MediaType, error) {
 	return l.Descriptor.MediaType, nil
+}
+
+// GetDescriptor returns the full descriptor including annotations.
+// This allows accessing the AnnotationFilePath during unpacking.
+func (l Layer) GetDescriptor() oci.Descriptor {
+	return l.Descriptor
+}
+
+// GetPath returns the local file path of the layer.
+// This is used during unpacking to enable hard linking instead of copying.
+func (l Layer) GetPath() string {
+	return l.Path
 }

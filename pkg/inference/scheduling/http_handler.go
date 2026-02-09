@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/inference"
@@ -18,6 +20,10 @@ import (
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/middleware"
 )
+
+type contextKey bool
+
+const preloadOnlyKey contextKey = false
 
 // HTTPHandler handles HTTP requests for the scheduler.
 // It wraps the Scheduler to provide HTTP endpoint functionality without
@@ -223,6 +229,12 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	}
 	defer h.scheduler.loader.release(runner)
 
+	// If this is a preload-only request, return here without running inference.
+	// Can be triggered via context (internal) or X-Preload-Only header (external).
+	if r.Context().Value(preloadOnlyKey) != nil || r.Header.Get("X-Preload-Only") == "true" {
+		return
+	}
+
 	// Record the request in the OpenAI recorder.
 	recordID := h.scheduler.openAIRecorder.RecordRequest(request.Model, r, body)
 	w = h.scheduler.openAIRecorder.NewResponseRecorder(w)
@@ -357,7 +369,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.scheduler.ConfigureRunner(r.Context(), backend, configureRequest, r.UserAgent())
+	backend, err = h.scheduler.ConfigureRunner(r.Context(), backend, configureRequest, r.UserAgent())
 	if err != nil {
 		if errors.Is(err, errRunnerAlreadyActive) {
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -366,6 +378,37 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Preload the model in the background by calling handleOpenAIInference with preload-only context.
+	// This makes Compose preload the model as well as it calls `configure` by default.
+	go func() {
+		preloadBody, err := json.Marshal(OpenAIInferenceRequest{Model: configureRequest.Model})
+		if err != nil {
+			h.scheduler.log.Warnf("failed to marshal preload request body: %v", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		preloadReq, err := http.NewRequestWithContext(
+			context.WithValue(ctx, preloadOnlyKey, true),
+			http.MethodPost,
+			inference.InferencePrefix+"/v1/chat/completions",
+			bytes.NewReader(preloadBody),
+		)
+		if err != nil {
+			h.scheduler.log.Warnf("failed to create preload request: %v", err)
+			return
+		}
+		preloadReq.Header.Set("User-Agent", r.UserAgent())
+		if backend != nil {
+			preloadReq.SetPathValue("backend", backend.Name())
+		}
+		recorder := httptest.NewRecorder()
+		h.handleOpenAIInference(recorder, preloadReq)
+		if recorder.Code != http.StatusOK {
+			h.scheduler.log.Warnf("background model preload failed with status %d: %s", recorder.Code, recorder.Body.String())
+		}
+	}()
 
 	w.WriteHeader(http.StatusAccepted)
 }

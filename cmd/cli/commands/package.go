@@ -214,7 +214,7 @@ type builderInitResult struct {
 }
 
 // initializeBuilder creates a package builder from GGUF, Safetensors, DDUF, or existing model
-func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitResult, error) {
+func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) (*builderInitResult, error) {
 	result := &builderInitResult{}
 
 	if opts.fromModel != "" {
@@ -238,10 +238,14 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 		// Package from existing model
 		cmd.PrintErrf("Reading model from store: %q\n", opts.fromModel)
 
-		// Get the model from the local store
 		mdl, err := distClient.GetModel(opts.fromModel)
 		if err != nil {
-			return nil, fmt.Errorf("get model from store: %w", err)
+			cmd.PrintErrf("Model not found in local store, fetching from daemon...\n")
+
+			mdl, result.distClient, result.cleanupFunc, err = fetchModelFromDaemon(ctx, cmd, client, opts.fromModel)
+			if err != nil {
+				return nil, fmt.Errorf("get model from store: %w", err)
+			}
 		}
 
 		// Type assert to ModelArtifact - the Model from store implements both interfaces
@@ -306,7 +310,74 @@ func initializeBuilder(cmd *cobra.Command, opts packageOptions) (*builderInitRes
 	return result, nil
 }
 
+func fetchModelFromDaemon(ctx context.Context, cmd *cobra.Command, client *desktop.Client, modelRef string) (types.Model, *distribution.Client, func(), error) {
+	exportReader, err := client.ExportModel(ctx, modelRef)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("export model from daemon: %w", err)
+	}
+	defer exportReader.Close()
+
+	tempDir, err := os.MkdirTemp("", "docker-model-package-*")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create temp directory: %w", err)
+	}
+	cleanup := func() {
+		os.RemoveAll(tempDir)
+	}
+
+	tempClient, err := distribution.NewClient(distribution.WithStoreRootPath(tempDir))
+	if err != nil {
+		cleanup()
+		return nil, nil, nil, fmt.Errorf("create temp distribution client: %w", err)
+	}
+
+	cmd.PrintErrf("Loading model from daemon...\n")
+	modelID, err := tempClient.LoadModel(exportReader, nil)
+	if err != nil {
+		cleanup()
+		return nil, nil, nil, fmt.Errorf("load model into temp store: %w", err)
+	}
+
+	mdl, err := tempClient.GetModel(modelID)
+	if err != nil {
+		cleanup()
+		return nil, nil, nil, fmt.Errorf("get model from temp store: %w", err)
+	}
+
+	return mdl, tempClient, cleanup, nil
+}
+
 func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) error {
+	// Use daemon-side repackaging for simple config-only changes (no new layers)
+	canUseDaemonRepackage := opts.fromModel != "" &&
+		!opts.push &&
+		len(opts.licensePaths) == 0 &&
+		opts.chatTemplatePath == "" &&
+		opts.mmprojPath == "" &&
+		len(opts.dirTarPaths) == 0 &&
+		cmd.Flags().Changed("context-size")
+
+	if canUseDaemonRepackage {
+		cmd.PrintErrf("Reading model from daemon: %q\n", opts.fromModel)
+		cmd.PrintErrf("Setting context size %d\n", opts.contextSize)
+		cmd.PrintErrln("Creating lightweight model variant...")
+
+		// Ensure standalone runner is available
+		if _, err := ensureStandaloneRunnerAvailable(ctx, asPrinter(cmd), false); err != nil {
+			return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+		}
+
+		repackageOpts := desktop.RepackageOptions{
+			ContextSize: &opts.contextSize,
+		}
+		if err := client.RepackageModel(ctx, opts.fromModel, opts.tag, repackageOpts); err != nil {
+			return fmt.Errorf("failed to create lightweight model: %w", err)
+		}
+
+		cmd.PrintErrln("Model variant created successfully")
+		return nil
+	}
+
 	var (
 		target builder.Target
 		err    error
@@ -327,7 +398,7 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 	}
 
 	// Initialize the package builder based on model format
-	initResult, err := initializeBuilder(cmd, opts)
+	initResult, err := initializeBuilder(ctx, cmd, client, opts)
 	if err != nil {
 		return err
 	}

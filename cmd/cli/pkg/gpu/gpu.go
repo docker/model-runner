@@ -25,34 +25,42 @@ const (
 
 // ProbeGPUSupport determines whether or not the Docker engine has GPU support.
 func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (GPUSupport, error) {
-	// Check for ROCm runtime first
-	if hasROCm, err := HasROCmRuntime(ctx, dockerClient); err == nil && hasROCm {
-		return GPUSupportROCm, nil
+	// Query Docker Engine for its effective configuration.
+	// Docker Info is the source of truth for which runtimes are actually usable.
+	info, err := dockerClient.Info(ctx)
+	if err != nil {
+		// Preserve best-effort behavior: if Docker Info is unavailable (e.g. in
+		// restricted or degraded environments), do not treat this as a hard failure.
+		// Instead, assume no GPU support and allow callers to continue.
+		return GPUSupportNone, nil
 	}
 
-	// Then check for MTHREADS runtime
-	if hasMTHREADS, err := HasMTHREADSRuntime(ctx, dockerClient); err == nil && hasMTHREADS {
-		return GPUSupportMUSA, nil
+	// Runtimes are checked in priority order, from highest to lowest.
+	// The first matching runtime determines the selected GPU support.
+	supportedRuntimes := []struct {
+		name    string
+		support GPUSupport
+	}{
+		{"nvidia", GPUSupportCUDA},   // 1. CUDA (NVIDIA)
+		{"rocm", GPUSupportROCm},     // 2. ROCm (AMD)
+		{"mthreads", GPUSupportMUSA}, // 3. MUSA (MThreads)
+		{"cann", GPUSupportCANN},     // 4. Ascend CANN (Huawei)
 	}
-	// Check for CANN runtime first
-	if hasCANN, err := HasCANNRuntime(ctx, dockerClient); err == nil && hasCANN {
-		return GPUSupportCANN, nil
+
+	for _, r := range supportedRuntimes {
+		if _, ok := info.Runtimes[r.name]; ok {
+			return r.support, nil
+		}
 	}
-	// Then search for nvidia-container-runtime on PATH
+
+	// Legacy fallback
+	// Older Docker setups may not register the NVIDIA runtime explicitly,
+	// but still have the legacy nvidia-container-runtime available on PATH.
 	if _, err := exec.LookPath("nvidia-container-runtime"); err == nil {
 		return GPUSupportCUDA, nil
 	}
 
-	// Next look for explicitly configured nvidia runtime. This is not required in Docker 19.03+ but
-	// may be configured on some systems
-	hasNvidia, err := HasNVIDIARuntime(ctx, dockerClient)
-	if err != nil {
-		return GPUSupportNone, err
-	}
-	if hasNvidia {
-		return GPUSupportCUDA, nil
-	}
-
+	// No known GPU runtime detected.
 	return GPUSupportNone, nil
 }
 

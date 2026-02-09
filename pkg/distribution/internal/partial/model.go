@@ -14,6 +14,10 @@ import (
 type BaseModel struct {
 	ModelConfigFile types.ConfigFile
 	LayerList       []oci.Layer
+	// ConfigMediaType specifies the media type for the config descriptor.
+	// If empty, defaults to MediaTypeModelConfigV01 for backward compatibility.
+	// Set to MediaTypeModelConfigV02 for layer-per-file packaging (FromDirectory).
+	ConfigMediaType oci.MediaType
 }
 
 var _ types.ModelArtifact = &BaseModel{}
@@ -124,4 +128,10 @@ func (m *BaseModel) Config() (types.ModelConfig, error) {
 
 func (m *BaseModel) Descriptor() (types.Descriptor, error) {
 	return Descriptor(m)
+}
+
+// GetConfigMediaType returns the config media type for the model.
+// If not set, returns empty string and ManifestForLayers will default to V0.1.
+func (m *BaseModel) GetConfigMediaType() oci.MediaType {
+	return m.ConfigMediaType
 }

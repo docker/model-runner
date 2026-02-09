@@ -191,6 +191,11 @@ func matchesMediaType(layerMT, targetMT oci.MediaType) bool {
 	}
 }
 
+// WithConfigMediaType provides access to the config media type version.
+type WithConfigMediaType interface {
+	GetConfigMediaType() oci.MediaType
+}
+
 func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 	raw, err := i.RawConfigFile()
 	if err != nil {
@@ -200,8 +205,17 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compute config hash: %w", err)
 	}
+
+	// Use the config media type from the model if available, otherwise default to V0.1
+	configMediaType := types.MediaTypeModelConfigV01
+	if cmt, ok := i.(WithConfigMediaType); ok {
+		if mt := cmt.GetConfigMediaType(); mt != "" {
+			configMediaType = mt
+		}
+	}
+
 	cfgDsc := oci.Descriptor{
-		MediaType: types.MediaTypeModelConfigV01,
+		MediaType: configMediaType,
 		Size:      int64(len(raw)),
 		Digest:    cfgHash,
 	}

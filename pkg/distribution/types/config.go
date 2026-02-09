@@ -10,8 +10,15 @@ import (
 type MediaType = oci.MediaType
 
 const (
-	// MediaTypeModelConfigV01 is the media type for the model config json.
+	// MediaTypeModelConfigV01 is the media type for the model config json (legacy format).
+	// V0.1 uses model.GGUFPaths(), model.SafetensorsPaths(), etc. for unpacking.
 	MediaTypeModelConfigV01 MediaType = "application/vnd.docker.ai.model.config.v0.1+json"
+
+	// MediaTypeModelConfigV02 is the media type for models using the layer-per-file approach.
+	// V0.2 packages each file as an individual layer with filepath annotations.
+	// This format preserves nested directory structure (e.g., text_encoder/model.safetensors).
+	// Used by builder.FromDirectory.
+	MediaTypeModelConfigV02 MediaType = "application/vnd.docker.ai.model.config.v0.2+json"
 
 	// MediaTypeGGUF indicates a file in GGUF version 3 format, containing a tensor model.
 	MediaTypeGGUF MediaType = "application/vnd.docker.ai.gguf.v3"
@@ -36,6 +43,10 @@ const (
 
 	// MediaTypeChatTemplate indicates a Jinja chat template
 	MediaTypeChatTemplate MediaType = "application/vnd.docker.ai.chat.template.jinja"
+
+	// MediaTypeModelFile indicates a generic model-related file (config, tokenizer, etc.)
+	// The actual file path is stored in the AnnotationFilePath annotation.
+	MediaTypeModelFile MediaType = "application/vnd.docker.ai.model.file"
 
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")

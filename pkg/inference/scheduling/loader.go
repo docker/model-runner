@@ -436,6 +436,22 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		}
 	}
 
+	// If no explicit config exists, create a default one with the model's context size
+	// so that the OpenAI recorder can report the actual configuration being used.
+	if runnerConfig == nil {
+		defaultConfig := inference.BackendConfiguration{}
+		if l.modelManager != nil {
+			if bundle, err := l.modelManager.GetBundle(modelID); err != nil {
+				l.log.Warnf("Failed to get bundle for model %s to determine default context size: %v", modelID, err)
+			} else if runtimeConfig := bundle.RuntimeConfig(); runtimeConfig != nil {
+				if ctxSize := runtimeConfig.GetContextSize(); ctxSize != nil {
+					defaultConfig.ContextSize = ctxSize
+				}
+			}
+		}
+		runnerConfig = &defaultConfig
+	}
+
 	l.log.Infof("Loading %s backend runner with model %s in %s mode", backendName, modelID, mode)
 
 	// Acquire the loader lock and defer its release.

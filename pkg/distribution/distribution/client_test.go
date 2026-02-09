@@ -1140,3 +1140,56 @@ func randomFile(size int64) (string, error) {
 
 	return f.Name(), nil
 }
+
+func TestPullHuggingFaceModelFromCache(t *testing.T) {
+	testCases := []struct {
+		name    string
+		pullRef string
+	}{
+		{
+			name:    "full URL",
+			pullRef: "huggingface.co/testorg/testmodel:latest",
+		},
+		{
+			name:    "short URL",
+			pullRef: "hf.co/testorg/testmodel:latest",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			// Create client
+			client, err := newTestClient(tempDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Create a test model and write it to the store with a normalized HuggingFace tag
+			model, err := gguf.NewModel(testGGUFFile)
+			if err != nil {
+				t.Fatalf("Failed to create model: %v", err)
+			}
+
+			// Store with normalized tag (huggingface.co)
+			hfTag := "huggingface.co/testorg/testmodel:latest"
+			if err := client.store.Write(model, []string{hfTag}, nil); err != nil {
+				t.Fatalf("Failed to write model to store: %v", err)
+			}
+
+			// Now try to pull using the test case's reference - it should use the cache
+			var progressBuffer bytes.Buffer
+			err = client.PullModel(t.Context(), tc.pullRef, &progressBuffer)
+			if err != nil {
+				t.Fatalf("Failed to pull model from cache: %v", err)
+			}
+
+			// Verify that progress shows it was cached
+			progressOutput := progressBuffer.String()
+			if !strings.Contains(progressOutput, "Using cached model") {
+				t.Errorf("Expected progress to indicate cached model, got: %s", progressOutput)
+			}
+		})
+	}
+}

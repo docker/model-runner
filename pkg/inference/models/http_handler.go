@@ -84,7 +84,7 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		"POST " + inference.ModelsPrefix + "/create":                          h.handleCreateModel,
 		"POST " + inference.ModelsPrefix + "/load":                            h.handleLoadModel,
 		"GET " + inference.ModelsPrefix:                                       h.handleGetModels,
-		"GET " + inference.ModelsPrefix + "/{name...}":                        h.handleGetModel,
+		"GET " + inference.ModelsPrefix + "/{nameAndAction...}":               h.handleModelGetAction,
 		"DELETE " + inference.ModelsPrefix + "/{name...}":                     h.handleDeleteModel,
 		"POST " + inference.ModelsPrefix + "/{nameAndAction...}":              h.handleModelAction,
 		"DELETE " + inference.ModelsPrefix + "/purge":                         h.handlePurge,
@@ -142,6 +142,35 @@ func (h *HTTPHandler) handleLoadModel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *HTTPHandler) handleModelGetAction(w http.ResponseWriter, r *http.Request) {
+	nameAndAction := r.PathValue("nameAndAction")
+	model, action := path.Split(nameAndAction)
+	model = strings.TrimRight(model, "/")
+
+	if action == "export" {
+		h.handleExportModel(w, r, model)
+		return
+	}
+
+	h.handleGetModelByRef(w, r, nameAndAction)
+}
+
+func (h *HTTPHandler) handleExportModel(w http.ResponseWriter, r *http.Request, modelRef string) {
+	w.Header().Set("Content-Type", "application/x-tar")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", modelRef+".tar"))
+
+	err := h.manager.Export(modelRef, w)
+	if err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		h.log.Warnln("Error while exporting model:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 // handleGetModels handles GET <inference-prefix>/models requests.
 func (h *HTTPHandler) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	apiModels, err := h.manager.List()
@@ -160,7 +189,10 @@ func (h *HTTPHandler) handleGetModels(w http.ResponseWriter, r *http.Request) {
 // handleGetModel handles GET <inference-prefix>/models/{name} requests.
 func (h *HTTPHandler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 	modelRef := r.PathValue("name")
+	h.handleGetModelByRef(w, r, modelRef)
+}
 
+func (h *HTTPHandler) handleGetModelByRef(w http.ResponseWriter, r *http.Request, modelRef string) {
 	// Parse remote query parameter
 	remote := false
 	if r.URL.Query().Has("remote") {
@@ -355,10 +387,8 @@ func (h *HTTPHandler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// handleTagModel handles POST <inference-prefix>/models/{nameAndAction} requests.
-// Action is one of:
-// - tag: tag the model with a repository and tag (e.g. POST <inference-prefix>/models/my-org/my-repo:latest/tag})
-// - push: pushes a tagged model to the registry
+// handleModelAction handles POST <inference-prefix>/models/{nameAndAction} requests.
+// Actions: tag, push, repackage
 func (h *HTTPHandler) handleModelAction(w http.ResponseWriter, r *http.Request) {
 	model, action := path.Split(r.PathValue("nameAndAction"))
 	model = strings.TrimRight(model, "/")
@@ -368,6 +398,8 @@ func (h *HTTPHandler) handleModelAction(w http.ResponseWriter, r *http.Request) 
 		h.handleTagModel(w, r, model)
 	case "push":
 		h.handlePushModel(w, r, model)
+	case "repackage":
+		h.handleRepackageModel(w, r, model)
 	default:
 		http.Error(w, fmt.Sprintf("unknown action %q", action), http.StatusNotFound)
 	}
@@ -435,6 +467,49 @@ func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, mo
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+type RepackageRequest struct {
+	Target      string  `json:"target"`
+	ContextSize *uint64 `json:"context_size,omitempty"`
+}
+
+func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Request, model string) {
+	var req RepackageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Target == "" {
+		http.Error(w, "target is required", http.StatusBadRequest)
+		return
+	}
+
+	opts := RepackageOptions{
+		ContextSize: req.ContextSize,
+	}
+
+	if err := h.manager.Repackage(model, req.Target, opts); err != nil {
+		if errors.Is(err, distribution.ErrModelNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		h.log.Warnf("Failed to repackage model %q: %v", utils.SanitizeForLog(model, -1), err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	response := map[string]string{
+		"message": fmt.Sprintf("Model repackaged successfully as %q", req.Target),
+		"source":  model,
+		"target":  req.Target,
+	}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.log.Warnln("Error while encoding repackage response:", err)
 	}
 }
 

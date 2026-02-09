@@ -11,6 +11,7 @@ Docker Model Runner
 | [`df`](model_df.md)                             | Show Docker Model Runner disk usage                                                                        |
 | [`inspect`](model_inspect.md)                   | Display detailed information on one model                                                                  |
 | [`install-runner`](model_install-runner.md)     | Install Docker Model Runner (Docker Engine only)                                                           |
+| [`launch`](model_launch.md)                     | Launch an app configured to use Docker Model Runner                                                        |
 | [`list`](model_list.md)                         | List the models pulled to your local environment                                                           |
 | [`logs`](model_logs.md)                         | Fetch the Docker Model Runner logs                                                                         |
 | [`package`](model_package.md)                   | Package a GGUF file, Safetensors directory, DDUF file, or existing model into a Docker model OCI artifact. |
@@ -24,6 +25,8 @@ Docker Model Runner
 | [`rm`](model_rm.md)                             | Remove local models downloaded from Docker Hub                                                             |
 | [`run`](model_run.md)                           | Run a model and interact with it using a submitted prompt or chat mode                                     |
 | [`search`](model_search.md)                     | Search for models on Docker Hub and HuggingFace                                                            |
+| [`show`](model_show.md)                         | Show information for a model                                                                               |
+| [`skills`](model_skills.md)                     | Install Docker Model Runner skills for AI coding assistants                                                |
 | [`start-runner`](model_start-runner.md)         | Start Docker Model Runner (Docker Engine only)                                                             |
 | [`status`](model_status.md)                     | Check if the Docker Model Runner is running                                                                |
 | [`stop-runner`](model_stop-runner.md)           | Stop Docker Model Runner (Docker Engine only)                                                              |

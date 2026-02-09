@@ -30,12 +30,13 @@ func (s *LocalStore) BundleForModel(ref string) (types.ModelBundle, error) {
 		return nil, fmt.Errorf("get model ID: %w", err)
 	}
 	path := s.bundlePath(dgst)
-	if bdl, err := bundle.Parse(path); err != nil {
+	bdl, err := bundle.Parse(path)
+	if err != nil {
 		// create for first time or replace bad/corrupted bundle
 		return s.createBundle(path, mdl)
-	} else {
-		return bdl, nil
 	}
+
+	return bdl, nil
 }
 
 // createBundle unpacks the bundle to path, replacing existing bundle if one is found

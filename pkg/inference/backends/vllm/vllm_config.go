@@ -45,8 +45,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	case inference.BackendModeCompletion:
 		// Default mode for vLLM
 	case inference.BackendModeEmbedding:
-		// vLLM doesn't have a specific embedding flag like llama.cpp
-		// Embedding models are detected automatically
+		// Use pooling runner for embedding models
+		args = append(args, "--runner", "pooling")
 	case inference.BackendModeReranking:
 		// vLLM does not have a specific flag for reranking
 	case inference.BackendModeImageGeneration:

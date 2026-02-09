@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -74,14 +75,49 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
-// ListFiles returns all files in a repository at a given revision
+// ListFiles returns all files in a repository at a given revision, recursively traversing all directories
 func (c *Client) ListFiles(ctx context.Context, repo, revision string) ([]RepoFile, error) {
 	if revision == "" {
 		revision = "main"
 	}
 
+	return c.listFilesRecursive(ctx, repo, revision, "")
+}
+
+// listFilesRecursive recursively lists all files starting from the given path
+func (c *Client) listFilesRecursive(ctx context.Context, repo, revision, filePath string) ([]RepoFile, error) {
+	entries, err := c.ListFilesInPath(ctx, repo, revision, filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var allFiles []RepoFile
+	for _, entry := range entries {
+		switch entry.Type {
+		case "file":
+			allFiles = append(allFiles, entry)
+		case "directory":
+			// Recursively list files in subdirectory
+			subFiles, err := c.listFilesRecursive(ctx, repo, revision, entry.Path)
+			if err != nil {
+				return nil, fmt.Errorf("list files in %s: %w", entry.Path, err)
+			}
+			allFiles = append(allFiles, subFiles...)
+		}
+	}
+
+	return allFiles, nil
+}
+
+// ListFilesInPath returns files and directories at a specific path in the repository
+func (c *Client) ListFilesInPath(ctx context.Context, repo, revision, filePath string) ([]RepoFile, error) {
+	if revision == "" {
+		revision = "main"
+	}
+
 	// HuggingFace API endpoint for listing files
-	url := fmt.Sprintf("%s/api/models/%s/tree/%s", c.baseURL, repo, revision)
+	endpointPath := path.Join(revision, filePath)
+	url := fmt.Sprintf("%s/api/models/%s/tree/%s", c.baseURL, repo, endpointPath)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
