@@ -1141,6 +1141,94 @@ func randomFile(size int64) (string, error) {
 	return f.Name(), nil
 }
 
+func TestMigrateHFTagsOnClientInit(t *testing.T) {
+	testCases := []struct {
+		name          string
+		storedTag     string
+		lookupRef     string
+		shouldMigrate bool
+	}{
+		{
+			name:          "hf.co tag migrated to huggingface.co on init",
+			storedTag:     "hf.co/testorg/testmodel:latest",
+			lookupRef:     "hf.co/testorg/testmodel",
+			shouldMigrate: true,
+		},
+		{
+			name:          "hf.co tag with quantization migrated",
+			storedTag:     "hf.co/bartowski/llama-3.2-1b-instruct-gguf:Q4_K_M",
+			lookupRef:     "hf.co/bartowski/llama-3.2-1b-instruct-gguf:Q4_K_M",
+			shouldMigrate: true,
+		},
+		{
+			name:          "huggingface.co tag unchanged",
+			storedTag:     "huggingface.co/testorg/testmodel:latest",
+			lookupRef:     "huggingface.co/testorg/testmodel",
+			shouldMigrate: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			// Step 1: Create a client and write a model with the legacy tag
+			setupClient, err := newTestClient(tempDir)
+			if err != nil {
+				t.Fatalf("Failed to create setup client: %v", err)
+			}
+
+			model, err := gguf.NewModel(testGGUFFile)
+			if err != nil {
+				t.Fatalf("Failed to create model: %v", err)
+			}
+
+			if err := setupClient.store.Write(model, []string{tc.storedTag}, nil); err != nil {
+				t.Fatalf("Failed to write model to store: %v", err)
+			}
+
+			// Step 2: Create a NEW client (simulating restart) - migration should happen
+			client, err := newTestClient(tempDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Step 3: Verify the model can be found using the reference
+			// (normalizeModelName converts hf.co -> huggingface.co, and migration should have updated the store)
+			foundModel, err := client.GetModel(tc.lookupRef)
+			if err != nil {
+				t.Fatalf("Failed to get model after migration: %v", err)
+			}
+
+			if foundModel == nil {
+				t.Fatal("Expected to find model after migration, got nil")
+			}
+
+			// Step 4: If the tag was hf.co, verify it was actually migrated in the store
+			if tc.shouldMigrate {
+				// The model should now have huggingface.co tag, not hf.co
+				tags := foundModel.Tags()
+				hasOldTag := false
+				hasNewTag := false
+				for _, tag := range tags {
+					if strings.Contains(tag, "hf.co/") && !strings.Contains(tag, "huggingface.co/") {
+						hasOldTag = true
+					}
+					if strings.Contains(tag, "huggingface.co/") {
+						hasNewTag = true
+					}
+				}
+				if hasOldTag {
+					t.Errorf("Model still has old hf.co tag after migration: %v", tags)
+				}
+				if !hasNewTag {
+					t.Errorf("Model doesn't have huggingface.co tag after migration: %v", tags)
+				}
+			}
+		})
+	}
+}
+
 func TestPullHuggingFaceModelFromCache(t *testing.T) {
 	testCases := []struct {
 		name    string

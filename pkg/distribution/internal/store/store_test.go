@@ -991,6 +991,82 @@ func TestResetStore(t *testing.T) {
 	}
 }
 
+func TestMigrateTags(t *testing.T) {
+	tempDir := t.TempDir()
+
+	storePath := filepath.Join(tempDir, "migrate-tags-store")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	// Write a model with an hf.co tag (simulating pre-migration state)
+	mdl := newTestModel(t)
+	if err := s.Write(mdl, []string{"hf.co/testorg/testmodel:latest"}, nil); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	// Write another model with a non-HF tag (should be unaffected)
+	mdl2Content := []byte("another model content")
+	mdl2Path := filepath.Join(tempDir, "other-model.gguf")
+	if err := os.WriteFile(mdl2Path, mdl2Content, 0644); err != nil {
+		t.Fatalf("Failed to write model file: %v", err)
+	}
+	mdl2, err := gguf.NewModel(mdl2Path)
+	if err != nil {
+		t.Fatalf("Failed to create model: %v", err)
+	}
+	if err := s.Write(mdl2, []string{"ai/some-model:latest"}, nil); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	// Run migration: hf.co/ -> huggingface.co/
+	migrated, err := s.MigrateTags(func(tag string) string {
+		if rest, found := strings.CutPrefix(tag, "hf.co/"); found {
+			return "huggingface.co/" + rest
+		}
+		return tag
+	})
+	if err != nil {
+		t.Fatalf("MigrateTags failed: %v", err)
+	}
+
+	if migrated != 1 {
+		t.Errorf("Expected 1 migrated tag, got %d", migrated)
+	}
+
+	// Verify the model can be found with the new tag
+	if _, err := s.Read("huggingface.co/testorg/testmodel:latest"); err != nil {
+		t.Fatalf("Failed to read model with migrated tag: %v", err)
+	}
+
+	// Verify the old tag no longer works
+	if _, err := s.Read("hf.co/testorg/testmodel:latest"); !errors.Is(err, store.ErrModelNotFound) {
+		t.Errorf("Expected ErrModelNotFound for old tag, got: %v", err)
+	}
+
+	// Verify the non-HF model is unaffected
+	if _, err := s.Read("ai/some-model:latest"); err != nil {
+		t.Fatalf("Non-HF model should be unaffected: %v", err)
+	}
+
+	// Running migration again should be a no-op
+	migrated2, err := s.MigrateTags(func(tag string) string {
+		if rest, found := strings.CutPrefix(tag, "hf.co/"); found {
+			return "huggingface.co/" + rest
+		}
+		return tag
+	})
+	if err != nil {
+		t.Fatalf("Second MigrateTags failed: %v", err)
+	}
+	if migrated2 != 0 {
+		t.Errorf("Expected 0 migrated tags on second run, got %d", migrated2)
+	}
+}
+
 func TestWriteLightweight(t *testing.T) {
 	tempDir := t.TempDir()
 

@@ -534,6 +534,39 @@ func (s *LocalStore) WriteLightweight(mdl oci.Image, tags []string) (err error) 
 	return nil
 }
 
+// MigrateTags applies a transformation function to all tags in the index.
+// If the function returns a different string, the tag is updated.
+// Returns the number of tags that were migrated.
+func (s *LocalStore) MigrateTags(transform func(string) string) (int, error) {
+	index, err := s.readIndex()
+	if err != nil {
+		return 0, fmt.Errorf("reading index for migration: %w", err)
+	}
+
+	migrated := 0
+	changed := false
+	for i, entry := range index.Models {
+		newTags := make([]string, len(entry.Tags))
+		for j, tag := range entry.Tags {
+			newTag := transform(tag)
+			if newTag != tag {
+				migrated++
+				changed = true
+			}
+			newTags[j] = newTag
+		}
+		index.Models[i].Tags = newTags
+	}
+
+	if changed {
+		if err := s.writeIndex(index); err != nil {
+			return 0, fmt.Errorf("writing migrated index: %w", err)
+		}
+	}
+
+	return migrated, nil
+}
+
 // Read reads a model from the store by reference (either tag or ID)
 func (s *LocalStore) Read(reference string) (*Model, error) {
 	models, err := s.List()

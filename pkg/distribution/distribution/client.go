@@ -103,11 +103,37 @@ func NewClient(opts ...Option) (*Client, error) {
 	}
 
 	options.logger.Infoln("Successfully initialized store")
-	return &Client{
+	c := &Client{
 		store:    s,
 		log:      options.logger,
 		registry: registryClient,
-	}, nil
+	}
+
+	// Migrate any legacy hf.co tags to huggingface.co
+	if err := c.migrateHFTags(); err != nil {
+		options.logger.Warnf("Failed to migrate HuggingFace tags: %v", err)
+	}
+
+	return c, nil
+}
+
+// migrateHFTags normalizes legacy hf.co/ tags in the store to huggingface.co/.
+// This handles models that were pulled before the hf.co normalization was added,
+// ensuring they can be found by the cache check in PullModel.
+func (c *Client) migrateHFTags() error {
+	migrated, err := c.store.MigrateTags(func(tag string) string {
+		if rest, found := strings.CutPrefix(tag, "hf.co/"); found {
+			return "huggingface.co/" + rest
+		}
+		return tag
+	})
+	if err != nil {
+		return err
+	}
+	if migrated > 0 {
+		c.log.Infof("Migrated %d HuggingFace tag(s) from hf.co to huggingface.co", migrated)
+	}
+	return nil
 }
 
 // normalizeModelName adds the default organization prefix (ai/) and tag (:latest) if missing.
