@@ -230,7 +230,7 @@ func TestLaunchHostAppDryRunOpenai(t *testing.T) {
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
 	// Use "ls" as a bin that exists in PATH
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, trustedBin("ls"), testBaseURL, cli, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -245,7 +245,7 @@ func TestLaunchHostAppDryRunCodex(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv("/v1")}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, trustedBin("ls"), testBaseURL, cli, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -260,7 +260,7 @@ func TestLaunchHostAppDryRunWithArgs(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, []string{"-m", "ai/qwen3"}, true)
+	err := launchHostApp(cmd, trustedBin("ls"), testBaseURL, cli, []string{"-m", "ai/qwen3"}, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -272,7 +272,7 @@ func TestLaunchHostAppDryRunAnthropic(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: anthropicEnv}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, trustedBin("ls"), testBaseURL, cli, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -290,7 +290,7 @@ func TestLaunchHostAppNotFound(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, trustedBin("nonexistent-binary-xyz"), testBaseURL, cli, nil, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 
@@ -307,7 +307,7 @@ func TestLaunchHostAppNotFoundNilEnvFn(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: nil}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, trustedBin("nonexistent-binary-xyz"), testBaseURL, cli, nil, false)
 	require.Error(t, err)
 
 	errOutput := stderr.String()
@@ -320,7 +320,7 @@ func TestLaunchUnconfigurableHostAppDryRun(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{configInstructions: openclawConfigInstructions}
-	err := launchUnconfigurableHostApp(cmd, "openclaw", testBaseURL, cli, nil, true)
+	err := launchUnconfigurableHostApp(cmd, binOpenclaw, testBaseURL, cli, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()

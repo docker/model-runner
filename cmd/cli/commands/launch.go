@@ -51,6 +51,19 @@ var containerApps = map[string]containerApp{
 	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openaiEnv(openaiPathSuffix)},
 }
 
+// trustedBin is an executable name that has been explicitly approved for use
+// with exec.Command. Only predefined constants below should be used.
+// The type is unexported to prevent construction outside this package.
+type trustedBin string
+
+const (
+	binDocker   trustedBin = "docker"
+	binClaude   trustedBin = "claude"
+	binCodex    trustedBin = "codex"
+	binOpenclaw trustedBin = "openclaw"
+	binOpencode trustedBin = "opencode"
+)
+
 // hostApp describes a native CLI app launched on the host.
 type hostApp struct {
 	envFn              func(baseURL string) []string
@@ -58,11 +71,11 @@ type hostApp struct {
 }
 
 // hostApps are launched as native executables on the host.
-var hostApps = map[string]hostApp{
-	"opencode": {envFn: openaiEnv(openaiPathSuffix)},
-	"codex":    {envFn: openaiEnv("/v1")},
-	"claude":   {envFn: anthropicEnv},
-	"openclaw": {configInstructions: openclawConfigInstructions},
+var hostApps = map[trustedBin]hostApp{
+	binOpencode: {envFn: openaiEnv(openaiPathSuffix)},
+	binCodex:    {envFn: openaiEnv("/v1")},
+	binClaude:   {envFn: anthropicEnv},
+	binOpenclaw: {configInstructions: openclawConfigInstructions},
 }
 
 // supportedApps is derived from the registries above.
@@ -72,7 +85,7 @@ var supportedApps = func() []string {
 		apps = append(apps, name)
 	}
 	for name := range hostApps {
-		apps = append(apps, name)
+		apps = append(apps, string(name))
 	}
 	sort.Strings(apps)
 	return apps
@@ -110,8 +123,8 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
-			if cli, ok := hostApps[app]; ok {
-				return launchHostApp(cmd, app, ep.host, cli, appArgs, dryRun)
+			if cli, ok := hostApps[trustedBin(app)]; ok {
+				return launchHostApp(cmd, trustedBin(app), ep.host, cli, appArgs, dryRun)
 			}
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
@@ -202,13 +215,13 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 		return nil
 	}
 
-	return runExternal(cmd, nil, "docker", dockerArgs...)
+	return runExternal(cmd, nil, binDocker, dockerArgs...)
 }
 
 // launchHostApp launches a native host app executable.
-func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
+func launchHostApp(cmd *cobra.Command, bin trustedBin, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
 	if !dryRun {
-		if _, err := exec.LookPath(bin); err != nil {
+		if _, err := exec.LookPath(string(bin)); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)
 			if cli.envFn != nil {
 				cmd.PrintErrf("Configure your app to use:\n")
@@ -236,7 +249,7 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 }
 
 // launchUnconfigurableHostApp handles host apps that need manual config rather than env vars.
-func launchUnconfigurableHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
+func launchUnconfigurableHostApp(cmd *cobra.Command, bin trustedBin, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
 	enginesEP := baseURL + openaiPathSuffix
 	cmd.Printf("Configure %s to use Docker Model Runner:\n", bin)
 	cmd.Printf("  Base URL: %s\n", enginesEP)
@@ -304,10 +317,9 @@ func withEnv(extra ...string) []string {
 }
 
 // runExternal executes a program inheriting stdio.
-// Security: prog and progArgs are either hardcoded values or user-provided
-// arguments that the user explicitly intends to pass to the launched app.
-func runExternal(cmd *cobra.Command, env []string, prog string, progArgs ...string) error {
-	c := exec.Command(prog, progArgs...)
+// prog is a trustedBin to ensure only approved executables reach exec.Command.
+func runExternal(cmd *cobra.Command, env []string, prog trustedBin, progArgs ...string) error {
+	c := exec.Command(string(prog), progArgs...)
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	c.Stdin = os.Stdin
