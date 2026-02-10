@@ -42,9 +42,14 @@ type Scheduler struct {
 	tracker *metrics.Tracker
 	// openAIRecorder is used to record OpenAI API inference requests and responses.
 	openAIRecorder *metrics.OpenAIRecorder
+	// deferredBackends lists backends whose installation is deferred until
+	// explicitly requested (e.g. via install-backend endpoint).
+	deferredBackends []string
 }
 
-// NewScheduler creates a new inference scheduler.
+// NewScheduler creates a new inference scheduler. Backends listed in
+// deferredBackends are not installed automatically during startup; they must
+// be installed on-demand via InstallBackend.
 func NewScheduler(
 	log logging.Logger,
 	backends map[string]inference.Backend,
@@ -52,19 +57,21 @@ func NewScheduler(
 	modelManager *models.Manager,
 	httpClient *http.Client,
 	tracker *metrics.Tracker,
+	deferredBackends []string,
 ) *Scheduler {
 	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
 
 	// Create the scheduler.
 	s := &Scheduler{
-		log:            log,
-		backends:       backends,
-		defaultBackend: defaultBackend,
-		modelManager:   modelManager,
-		installer:      newInstaller(log, backends, httpClient),
-		loader:         newLoader(log, backends, modelManager, openAIRecorder),
-		tracker:        tracker,
-		openAIRecorder: openAIRecorder,
+		log:              log,
+		backends:         backends,
+		defaultBackend:   defaultBackend,
+		modelManager:     modelManager,
+		installer:        newInstaller(log, backends, httpClient, deferredBackends),
+		loader:           newLoader(log, backends, modelManager, openAIRecorder),
+		tracker:          tracker,
+		openAIRecorder:   openAIRecorder,
+		deferredBackends: deferredBackends,
 	}
 
 	// Scheduler successfully initialized.
@@ -105,8 +112,14 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 	}
 
 	if config.GetFormat() == types.FormatSafetensors {
-		// Prefer vllm-metal for safetensors models on macOS (most feature-rich for Metal)
+		// Prefer vllm-metal for safetensors models on macOS (most feature-rich for Metal),
+		// but only if it has been installed.
 		if vllmMetalBackend, ok := s.backends[vllmmetal.Name]; ok && vllmMetalBackend != nil {
+			if s.installer.isInstalled(vllmmetal.Name) {
+				return vllmMetalBackend
+			}
+			s.log.Infof("vllm-metal backend is available but not installed. "+
+				"To install, run: docker model install-runner --backend %s", vllmmetal.Name)
 			return vllmMetalBackend
 		}
 		// Fall back to MLX on macOS
@@ -131,7 +144,12 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 
 // ResetInstaller resets the backend installer with a new HTTP client.
 func (s *Scheduler) ResetInstaller(httpClient *http.Client) {
-	s.installer = newInstaller(s.log, s.backends, httpClient)
+	s.installer = newInstaller(s.log, s.backends, httpClient, s.deferredBackends)
+}
+
+// InstallBackend triggers on-demand installation of a deferred backend.
+func (s *Scheduler) InstallBackend(ctx context.Context, name string) error {
+	return s.installer.installBackend(ctx, name)
 }
 
 // GetRunningBackendsInfo returns information about all running backends as a slice

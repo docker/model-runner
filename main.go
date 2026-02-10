@@ -208,6 +208,12 @@ func main() {
 		backends[vllmmetal.Name] = vllmMetalBackend
 	}
 
+	// Backends whose installation is deferred until explicitly requested.
+	var deferredBackends []string
+	if vllmMetalBackend != nil {
+		deferredBackends = append(deferredBackends, vllmmetal.Name)
+	}
+
 	scheduler := scheduling.NewScheduler(
 		log,
 		backends,
@@ -220,6 +226,7 @@ func main() {
 			"",
 			false,
 		),
+		deferredBackends,
 	)
 
 	// Create the HTTP handler for the scheduler

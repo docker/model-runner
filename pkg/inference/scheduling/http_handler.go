@@ -97,6 +97,7 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	m["GET "+inference.InferencePrefix+"/v1/models"] = h.handleModels
 	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = h.handleModels
 
+	m["POST "+inference.InferencePrefix+"/install-backend"] = h.InstallBackend
 	m["GET "+inference.InferencePrefix+"/status"] = h.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = h.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = h.GetDiskUsage
@@ -211,6 +212,8 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 			// shutting down (since that will also cancel the request context).
 			// Either way, provide a response, even if it's ignored.
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		} else if errors.Is(err, errBackendNotInstalled) {
+			http.Error(w, fmt.Sprintf("backend %q is not installed; run: docker model install-runner --backend %s", backend.Name(), backend.Name()), http.StatusPreconditionFailed)
 		} else if errors.Is(err, vllm.ErrorNotFound) {
 			http.Error(w, err.Error(), http.StatusPreconditionFailed)
 		} else {
@@ -334,6 +337,38 @@ func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// installBackendRequest is the JSON body for the install-backend endpoint.
+type installBackendRequest struct {
+	Backend string `json:"backend"`
+}
+
+// InstallBackend handles POST <inference-prefix>/install-backend requests.
+// It triggers on-demand installation of a deferred backend.
+func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	var req installBackendRequest
+	if err := json.Unmarshal(body, &req); err != nil || req.Backend == "" {
+		http.Error(w, "invalid request: backend is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.scheduler.InstallBackend(r.Context(), req.Backend); err != nil {
+		if errors.Is(err, ErrBackendNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("backend installation failed: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // Configure handles POST <inference-prefix>/{backend}/_configure requests.

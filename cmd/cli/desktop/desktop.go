@@ -782,6 +782,30 @@ func (c *Client) ShowConfigs(modelFilter string) ([]scheduling.ModelConfigEntry,
 	return configs, nil
 }
 
+// InstallBackend triggers on-demand installation of a deferred backend
+func (c *Client) InstallBackend(backend string) error {
+	installPath := inference.InferencePrefix + "/install-backend"
+	jsonData, err := json.Marshal(struct {
+		Backend string `json:"backend"`
+	}{Backend: backend})
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	resp, err := c.doRequest(http.MethodPost, installPath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, installPath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("install backend failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
 func (c *Client) ConfigureBackend(request scheduling.ConfigureRequest) error {
 	configureBackendPath := inference.InferencePrefix + "/_configure"
 	jsonData, err := json.Marshal(request)
