@@ -3,6 +3,9 @@ models:
     provider: anthropic
     model: claude-sonnet-4-5
     max_tokens: 16384
+    thinking_budget: 4096
+    provider_opts:
+        interleaved_thinking: true
 
 agents:
   root:
@@ -30,6 +33,9 @@ agents:
       1. **Research**: Use `curl` to fetch content from each of the provided reference URLs to gather information about the model (architecture, parameters, benchmarks, license, capabilities, etc.)
       2. **Generate**: Write a complete model card following the template and example below
       3. **Save**: Write the model card to the specified file path using filesystem tools
+      
+      ## Guidelines
+      - To run Docker models use the following command: `docker model run <model-name>`, it will pull the model if needed 
 
     toolsets:
       - type: filesystem
