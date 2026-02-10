@@ -270,6 +270,127 @@ func TestDefunctRunnerEvictionTriggersRetry(t *testing.T) {
 	}
 }
 
+// keepAlivePtr is a helper to create a pointer to an inference.KeepAlive value.
+func keepAlivePtr(ka inference.KeepAlive) *inference.KeepAlive {
+	return &ka
+}
+
+// TestPerModelKeepAliveEviction tests that per-model keep_alive configuration
+// controls idle eviction behavior.
+func TestPerModelKeepAliveEviction(t *testing.T) {
+	log := createTestLogger()
+
+	backend := &mockBackend{name: "test-backend"}
+	backends := map[string]inference.Backend{"test-backend": backend}
+	loader := newLoader(log, backends, nil, nil)
+
+	// Set up two runners: one with short keep_alive, one with never-evict
+	if !loader.lock(t.Context()) {
+		t.Fatal("Failed to acquire loader lock")
+	}
+	loader.loadsEnabled = true
+
+	// Runner 1: short keep_alive (slot 0)
+	runner1 := createAliveTerminableMockRunner(t.Context(), log, backend)
+	runner1.model = "model-short"
+	loader.slots[0] = runner1
+	loader.runners[makeRunnerKey("test-backend", "model-short", "", inference.BackendModeCompletion)] = runnerInfo{slot: 0, modelRef: "model-short:latest"}
+	loader.references[0] = 0
+	loader.timestamps[0] = time.Now().Add(-1 * time.Second) // already idle for 1s
+	loader.runnerConfigs[makeConfigKey("test-backend", "model-short", inference.BackendModeCompletion)] = inference.BackendConfiguration{
+		KeepAlive: keepAlivePtr(inference.KeepAlive(1 * time.Millisecond)),
+	}
+
+	// Runner 2: never evict (slot 1)
+	runner2 := createAliveTerminableMockRunner(t.Context(), log, backend)
+	runner2.model = "model-never"
+	loader.slots[1] = runner2
+	loader.runners[makeRunnerKey("test-backend", "model-never", "", inference.BackendModeCompletion)] = runnerInfo{slot: 1, modelRef: "model-never:latest"}
+	loader.references[1] = 0
+	loader.timestamps[1] = time.Now().Add(-1 * time.Hour) // idle for 1 hour
+	loader.runnerConfigs[makeConfigKey("test-backend", "model-never", inference.BackendModeCompletion)] = inference.BackendConfiguration{
+		KeepAlive: keepAlivePtr(inference.KeepAliveForever),
+	}
+
+	loader.unlock()
+
+	// Wait for the short keep_alive to expire
+	time.Sleep(5 * time.Millisecond)
+
+	// Evict idle-only runners
+	if !loader.lock(t.Context()) {
+		t.Fatal("Failed to acquire loader lock")
+	}
+
+	remaining := loader.evict(true)
+
+	// Runner with short keep_alive should be evicted, never-evict should remain
+	if remaining != 1 {
+		t.Errorf("Expected 1 remaining runner after eviction, got %d", remaining)
+	}
+
+	// Verify that model-never is still present
+	if _, ok := loader.runners[makeRunnerKey("test-backend", "model-never", "", inference.BackendModeCompletion)]; !ok {
+		t.Error("Expected model-never runner to still be present")
+	}
+
+	// Verify that model-short was evicted
+	if _, ok := loader.runners[makeRunnerKey("test-backend", "model-short", "", inference.BackendModeCompletion)]; ok {
+		t.Error("Expected model-short runner to be evicted")
+	}
+
+	loader.unlock()
+}
+
+// TestIdleCheckDurationWithPerModelKeepAlive tests that idleCheckDuration
+// computes the soonest expiration across runners with different keep_alive values.
+func TestIdleCheckDurationWithPerModelKeepAlive(t *testing.T) {
+	log := createTestLogger()
+
+	backend := &mockBackend{name: "test-backend"}
+	backends := map[string]inference.Backend{"test-backend": backend}
+	loader := newLoader(log, backends, nil, nil)
+
+	if !loader.lock(t.Context()) {
+		t.Fatal("Failed to acquire loader lock")
+	}
+
+	// Runner 1: short keep_alive
+	runner1 := createAliveTerminableMockRunner(t.Context(), log, backend)
+	runner1.model = "model-short"
+	loader.slots[0] = runner1
+	loader.runners[makeRunnerKey("test-backend", "model-short", "", inference.BackendModeCompletion)] = runnerInfo{slot: 0, modelRef: "model-short:latest"}
+	loader.references[0] = 0
+	loader.timestamps[0] = time.Now()
+	loader.runnerConfigs[makeConfigKey("test-backend", "model-short", inference.BackendModeCompletion)] = inference.BackendConfiguration{
+		KeepAlive: keepAlivePtr(inference.KeepAlive(100 * time.Millisecond)),
+	}
+
+	// Runner 2: never evict
+	runner2 := createAliveTerminableMockRunner(t.Context(), log, backend)
+	runner2.model = "model-never"
+	loader.slots[1] = runner2
+	loader.runners[makeRunnerKey("test-backend", "model-never", "", inference.BackendModeCompletion)] = runnerInfo{slot: 1, modelRef: "model-never:latest"}
+	loader.references[1] = 0
+	loader.timestamps[1] = time.Now()
+	loader.runnerConfigs[makeConfigKey("test-backend", "model-never", inference.BackendModeCompletion)] = inference.BackendConfiguration{
+		KeepAlive: keepAlivePtr(inference.KeepAliveForever),
+	}
+
+	duration := loader.idleCheckDuration()
+
+	// Should be based on the short keep_alive runner (around 100ms + 100ms buffer)
+	// The never-evict runner should be skipped
+	if duration < 0 {
+		t.Errorf("Expected positive duration, got %v", duration)
+	}
+	if duration > 500*time.Millisecond {
+		t.Errorf("Expected duration around 200ms, got %v", duration)
+	}
+
+	loader.unlock()
+}
+
 // TestUnusedRunnerEvictionTriggersRetry tests that when an unused (non-defunct)
 // runner is evicted during load(), the loop properly continues to retry slot
 // allocation instead of waiting indefinitely.

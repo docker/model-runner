@@ -133,8 +133,8 @@ type ConfigureFlags struct {
 	// vLLM-specific flags
 	HFOverrides          string
 	GPUMemoryUtilization *float64
-	// Think parameter for reasoning models
-	Think *bool
+	Think                *bool
+	KeepAlive            string
 }
 
 // RegisterFlags registers all configuration flags on the given cobra command.
@@ -147,6 +147,7 @@ func (f *ConfigureFlags) RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().Var(NewFloat64PtrValue(&f.GPUMemoryUtilization), "gpu-memory-utilization", "fraction of GPU memory to use for the model executor (0.0-1.0) - vLLM only")
 	cmd.Flags().Var(NewBoolPtrValue(&f.Think), "think", "enable reasoning mode for thinking models")
 	cmd.Flags().StringVar(&f.Mode, "mode", "", "backend operation mode (completion, embedding, reranking, image-generation)")
+	cmd.Flags().StringVar(&f.KeepAlive, "keep-alive", "", "duration to keep model loaded (e.g., '5m', '1h', '0' to unload immediately, '-1' to never unload)")
 }
 
 // BuildConfigureRequest builds a scheduling.ConfigureRequest from the flags.
@@ -203,6 +204,14 @@ func (f *ConfigureFlags) BuildConfigureRequest(model string) (scheduling.Configu
 			req.LlamaCpp = &inference.LlamaCppConfig{}
 		}
 		req.LlamaCpp.ReasoningBudget = reasoningBudget
+	}
+
+	if f.KeepAlive != "" {
+		ka, err := inference.ParseKeepAlive(f.KeepAlive)
+		if err != nil {
+			return req, err
+		}
+		req.KeepAlive = &ka
 	}
 
 	// Parse mode if provided
