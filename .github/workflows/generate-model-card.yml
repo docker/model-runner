@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Generate model card
-        uses: docker/cagent-action@latest
+        uses: docker/cagent-action@bd5439a1cabc3c448abf7a0d29b6f9a0d5fd4ec7
         with:
           agent: .github/agents/model-card-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -50,7 +50,7 @@ jobs:
           head -20 "model-cards/${{ inputs.repository }}.md"
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "Add model card for aistaging/${{ inputs.repository }}"
