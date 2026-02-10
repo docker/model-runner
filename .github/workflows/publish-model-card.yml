@@ -45,7 +45,7 @@ jobs:
       - name: Build model-cards-cli
         run: |
           echo "Building model-cards-cli..."
-          cd tools/model-cards-cli
+          cd model-cards/tools/model-cards-cli
           make build
 
       - name: Upload model card overview
@@ -54,7 +54,7 @@ jobs:
           DOCKERHUB_OAT: ${{ secrets.DOCKER_OAT }}
         run: |
           echo "Uploading model card overview..."
-          make -C tools/model-cards-cli upload-overview \
+          make -C model-cards/tools/model-cards-cli upload-overview \
             FILE="${{ inputs.FILE }}" \
             REPO="${{ inputs.REPO }}" \
             USERNAME="$DOCKERHUB_USERNAME" \
