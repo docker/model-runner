@@ -51,8 +51,9 @@ type installer struct {
 	// deferredBackends tracks backends whose installation is deferred until
 	// explicitly requested via installBackend.
 	deferredBackends map[string]bool
-	// mu protects on-demand installation via installBackend.
-	mu sync.Mutex
+	// mu protects statuses map mutations in installBackend. Readers
+	// (wait, isInstalled) take an RLock; installBackend takes a full Lock.
+	mu sync.RWMutex
 }
 
 // newInstaller creates a new backend installer. Backends listed in
@@ -155,8 +156,10 @@ func (i *installer) run(ctx context.Context) {
 // For deferred backends that have never been installed, it returns
 // errBackendNotInstalled immediately instead of blocking.
 func (i *installer) wait(ctx context.Context, backend string) error {
-	// Grab the backend status.
+	// Grab the backend status under a read lock, since installBackend may replace entries in the map.
+	i.mu.RLock()
 	status, ok := i.statuses[backend]
+	i.mu.RUnlock()
 	if !ok {
 		return ErrBackendNotFound
 	}
@@ -238,7 +241,9 @@ func (i *installer) installBackend(ctx context.Context, name string) error {
 // isInstalled returns true if the given backend has completed installation.
 // It is non-blocking.
 func (i *installer) isInstalled(name string) bool {
+	i.mu.RLock()
 	status, ok := i.statuses[name]
+	i.mu.RUnlock()
 	if !ok {
 		return false
 	}
