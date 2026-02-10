@@ -349,7 +349,12 @@ type installBackendRequest struct {
 func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
 	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		}
 		return
 	}
 
