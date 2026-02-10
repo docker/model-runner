@@ -284,10 +284,14 @@ func (h *HTTPHandler) handlePS(w http.ResponseWriter, r *http.Request) {
 			Digest: modelID,
 		}
 
-		// Add expiration time if not in use
 		if !backend.InUse && !backend.LastUsed.IsZero() {
-			// Models typically expire 5 minutes after last use
-			psModel.ExpiresAt = backend.LastUsed.Add(5 * time.Minute)
+			keepAlive := inference.KeepAliveDefault
+			if backend.KeepAlive != nil {
+				keepAlive = *backend.KeepAlive
+			}
+			if keepAlive.Duration() >= 0 {
+				psModel.ExpiresAt = backend.LastUsed.Add(keepAlive.Duration())
+			}
 		}
 
 		models = append(models, psModel)
@@ -367,7 +371,7 @@ func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Configure model
-	h.configureModel(ctx, modelName, req.Options, req.Think, r.UserAgent()+" (Ollama API)")
+	h.configureModel(ctx, modelName, req.Options, req.Think, string(req.KeepAlive), r.UserAgent()+" (Ollama API)")
 
 	// Convert to OpenAI format chat completion request
 	openAIReq := map[string]interface{}{
@@ -390,43 +394,51 @@ func (h *HTTPHandler) handleChat(w http.ResponseWriter, r *http.Request) {
 	h.proxyToChatCompletions(ctx, w, r, openAIReq, modelName, req.Stream == nil || *req.Stream)
 }
 
-// configureModel extracts and applies model configuration options.
-// Handles num_ctx from options and think parameter for reasoning budget.
-func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, options map[string]interface{}, think interface{}, userAgent string) {
+func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, options map[string]interface{}, think interface{}, keepAlive string, userAgent string) {
 	var contextSize int32
 	var hasContextSize bool
 
-	// Extract context size from options
 	if options != nil {
 		if numCtxRaw, ok := options["num_ctx"]; ok && numCtxRaw != nil {
 			contextSize = convertToInt32(numCtxRaw)
 			hasContextSize = true
 		}
+		if keepAlive == "" {
+			if kaRaw, ok := options["keep_alive"]; ok && kaRaw != nil {
+				if s, ok := kaRaw.(string); ok {
+					keepAlive = s
+				}
+			}
+		}
 	}
 
-	// Convert think parameter to --reasoning-budget flag (returns nil if not specified)
 	reasoningBudget := convertThinkToReasoningBudget(think)
+	hasKeepAlive := keepAlive != ""
 
-	// Only call ConfigureRunner if we have something to configure
-	if hasContextSize || reasoningBudget != nil {
+	if hasContextSize || reasoningBudget != nil || hasKeepAlive {
 		sanitizedModelName := utils.SanitizeForLog(modelName, -1)
 		h.log.Infof("configureModel: configuring model %s", sanitizedModelName)
 		configureRequest := scheduling.ConfigureRequest{
 			Model: modelName,
 		}
-		// Only include ContextSize if explicitly defined
 		if hasContextSize {
 			configureRequest.ContextSize = &contextSize
 		}
-		// Set llama.cpp-specific reasoning budget if provided
 		if reasoningBudget != nil {
 			configureRequest.LlamaCpp = &inference.LlamaCppConfig{
 				ReasoningBudget: reasoningBudget,
 			}
 		}
-		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent) // TODO add backend selection?
+		if hasKeepAlive {
+			ka, err := inference.ParseKeepAlive(keepAlive)
+			if err == nil {
+				configureRequest.KeepAlive = &ka
+			} else {
+				h.log.Warnf("configureModel: invalid keep_alive %q: %v", keepAlive, err)
+			}
+		}
+		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent)
 		if err != nil {
-			// Log the error but continue with the request
 			h.log.Warnf("configureModel: failed to configure model %s: %v", sanitizedModelName, err)
 		}
 	}
@@ -455,13 +467,13 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		modelName = req.Model
 	}
 
-	if req.Prompt == "" && isZeroKeepAlive(req.KeepAlive) {
+	if req.Prompt == "" && isZeroKeepAlive(string(req.KeepAlive)) {
 		h.unloadModel(ctx, w, modelName)
 		return
 	}
 
 	// Configure model
-	h.configureModel(ctx, modelName, req.Options, req.Think, r.UserAgent()+" (Ollama API)")
+	h.configureModel(ctx, modelName, req.Options, req.Think, string(req.KeepAlive), r.UserAgent()+" (Ollama API)")
 
 	if req.Prompt == "" {
 		// Empty prompt - preload the model (already configured above)

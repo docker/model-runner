@@ -2,7 +2,7 @@ command: docker model configure
 aliases: docker model configure, docker model config
 short: Manage model runtime configurations
 long: Manage model runtime configurations
-usage: docker model configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--gpu-memory-utilization=<float>] [--mode=<mode>] [--think] MODEL [-- <runtime-flags...>]
+usage: docker model configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--gpu-memory-utilization=<float>] [--mode=<mode>] [--think] [--keep-alive=<duration>] MODEL [-- <runtime-flags...>]
 pname: docker model
 plink: docker_model.yaml
 cname:
@@ -32,6 +32,16 @@ options:
     - option: hf_overrides
       value_type: string
       description: HuggingFace model config overrides (JSON) - vLLM only
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: keep-alive
+      value_type: string
+      description: |
+        duration to keep model loaded (e.g., '5m', '1h', '0' to unload immediately, '-1' to never unload)
       deprecated: false
       hidden: false
       experimental: false

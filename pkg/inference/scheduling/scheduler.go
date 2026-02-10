@@ -162,6 +162,11 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 				status.LastUsed = s.loader.timestamps[runnerInfo.slot]
 			}
 
+			configKey := makeConfigKey(key.backend, key.modelID, key.mode)
+			if cfg, ok := s.loader.runnerConfigs[configKey]; ok && cfg.KeepAlive != nil {
+				status.KeepAlive = cfg.KeepAlive
+			}
+
 			result = append(result, status)
 		}
 	}
@@ -263,11 +268,11 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 		return nil, err
 	}
 
-	// Build runner configuration with shared settings
 	var runnerConfig inference.BackendConfiguration
 	runnerConfig.ContextSize = req.ContextSize
 	runnerConfig.Speculative = req.Speculative
 	runnerConfig.RuntimeFlags = runtimeFlags
+	runnerConfig.KeepAlive = req.KeepAlive
 
 	// Set vLLM-specific configuration if provided
 	if req.VLLM != nil {

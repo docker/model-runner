@@ -140,10 +140,8 @@ func newLoader(
 	isGPUEnabledCloudEnvironment := environment.Get() == environment.EnvironmentCloud &&
 		os.Getenv("NVIDIA_VISIBLE_DEVICES") != ""
 
-	// Compute the idle runner timeout.
-	//
-	// HACK: On GPU-enabled cloud engines, we'll bump this to 8 hours. We can
-	// remove this once we have configurable TTLs.
+	// Compute the default idle runner timeout. Per-model keep_alive
+	// overrides this via runnerIdleTimeoutFor().
 	runnerIdleTimeout := defaultRunnerIdleTimeout
 	if isGPUEnabledCloudEnvironment {
 		runnerIdleTimeout = 8 * time.Hour
@@ -204,6 +202,17 @@ func (l *loader) freeRunnerSlot(slot int, key runnerKey) {
 	delete(l.runners, key)
 }
 
+// runnerIdleTimeoutFor returns the idle timeout for a runner, using its
+// per-model keep_alive if configured, otherwise the loader default.
+// A negative return value means never idle-evict.
+func (l *loader) runnerIdleTimeoutFor(r runnerKey) time.Duration {
+	configKey := makeConfigKey(r.backend, r.modelID, r.mode)
+	if cfg, ok := l.runnerConfigs[configKey]; ok && cfg.KeepAlive != nil {
+		return cfg.KeepAlive.Duration()
+	}
+	return l.runnerIdleTimeout
+}
+
 // evict evicts all unused runners from the loader. If idleOnly is true, then
 // only those unused, but functioning, runners which are considered "idle" (based
 // on usage timestamp) are evicted. Defunct (e.g. crashed) runners will be evicted
@@ -214,22 +223,24 @@ func (l *loader) evict(idleOnly bool) int {
 	evictedCount := 0
 	for r, runnerInfo := range l.runners {
 		unused := l.references[runnerInfo.slot] == 0
-		idle := unused && now.Sub(l.timestamps[runnerInfo.slot]) > l.runnerIdleTimeout
+		timeout := l.runnerIdleTimeoutFor(r)
+		neverEvict := timeout < 0
+		idle := unused && !neverEvict && now.Sub(l.timestamps[runnerInfo.slot]) > timeout
 		defunct := false
 		select {
 		case <-l.slots[runnerInfo.slot].done:
 			defunct = true
 		default:
 		}
-		if unused && (!idleOnly || idle || defunct) {
+		if unused && (!idleOnly || idle || defunct) && (!idleOnly || !neverEvict || defunct) {
 			l.log.Infof("Evicting %s backend runner with model %s (%s) in %s mode",
 				r.backend, r.modelID, runnerInfo.modelRef, r.mode,
 			)
 			l.freeRunnerSlot(runnerInfo.slot, r)
 			evictedCount++
 		} else if unused {
-			l.log.Debugf("Runner %s (%s) is unused but not evictable: idleOnly=%v, idle=%v, defunct=%v",
-				r.modelID, runnerInfo.modelRef, idleOnly, idle, defunct)
+			l.log.Debugf("Runner %s (%s) is unused but not evictable: idleOnly=%v, idle=%v, defunct=%v, neverEvict=%v",
+				r.modelID, runnerInfo.modelRef, idleOnly, idle, defunct, neverEvict)
 		} else {
 			l.log.Debugf("Runner %s (%s) is in use with %d references, cannot evict",
 				r.modelID, runnerInfo.modelRef, l.references[runnerInfo.slot])
@@ -310,9 +321,10 @@ func stopAndDrainTimer(timer *time.Timer) {
 // 0 seconds is returned. Otherwise a time in the future at which eviction
 // should occur is returned.
 func (l *loader) idleCheckDuration() time.Duration {
-	// Compute the oldest usage time for any idle runner.
-	var oldest time.Time
-	for _, runnerInfo := range l.runners {
+	soonest := time.Duration(-1) * time.Second
+	hasCandidate := false
+
+	for r, runnerInfo := range l.runners {
 		select {
 		case <-l.slots[runnerInfo.slot].done:
 			// Check immediately if a runner is defunct
@@ -320,26 +332,24 @@ func (l *loader) idleCheckDuration() time.Duration {
 		default:
 		}
 		if l.references[runnerInfo.slot] == 0 {
-			timestamp := l.timestamps[runnerInfo.slot]
-			if oldest.IsZero() || timestamp.Before(oldest) {
-				oldest = timestamp
+			timeout := l.runnerIdleTimeoutFor(r)
+			// Skip runners that should never be evicted
+			if timeout < 0 {
+				continue
+			}
+			remaining := timeout - time.Since(l.timestamps[runnerInfo.slot])
+			if remaining < 0 {
+				return 0
+			}
+			remaining += 100 * time.Millisecond
+			if !hasCandidate || remaining < soonest {
+				soonest = remaining
+				hasCandidate = true
 			}
 		}
 	}
 
-	// If there are no unused runners, then don't schedule a check.
-	if oldest.IsZero() {
-		return -1 * time.Second
-	}
-
-	// Compute the remaining duration. If negative, check immediately, otherwise
-	// wait until 100 milliseconds after expiration time (to avoid checking
-	// right on the expiration boundary).
-	if remaining := l.runnerIdleTimeout - time.Since(oldest); remaining < 0 {
-		return 0
-	} else {
-		return remaining + 100*time.Millisecond
-	}
+	return soonest
 }
 
 // run is the run loop for the loader. It drives idle runner eviction. By the

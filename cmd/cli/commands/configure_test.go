@@ -2,6 +2,8 @@ package commands
 
 import (
 	"testing"
+
+	"github.com/docker/model-runner/pkg/inference"
 )
 
 func TestConfigureCmdHfOverridesFlag(t *testing.T) {
@@ -320,6 +322,115 @@ func TestThinkFlagBehavior(t *testing.T) {
 				// Reasoning budget should NOT be set
 				if req.LlamaCpp != nil && req.LlamaCpp.ReasoningBudget != nil {
 					t.Errorf("Expected reasoning budget to be nil when not set, got %d", *req.LlamaCpp.ReasoningBudget)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigureCmdKeepAliveFlag(t *testing.T) {
+	// Create the configure command
+	cmd := newConfigureCmd()
+
+	// Verify the --keep-alive flag exists
+	keepAliveFlag := cmd.Flags().Lookup("keep-alive")
+	if keepAliveFlag == nil {
+		t.Fatal("--keep-alive flag not found")
+		return
+	}
+
+	// Verify the default value is empty
+	if keepAliveFlag.DefValue != "" {
+		t.Errorf("Expected default keep-alive value to be empty, got '%s'", keepAliveFlag.DefValue)
+	}
+
+	// Verify the flag type
+	if keepAliveFlag.Value.Type() != "string" {
+		t.Errorf("Expected keep-alive flag type to be 'string', got '%s'", keepAliveFlag.Value.Type())
+	}
+
+	// Test setting the flag value
+	if err := cmd.Flags().Set("keep-alive", "10m"); err != nil {
+		t.Errorf("Failed to set keep-alive flag: %v", err)
+	}
+
+	// Verify the value was set
+	if keepAliveFlag.Value.String() != "10m" {
+		t.Errorf("Expected keep-alive flag value to be '10m', got '%s'", keepAliveFlag.Value.String())
+	}
+}
+
+func TestKeepAliveFlagBehavior(t *testing.T) {
+	tests := []struct {
+		name          string
+		keepAlive     string
+		expectSet     bool
+		expectError   bool
+		expectedValue inference.KeepAlive
+	}{
+		{
+			name:      "default - not set",
+			keepAlive: "",
+			expectSet: false,
+		},
+		{
+			name:          "5 minutes",
+			keepAlive:     "5m",
+			expectSet:     true,
+			expectedValue: inference.KeepAliveDefault,
+		},
+		{
+			name:          "unload immediately",
+			keepAlive:     "0",
+			expectSet:     true,
+			expectedValue: inference.KeepAliveImmediate,
+		},
+		{
+			name:          "never unload",
+			keepAlive:     "-1",
+			expectSet:     true,
+			expectedValue: inference.KeepAliveForever,
+		},
+		{
+			name:          "negative duration means forever",
+			keepAlive:     "-1m",
+			expectSet:     true,
+			expectedValue: inference.KeepAliveForever,
+		},
+		{
+			name:        "invalid value",
+			keepAlive:   "abc",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flags := ConfigureFlags{
+				KeepAlive: tt.keepAlive,
+			}
+
+			req, err := flags.BuildConfigureRequest("test-model")
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("Expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if tt.expectSet {
+				if req.KeepAlive == nil {
+					t.Fatal("Expected KeepAlive to be set")
+				}
+				if *req.KeepAlive != tt.expectedValue {
+					t.Errorf("Expected KeepAlive to be %v, got %v", tt.expectedValue, *req.KeepAlive)
+				}
+			} else {
+				if req.KeepAlive != nil {
+					t.Errorf("Expected KeepAlive to be nil, got %v", *req.KeepAlive)
 				}
 			}
 		})

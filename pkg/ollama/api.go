@@ -1,6 +1,35 @@
 package ollama
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+// OllamaKeepAlive accepts both string ("5m") and number (seconds) formats
+// used by the Ollama API. Normalises to a Go duration string.
+type OllamaKeepAlive string
+
+func (k *OllamaKeepAlive) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*k = OllamaKeepAlive(s)
+		return nil
+	}
+	var n float64
+	if err := json.Unmarshal(data, &n); err == nil {
+		switch {
+		case n < 0:
+			*k = "-1"
+		case n == 0:
+			*k = "0"
+		default:
+			*k = OllamaKeepAlive(time.Duration(n * float64(time.Second)).String())
+		}
+		return nil
+	}
+	return fmt.Errorf("keep_alive must be a string or number, got %s", string(data))
+}
 
 const (
 	// APIPrefix Ollama API prefix
@@ -54,8 +83,8 @@ type ChatRequest struct {
 	Messages  []Message              `json:"messages"`
 	Tools     []Tool                 `json:"tools,omitempty"` // Function calling tools
 	Stream    *bool                  `json:"stream,omitempty"`
-	Think     interface{}            `json:"think,omitempty"`      // Can be bool or string ("high", "medium", "low") for reasoning/thinking models
-	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
+	Think     interface{}            `json:"think,omitempty"` // Can be bool or string ("high", "medium", "low") for reasoning/thinking models
+	KeepAlive OllamaKeepAlive        `json:"keep_alive,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -111,8 +140,8 @@ type GenerateRequest struct {
 	Model     string                 `json:"model"` // Also accept 'model' for compatibility
 	Prompt    string                 `json:"prompt"`
 	Stream    *bool                  `json:"stream,omitempty"`
-	Think     interface{}            `json:"think,omitempty"`      // Can be bool or string ("high", "medium", "low") for reasoning/thinking models
-	KeepAlive string                 `json:"keep_alive,omitempty"` // Duration like "5m" or "0s" to unload immediately
+	Think     interface{}            `json:"think,omitempty"` // Can be bool or string ("high", "medium", "low") for reasoning/thinking models
+	KeepAlive OllamaKeepAlive        `json:"keep_alive,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 }
 

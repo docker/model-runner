@@ -650,16 +650,12 @@ func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 
 // BackendStatus to be imported from docker/model-runner when https://github.com/docker/model-runner/pull/42 is merged.
 type BackendStatus struct {
-	// BackendName is the name of the backend
-	BackendName string `json:"backend_name"`
-	// ModelName is the name of the model loaded in the backend
-	ModelName string `json:"model_name"`
-	// Mode is the mode the backend is operating in
-	Mode string `json:"mode"`
-	// LastUsed represents when this backend was last used (if it's idle)
-	LastUsed time.Time `json:"last_used,omitempty"`
-	// InUse indicates whether this backend is currently handling a request
-	InUse bool `json:"in_use,omitempty"`
+	BackendName string               `json:"backend_name"`
+	ModelName   string               `json:"model_name"`
+	Mode        string               `json:"mode"`
+	LastUsed    time.Time            `json:"last_used,omitempty"`
+	InUse       bool                 `json:"in_use,omitempty"`
+	KeepAlive   *inference.KeepAlive `json:"keep_alive,omitempty"`
 }
 
 func (c *Client) PS() ([]BackendStatus, error) {
