@@ -1210,14 +1210,14 @@ func TestMigrateHFTagsOnClientInit(t *testing.T) {
 				tags := foundModel.Tags()
 				hasOldTag := false
 				hasNewTag := false
-				for _, tag := range tags {
-					if strings.Contains(tag, "hf.co/") && !strings.Contains(tag, "huggingface.co/") {
-						hasOldTag = true
-					}
-					if strings.Contains(tag, "huggingface.co/") {
-						hasNewTag = true
-					}
-				}
+for _, tag := range tags {
+	if strings.HasPrefix(tag, "hf.co/") {
+		hasOldTag = true
+	}
+	if strings.HasPrefix(tag, "huggingface.co/") {
+		hasNewTag = true
+	}
+}
 				if hasOldTag {
 					t.Errorf("Model still has old hf.co tag after migration: %v", tags)
 				}
