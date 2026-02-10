@@ -66,3 +66,4 @@ jobs:
           base: main
           labels: model-card,automated
           delete-branch: true
+          add-paths: model-cards/${{ inputs.repository }}.md
