@@ -369,7 +369,7 @@ func (m *Manager) Tag(ref, target string) error {
 }
 
 // Push pushes a model from the store to the registry.
-func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) error {
+func (m *Manager) Push(model string, bearerToken string, r *http.Request, w http.ResponseWriter) error {
 	// Set up response headers for streaming
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -398,7 +398,13 @@ func (m *Manager) Push(model string, r *http.Request, w http.ResponseWriter) err
 		isJSON:  isJSON,
 	}
 
-	err := m.distributionClient.PushModel(r.Context(), model, progressWriter)
+	var err error
+	if bearerToken != "" {
+		m.log.Infoln("Using provided bearer token for push authentication")
+		err = m.distributionClient.PushModel(r.Context(), model, progressWriter, bearerToken)
+	} else {
+		err = m.distributionClient.PushModel(r.Context(), model, progressWriter)
+	}
 	if err != nil {
 		return fmt.Errorf("error while pushing model: %w", err)
 	}

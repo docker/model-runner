@@ -241,6 +241,23 @@ func (c *Client) checkResponse(resp *http.Response, repo string) error {
 	}
 }
 
+func (c *Client) checkUploadResponse(resp *http.Response, repo string) error {
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted:
+		return nil
+	default:
+		return c.checkResponse(resp, repo)
+	}
+}
+
+func escapePath(value string) string {
+	parts := strings.Split(value, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
+}
+
 // AuthError indicates authentication failure
 type AuthError struct {
 	Repo       string
