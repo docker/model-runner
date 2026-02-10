@@ -31,7 +31,7 @@ agents:
       ${{ inputs.reference_urls }}
       ```
 
-      Generate the model card and save it to: model-cards/${{ inputs.repository }}.md.
+      Generate the model card and save it to: model-cards/ai/${{ inputs.repository }}.md.
       The model-cards directory already exists, do not check that it exists, do no attempt to create it.
 
       At the end of the model card add:

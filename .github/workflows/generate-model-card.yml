@@ -36,12 +36,12 @@ jobs:
 
       - name: Verify model card was generated
         run: |
-          if [ ! -f "model-cards/${{ inputs.repository }}.md" ]; then
-            echo "::error::Model card file was not generated at model-cards/${{ inputs.repository }}.md"
+          if [ ! -f "model-cards/ai/${{ inputs.repository }}.md" ]; then
+            echo "::error::Model card file was not generated at model-cards/ai/${{ inputs.repository }}.md"
             exit 1
           fi
           echo "✅ Model card generated successfully:"
-          head -20 "model-cards/${{ inputs.repository }}.md"
+          head -20 "model-cards/ai/${{ inputs.repository }}.md"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676
