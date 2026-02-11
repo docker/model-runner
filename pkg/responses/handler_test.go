@@ -1,6 +1,8 @@
 package responses
 
 import (
+	"fmt"
+	"log/slog"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -9,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 )
 
 // mockSchedulerHTTP is a mock scheduler that returns predefined responses.
@@ -39,8 +40,8 @@ func (m *mockSchedulerHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func newTestHandler(mock *mockSchedulerHTTP) *HTTPHandler {
-	log := logrus.New()
-	log.SetOutput(io.Discard)
+	log := slog.Default()
+	// log output is controlled by the slog handler level
 	return NewHTTPHandler(log, mock, nil)
 }
 
@@ -85,28 +86,28 @@ func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusOK))
 	}
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		t.Error(fmt.Sprintf("failed to decode response: %v", err))
 	}
 
 	if result.Object != "response" {
-		t.Errorf("object = %s, want response", result.Object)
+		t.Error(fmt.Sprintf("object = %s, want response", result.Object))
 	}
 	if result.Model != "gpt-4" {
-		t.Errorf("model = %s, want gpt-4", result.Model)
+		t.Error(fmt.Sprintf("model = %s, want gpt-4", result.Model))
 	}
 	if result.Status != StatusCompleted {
-		t.Errorf("status = %s, want %s", result.Status, StatusCompleted)
+		t.Error(fmt.Sprintf("status = %s, want %s", result.Status, StatusCompleted))
 	}
 	if result.OutputText != "Hello! How can I help you?" {
-		t.Errorf("output_text = %s, want Hello! How can I help you?", result.OutputText)
+		t.Error(fmt.Sprintf("output_text = %s, want Hello! How can I help you?", result.OutputText))
 	}
 	if !strings.HasPrefix(result.ID, "resp_") {
-		t.Errorf("id should start with resp_, got %s", result.ID)
+		t.Error(fmt.Sprintf("id should start with resp_, got %s", result.ID))
 	}
 }
 
@@ -124,7 +125,7 @@ func TestHandler_CreateResponse_MissingModel(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest))
 	}
 
 	var errResp map[string]interface{}
@@ -147,7 +148,7 @@ func TestHandler_CreateResponse_InvalidJSON(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest))
 	}
 }
 
@@ -170,19 +171,19 @@ func TestHandler_GetResponse(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusOK))
 	}
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		t.Error(fmt.Sprintf("failed to decode response: %v", err))
 	}
 
 	if result.ID != "resp_test123" {
-		t.Errorf("id = %s, want resp_test123", result.ID)
+		t.Error(fmt.Sprintf("id = %s, want resp_test123", result.ID))
 	}
 	if result.OutputText != "Test output" {
-		t.Errorf("output_text = %s, want Test output", result.OutputText)
+		t.Error(fmt.Sprintf("output_text = %s, want Test output", result.OutputText))
 	}
 }
 
@@ -198,7 +199,7 @@ func TestHandler_GetResponse_NotFound(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusNotFound))
 	}
 }
 
@@ -219,7 +220,7 @@ func TestHandler_DeleteResponse(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusOK))
 	}
 
 	// Verify it's deleted
@@ -241,7 +242,7 @@ func TestHandler_DeleteResponse_NotFound(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusNotFound))
 	}
 }
 
@@ -299,14 +300,14 @@ func TestHandler_CreateResponse_WithPreviousResponse(t *testing.T) {
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+		t.Error(fmt.Sprintf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body))
 	}
 
 	var result Response
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	if result.PreviousResponseID == nil || *result.PreviousResponseID != "resp_prev123" {
-		t.Errorf("previous_response_id = %v, want resp_prev123", result.PreviousResponseID)
+		t.Error(fmt.Sprintf("previous_response_id = %v, want resp_prev123", result.PreviousResponseID))
 	}
 }
 
@@ -337,14 +338,14 @@ func TestHandler_CreateResponse_UpstreamError(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError))
 	}
 
 	var result Response
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	if result.Status != StatusFailed {
-		t.Errorf("status = %s, want %s", result.Status, StatusFailed)
+		t.Error(fmt.Sprintf("status = %s, want %s", result.Status, StatusFailed))
 	}
 	if result.Error == nil {
 		t.Error("expected error to be set")
@@ -373,7 +374,7 @@ func TestHandler_CreateResponse_UpstreamError_NonJSONBody(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError))
 	}
 
 	var result Response
@@ -381,19 +382,19 @@ func TestHandler_CreateResponse_UpstreamError_NonJSONBody(t *testing.T) {
 
 	// Assert: non-streaming error handling falls back correctly
 	if result.Status != StatusFailed {
-		t.Errorf("status = %s, want %s", result.Status, StatusFailed)
+		t.Error(fmt.Sprintf("status = %s, want %s", result.Status, StatusFailed))
 	}
 
 	if result.Error == nil {
-		t.Fatalf("expected error, got nil")
+		t.Error("expected error, got nil")
 	}
 
 	if result.Error.Code != "upstream_error" {
-		t.Errorf("error.code = %v, want upstream_error", result.Error.Code)
+		t.Error(fmt.Sprintf("error.code = %v, want upstream_error", result.Error.Code))
 	}
 
 	if !strings.Contains(result.Error.Message, "upstream exploded in a non-json way") {
-		t.Errorf("error.message = %q, want to contain raw upstream body", result.Error.Message)
+		t.Error(fmt.Sprintf("error.message = %q, want to contain raw upstream body", result.Error.Message))
 	}
 }
 
@@ -426,19 +427,19 @@ func TestHandler_CreateResponse_Streaming(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusOK))
 	}
 
 	// Check content type is SSE
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "text/event-stream") {
-		t.Errorf("Content-Type = %s, want text/event-stream", contentType)
+		t.Error(fmt.Sprintf("Content-Type = %s, want text/event-stream", contentType))
 	}
 
 	// Read all body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("failed to read body: %v", err)
+		t.Error(fmt.Sprintf("failed to read body: %v", err))
 	}
 
 	bodyStr := string(body)
@@ -517,7 +518,7 @@ func TestHandler_CreateResponse_WithTools(t *testing.T) {
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+		t.Error(fmt.Sprintf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body))
 	}
 
 	var result Response
@@ -541,10 +542,10 @@ func TestHandler_CreateResponse_WithTools(t *testing.T) {
 	}
 
 	if funcCall.Name != "get_weather" {
-		t.Errorf("function name = %s, want get_weather", funcCall.Name)
+		t.Error(fmt.Sprintf("function name = %s, want get_weather", funcCall.Name))
 	}
 	if funcCall.CallID != "call_abc123" {
-		t.Errorf("call_id = %s, want call_abc123", funcCall.CallID)
+		t.Error(fmt.Sprintf("call_id = %s, want call_abc123", funcCall.CallID))
 	}
 }
 
@@ -589,7 +590,7 @@ func TestHandler_ResponsePersistence(t *testing.T) {
 	json.NewDecoder(w2.Result().Body).Decode(&getResult)
 
 	if getResult.ID != createResult.ID {
-		t.Errorf("IDs don't match: %s vs %s", getResult.ID, createResult.ID)
+		t.Error(fmt.Sprintf("IDs don't match: %s vs %s", getResult.ID, createResult.ID))
 	}
 }
 
@@ -623,20 +624,20 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Error(fmt.Sprintf("status = %d, want %d", resp.StatusCode, http.StatusOK))
 	}
 
 	// Verify that the StreamingResponseWriter persisted a coherent Response in the store
 	memStore := handler.store
 
 	if memStore.Count() != 1 {
-		t.Fatalf("expected exactly one response in store, got %d", memStore.Count())
+		t.Error(fmt.Sprintf("expected exactly one response in store, got %d", memStore.Count()))
 	}
 
 	// Get the response ID from the store
 	responseIDs := memStore.GetResponseIDs()
 	if len(responseIDs) != 1 {
-		t.Fatalf("expected exactly one response ID in store, got %d", len(responseIDs))
+		t.Error(fmt.Sprintf("expected exactly one response ID in store, got %d", len(responseIDs)))
 	}
 
 	// Retrieve the response using the public API
@@ -647,12 +648,12 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 
 	// Status should be completed after streaming finishes
 	if persistedResp.Status != StatusCompleted {
-		t.Errorf("persisted response status = %s, want %s", persistedResp.Status, StatusCompleted)
+		t.Error(fmt.Sprintf("persisted response status = %s, want %s", persistedResp.Status, StatusCompleted))
 	}
 
 	// OutputText should match concatenated streamed chunks: "Hello" + "!" => "Hello!"
 	if persistedResp.OutputText != "Hello!" {
-		t.Errorf("persisted response OutputText = %q, want %q", persistedResp.OutputText, "Hello!")
+		t.Error(fmt.Sprintf("persisted response OutputText = %q, want %q", persistedResp.OutputText, "Hello!"))
 	}
 
 	// There should be at least one OutputItem whose message content matches "Hello!"
@@ -673,7 +674,7 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected an OutputItem message with text %q in persisted response", "Hello!")
+		t.Error(fmt.Sprintf("expected an OutputItem message with text %q in persisted response", "Hello!"))
 	}
 }
 

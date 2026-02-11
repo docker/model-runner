@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"fmt"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -59,7 +60,7 @@ func NewHandler(log logging.Logger, schedulerHTTP *scheduling.HTTPHandler, allow
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	safeMethod := utils.SanitizeForLog(r.Method, -1)
 	safePath := utils.SanitizeForLog(r.URL.Path, -1)
-	h.log.Infof("Anthropic API request: %s %s", safeMethod, safePath)
+	h.log.Info(fmt.Sprintf("Anthropic API request: %s %s", safeMethod, safePath))
 	h.httpHandler.ServeHTTP(w, r)
 }
 
@@ -169,6 +170,6 @@ func (h *Handler) writeAnthropicError(w http.ResponseWriter, statusCode int, err
 	}
 
 	if err := json.NewEncoder(w).Encode(errResp); err != nil {
-		h.log.Errorf("Failed to encode error response: %v", err)
+		h.log.Error(fmt.Sprintf("Failed to encode error response: %v", err))
 	}
 }

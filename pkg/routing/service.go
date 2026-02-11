@@ -139,7 +139,7 @@ func initBackends(log logging.Logger, mm *models.Manager, defs []BackendDef, onE
 			if onError != nil {
 				onError(def.Name, err)
 			} else {
-				log.Warnf("unable to initialize %s backend: %v", def.Name, err)
+				log.Warn("unable to initialize backend", "backend", def.Name, "error", err)
 			}
 			continue
 		}
