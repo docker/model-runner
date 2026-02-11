@@ -116,14 +116,14 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 	// Check if diffusers is installed
 	if err := d.pythonCmd("-c", "import diffusers").Run(); err != nil {
 		d.status = "diffusers package not installed"
-		d.log.Warnf("diffusers package not found. Install with: uv pip install diffusers torch")
+		d.log.Warn("diffusers package not found. Install with: uv pip install diffusers torch")
 		return ErrDiffusersNotFound
 	}
 
 	// Get version
 	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
 	if err != nil {
-		d.log.Warnf("could not get diffusers version: %v", err)
+		d.log.Warn(fmt.Sprintf("could not get diffusers version: %v", err))
 		d.status = "running diffusers version: unknown"
 	} else {
 		d.status = fmt.Sprintf("running diffusers version: %s", strings.TrimSpace(string(output)))
@@ -156,7 +156,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("%w: model %s", ErrNoDDUFFile, model)
 	}
 
-	d.log.Infof("Loading DDUF file from: %s", ddufPath)
+	d.log.Info(fmt.Sprintf("Loading DDUF file from: %s", ddufPath))
 
 	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
 	if err != nil {
@@ -168,7 +168,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", modelRef)
 	}
 
-	d.log.Infof("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " ")))
+	d.log.Info(fmt.Sprintf("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " "))))
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
@@ -187,7 +187,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		SandboxConfig:    "",
 		Args:             args,
 		Logger:           d.log,
-		ServerLogWriter:  d.serverLog.Writer(),
+		ServerLogWriter:  logging.NewWriter(d.serverLog),
 		ErrorTransformer: ExtractPythonError,
 	})
 }

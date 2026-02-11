@@ -1,6 +1,7 @@
 package scheduling
 
 import (
+	"fmt"
 	"context"
 	"errors"
 	"io"
@@ -8,8 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"log/slog"
+
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/sirupsen/logrus"
 )
 
 // mockBackend is a minimal backend implementation for testing
@@ -55,10 +57,8 @@ func (b *fastFailBackend) Run(ctx context.Context, socket, model string, modelRe
 }
 
 // createTestLogger creates a logger for testing
-func createTestLogger() *logrus.Entry {
-	log := logrus.New()
-	log.SetOutput(io.Discard)
-	return logrus.NewEntry(log)
+func createTestLogger() *slog.Logger {
+	return slog.Default()
 }
 
 // Test memory size constants
@@ -68,7 +68,7 @@ const (
 
 // createDefunctMockRunner creates a mock runner with a closed done channel,
 // simulating a defunct (crashed/terminated) runner for testing
-func createDefunctMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
+func createDefunctMockRunner(ctx context.Context, log *slog.Logger, backend inference.Backend) *runner {
 	defunctRunnerDone := make(chan struct{})
 	_, defunctRunnerCancel := context.WithCancel(ctx)
 
@@ -97,7 +97,7 @@ func createDefunctMockRunner(ctx context.Context, log *logrus.Entry, backend inf
 
 // createAliveTerminableMockRunner creates a mock runner with an open done channel
 // (i.e., not defunct) that will close when cancel is invoked, so terminate() returns.
-func createAliveTerminableMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
+func createAliveTerminableMockRunner(ctx context.Context, log *slog.Logger, backend inference.Backend) *runner {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 
@@ -162,16 +162,16 @@ func TestMakeRunnerKey(t *testing.T) {
 			key := makeRunnerKey(tt.backend, tt.modelID, tt.draftModelID, tt.mode)
 
 			if key.backend != tt.backend {
-				t.Errorf("Expected backend %q, got %q", tt.backend, key.backend)
+				t.Error(fmt.Sprintf("Expected backend %q, got %q", tt.backend, key.backend))
 			}
 			if key.modelID != tt.modelID {
-				t.Errorf("Expected modelID %q, got %q", tt.modelID, key.modelID)
+				t.Error(fmt.Sprintf("Expected modelID %q, got %q", tt.modelID, key.modelID))
 			}
 			if key.draftModelID != tt.draftModelID {
-				t.Errorf("Expected draftModelID %q, got %q", tt.draftModelID, key.draftModelID)
+				t.Error(fmt.Sprintf("Expected draftModelID %q, got %q", tt.draftModelID, key.draftModelID))
 			}
 			if key.mode != tt.mode {
-				t.Errorf("Expected mode %v, got %v", tt.mode, key.mode)
+				t.Error(fmt.Sprintf("Expected mode %v, got %v", tt.mode, key.mode))
 			}
 		})
 	}
@@ -186,16 +186,16 @@ func TestMakeConfigKey(t *testing.T) {
 	key := makeConfigKey(backend, modelID, mode)
 
 	if key.backend != backend {
-		t.Errorf("Expected backend %q, got %q", backend, key.backend)
+		t.Error(fmt.Sprintf("Expected backend %q, got %q", backend, key.backend))
 	}
 	if key.modelID != modelID {
-		t.Errorf("Expected modelID %q, got %q", modelID, key.modelID)
+		t.Error(fmt.Sprintf("Expected modelID %q, got %q", modelID, key.modelID))
 	}
 	if key.draftModelID != "" {
-		t.Errorf("Expected empty draftModelID for config key, got %q", key.draftModelID)
+		t.Error(fmt.Sprintf("Expected empty draftModelID for config key, got %q", key.draftModelID))
 	}
 	if key.mode != mode {
-		t.Errorf("Expected mode %v, got %v", mode, key.mode)
+		t.Error(fmt.Sprintf("Expected mode %v, got %v", mode, key.mode))
 	}
 }
 
@@ -326,7 +326,7 @@ func TestPerModelKeepAliveEviction(t *testing.T) {
 
 	// Runner with short keep_alive should be evicted, never-evict should remain
 	if remaining != 1 {
-		t.Errorf("Expected 1 remaining runner after eviction, got %d", remaining)
+		t.Error(fmt.Sprintf("Expected 1 remaining runner after eviction, got %d", remaining))
 	}
 
 	// Verify that model-never is still present
@@ -382,10 +382,10 @@ func TestIdleCheckDurationWithPerModelKeepAlive(t *testing.T) {
 	// Should be based on the short keep_alive runner (around 100ms + 100ms buffer)
 	// The never-evict runner should be skipped
 	if duration < 0 {
-		t.Errorf("Expected positive duration, got %v", duration)
+		t.Error(fmt.Sprintf("Expected positive duration, got %v", duration))
 	}
 	if duration > 500*time.Millisecond {
-		t.Errorf("Expected duration around 200ms, got %v", duration)
+		t.Error(fmt.Sprintf("Expected duration around 200ms, got %v", duration))
 	}
 
 	loader.unlock()

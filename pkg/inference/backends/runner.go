@@ -46,9 +46,8 @@ type RunnerConfig struct {
 
 // Logger interface for backend logging
 type Logger interface {
-	Infof(format string, args ...interface{})
-	Warnf(format string, args ...interface{})
-	Warnln(args ...interface{})
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 }
 
 // RunBackend runs a backend process with common error handling and logging.
@@ -61,8 +60,8 @@ type Logger interface {
 func RunBackend(ctx context.Context, config RunnerConfig) error {
 	// Remove old socket file
 	if err := os.RemoveAll(config.Socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		config.Logger.Warnf("failed to remove socket file %s: %v\n", config.Socket, err)
-		config.Logger.Warnln(config.BackendName + " may not be able to start")
+		config.Logger.Warn("failed to remove socket file", "socket", config.Socket, "error", err)
+		config.Logger.Warn(config.BackendName + " may not be able to start")
 	}
 
 	// Sanitize args for safe logging
@@ -70,7 +69,7 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 	for i, arg := range config.Args {
 		sanitizedArgs[i] = utils.SanitizeForLog(arg, 0)
 	}
-	config.Logger.Infof("%s args: %v", config.BackendName, sanitizedArgs)
+	config.Logger.Info("backend args", "backend", config.BackendName, "args", sanitizedArgs)
 
 	// Create tail buffer for error output
 	tailBuf := tailbuffer.NewTailBuffer(1024)
@@ -107,7 +106,7 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 
 		errOutput := new(strings.Builder)
 		if _, err := io.Copy(errOutput, tailBuf); err != nil {
-			config.Logger.Warnf("failed to read server output tail: %v", err)
+			config.Logger.Warn("failed to read server output tail", "error", err)
 		}
 
 		if errOutput.String() != "" {
@@ -124,7 +123,7 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 		backendErrors <- backendErr
 		close(backendErrors)
 		if err := os.Remove(config.Socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			config.Logger.Warnf("failed to remove socket file %s on exit: %v\n", config.Socket, err)
+			config.Logger.Warn("failed to remove socket file on exit", "socket", config.Socket, "error", err)
 		}
 	}()
 	defer func() {

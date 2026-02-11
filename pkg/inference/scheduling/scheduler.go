@@ -59,7 +59,7 @@ func NewScheduler(
 	tracker *metrics.Tracker,
 	deferredBackends []string,
 ) *Scheduler {
-	openAIRecorder := metrics.NewOpenAIRecorder(log.WithField("component", "openai-recorder"), modelManager)
+	openAIRecorder := metrics.NewOpenAIRecorder(log.With("component", "openai-recorder"), modelManager)
 
 	// Create the scheduler.
 	s := &Scheduler{
@@ -107,7 +107,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.Backend, modelRef string) inference.Backend {
 	config, err := model.Config()
 	if err != nil {
-		s.log.Warnln("failed to fetch model config:", err)
+		s.log.Warn("failed to fetch model config", "error", err)
 		return backend
 	}
 
@@ -118,8 +118,8 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 			if s.installer.isInstalled(vllmmetal.Name) {
 				return vllmMetalBackend
 			}
-			s.log.Infof("vllm-metal backend is available but not installed. "+
-				"To install, run: docker model install-runner --backend %s", vllmmetal.Name)
+			s.log.Info("vllm-metal backend is available but not installed",
+				"backend", vllmmetal.Name)
 			return vllmMetalBackend
 		}
 		// Fall back to MLX on macOS
@@ -134,9 +134,8 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
 			return sglangBackend
 		}
-		s.log.Warnf("Model %s is in safetensors format but no compatible backend is available. "+
-			"Backend %s may not support this format and could fail at runtime.",
-			utils.SanitizeForLog(modelRef), backend.Name())
+		s.log.Warn(fmt.Sprintf("Model %s is in safetensors format but no compatible backend is available. "+
+			"Backend %s may not support this format and could fail at runtime.", utils.SanitizeForLog(modelRef), backend.Name()))
 	}
 
 	return backend
@@ -205,7 +204,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 	for _, backend := range runningBackends {
 		mode, ok := inference.ParseBackendMode(backend.Mode)
 		if !ok {
-			s.log.Warnf("Unknown backend mode %q, defaulting to completion.", backend.Mode)
+			s.log.Warn(fmt.Sprintf("Unknown backend mode %q, defaulting to completion.", backend.Mode))
 		}
 		// Find the runner slot for this backend/model combination
 		// We iterate through all runners since we don't know the draftModelID
@@ -213,7 +212,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 			if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
 				socket, err := RunnerSocketPath(runnerInfo.slot)
 				if err != nil {
-					s.log.Warnf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err)
+					s.log.Warn(fmt.Sprintf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err))
 					continue
 				}
 
@@ -245,7 +244,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 		if backend.BackendName == llamacpp.Name {
 			mode, ok := inference.ParseBackendMode(backend.Mode)
 			if !ok {
-				s.log.Warnf("Unknown backend mode %q, defaulting to completion.", backend.Mode)
+				s.log.Warn(fmt.Sprintf("Unknown backend mode %q, defaulting to completion.", backend.Mode))
 			}
 			// Find the runner slot for this backend/model combination
 			// We iterate through all runners since we don't know the draftModelID
@@ -335,7 +334,7 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Set the runner configuration
 	if err := s.loader.setRunnerConfig(ctx, backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warnf("Failed to configure %s runner for %s (%s): %s", backend.Name(), utils.SanitizeForLog(req.Model, -1), modelID, err)
+		s.log.Warn(fmt.Sprintf("Failed to configure %s runner for %s (%s): %s", backend.Name(), utils.SanitizeForLog(req.Model, -1), modelID, err))
 		return nil, err
 	}
 

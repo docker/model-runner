@@ -117,7 +117,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	// digest to be equal to the one on Docker Hub.
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
-		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
+		l.log.Info(fmt.Sprintf("failed to ensure latest llama.cpp: %v\n", err))
 		if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
 			l.status = fmt.Sprintf("failed to install llama.cpp: %v", err)
 		}
@@ -129,7 +129,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	}
 
 	l.gpuSupported = l.checkGPUSupport(ctx)
-	l.log.Infof("installed llama-server with gpuSupport=%t", l.gpuSupported)
+	l.log.Info(fmt.Sprintf("installed llama-server with gpuSupport=%t", l.gpuSupported))
 
 	return nil
 }
@@ -180,7 +180,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		SandboxConfig:   sandbox.ConfigurationLlamaCpp,
 		Args:            args,
 		Logger:          l.log,
-		ServerLogWriter: l.serverLog.Writer(),
+		ServerLogWriter: logging.NewWriter(l.serverLog),
 	})
 }
 
@@ -351,12 +351,12 @@ func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 		"--list-devices",
 	)
 	if err != nil {
-		l.log.Warnf("Failed to start sandboxed llama.cpp process to probe GPU support: %v", err)
+		l.log.Warn(fmt.Sprintf("Failed to start sandboxed llama.cpp process to probe GPU support: %v", err))
 		return false
 	}
 	defer llamaCppSandbox.Close()
 	if err := llamaCppSandbox.Command().Wait(); err != nil {
-		l.log.Warnf("Failed to determine if llama-server is built with GPU support: %v", err)
+		l.log.Warn(fmt.Sprintf("Failed to determine if llama-server is built with GPU support: %v", err))
 		return false
 	}
 	sc := bufio.NewScanner(strings.NewReader(output.String()))

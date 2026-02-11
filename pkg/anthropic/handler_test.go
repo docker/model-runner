@@ -1,13 +1,13 @@
 package anthropic
 
 import (
-	"io"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 )
 
 func TestWriteAnthropicError(t *testing.T) {
@@ -48,22 +48,22 @@ func TestWriteAnthropicError(t *testing.T) {
 			t.Parallel()
 
 			rec := httptest.NewRecorder()
-			discard := logrus.New()
-			discard.SetOutput(io.Discard)
-			h := &Handler{log: logrus.NewEntry(discard)}
+			discard := slog.Default()
+			// discard output is controlled by the slog handler level
+			h := &Handler{log: discard}
 			h.writeAnthropicError(rec, tt.statusCode, tt.errorType, tt.message)
 
 			if rec.Code != tt.statusCode {
-				t.Errorf("expected status %d, got %d", tt.statusCode, rec.Code)
+				t.Error(fmt.Sprintf("expected status %d, got %d", tt.statusCode, rec.Code))
 			}
 
 			if contentType := rec.Header().Get("Content-Type"); contentType != "application/json" {
-				t.Errorf("expected Content-Type application/json, got %s", contentType)
+				t.Error(fmt.Sprintf("expected Content-Type application/json, got %s", contentType))
 			}
 
 			body := strings.TrimSpace(rec.Body.String())
 			if body != tt.wantBody {
-				t.Errorf("expected body %s, got %s", tt.wantBody, body)
+				t.Error(fmt.Sprintf("expected body %s, got %s", tt.wantBody, body))
 			}
 		})
 	}
@@ -85,12 +85,12 @@ func TestRouteHandlers(t *testing.T) {
 
 	for _, route := range expectedRoutes {
 		if _, exists := routes[route]; !exists {
-			t.Errorf("expected route %s to be registered", route)
+			t.Error(fmt.Sprintf("expected route %s to be registered", route))
 		}
 	}
 
 	if len(routes) != len(expectedRoutes) {
-		t.Errorf("expected %d routes, got %d", len(expectedRoutes), len(routes))
+		t.Error(fmt.Sprintf("expected %d routes, got %d", len(expectedRoutes), len(routes)))
 	}
 }
 
@@ -98,16 +98,16 @@ func TestAPIPrefix(t *testing.T) {
 	t.Parallel()
 
 	if APIPrefix != "/anthropic" {
-		t.Errorf("expected APIPrefix to be /anthropic, got %s", APIPrefix)
+		t.Error(fmt.Sprintf("expected APIPrefix to be /anthropic, got %s", APIPrefix))
 	}
 }
 
 func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{invalid json`))
@@ -115,24 +115,24 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
 	}
 	if !strings.Contains(body, "Invalid JSON") {
-		t.Errorf("expected body to contain 'Invalid JSON', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'Invalid JSON', got %s", body))
 	}
 }
 
 func TestProxyToBackend_MissingModel(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{"messages": []}`))
@@ -140,24 +140,24 @@ func TestProxyToBackend_MissingModel(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
 	}
 	if !strings.Contains(body, "Missing required field: model") {
-		t.Errorf("expected body to contain 'Missing required field: model', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'Missing required field: model', got %s", body))
 	}
 }
 
 func TestProxyToBackend_EmptyModel(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{"model": ""}`))
@@ -165,24 +165,24 @@ func TestProxyToBackend_EmptyModel(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
 	}
 	if !strings.Contains(body, "Missing required field: model") {
-		t.Errorf("expected body to contain 'Missing required field: model', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'Missing required field: model', got %s", body))
 	}
 }
 
 func TestProxyToBackend_RequestTooLarge(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	// Create a request body that exceeds the maxRequestBodySize (10MB)
 	// We'll use a reader that simulates a large body without actually allocating it
@@ -194,11 +194,11 @@ func TestProxyToBackend_RequestTooLarge(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code)
+		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code))
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "request_too_large") {
-		t.Errorf("expected body to contain 'request_too_large', got %s", body)
+		t.Error(fmt.Sprintf("expected body to contain 'request_too_large', got %s", body))
 	}
 }
