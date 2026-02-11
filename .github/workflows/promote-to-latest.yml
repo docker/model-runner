@@ -28,46 +28,60 @@ jobs:
         run: crane auth login index.docker.io -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
 
       - name: Promote CPU images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Promoting CPU images"
-          crane tag "docker/model-runner:${{ inputs.version }}" "latest"
+          crane tag "docker/model-runner:$VERSION" "latest"
 
       - name: Promote CUDA images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Promoting CUDA images"
-          crane tag "docker/model-runner:${{ inputs.version }}-cuda" "latest-cuda"
+          crane tag "docker/model-runner:$VERSION-cuda" "latest-cuda"
 
       - name: Promote vLLM CUDA images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Promoting vLLM CUDA images"
-          crane tag "docker/model-runner:${{ inputs.version }}-vllm-cuda" "latest-vllm-cuda"
+          crane tag "docker/model-runner:$VERSION-vllm-cuda" "latest-vllm-cuda"
 
       - name: Promote SGLang CUDA images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Promoting SGLang CUDA images"
-          crane tag "docker/model-runner:${{ inputs.version }}-sglang-cuda" "latest-sglang-cuda"
+          crane tag "docker/model-runner:$VERSION-sglang-cuda" "latest-sglang-cuda"
 
       - name: Promote ROCm images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Promoting ROCm images"
-          crane tag "docker/model-runner:${{ inputs.version }}-rocm" "latest-rocm"
+          crane tag "docker/model-runner:$VERSION-rocm" "latest-rocm"
 
       - name: Promote MUSA images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Checking if MUSA image exists"
-          if crane manifest "docker/model-runner:${{ inputs.version }}-musa" > /dev/null 2>&1; then
+          if crane manifest "docker/model-runner:$VERSION-musa" > /dev/null 2>&1; then
             echo "Promoting MUSA images"
-            crane tag "docker/model-runner:${{ inputs.version }}-musa" "latest-musa"
+            crane tag "docker/model-runner:$VERSION-musa" "latest-musa"
           else
             echo "MUSA image does not exist, skipping"
           fi
 
       - name: Promote CANN images
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           echo "Checking if CANN image exists"
-          if crane manifest "docker/model-runner:${{ inputs.version }}-cann" > /dev/null 2>&1; then
+          if crane manifest "docker/model-runner:$VERSION-cann" > /dev/null 2>&1; then
             echo "Promoting CANN images"
-            crane tag "docker/model-runner:${{ inputs.version }}-cann" "latest-cann"
+            crane tag "docker/model-runner:$VERSION-cann" "latest-cann"
           else
             echo "CANN image does not exist, skipping"
           fi
