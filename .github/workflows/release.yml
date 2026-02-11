@@ -62,52 +62,55 @@ jobs:
       - name: Format tags
         id: tags
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.releaseTag }}
+          PUSH_LATEST: ${{ inputs.pushLatest }}
         run: |
           echo "cpu<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-cuda" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "vllm-cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-vllm-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-vllm-cuda" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "sglang-cuda<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-sglang-cuda" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-sglang-cuda" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "diffusers<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-diffusers" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-diffusers" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-diffusers" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-rocm" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "musa<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-musa" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "cann<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:${{ inputs.releaseTag }}-cann" >> "$GITHUB_OUTPUT"
-          if [ "${{ inputs.pushLatest }}" == "true" ]; then
+          echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH_LATEST" == "true" ]; then
             echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"

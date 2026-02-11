@@ -58,10 +58,11 @@ jobs:
           fi
 
       - name: Test model pull and run
+        env:
+          MODEL: ${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}
         run: |
-          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
           echo "Testing with model: $MODEL"
-          
+
           # Test model pull
           echo "Pulling model..."
           sudo docker model pull "$MODEL"
@@ -86,10 +87,11 @@ jobs:
           }
 
       - name: Test API endpoint
+        env:
+          MODEL: ${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}
         run: |
-          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
           echo "Testing API endpoint with model: $MODEL"
-                  
+
           # Test API call with curl
           echo "Testing API call..."
           RESPONSE=$(curl -s http://localhost:12434/engines/llama.cpp/v1/chat/completions \
@@ -124,9 +126,9 @@ jobs:
           fi
 
       - name: Test model cleanup
+        env:
+          MODEL: ${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}
         run: |
-          MODEL="${{ github.event.inputs.test_model || 'ai/smollm2:360M-Q4_K_M' }}"
-          
           echo "Cleaning up test model..."
           sudo docker model rm "$MODEL" || echo "Model removal failed or model not found"
           
