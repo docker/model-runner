@@ -54,6 +54,10 @@ type installer struct {
 	// mu protects statuses map mutations in installBackend. Readers
 	// (wait, isInstalled) take an RLock; installBackend takes a full Lock.
 	mu sync.RWMutex
+	// installMu serializes on-demand install operations so that only one
+	// goroutine performs the actual download at a time. Held independently
+	// of mu so that long-running installs don't block map readers.
+	installMu sync.Mutex
 }
 
 // newInstaller creates a new backend installer. Backends listed in
@@ -118,8 +122,8 @@ func (i *installer) run(ctx context.Context) {
 					close(status.installed)
 				}
 			}
-			// If not on disk, leave channels open so wait() returns
-			// errBackendNotInstalled.
+			// If not on disk, leave channels open so wait() can trigger
+			// on-demand installation when the backend is first needed.
 			continue
 		}
 
@@ -153,8 +157,9 @@ func (i *installer) run(ctx context.Context) {
 }
 
 // wait waits for installation of the specified backend to complete or fail.
-// For deferred backends that have never been installed, it returns
-// errBackendNotInstalled immediately instead of blocking.
+// For deferred backends that have not yet been installed, it triggers
+// on-demand installation (auto-pull), blocking until complete or the caller's
+// context is cancelled.
 func (i *installer) wait(ctx context.Context, backend string) error {
 	// Grab the backend status under a read lock, since installBackend may replace entries in the map.
 	i.mu.RLock()
@@ -164,9 +169,8 @@ func (i *installer) wait(ctx context.Context, backend string) error {
 		return ErrBackendNotFound
 	}
 
-	// For deferred backends, check whether installation has completed without
-	// blocking. This doesn't depend on the installer being started, since
-	// deferred backends are installed on-demand, not by the run loop.
+	// For deferred backends, check whether installation has already completed.
+	// If not, trigger on-demand installation (auto-pull).
 	if i.deferredBackends[backend] {
 		select {
 		case <-status.installed:
@@ -174,7 +178,7 @@ func (i *installer) wait(ctx context.Context, backend string) error {
 		case <-status.failed:
 			return status.err
 		default:
-			return errBackendNotInstalled
+			return i.installBackend(ctx, backend)
 		}
 	}
 
@@ -198,16 +202,24 @@ func (i *installer) wait(ctx context.Context, backend string) error {
 
 // installBackend triggers on-demand installation of a deferred backend.
 // It is idempotent: if the backend is already installed, it returns nil.
+// installMu serializes actual downloads so only one goroutine installs at a
+// time, while mu is held only briefly for map reads/writes so that other
+// goroutines calling wait() or isInstalled() are not blocked during the
+// (potentially long) Install() call.
 func (i *installer) installBackend(ctx context.Context, name string) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	// Serialize install operations so only one download runs at a time.
+	i.installMu.Lock()
+	defer i.installMu.Unlock()
 
 	backend, ok := i.backends[name]
 	if !ok {
 		return ErrBackendNotFound
 	}
 
+	// Check current status under read lock.
+	i.mu.RLock()
 	status := i.statuses[name]
+	i.mu.RUnlock()
 
 	// Already installed — nothing to do.
 	select {
@@ -223,12 +235,20 @@ func (i *installer) installBackend(ctx context.Context, name string) error {
 			installed: make(chan struct{}),
 			failed:    make(chan struct{}),
 		}
+		i.mu.Lock()
 		i.statuses[name] = status
+		i.mu.Unlock()
 	default:
 	}
 
-	// Perform installation.
+	// Perform installation without holding mu.
 	if err := backend.Install(ctx, i.httpClient); err != nil {
+		// If the caller's context was cancelled (e.g. Ctrl-C), don't
+		// permanently mark the backend as failed — leave channels open
+		// so the next request can retry.
+		if ctx.Err() != nil {
+			return err
+		}
 		status.err = err
 		close(status.failed)
 		return err
