@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
@@ -74,12 +75,21 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		return nil, fmt.Errorf("download files: %w", err)
 	}
 
-	// Step 4: Build the model artifact
+	// Step 4: Fetch repo metadata to get a deterministic creation timestamp.
+	// Using the HuggingFace lastModified date ensures the same revision always
+	// produces the same OCI digest regardless of when it was pulled.
+	var createdTime *time.Time
+	repoInfo, err := client.GetRepoInfo(ctx, repo, revision)
+	if err == nil && !repoInfo.LastModified.IsZero() {
+		createdTime = &repoInfo.LastModified
+	}
+
+	// Step 5: Build the model artifact
 	if progressWriter != nil {
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "", "pull")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir)
+	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir, createdTime)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -87,8 +97,10 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 	return model, nil
 }
 
-// buildModelFromFiles constructs an OCI model artifact from downloaded files
-func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+// buildModelFromFiles constructs an OCI model artifact from downloaded files.
+// If createdTime is non-nil, it is used as the creation timestamp for the OCI config
+// to produce deterministic digests. Otherwise time.Now() is used.
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string
 	for _, f := range weightFiles {
@@ -100,8 +112,14 @@ func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles 
 	}
 	sort.Strings(weightPaths)
 
+	// Build options for deterministic timestamps
+	var buildOpts []builder.BuildOption
+	if createdTime != nil {
+		buildOpts = append(buildOpts, builder.WithCreated(*createdTime))
+	}
+
 	// Create builder from weight files - auto-detects format (GGUF or SafeTensors)
-	b, err := builder.FromPaths(weightPaths)
+	b, err := builder.FromPaths(weightPaths, buildOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create builder: %w", err)
 	}
