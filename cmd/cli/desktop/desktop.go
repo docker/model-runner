@@ -479,12 +479,58 @@ func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conv
 		TotalTokens      int `json:"total_tokens"`
 	}
 
-	// Detect streaming vs non-streaming response via Content-Type header
+	// Use a buffered reader so we can consume server-sent progress
+	// lines (e.g. "Installing vllm-metal backend...") that arrive
+	// before the actual SSE or JSON inference response.
+	br := bufio.NewReader(resp.Body)
+
+	// Consume any plain-text progress lines that precede the real
+	// response. We peek ahead: if the next non-empty content starts
+	// with '{' (JSON) or "data:" / ":" (SSE), the progress section
+	// is over and we fall through to normal processing.
+	for {
+		peek, err := br.Peek(1)
+		if err != nil {
+			break
+		}
+		// JSON object or SSE stream — stop consuming progress lines.
+		if peek[0] == '{' || peek[0] == ':' {
+			break
+		}
+		line, err := br.ReadString('\n')
+		if err != nil && line == "" {
+			break
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			continue
+		}
+		// SSE data line — stop, let the normal SSE parser handle it.
+		if strings.HasPrefix(line, "data:") {
+			// Put the line back by chaining a reader with the rest.
+			br = bufio.NewReader(io.MultiReader(
+				strings.NewReader(line+"\n"),
+				br,
+			))
+			break
+		}
+		// Progress message — print to stderr.
+		fmt.Fprintln(os.Stderr, line)
+	}
+
+	// Detect streaming vs non-streaming response. Because server-sent
+	// progress lines may have been flushed before the Content-Type was
+	// set, we also peek at the body content to detect SSE.
 	isStreaming := strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")
+	if !isStreaming {
+		if peek, err := br.Peek(5); err == nil {
+			isStreaming = strings.HasPrefix(string(peek), "data:")
+		}
+	}
 
 	if !isStreaming {
 		// Non-streaming JSON response
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(br)
 		if err != nil {
 			return assistantResponse.String(), fmt.Errorf("error reading response body: %w", err)
 		}
@@ -506,7 +552,7 @@ func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conv
 		}
 	} else {
 		// SSE streaming response - process line by line
-		scanner := bufio.NewScanner(resp.Body)
+		scanner := bufio.NewScanner(br)
 
 		for scanner.Scan() {
 			// Check if context was cancelled
@@ -776,6 +822,30 @@ func (c *Client) ShowConfigs(modelFilter string) ([]scheduling.ModelConfigEntry,
 	}
 
 	return configs, nil
+}
+
+// InstallBackend triggers on-demand installation of a deferred backend
+func (c *Client) InstallBackend(backend string) error {
+	installPath := inference.InferencePrefix + "/install-backend"
+	jsonData, err := json.Marshal(struct {
+		Backend string `json:"backend"`
+	}{Backend: backend})
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	resp, err := c.doRequest(http.MethodPost, installPath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, installPath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("install backend failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return nil
 }
 
 func (c *Client) ConfigureBackend(request scheduling.ConfigureRequest) error {

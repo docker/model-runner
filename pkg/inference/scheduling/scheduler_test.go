@@ -33,7 +33,7 @@ func TestCors(t *testing.T) {
 			discard := logrus.New()
 			discard.SetOutput(io.Discard)
 			log := logrus.NewEntry(discard)
-			s := NewScheduler(log, nil, nil, nil, nil, nil)
+			s := NewScheduler(log, nil, nil, nil, nil, nil, nil)
 			httpHandler := NewHTTPHandler(s, nil, []string{"*"})
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)
 			req.Header.Set("Origin", "docker.com")
