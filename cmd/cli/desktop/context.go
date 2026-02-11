@@ -13,6 +13,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/connhelper"
 	"github.com/docker/cli/cli/context/docker"
 	"github.com/docker/docker/api/types/container"
 	clientpkg "github.com/docker/docker/client"
@@ -83,11 +84,25 @@ func DockerClientForContext(cli *command.DockerCli, name string) (*clientpkg.Cli
 	if err != nil {
 		return nil, fmt.Errorf("unable to determine context endpoint: %w", err)
 	}
-	return clientpkg.NewClientWithOpts(
+
+	opts := []clientpkg.Opt{
 		clientpkg.FromEnv,
-		clientpkg.WithHost(endpoint.Host),
 		clientpkg.WithAPIVersionNegotiation(),
-	)
+		clientpkg.WithHost(endpoint.Host),
+	}
+
+	helper, err := connhelper.GetConnectionHelper(endpoint.Host)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get SSH connection helper: %w", err)
+	}
+	if helper != nil {
+		opts = append(opts,
+			clientpkg.WithHost(helper.Host),
+			clientpkg.WithDialContext(helper.Dialer),
+		)
+	}
+
+	return clientpkg.NewClientWithOpts(opts...)
 }
 
 // ModelRunnerContext encodes the operational context of a Model CLI command and
