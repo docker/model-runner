@@ -3,11 +3,30 @@ short: Launch an app configured to use Docker Model Runner
 long: |-
     Launch an app configured to use Docker Model Runner.
 
+    Without arguments, lists all supported apps.
+
     Supported apps: anythingllm, claude, codex, openclaw, opencode, openwebui
-usage: docker model launch APP [-- APP_ARGS...]
+
+    Examples:
+      docker model launch
+      docker model launch opencode
+      docker model launch claude -- --help
+      docker model launch openwebui --port 3000
+      docker model launch claude --config
+usage: docker model launch [APP] [-- APP_ARGS...]
 pname: docker model
 plink: docker_model.yaml
 options:
+    - option: config
+      value_type: bool
+      default_value: "false"
+      description: Print configuration without launching
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: detach
       value_type: bool
       default_value: "false"
