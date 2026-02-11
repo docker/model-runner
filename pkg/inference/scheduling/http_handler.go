@@ -198,11 +198,28 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		backend = h.scheduler.selectBackendForModel(model, backend, request.Model)
 	}
 
+	// If a deferred backend needs on-demand installation and the request
+	// comes from the model CLI, stream progress messages so the user sees
+	// what is happening while the download runs.
+	autoInstall := h.scheduler.installer.deferredBackends[backend.Name()] &&
+		!h.scheduler.installer.isInstalled(backend.Name()) &&
+		strings.Contains(r.UserAgent(), modelCLIUserAgentPrefix)
+	if autoInstall {
+		fmt.Fprintf(w, "Installing %s backend...\n", backend.Name())
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
 	// Wait for the corresponding backend installation to complete or fail. We
 	// don't allow any requests to be scheduled for a backend until it has
 	// completed installation.
 	if err := h.scheduler.installer.wait(r.Context(), backend.Name()); err != nil {
-		if errors.Is(err, ErrBackendNotFound) {
+		if autoInstall {
+			// Headers are already sent (200 OK) from the progress
+			// line, so we can only write the error as plain text.
+			fmt.Fprintf(w, "backend installation failed: %v\n", err)
+		} else if errors.Is(err, ErrBackendNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else if errors.Is(err, errInstallerNotStarted) {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -220,6 +237,13 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 			http.Error(w, fmt.Errorf("backend installation failed: %w", err).Error(), http.StatusServiceUnavailable)
 		}
 		return
+	}
+
+	if autoInstall {
+		fmt.Fprintf(w, "%s backend installed successfully\n", backend.Name())
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
 	}
 
 	modelID := h.scheduler.modelManager.ResolveID(request.Model)

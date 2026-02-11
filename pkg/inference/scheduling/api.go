@@ -13,6 +13,9 @@ const (
 	// enough to encompass any real-world request but also small enough to avoid
 	// DoS attacks.
 	maximumOpenAIInferenceRequestSize = 10 * 1024 * 1024
+
+	// modelCLIUserAgentPrefix is the user-agent prefix set by the model CLI.
+	modelCLIUserAgentPrefix = "docker-model-cli/"
 )
 
 // trimRequestPathToOpenAIRoot trims a request path to start at the first
