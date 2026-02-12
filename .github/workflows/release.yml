@@ -205,6 +205,8 @@ jobs:
   build:
     needs: [prepare, test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion || 'latest' }}
