@@ -80,7 +80,9 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 	// produces the same OCI digest regardless of when it was pulled.
 	var createdTime *time.Time
 	repoInfo, err := client.GetRepoInfo(ctx, repo, revision)
-	if err == nil && !repoInfo.LastModified.IsZero() {
+	if err != nil {
+		log.Printf("Warning: could not fetch repo info for deterministic timestamp: %v. Falling back to current time.", err)
+	} else if !repoInfo.LastModified.IsZero() {
 		createdTime = &repoInfo.LastModified
 	}
 

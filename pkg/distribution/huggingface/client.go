@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -188,9 +189,9 @@ func (c *Client) GetRepoInfo(ctx context.Context, repo, revision string) (*RepoI
 		revision = "main"
 	}
 
-	url := fmt.Sprintf("%s/api/models/%s/revision/%s", c.baseURL, repo, revision)
+	reqURL := fmt.Sprintf("%s/api/models/%s/revision/%s", c.baseURL, repo, url.PathEscape(revision))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
