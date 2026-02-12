@@ -137,6 +137,7 @@ jobs:
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -152,6 +153,7 @@ jobs:
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=cuda"
             "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -170,6 +172,7 @@ jobs:
             "VLLM_VERSION=${{ inputs.vllmVersion }}"
             "VLLM_CUDA_VERSION=cu130"
             "VLLM_PYTHON_TAG=cp38-abi3"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -186,6 +189,7 @@ jobs:
             "LLAMA_SERVER_VARIANT=cuda"
             "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
             "SGLANG_VERSION=${{ inputs.sglangVersion }}"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -199,6 +203,7 @@ jobs:
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -214,6 +219,7 @@ jobs:
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=rocm"
             "BASE_IMAGE=rocm/dev-ubuntu-22.04"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -230,6 +236,7 @@ jobs:
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=musa"
             "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max
@@ -246,6 +253,7 @@ jobs:
             "LLAMA_SERVER_VERSION=${{ inputs.llamaServerVersion }}"
             "LLAMA_SERVER_VARIANT=cann"
             "BASE_IMAGE=ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
+            "VERSION=${{ inputs.releaseTag }}"
           push: true
           sbom: true
           provenance: mode=max

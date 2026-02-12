@@ -9,7 +9,11 @@ ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIA
 # use 22.04 for gpu variants to match ROCm/CUDA base images
 ARG BASE_IMAGE=ubuntu:26.04
 
+ARG VERSION=dev
+
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS builder
+
+ARG VERSION
 
 # Install git for go mod download if needed
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
@@ -30,13 +34,14 @@ COPY --link . .
 # Build the Go binary (static build)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o model-runner .
+    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # Build the Go binary for SGLang (without vLLM)
 FROM builder AS builder-sglang
+ARG VERSION
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w" -o model-runner .
+    CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # --- Get llama.cpp binary ---
 FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
