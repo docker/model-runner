@@ -198,9 +198,8 @@ var VLLMAllowedFlags = map[string]bool{
 	"--use-v2-block-manager":      true,
 
 	// Tokenizer
-	"--tokenizer-mode":    true,
-	"--trust-remote-code": true,
-	"--max-logprobs":      true,
+	"--tokenizer-mode": true,
+	"--max-logprobs":   true,
 
 	// Misc
 	"--revision":          true,
