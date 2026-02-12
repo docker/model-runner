@@ -11,7 +11,6 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
-	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -134,25 +133,6 @@ func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []
 		return nil, fmt.Errorf("create builder: %w", err)
 	}
 
-	// Create config archive if we have config files
-	if len(configFiles) > 0 {
-		configArchive, configArchiveErr := createConfigArchive(localPaths, configFiles, tempDir)
-		if configArchiveErr != nil {
-			return nil, fmt.Errorf("create config archive: %w", configArchiveErr)
-		}
-		// Note: configArchive is created inside tempDir and will be cleaned up when
-		// the caller removes tempDir. The file must exist until after store.Write()
-		// completes since the model artifact references it lazily.
-
-		if configArchive != "" {
-			var withConfigErr error
-			b, withConfigErr = b.WithConfigArchive(configArchive)
-			if withConfigErr != nil {
-				return nil, fmt.Errorf("add config archive: %w", withConfigErr)
-			}
-		}
-	}
-
 	// Check for chat template and add it
 	for _, f := range configFiles {
 		if isChatTemplate(f.Path) {
@@ -168,38 +148,6 @@ func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []
 	}
 
 	return b.Model(), nil
-}
-
-// createConfigArchive creates a tar archive of config files in the specified tempDir
-func createConfigArchive(localPaths map[string]string, configFiles []RepoFile, tempDir string) (string, error) {
-	// Collect config file paths (excluding chat templates which are added separately)
-	var configPaths []string
-	for _, f := range configFiles {
-		if isChatTemplate(f.Path) {
-			continue // Chat templates are added as separate layers
-		}
-		localPath, ok := localPaths[f.Path]
-		if !ok {
-			return "", fmt.Errorf("internal error: missing local path for downloaded config file %s", f.Path)
-		}
-		configPaths = append(configPaths, localPath)
-	}
-
-	if len(configPaths) == 0 {
-		// No config files to archive
-		return "", nil
-	}
-
-	// Sort for reproducibility
-	sort.Strings(configPaths)
-
-	// Create the archive in our tempDir so it gets cleaned up with everything else
-	archivePath, err := packaging.CreateConfigArchiveInDir(configPaths, tempDir)
-	if err != nil {
-		return "", fmt.Errorf("create config archive: %w", err)
-	}
-
-	return archivePath, nil
 }
 
 // isChatTemplate checks if a file is a chat template
