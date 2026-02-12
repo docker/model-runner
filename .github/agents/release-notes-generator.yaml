@@ -83,8 +83,8 @@ agents:
 
 permissions:
   allow:
-    - shell:cmd=gh *
-    - shell:cmd=git *
+    - shell:cmd=gh pr *
+    - shell:cmd=git log *
+    - shell:cmd=git tag *
     - shell:cmd=cat *
     - shell:cmd=echo *
-    - shell:cmd=curl *

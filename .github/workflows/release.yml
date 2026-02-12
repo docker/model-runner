@@ -72,10 +72,15 @@ jobs:
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
         run: |
           # --- Find the latest existing v* tag (excluding CLI tags) ---
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v '^cmd/' | head -1)
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | { grep -v '^cmd/' || true; } | head -1)
           echo "Latest existing tag: ${LATEST_TAG:-<none>}"
 
           if [ -n "$EXPLICIT_TAG" ]; then
+            # Validate explicit tag format
+            if ! echo "$EXPLICIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Invalid release tag format: '$EXPLICIT_TAG'. Expected format: v<MAJOR>.<MINOR>.<PATCH> (e.g., v1.2.3)"
+              exit 1
+            fi
             # Explicit tag provided — use it directly
             RELEASE_TAG="$EXPLICIT_TAG"
             PREVIOUS_TAG="$LATEST_TAG"
@@ -169,7 +174,11 @@ jobs:
             echo "::warning::Release notes were not generated. Using fallback."
             echo "## What's Changed" > release-notes.md
             echo "" >> release-notes.md
-            echo "**Full Changelog**: https://github.com/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG}" >> release-notes.md
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "**Full Changelog**: https://github.com/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG}" >> release-notes.md
+            else
+              echo "**Full Changelog**: https://github.com/docker/model-runner/tree/${RELEASE_TAG}" >> release-notes.md
+            fi
           fi
           echo "✅ Release notes:"
           cat release-notes.md
