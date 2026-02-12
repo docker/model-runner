@@ -1,14 +1,10 @@
 name: Release model-runner images for CE
 run-name: >-
   Release model-runner images for CE
-  ${{ github.ref_type == 'tag' && github.ref_name || inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
+  ${{ inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
   ${{ inputs.pushLatest && ' + latest' || '' }}
 
 on:
-  push:
-    tags:
-      - 'v*'
-      - '!cmd/cli/v*'
   workflow_dispatch:
     inputs:
       bumpType:
@@ -54,8 +50,7 @@ on:
 jobs:
   # ---------------------------------------------------------------------------
   # Determine or create the release tag.
-  # - Tag push:         uses the pushed tag as-is.
-  # - workflow_dispatch: auto-bumps the latest tag (or uses explicit releaseTag).
+  # Auto-bumps the latest tag (or uses explicit releaseTag if provided).
   # ---------------------------------------------------------------------------
   prepare:
     runs-on: ubuntu-latest
@@ -73,8 +68,6 @@ jobs:
       - name: Resolve release tag
         id: resolve
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
         run: |
@@ -82,18 +75,8 @@ jobs:
           LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v '^cmd/' | head -1)
           echo "Latest existing tag: ${LATEST_TAG:-<none>}"
 
-          if [ "$REF_TYPE" = "tag" ]; then
-            # Triggered by tag push — use the pushed tag directly
-            RELEASE_TAG="$REF_NAME"
-            PREVIOUS_TAG="$LATEST_TAG"
-            # If the pushed tag IS the latest, find the one before it
-            if [ "$PREVIOUS_TAG" = "$RELEASE_TAG" ]; then
-              PREVIOUS_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v '^cmd/' | grep -v "^${RELEASE_TAG}$" | head -1)
-            fi
-            echo "Tag push trigger — using tag: $RELEASE_TAG"
-
-          elif [ -n "$EXPLICIT_TAG" ]; then
-            # Manual trigger with explicit tag
+          if [ -n "$EXPLICIT_TAG" ]; then
+            # Explicit tag provided — use it directly
             RELEASE_TAG="$EXPLICIT_TAG"
             PREVIOUS_TAG="$LATEST_TAG"
             echo "Explicit tag provided: $RELEASE_TAG"
@@ -138,8 +121,6 @@ jobs:
           echo "🏷️  Previous tag: ${PREVIOUS_TAG:-<none>}"
 
       - name: Create and push tag
-        # Only create a tag when triggered by workflow_dispatch (tag push already has one)
-        if: github.ref_type != 'tag'
         env:
           RELEASE_TAG: ${{ steps.resolve.outputs.release_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
