@@ -54,6 +54,9 @@ func New(opts Options) (*LocalStore, error) {
 func (s *LocalStore) Reset() error {
 	entries, err := os.ReadDir(s.rootPath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return s.initialize()
+		}
 		return fmt.Errorf("reading store directory: %w", err)
 	}
 
