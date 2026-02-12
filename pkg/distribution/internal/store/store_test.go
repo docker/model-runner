@@ -991,6 +991,167 @@ func TestResetStore(t *testing.T) {
 	}
 }
 
+func TestResetStoreWithDeletedDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create store
+	storePath := filepath.Join(tempDir, "deleted-dir-store")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	// Write a model so we know the store was working
+	mdl := newTestModel(t)
+	if err := s.Write(mdl, []string{"pre-delete:latest"}, nil); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	// Verify model exists
+	models, err := s.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("Expected 1 model, got %d", len(models))
+	}
+
+	// Remove the entire store directory (simulates external deletion)
+	if err := os.RemoveAll(storePath); err != nil {
+		t.Fatalf("Failed to remove store directory: %v", err)
+	}
+
+	// Verify directory is gone
+	if _, err := os.Stat(storePath); !os.IsNotExist(err) {
+		t.Fatalf("Store directory should not exist after removal")
+	}
+
+	// Reset should succeed and re-initialize the store
+	if err := s.Reset(); err != nil {
+		t.Fatalf("Reset failed after directory deletion: %v", err)
+	}
+
+	// Verify store is functional after reset
+	models, err = s.List()
+	if err != nil {
+		t.Fatalf("List failed after reset: %v", err)
+	}
+	if len(models) != 0 {
+		t.Errorf("Expected empty store after reset, got %d models", len(models))
+	}
+
+	// Verify we can write and read a new model
+	newMdl := newTestModel(t)
+	if err := s.Write(newMdl, []string{"post-reset:latest"}, nil); err != nil {
+		t.Fatalf("Write after reset failed: %v", err)
+	}
+
+	readModel, err := s.Read("post-reset:latest")
+	if err != nil {
+		t.Fatalf("Read after reset failed: %v", err)
+	}
+
+	readDigest, err := readModel.Digest()
+	if err != nil {
+		t.Fatalf("Failed to get read digest: %v", err)
+	}
+	expectedDigest, err := newMdl.Digest()
+	if err != nil {
+		t.Fatalf("Failed to get expected digest: %v", err)
+	}
+	if readDigest.String() != expectedDigest.String() {
+		t.Errorf("Digest mismatch: got %s, want %s", readDigest, expectedDigest)
+	}
+}
+
+func TestResetRefusesNonStoreDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a store to get a valid LocalStore reference
+	storePath := filepath.Join(tempDir, "non-store-dir")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	// Remove the store's layout.json and models.json, then add non-store files
+	// to simulate a misconfigured rootPath pointing to an arbitrary directory
+	if err := os.RemoveAll(storePath); err != nil {
+		t.Fatalf("Failed to remove store directory: %v", err)
+	}
+	if err := os.MkdirAll(storePath, 0755); err != nil {
+		t.Fatalf("Failed to recreate directory: %v", err)
+	}
+
+	// Populate with non-store files
+	importantFiles := []string{"important-data.txt", "config.yaml", "database.db"}
+	for _, name := range importantFiles {
+		filePath := filepath.Join(storePath, name)
+		if err := os.WriteFile(filePath, []byte("precious data in "+name), 0644); err != nil {
+			t.Fatalf("Failed to create file %s: %v", name, err)
+		}
+	}
+
+	// Reset should refuse to operate on this non-store directory
+	err = s.Reset()
+	if err == nil {
+		t.Fatal("Expected Reset to refuse operating on a non-store directory, got nil error")
+	}
+	if !strings.Contains(err.Error(), "refusing to reset") {
+		t.Fatalf("Expected 'refusing to reset' error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "layout.json") {
+		t.Fatalf("Expected error to mention layout.json, got: %v", err)
+	}
+
+	// Verify all files are still intact (nothing was deleted)
+	for _, name := range importantFiles {
+		filePath := filepath.Join(storePath, name)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			t.Errorf("File %s was deleted despite safeguard - this should not happen!", name)
+		}
+	}
+}
+
+func TestResetAllowsEmptyNonStoreDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a store to get a valid LocalStore reference
+	storePath := filepath.Join(tempDir, "empty-non-store-dir")
+	s, err := store.New(store.Options{
+		RootPath: storePath,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	// Remove everything and recreate as an empty directory (no layout.json)
+	if err := os.RemoveAll(storePath); err != nil {
+		t.Fatalf("Failed to remove store directory: %v", err)
+	}
+	if err := os.MkdirAll(storePath, 0755); err != nil {
+		t.Fatalf("Failed to recreate directory: %v", err)
+	}
+
+	// Reset should succeed on an empty directory (nothing to delete, safe to initialize)
+	if err := s.Reset(); err != nil {
+		t.Fatalf("Reset should succeed on empty directory, got: %v", err)
+	}
+
+	// Verify store is functional after reset
+	models, err := s.List()
+	if err != nil {
+		t.Fatalf("List failed after reset: %v", err)
+	}
+	if len(models) != 0 {
+		t.Errorf("Expected empty store, got %d models", len(models))
+	}
+}
+
 func TestMigrateTags(t *testing.T) {
 	tempDir := t.TempDir()
 

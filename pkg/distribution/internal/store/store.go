@@ -54,7 +54,19 @@ func New(opts Options) (*LocalStore, error) {
 func (s *LocalStore) Reset() error {
 	entries, err := os.ReadDir(s.rootPath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return s.initialize()
+		}
 		return fmt.Errorf("reading store directory: %w", err)
+	}
+
+	// Safeguard: if the directory is non-empty, verify it's a valid store
+	// by checking for the layout.json marker file before deleting anything.
+	// This prevents catastrophic data loss if rootPath is misconfigured.
+	if len(entries) > 0 {
+		if _, statErr := os.Stat(s.layoutPath()); errors.Is(statErr, os.ErrNotExist) {
+			return fmt.Errorf("refusing to reset: directory %q does not appear to be a model store (missing layout.json)", s.rootPath)
+		}
 	}
 
 	for _, entry := range entries {
