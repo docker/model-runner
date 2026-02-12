@@ -13,8 +13,8 @@ agents:
     description: Release Notes Generator for Docker Model Runner
     commands:
       demo: |
-        **Release Tag:** v1.0.0
-        **Previous Tag:** v0.9.0
+        **Release Tag:** v1.0.16
+        **Previous Tag:** v1.0.15
         **Repository:** docker/model-runner
 
     instruction: |
