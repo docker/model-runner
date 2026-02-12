@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -99,15 +100,40 @@ func findGGUFFile(modelDir string) (string, error) {
 }
 
 func findSafetensorsFile(modelDir string) (string, error) {
+	// First check top-level directory (most common case)
 	safetensors, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.safetensors"))
 	if err != nil {
 		return "", fmt.Errorf("find safetensors files: %w", err)
 	}
-	if len(safetensors) == 0 {
-		// Safetensors files are optional - GGUF models won't have them
-		return "", nil
+	if len(safetensors) > 0 {
+		return filepath.Base(safetensors[0]), nil
 	}
-	return filepath.Base(safetensors[0]), nil
+
+	// Search recursively for V0.2 models with nested directory structure
+	// (e.g., text_encoder/model.safetensors)
+	var firstFound string
+	walkErr := filepath.Walk(modelDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // skip errors
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) == ".safetensors" && !strings.HasPrefix(info.Name(), ".") {
+			rel, relErr := filepath.Rel(modelDir, path)
+			if relErr == nil {
+				firstFound = rel
+				return filepath.SkipAll // found one, stop walking
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return "", fmt.Errorf("walk for safetensors files: %w", walkErr)
+	}
+
+	// Safetensors files are optional - GGUF models won't have them
+	return firstFound, nil
 }
 
 func findMultiModalProjectorFile(modelDir string) (string, error) {

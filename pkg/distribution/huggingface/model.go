@@ -87,8 +87,36 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 	return model, nil
 }
 
-// buildModelFromFiles constructs an OCI model artifact from downloaded files
+// buildModelFromFiles constructs an OCI model artifact from downloaded files.
+// For safetensors models, it uses the V0.2 layer-per-file packaging (FromDirectory)
+// which preserves directory structure and adds each file as an individual layer with
+// filepath annotations. For GGUF models, it uses the V0.1 packaging (FromPaths)
+// for backward compatibility.
 func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+	// Check if this is a safetensors model - use V0.2 packaging
+	if isSafetensorsModel(weightFiles) {
+		return buildSafetensorsModelV02(tempDir)
+	}
+
+	// For GGUF models, use V0.1 packaging (backward compatible)
+	return buildGGUFModelV01(localPaths, weightFiles, configFiles, tempDir)
+}
+
+// buildSafetensorsModelV02 builds a safetensors model using V0.2 layer-per-file packaging.
+// It uses builder.FromDirectory which recursively scans the tempDir and creates one layer
+// per file, preserving nested directory structure with filepath annotations.
+func buildSafetensorsModelV02(tempDir string) (types.ModelArtifact, error) {
+	b, err := builder.FromDirectory(tempDir)
+	if err != nil {
+		return nil, fmt.Errorf("create builder from directory: %w", err)
+	}
+
+	return b.Model(), nil
+}
+
+// buildGGUFModelV01 builds a GGUF model using V0.1 packaging (backward compatible).
+// GGUF uses FromPaths + config archive approach.
+func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string
 	for _, f := range weightFiles {
