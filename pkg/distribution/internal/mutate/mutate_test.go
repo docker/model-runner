@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -41,10 +41,7 @@ func (l *staticLayer) Uncompressed() (io.ReadCloser, error) {
 }
 
 func TestAppendLayer(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := newTestModel(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -85,10 +82,7 @@ func TestAppendLayer(t *testing.T) {
 }
 
 func TestConfigMediaTypes(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := newTestModel(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -109,10 +103,7 @@ func TestConfigMediaTypes(t *testing.T) {
 }
 
 func TestContextSize(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := newTestModel(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	cfg, err := mdl1.Config()
 	if err != nil {
 		t.Fatalf("Failed to get config file: %v", err)
@@ -135,4 +126,14 @@ func TestContextSize(t *testing.T) {
 	if *cfg2.GetContextSize() != 2096 {
 		t.Fatalf("Expected context size of 2096 got %d", *cfg2.GetContextSize())
 	}
+}
+
+func newTestModel(t *testing.T, path string) types.ModelArtifact {
+	t.Helper()
+
+	b, err := builder.FromPath(path)
+	if err != nil {
+		t.Fatalf("Failed to create model: %v", err)
+	}
+	return b.Model()
 }

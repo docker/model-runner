@@ -15,15 +15,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
+	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
-	"github.com/docker/model-runner/pkg/distribution/internal/safetensors"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/sirupsen/logrus"
 )
@@ -64,7 +64,7 @@ func TestClientPullModel(t *testing.T) {
 		t.Fatalf("Failed to read test model file: %v", err)
 	}
 
-	model, err := gguf.NewModel(testGGUFFile)
+	model, err := buildModelFromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Use the dummy.gguf file from assets directory
-		mdl, err := gguf.NewModel(testGGUFFile)
+		mdl, err := buildModelFromPath(testGGUFFile)
 		if err != nil {
 			t.Fatalf("Failed to create model: %v", err)
 		}
@@ -421,7 +421,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Create a safetensors model
-		safetensorsModel, err := safetensors.NewModel([]string{safetensorsPath})
+		safetensorsModel, err := buildModelFromPath(safetensorsPath)
 		if err != nil {
 			t.Fatalf("Failed to create safetensors model: %v", err)
 		}
@@ -582,7 +582,7 @@ func TestClientGetModel(t *testing.T) {
 	}
 
 	// Create model from test GGUF file
-	model, err := gguf.NewModel(testGGUFFile)
+	model, err := buildModelFromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -638,7 +638,7 @@ func TestClientListModels(t *testing.T) {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
 
-	mdl, err := gguf.NewModel(modelFile)
+	mdl, err := buildModelFromPath(modelFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestClientListModels(t *testing.T) {
 	if err := os.WriteFile(modelFile2, modelContent2, 0644); err != nil {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
-	mdl2, err := gguf.NewModel(modelFile2)
+	mdl2, err := buildModelFromPath(modelFile2)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -844,7 +844,7 @@ func TestPush(t *testing.T) {
 	tag := uri.Host + "/incomplete-test/model:v1.0.0"
 
 	// Write a test model to the store with the given tag
-	mdl, err := gguf.NewModel(testGGUFFile)
+	mdl, err := buildModelFromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -915,7 +915,7 @@ func TestPushProgress(t *testing.T) {
 	}
 	defer os.Remove(path)
 
-	mdl, err := gguf.NewModel(path)
+	mdl, err := buildModelFromPath(path)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -981,7 +981,7 @@ func TestTag(t *testing.T) {
 	}
 
 	// Create a test model
-	model, err := gguf.NewModel(testGGUFFile)
+	model, err := buildModelFromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -1082,7 +1082,7 @@ func TestIsModelInStoreFound(t *testing.T) {
 	}
 
 	// Create a test model
-	model, err := gguf.NewModel(testGGUFFile)
+	model, err := buildModelFromPath(testGGUFFile)
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
 	}
@@ -1112,7 +1112,7 @@ func writeToRegistry(source, refStr string, opts ...remote.Option) error {
 	}
 
 	// Create image with layer
-	mdl, err := gguf.NewModel(source)
+	mdl, err := buildModelFromPath(source)
 	if err != nil {
 		return fmt.Errorf("new model: %w", err)
 	}
@@ -1178,7 +1178,7 @@ func TestMigrateHFTagsOnClientInit(t *testing.T) {
 				t.Fatalf("Failed to create setup client: %v", err)
 			}
 
-			model, err := gguf.NewModel(testGGUFFile)
+			model, err := buildModelFromPath(testGGUFFile)
 			if err != nil {
 				t.Fatalf("Failed to create model: %v", err)
 			}
@@ -1255,7 +1255,7 @@ func TestPullHuggingFaceModelFromCache(t *testing.T) {
 			}
 
 			// Create a test model and write it to the store with a normalized HuggingFace tag
-			model, err := gguf.NewModel(testGGUFFile)
+			model, err := buildModelFromPath(testGGUFFile)
 			if err != nil {
 				t.Fatalf("Failed to create model: %v", err)
 			}
@@ -1280,4 +1280,12 @@ func TestPullHuggingFaceModelFromCache(t *testing.T) {
 			}
 		})
 	}
+}
+
+func buildModelFromPath(path string) (types.ModelArtifact, error) {
+	b, err := builder.FromPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return b.Model(), nil
 }
