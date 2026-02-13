@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
+	"time"
 )
 
 const (
@@ -172,6 +174,46 @@ func (c *Client) DownloadFile(ctx context.Context, repo, revision, filename stri
 	}
 
 	return resp.Body, resp.ContentLength, nil
+}
+
+// RepoInfo contains metadata about a HuggingFace repository
+type RepoInfo struct {
+	LastModified time.Time `json:"lastModified"`
+}
+
+// GetRepoInfo fetches repository metadata from the HuggingFace API.
+// This returns information such as the last modified timestamp, which is useful
+// for producing deterministic OCI digests.
+func (c *Client) GetRepoInfo(ctx context.Context, repo, revision string) (*RepoInfo, error) {
+	if revision == "" {
+		revision = "main"
+	}
+
+	reqURL := fmt.Sprintf("%s/api/models/%s/revision/%s", c.baseURL, repo, url.PathEscape(revision))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get repo info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkResponse(resp, repo); err != nil {
+		return nil, err
+	}
+
+	var info RepoInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return &info, nil
 }
 
 // setHeaders sets common headers for HuggingFace API requests

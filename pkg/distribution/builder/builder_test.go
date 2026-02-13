@@ -7,11 +7,108 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
+
+// TestWithCreatedDeterministicDigest verifies that using WithCreated produces
+// deterministic digests: the same file + same timestamp should always yield
+// the same manifest digest, while different timestamps yield different digests.
+func TestWithCreatedDeterministicDigest(t *testing.T) {
+	ggufPath := filepath.Join("..", "assets", "dummy.gguf")
+	fixedTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	// Build twice with the same fixed timestamp
+	b1, err := builder.FromPath(ggufPath, builder.WithCreated(fixedTime))
+	if err != nil {
+		t.Fatalf("FromPath (first) failed: %v", err)
+	}
+	b2, err := builder.FromPath(ggufPath, builder.WithCreated(fixedTime))
+	if err != nil {
+		t.Fatalf("FromPath (second) failed: %v", err)
+	}
+
+	target1 := &fakeTarget{}
+	target2 := &fakeTarget{}
+	if err := b1.Build(t.Context(), target1, nil); err != nil {
+		t.Fatalf("Build (first) failed: %v", err)
+	}
+	if err := b2.Build(t.Context(), target2, nil); err != nil {
+		t.Fatalf("Build (second) failed: %v", err)
+	}
+
+	digest1, err := target1.artifact.Digest()
+	if err != nil {
+		t.Fatalf("Digest (first) failed: %v", err)
+	}
+	digest2, err := target2.artifact.Digest()
+	if err != nil {
+		t.Fatalf("Digest (second) failed: %v", err)
+	}
+
+	if digest1 != digest2 {
+		t.Errorf("Expected identical digests with same timestamp, got %v and %v", digest1, digest2)
+	}
+
+	// Build with a different timestamp and verify digest differs
+	differentTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	b3, err := builder.FromPath(ggufPath, builder.WithCreated(differentTime))
+	if err != nil {
+		t.Fatalf("FromPath (third) failed: %v", err)
+	}
+	target3 := &fakeTarget{}
+	if err := b3.Build(t.Context(), target3, nil); err != nil {
+		t.Fatalf("Build (third) failed: %v", err)
+	}
+	digest3, err := target3.artifact.Digest()
+	if err != nil {
+		t.Fatalf("Digest (third) failed: %v", err)
+	}
+
+	if digest1 == digest3 {
+		t.Errorf("Expected different digests with different timestamps, but both were %v", digest1)
+	}
+}
+
+// TestWithCreatedFromPaths verifies that WithCreated works with FromPaths as well.
+func TestWithCreatedFromPaths(t *testing.T) {
+	ggufPath := filepath.Join("..", "assets", "dummy.gguf")
+	fixedTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	b1, err := builder.FromPaths([]string{ggufPath}, builder.WithCreated(fixedTime))
+	if err != nil {
+		t.Fatalf("FromPaths (first) failed: %v", err)
+	}
+	b2, err := builder.FromPaths([]string{ggufPath}, builder.WithCreated(fixedTime))
+	if err != nil {
+		t.Fatalf("FromPaths (second) failed: %v", err)
+	}
+
+	target1 := &fakeTarget{}
+	target2 := &fakeTarget{}
+	if err := b1.Build(t.Context(), target1, nil); err != nil {
+		t.Fatalf("Build (first) failed: %v", err)
+	}
+	if err := b2.Build(t.Context(), target2, nil); err != nil {
+		t.Fatalf("Build (second) failed: %v", err)
+	}
+
+	digest1, err := target1.artifact.Digest()
+	if err != nil {
+		t.Fatalf("Digest (first) failed: %v", err)
+	}
+	digest2, err := target2.artifact.Digest()
+	if err != nil {
+		t.Fatalf("Digest (second) failed: %v", err)
+	}
+
+	if digest1 != digest2 {
+		t.Errorf("Expected identical digests with same timestamp, got %v and %v", digest1, digest2)
+	}
+}
 
 func TestBuilder(t *testing.T) {
 	// Create a builder from a GGUF file
