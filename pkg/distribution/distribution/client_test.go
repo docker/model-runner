@@ -15,15 +15,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
-	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/sirupsen/logrus"
 )
@@ -64,10 +63,7 @@ func TestClientPullModel(t *testing.T) {
 		t.Fatalf("Failed to read test model file: %v", err)
 	}
 
-	model, err := buildModelFromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	model := testutil.BuildModelFromPath(t, testGGUFFile)
 	tag := registryHost + "/testmodel:v1.0.0"
 	ref, err := reference.ParseReference(tag)
 	if err != nil {
@@ -204,10 +200,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Use the dummy.gguf file from assets directory
-		mdl, err := buildModelFromPath(testGGUFFile)
-		if err != nil {
-			t.Fatalf("Failed to create model: %v", err)
-		}
+		mdl := testutil.BuildModelFromPath(t, testGGUFFile)
 
 		// Push model to local store
 		testTag := registryHost + "/incomplete-test/model:v1.0.0"
@@ -310,7 +303,7 @@ func TestClientPullModel(t *testing.T) {
 
 		// Push first version of model to registry
 		testTag := registryHost + "/update-test:v1.0.0"
-		if err := writeToRegistry(testGGUFFile, testTag, remote.WithPlainHTTP(true)); err != nil {
+		if err := writeToRegistry(t, testGGUFFile, testTag, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push first version of model: %v", err)
 		}
 
@@ -351,7 +344,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Push updated model with same tag
-		if err := writeToRegistry(updatedModelFile, testTag, remote.WithPlainHTTP(true)); err != nil {
+		if err := writeToRegistry(t, updatedModelFile, testTag, remote.WithPlainHTTP(true)); err != nil {
 			t.Fatalf("Failed to push updated model: %v", err)
 		}
 
@@ -421,10 +414,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Create a safetensors model
-		safetensorsModel, err := buildModelFromPath(safetensorsPath)
-		if err != nil {
-			t.Fatalf("Failed to create safetensors model: %v", err)
-		}
+		safetensorsModel := testutil.BuildModelFromPath(t, safetensorsPath)
 
 		// Push to registry
 		testTag := registryHost + "/safetensors-test/model:v1.0.0"
@@ -582,10 +572,7 @@ func TestClientGetModel(t *testing.T) {
 	}
 
 	// Create model from test GGUF file
-	model, err := buildModelFromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	model := testutil.BuildModelFromPath(t, testGGUFFile)
 
 	// Push model to local store
 	tag := "test/model:v1.0.0"
@@ -638,10 +625,7 @@ func TestClientListModels(t *testing.T) {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
 
-	mdl, err := buildModelFromPath(modelFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl := testutil.BuildModelFromPath(t, modelFile)
 
 	// Push models to local store with different manifest digests
 	// First model
@@ -656,10 +640,7 @@ func TestClientListModels(t *testing.T) {
 	if err := os.WriteFile(modelFile2, modelContent2, 0644); err != nil {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
-	mdl2, err := buildModelFromPath(modelFile2)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl2 := testutil.BuildModelFromPath(t, modelFile2)
 
 	// Second model
 	tag2 := "test/model2:v1.0.0"
@@ -844,10 +825,7 @@ func TestPush(t *testing.T) {
 	tag := uri.Host + "/incomplete-test/model:v1.0.0"
 
 	// Write a test model to the store with the given tag
-	mdl, err := buildModelFromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl := testutil.BuildModelFromPath(t, testGGUFFile)
 	digest, err := mdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get digest of original model: %v", err)
@@ -915,10 +893,7 @@ func TestPushProgress(t *testing.T) {
 	}
 	defer os.Remove(path)
 
-	mdl, err := buildModelFromPath(path)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl := testutil.BuildModelFromPath(t, path)
 
 	if err := client.store.Write(mdl, []string{tag}, nil); err != nil {
 		t.Fatalf("Failed to write model to store: %v", err)
@@ -981,10 +956,7 @@ func TestTag(t *testing.T) {
 	}
 
 	// Create a test model
-	model, err := buildModelFromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	model := testutil.BuildModelFromPath(t, testGGUFFile)
 	id, err := model.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -1082,10 +1054,7 @@ func TestIsModelInStoreFound(t *testing.T) {
 	}
 
 	// Create a test model
-	model, err := buildModelFromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	model := testutil.BuildModelFromPath(t, testGGUFFile)
 
 	// Normalize the model name before writing
 	normalized := client.normalizeModelName("some-repo:some-tag")
@@ -1103,7 +1072,8 @@ func TestIsModelInStoreFound(t *testing.T) {
 }
 
 // writeToRegistry writes a GGUF model to a registry.
-func writeToRegistry(source, refStr string, opts ...remote.Option) error {
+func writeToRegistry(t *testing.T, source, refStr string, opts ...remote.Option) error {
+	t.Helper()
 
 	// Parse the reference
 	ref, err := reference.ParseReference(refStr)
@@ -1112,10 +1082,7 @@ func writeToRegistry(source, refStr string, opts ...remote.Option) error {
 	}
 
 	// Create image with layer
-	mdl, err := buildModelFromPath(source)
-	if err != nil {
-		return fmt.Errorf("new model: %w", err)
-	}
+	mdl := testutil.BuildModelFromPath(t, source)
 
 	// Push the image
 	if err := remote.Write(ref, mdl, nil, opts...); err != nil {
@@ -1178,10 +1145,7 @@ func TestMigrateHFTagsOnClientInit(t *testing.T) {
 				t.Fatalf("Failed to create setup client: %v", err)
 			}
 
-			model, err := buildModelFromPath(testGGUFFile)
-			if err != nil {
-				t.Fatalf("Failed to create model: %v", err)
-			}
+			model := testutil.BuildModelFromPath(t, testGGUFFile)
 
 			if err := setupClient.store.Write(model, []string{tc.storedTag}, nil); err != nil {
 				t.Fatalf("Failed to write model to store: %v", err)
@@ -1255,10 +1219,7 @@ func TestPullHuggingFaceModelFromCache(t *testing.T) {
 			}
 
 			// Create a test model and write it to the store with a normalized HuggingFace tag
-			model, err := buildModelFromPath(testGGUFFile)
-			if err != nil {
-				t.Fatalf("Failed to create model: %v", err)
-			}
+			model := testutil.BuildModelFromPath(t, testGGUFFile)
 
 			// Store with normalized tag (huggingface.co)
 			hfTag := "huggingface.co/testorg/testmodel:latest"
@@ -1280,12 +1241,4 @@ func TestPullHuggingFaceModelFromCache(t *testing.T) {
 			}
 		})
 	}
-}
-
-func buildModelFromPath(path string) (types.ModelArtifact, error) {
-	b, err := builder.FromPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return b.Model(), nil
 }

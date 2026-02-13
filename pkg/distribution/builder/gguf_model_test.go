@@ -6,15 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
 func TestGGUFModel(t *testing.T) {
-	mdl, err := buildGGUFModel()
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl := testutil.BuildModelFromPath(t, filepath.Join("..", "assets", "dummy.gguf"))
 
 	t.Run("TestConfig", func(t *testing.T) {
 		cfgInterface, err := mdl.Config()
@@ -155,12 +152,4 @@ func TestGGUFModel(t *testing.T) {
 			t.Error("Expected Uid to be set with default 0")
 		}
 	})
-}
-
-func buildGGUFModel() (types.ModelArtifact, error) {
-	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
-	if err != nil {
-		return nil, err
-	}
-	return b.Model(), nil
 }

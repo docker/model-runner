@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -67,11 +67,7 @@ func TestSafetensorsModel_WithMetadata(t *testing.T) {
 
 	filePath := createTestSafetensorsFile(t, tmpDir, "test.safetensors", header, 33562624)
 
-	b, err := builder.FromPath(filePath)
-	if err != nil {
-		t.Fatalf("FromPath() error = %v", err)
-	}
-	model := b.Model()
+	model := testutil.BuildModelFromPath(t, filePath)
 
 	config, err := model.Config()
 	if err != nil {

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/registry"
@@ -215,7 +215,7 @@ func TestStoreAPI(t *testing.T) {
 		blobHash := hex.EncodeToString(hash[:])
 
 		// Add model to store with a unique tag
-		mdl := buildModelFromPath(t, modelPath)
+		mdl := testutil.BuildModelFromPath(t, modelPath)
 
 		if err := s.Write(mdl, []string{"blob-test:latest", "blob-test:other"}, nil); err != nil {
 			t.Fatalf("Write failed: %v", err)
@@ -272,7 +272,7 @@ func TestStoreAPI(t *testing.T) {
 		expectedBlobDigest := fmt.Sprintf("sha256:%s", blobHash)
 
 		// Create first model with the shared content
-		model1 := buildModelFromPath(t, sharedModelPath)
+		model1 := testutil.BuildModelFromPath(t, sharedModelPath)
 
 		// Write the first model
 		if err := s.Write(model1, []string{"shared-model-1:latest"}, nil); err != nil {
@@ -280,7 +280,7 @@ func TestStoreAPI(t *testing.T) {
 		}
 
 		// Create second model with the same shared content
-		model2 := buildModelFromPath(t, sharedModelPath)
+		model2 := testutil.BuildModelFromPath(t, sharedModelPath)
 
 		// Write the second model
 		if err := s.Write(model2, []string{"shared-model-2:latest"}, nil); err != nil {
@@ -595,7 +595,7 @@ func TestIncompleteFileHandling(t *testing.T) {
 	}
 
 	// Create a model
-	mdl := buildModelFromPath(t, modelPath)
+	mdl := testutil.BuildModelFromPath(t, modelPath)
 
 	// Write the model - this should clean up the incomplete file and create the final file
 	if err := s.Write(mdl, []string{"incomplete-test:latest"}, nil); err != nil {
@@ -760,7 +760,7 @@ func TestStoreWithMultimodalProjector(t *testing.T) {
 }
 
 func newTestModel(t *testing.T) types.ModelArtifact {
-	mdl := buildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
+	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
 	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
 	if err != nil {
 		t.Fatalf("failed to create license layer: %v", err)
@@ -770,7 +770,7 @@ func newTestModel(t *testing.T) types.ModelArtifact {
 }
 
 func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
-	mdl := buildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
+	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
 
 	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
 	if err != nil {
@@ -791,16 +791,6 @@ func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
 
 	mdl = mutate.AppendLayers(mdl, licenseLayer, mmprojLayer)
 	return mdl
-}
-
-func buildModelFromPath(t *testing.T, path string) types.ModelArtifact {
-	t.Helper()
-
-	b, err := builder.FromPath(path)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
-	return b.Model()
 }
 
 // TestWriteLightweight tests the WriteLightweight method
@@ -846,7 +836,7 @@ func TestResetStore(t *testing.T) {
 						t.Fatalf("Failed to create model file: %v", err)
 					}
 
-					mdl := buildModelFromPath(t, modelPath)
+					mdl := testutil.BuildModelFromPath(t, modelPath)
 
 					tag := fmt.Sprintf("test-model-%d:latest", i)
 					if err := s.Write(mdl, []string{tag}, nil); err != nil {
@@ -1158,7 +1148,7 @@ func TestMigrateTags(t *testing.T) {
 	if err := os.WriteFile(mdl2Path, mdl2Content, 0644); err != nil {
 		t.Fatalf("Failed to write model file: %v", err)
 	}
-	mdl2 := buildModelFromPath(t, mdl2Path)
+	mdl2 := testutil.BuildModelFromPath(t, mdl2Path)
 	if err := s.Write(mdl2, []string{"ai/some-model:latest"}, nil); err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
