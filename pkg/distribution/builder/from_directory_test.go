@@ -249,4 +249,52 @@ func (m *mockFileInfo) ModTime() time.Time { return time.Time{} }
 func (m *mockFileInfo) IsDir() bool        { return m.isDir }
 func (m *mockFileInfo) Sys() interface{}   { return nil }
 
+func TestFromDirectoryWithCreatedTime(t *testing.T) {
+	// Create a temporary directory with a safetensors file and a config
+	tmpDir := t.TempDir()
+	createTestFile(t, tmpDir, "model.safetensors", "fake safetensors content")
+	createTestFile(t, tmpDir, "config.json", `{"model_type": "test"}`)
+
+	// Build twice with the same fixed timestamp
+	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+
+	b1, err := FromDirectory(tmpDir, WithCreatedTime(fixedTime))
+	if err != nil {
+		t.Fatalf("First FromDirectory failed: %v", err)
+	}
+	digest1, err := b1.Model().Digest()
+	if err != nil {
+		t.Fatalf("First digest failed: %v", err)
+	}
+
+	b2, err := FromDirectory(tmpDir, WithCreatedTime(fixedTime))
+	if err != nil {
+		t.Fatalf("Second FromDirectory failed: %v", err)
+	}
+	digest2, err := b2.Model().Digest()
+	if err != nil {
+		t.Fatalf("Second digest failed: %v", err)
+	}
+
+	// Same content + same timestamp = same digest
+	if digest1 != digest2 {
+		t.Errorf("Expected identical digests with same timestamp, got %v != %v", digest1, digest2)
+	}
+
+	// Build with a different timestamp - should produce a different digest
+	differentTime := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	b3, err := FromDirectory(tmpDir, WithCreatedTime(differentTime))
+	if err != nil {
+		t.Fatalf("Third FromDirectory failed: %v", err)
+	}
+	digest3, err := b3.Model().Digest()
+	if err != nil {
+		t.Fatalf("Third digest failed: %v", err)
+	}
+
+	if digest1 == digest3 {
+		t.Errorf("Expected different digests with different timestamps, but both were %v", digest1)
+	}
+}
+
 // Need to import time for mockFileInfo

@@ -27,6 +27,11 @@ type DirectoryOptions struct {
 	//   - Glob patterns (e.g., "*.log", "*.tmp") - excludes files matching the pattern
 	//   - Paths with slashes (e.g., "logs/debug.log") - excludes specific paths
 	Exclusions []string
+
+	// Created is an optional creation timestamp for the model artifact.
+	// When set, it overrides the default behavior of using time.Now().
+	// This is useful for producing deterministic OCI digests.
+	Created *time.Time
 }
 
 // DirectoryOption is a functional option for configuring FromDirectory.
@@ -44,6 +49,16 @@ type DirectoryOption func(*DirectoryOptions)
 func WithExclusions(patterns ...string) DirectoryOption {
 	return func(opts *DirectoryOptions) {
 		opts.Exclusions = append(opts.Exclusions, patterns...)
+	}
+}
+
+// WithCreatedTime sets a specific creation timestamp for the model artifact
+// built from a directory. When not set, the current time (time.Now()) is used.
+// This is useful for producing deterministic OCI digests when the same directory
+// content should always yield the same artifact regardless of when it was built.
+func WithCreatedTime(t time.Time) DirectoryOption {
+	return func(opts *DirectoryOptions) {
+		opts.Created = &t
 	}
 }
 
@@ -209,8 +224,15 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 		}
 	}
 
+	// Use the provided creation time, or fall back to current time
+	var created time.Time
+	if options.Created != nil {
+		created = *options.Created
+	} else {
+		created = time.Now()
+	}
+
 	// Build the model with V0.2 config (layer-per-file with annotations)
-	created := time.Now()
 	mdl := &partial.BaseModel{
 		ModelConfigFile: types.ConfigFile{
 			Config: config,

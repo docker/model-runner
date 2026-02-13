@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
@@ -73,12 +74,23 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		return nil, fmt.Errorf("download files: %w", err)
 	}
 
-	// Step 4: Build the model artifact
+	// Step 4: Fetch repo metadata to get a deterministic creation timestamp.
+	// Using the HuggingFace lastModified date ensures the same revision always
+	// produces the same OCI digest regardless of when it was pulled.
+	var createdTime *time.Time
+	repoInfo, err := client.GetRepoInfo(ctx, repo, revision)
+	if err != nil {
+		log.Printf("Warning: could not fetch repo info for deterministic timestamp: %v. Falling back to current time.", err)
+	} else if !repoInfo.LastModified.IsZero() {
+		createdTime = &repoInfo.LastModified
+	}
+
+	// Step 5: Build the model artifact
 	if progressWriter != nil {
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "", "pull")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir)
+	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir, createdTime)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -91,21 +103,28 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 // which preserves directory structure and adds each file as an individual layer with
 // filepath annotations. For GGUF models, it uses the V0.1 packaging (FromPaths)
 // for backward compatibility.
-func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
 	// Check if this is a safetensors model - use V0.2 packaging
 	if isSafetensorsModel(weightFiles) {
-		return buildSafetensorsModelV02(tempDir)
+		return buildSafetensorsModelV02(tempDir, createdTime)
 	}
 
 	// For GGUF models, use V0.1 packaging (backward compatible)
-	return buildGGUFModelV01(localPaths, weightFiles, configFiles, tempDir)
+	return buildGGUFModelV01(localPaths, weightFiles, configFiles, createdTime)
 }
 
 // buildSafetensorsModelV02 builds a safetensors model using V0.2 layer-per-file packaging.
 // It uses builder.FromDirectory which recursively scans the tempDir and creates one layer
 // per file, preserving nested directory structure with filepath annotations.
-func buildSafetensorsModelV02(tempDir string) (types.ModelArtifact, error) {
-	b, err := builder.FromDirectory(tempDir)
+// If createdTime is non-nil, it is used as the creation timestamp for the OCI config
+// to produce deterministic digests. Otherwise time.Now() is used.
+func buildSafetensorsModelV02(tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+	var dirOpts []builder.DirectoryOption
+	if createdTime != nil {
+		dirOpts = append(dirOpts, builder.WithCreatedTime(*createdTime))
+	}
+
+	b, err := builder.FromDirectory(tempDir, dirOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create builder from directory: %w", err)
 	}
@@ -115,7 +134,7 @@ func buildSafetensorsModelV02(tempDir string) (types.ModelArtifact, error) {
 
 // buildGGUFModelV01 builds a GGUF model using V0.1 packaging (backward compatible).
 // GGUF uses FromPaths + config archive approach.
-func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string) (types.ModelArtifact, error) {
+func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, createdTime *time.Time) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string
 	for _, f := range weightFiles {
@@ -127,8 +146,14 @@ func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []
 	}
 	sort.Strings(weightPaths)
 
+	// Build options for deterministic timestamps
+	var buildOpts []builder.BuildOption
+	if createdTime != nil {
+		buildOpts = append(buildOpts, builder.WithCreated(*createdTime))
+	}
+
 	// Create builder from weight files - auto-detects format (GGUF or SafeTensors)
-	b, err := builder.FromPaths(weightPaths)
+	b, err := builder.FromPaths(weightPaths, buildOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create builder: %w", err)
 	}

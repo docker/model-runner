@@ -13,6 +13,23 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
+// BuildOption configures the behavior of FromPath and FromPaths.
+type BuildOption func(*buildOptions)
+
+type buildOptions struct {
+	created *time.Time
+}
+
+// WithCreated sets a specific creation timestamp for the model artifact.
+// When not set, the current time (time.Now()) is used.
+// This is useful for producing deterministic OCI digests when the same model
+// content should always yield the same artifact regardless of when it was built.
+func WithCreated(t time.Time) BuildOption {
+	return func(opts *buildOptions) {
+		opts.created = &t
+	}
+}
+
 // Builder builds a model artifact
 type Builder struct {
 	model          types.ModelArtifact
@@ -22,7 +39,7 @@ type Builder struct {
 // FromPath returns a *Builder that builds model artifacts from a file path.
 // It auto-detects the model format (GGUF or Safetensors) and discovers any shards.
 // This is the preferred entry point for creating models from local files.
-func FromPath(path string) (*Builder, error) {
+func FromPath(path string, opts ...BuildOption) (*Builder, error) {
 	// Auto-detect format from file extension
 	f, err := format.DetectFromPath(path)
 	if err != nil {
@@ -36,12 +53,12 @@ func FromPath(path string) (*Builder, error) {
 	}
 
 	// Create model using the format abstraction
-	return fromFormat(f, paths)
+	return fromFormat(f, paths, opts...)
 }
 
 // FromPaths returns a *Builder that builds model artifacts from multiple file paths.
 // All paths must be of the same format. Use this when you already have the list of files.
-func FromPaths(paths []string) (*Builder, error) {
+func FromPaths(paths []string, opts ...BuildOption) (*Builder, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("at least one path is required")
 	}
@@ -53,12 +70,17 @@ func FromPaths(paths []string) (*Builder, error) {
 	}
 
 	// Create model using the format abstraction
-	return fromFormat(f, paths)
+	return fromFormat(f, paths, opts...)
 }
 
 // fromFormat creates a Builder using the unified format abstraction.
 // This is the internal implementation that creates layers and config.
-func fromFormat(f format.Format, paths []string) (*Builder, error) {
+func fromFormat(f format.Format, paths []string, opts ...BuildOption) (*Builder, error) {
+	options := &buildOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	// Create layers from paths
 	layers := make([]oci.Layer, len(paths))
 	diffIDs := make([]oci.Hash, len(paths))
@@ -83,8 +105,15 @@ func fromFormat(f format.Format, paths []string) (*Builder, error) {
 		return nil, fmt.Errorf("extract config: %w", err)
 	}
 
+	// Use the provided creation time, or fall back to current time
+	var created time.Time
+	if options.created != nil {
+		created = *options.created
+	} else {
+		created = time.Now()
+	}
+
 	// Build the model
-	created := time.Now()
 	mdl := &partial.BaseModel{
 		ModelConfigFile: types.ConfigFile{
 			Config: config,
