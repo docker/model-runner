@@ -82,6 +82,8 @@ func Create(ctx context.Context, configuration string, modifier func(*exec.Cmd),
 	if modifier != nil {
 		modifier(command)
 	}
+	// Set the working directory to where the binary and its DLLs are located.
+	command.Dir = updatedBinPath
 
 	// Create the and start the job.
 	job, err := winjob.Start(command, limits...)

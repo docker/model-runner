@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClientListFiles(t *testing.T) {
@@ -286,5 +287,66 @@ func TestClientListFilesRecursive(t *testing.T) {
 		if !found {
 			t.Errorf("Expected file not found: %s", path)
 		}
+	}
+}
+
+func TestClientGetRepoInfo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/models/test-org/test-model/revision/main" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"lastModified":"2024-06-15T10:30:00.000Z"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+
+	info, err := client.GetRepoInfo(t.Context(), "test-org/test-model", "main")
+	if err != nil {
+		t.Fatalf("GetRepoInfo failed: %v", err)
+	}
+
+	expected := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
+	if !info.LastModified.Equal(expected) {
+		t.Errorf("Expected lastModified %v, got %v", expected, info.LastModified)
+	}
+}
+
+func TestClientGetRepoInfoDefaultRevision(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify the default revision is "main"
+		if !strings.Contains(r.URL.Path, "/revision/main") {
+			t.Errorf("Expected /revision/main in path, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"lastModified":"2024-06-15T10:30:00.000Z"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+	_, err := client.GetRepoInfo(t.Context(), "test/model", "")
+	if err != nil {
+		t.Fatalf("GetRepoInfo failed: %v", err)
+	}
+}
+
+func TestClientGetRepoInfoNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(WithBaseURL(server.URL))
+
+	_, err := client.GetRepoInfo(t.Context(), "nonexistent/model", "main")
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+
+	var notFoundErr *NotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 }
