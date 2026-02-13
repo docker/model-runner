@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,10 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
+
+// errFoundSafetensors is a sentinel error used to stop filepath.Walk early
+// after finding the first safetensors file.
+var errFoundSafetensors = fmt.Errorf("found safetensors file")
 
 // Parse returns the Bundle at the given rootDir
 func Parse(rootDir string) (*Bundle, error) {
@@ -129,11 +134,11 @@ func findSafetensorsFile(modelDir string) (string, error) {
 				return relErr
 			}
 			firstFound = rel
-			return filepath.SkipAll // found one, stop walking
+			return errFoundSafetensors // found one, stop walking
 		}
 		return nil
 	})
-	if walkErr != nil {
+	if walkErr != nil && !errors.Is(walkErr, errFoundSafetensors) {
 		return "", fmt.Errorf("walk for safetensors files: %w", walkErr)
 	}
 
