@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -189,9 +190,13 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 	}
 	if detectedFormat != "" {
 		f, fmtErr := format.Get(detectedFormat)
-		if fmtErr == nil {
+		if fmtErr != nil {
+			log.Printf("warning: could not get format handler for %q: %v", detectedFormat, fmtErr)
+		} else {
 			extracted, extractErr := f.ExtractConfig(weightFiles)
-			if extractErr == nil {
+			if extractErr != nil {
+				log.Printf("warning: could not extract config from weight files: %v", extractErr)
+			} else {
 				// Preserve the detected format, overlay extracted metadata
 				config.Parameters = extracted.Parameters
 				config.Quantization = extracted.Quantization
