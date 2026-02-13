@@ -133,7 +133,6 @@ func buildSafetensorsModelV02(tempDir string, createdTime *time.Time) (types.Mod
 }
 
 // buildGGUFModelV01 builds a GGUF model using V0.1 packaging (backward compatible).
-// GGUF uses FromPaths + config archive approach.
 func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, createdTime *time.Time) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string

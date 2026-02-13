@@ -114,17 +114,22 @@ func findSafetensorsFile(modelDir string) (string, error) {
 	var firstFound string
 	walkErr := filepath.Walk(modelDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // skip errors
+			// Propagate filesystem errors so callers can distinguish them from
+			// the case where no safetensors files are present.
+			return err
 		}
 		if info.IsDir() {
 			return nil
 		}
 		if filepath.Ext(path) == ".safetensors" && !strings.HasPrefix(info.Name(), ".") {
 			rel, relErr := filepath.Rel(modelDir, path)
-			if relErr == nil {
-				firstFound = rel
-				return filepath.SkipAll // found one, stop walking
+			if relErr != nil {
+				// Treat a bad relative path as a real error instead of silently
+				// ignoring it, so malformed bundles surface to the caller.
+				return relErr
 			}
+			firstFound = rel
+			return filepath.SkipAll // found one, stop walking
 		}
 		return nil
 	})
