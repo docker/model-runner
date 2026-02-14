@@ -16,7 +16,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
-	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -40,13 +39,45 @@ func newPackagedCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
-		Short: "Package a GGUF file, Safetensors directory, DDUF file, or existing model into a Docker model OCI artifact.",
-		Long: "Package a GGUF file, Safetensors directory, DDUF file, or existing model into a Docker model OCI artifact, with optional licenses and multimodal projector. The package is sent to the model-runner, unless --push is specified.\n" +
-			"When packaging a sharded GGUF model, --gguf should point to the first shard. All shard files should be siblings and should include the index in the file name (e.g. model-00001-of-00015.gguf).\n" +
-			"When packaging a Safetensors model, --safetensors-dir should point to a directory containing .safetensors files and config files (*.json, merges.txt). All files will be auto-discovered and config files will be packaged into a tar archive.\n" +
-			"When packaging a DDUF file (Diffusers Unified Format), --dduf should point to a .dduf archive file.\n" +
-			"When packaging from an existing model using --from, you can modify properties like context size to create a variant of the original model.\n" +
-			"For multimodal models, use --mmproj to include a multimodal projector file.",
+		Short: "Package a model into a Docker Model OCI artifact",
+		Long: `Package a model into a Docker Model OCI artifact.
+
+The model source must be one of:
+  --gguf               A GGUF file (single file or first shard of a sharded model)
+  --safetensors-dir    A directory containing .safetensors and configuration files
+  --dduf               A .dduf (Diffusers Unified Format) archive
+  --from               An existing packaged model reference
+
+By default, the packaged artifact is loaded into the local Model Runner content store.
+Use --push to publish the model to a registry instead.
+
+MODEL specifies the target model reference (for example: myorg/llama3:8b).
+When using --push, MODEL must be a registry-qualified reference.
+
+Packaging behavior:
+
+  GGUF
+    --gguf must point to a .gguf file.
+    For sharded models, point to the first shard. All shards must:
+      • reside in the same directory
+      • follow an indexed naming convention (e.g. model-00001-of-00015.gguf)
+    All shards are automatically discovered and packaged together.
+
+  Safetensors
+    --safetensors-dir must point to a directory containing .safetensors files
+    and required configuration files (e.g. model config, tokenizer files).
+    All files under the directory (including nested subdirectories) are
+    automatically discovered. Each file is packaged as a separate OCI layer.
+
+  DDUF
+    --dduf must point to a .dduf archive file.
+
+  Repackaging
+    --from repackages an existing model. You may override selected properties
+    such as --context-size to create a variant of the original model.
+
+  Multimodal models
+    Use --mmproj to include a multimodal projector file.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := requireExactArgs(1, "package", "MODEL")(cmd, args); err != nil {
 				return err
@@ -155,17 +186,6 @@ func newPackagedCmd() *cobra.Command {
 				}
 			}
 
-			// Validate dir-tar paths are relative (not absolute)
-			for _, dirPath := range opts.dirTarPaths {
-				if filepath.IsAbs(dirPath) {
-					return fmt.Errorf(
-						"dir-tar path must be relative, got absolute path: %s\n\n"+
-							"See 'docker model package --help' for more information",
-						dirPath,
-					)
-				}
-			}
-
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -185,7 +205,6 @@ func newPackagedCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.fromModel, "from", "", "reference to an existing model to repackage")
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
-	c.Flags().StringArrayVar(&opts.dirTarPaths, "dir-tar", nil, "relative path to directory to package as tar (can be specified multiple times)")
 	c.Flags().StringVar(&opts.mmprojPath, "mmproj", "", "absolute path to multimodal projector file")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
@@ -200,7 +219,6 @@ type packageOptions struct {
 	ddufPath         string
 	fromModel        string
 	licensePaths     []string
-	dirTarPaths      []string
 	mmprojPath       string
 	push             bool
 	tag              string
@@ -274,33 +292,11 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 		}
 		result.builder = pkg
 	} else if opts.safetensorsDir != "" {
-		// Safetensors model from directory
+		// Safetensors model from directory — uses V0.2 layer-per-file packaging
 		cmd.PrintErrf("Scanning directory %q for safetensors model...\n", opts.safetensorsDir)
-		safetensorsPaths, tempConfigArchive, err := packaging.PackageFromDirectory(opts.safetensorsDir)
+		pkg, err := builder.FromDirectory(opts.safetensorsDir)
 		if err != nil {
-			return nil, fmt.Errorf("scan safetensors directory: %w", err)
-		}
-
-		// Set up cleanup for temp config archive
-		if tempConfigArchive != "" {
-			result.cleanupFunc = func() {
-				os.Remove(tempConfigArchive)
-			}
-		}
-
-		cmd.PrintErrf("Found %d safetensors file(s)\n", len(safetensorsPaths))
-		pkg, err := builder.FromPaths(safetensorsPaths)
-		if err != nil {
-			return nil, fmt.Errorf("create safetensors model: %w", err)
-		}
-
-		// Add config archive if it was created
-		if tempConfigArchive != "" {
-			cmd.PrintErrf("Adding config archive from directory\n")
-			pkg, err = pkg.WithConfigArchive(tempConfigArchive)
-			if err != nil {
-				return nil, fmt.Errorf("add config archive: %w", err)
-			}
+			return nil, fmt.Errorf("create safetensors model from directory: %w", err)
 		}
 		result.builder = pkg
 	} else {
@@ -354,7 +350,6 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 		len(opts.licensePaths) == 0 &&
 		opts.chatTemplatePath == "" &&
 		opts.mmprojPath == "" &&
-		len(opts.dirTarPaths) == 0 &&
 		cmd.Flags().Changed("context-size")
 
 	if canUseDaemonRepackage {
@@ -456,32 +451,6 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 
 		cmd.PrintErrln("Model variant created successfully")
 		return nil // Return early to avoid the Build operation in lightweight case
-	} else {
-		// Process directory tar archives
-		if len(opts.dirTarPaths) > 0 {
-			// Determine base directory for resolving relative paths
-			var baseDir string
-			if opts.safetensorsDir != "" {
-				baseDir = opts.safetensorsDir
-			} else {
-				// For GGUF, use the directory containing the GGUF file
-				baseDir = filepath.Dir(opts.ggufPath)
-			}
-
-			processor := packaging.NewDirTarProcessor(opts.dirTarPaths, baseDir)
-			tarPaths, cleanup, err := processor.Process()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-
-			for _, tarPath := range tarPaths {
-				pkg, err = pkg.WithDirTar(tarPath)
-				if err != nil {
-					return fmt.Errorf("add directory tar: %w", err)
-				}
-			}
-		}
 	}
 	if opts.push {
 		cmd.PrintErrln("Pushing model to registry...")

@@ -2,13 +2,19 @@ package bundle
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
+
+// errFoundSafetensors is a sentinel error used to stop filepath.Walk early
+// after finding the first safetensors file.
+var errFoundSafetensors = fmt.Errorf("found safetensors file")
 
 // Parse returns the Bundle at the given rootDir
 func Parse(rootDir string) (*Bundle, error) {
@@ -99,15 +105,45 @@ func findGGUFFile(modelDir string) (string, error) {
 }
 
 func findSafetensorsFile(modelDir string) (string, error) {
+	// First check top-level directory (most common case)
 	safetensors, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.safetensors"))
 	if err != nil {
 		return "", fmt.Errorf("find safetensors files: %w", err)
 	}
-	if len(safetensors) == 0 {
-		// Safetensors files are optional - GGUF models won't have them
-		return "", nil
+	if len(safetensors) > 0 {
+		return filepath.Base(safetensors[0]), nil
 	}
-	return filepath.Base(safetensors[0]), nil
+
+	// Search recursively for V0.2 models with nested directory structure
+	// (e.g., text_encoder/model.safetensors)
+	var firstFound string
+	walkErr := filepath.Walk(modelDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// Propagate filesystem errors so callers can distinguish them from
+			// the case where no safetensors files are present.
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) == ".safetensors" && !strings.HasPrefix(info.Name(), ".") {
+			rel, relErr := filepath.Rel(modelDir, path)
+			if relErr != nil {
+				// Treat a bad relative path as a real error instead of silently
+				// ignoring it, so malformed bundles surface to the caller.
+				return relErr
+			}
+			firstFound = rel
+			return errFoundSafetensors // found one, stop walking
+		}
+		return nil
+	})
+	if walkErr != nil && !errors.Is(walkErr, errFoundSafetensors) {
+		return "", fmt.Errorf("walk for safetensors files: %w", walkErr)
+	}
+
+	// Safetensors files are optional - GGUF models won't have them
+	return firstFound, nil
 }
 
 func findMultiModalProjectorFile(modelDir string) (string, error) {

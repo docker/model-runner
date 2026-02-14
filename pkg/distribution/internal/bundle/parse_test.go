@@ -139,6 +139,65 @@ func TestParse_WithSafetensors(t *testing.T) {
 	}
 }
 
+func TestParse_WithNestedSafetensors(t *testing.T) {
+	// Create a temporary directory for the test bundle
+	tempDir := t.TempDir()
+
+	// Create model subdirectory
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatalf("Failed to create model directory: %v", err)
+	}
+
+	// Create nested directory structure (V0.2 layout)
+	textEncoderDir := filepath.Join(modelDir, "text_encoder")
+	if err := os.MkdirAll(textEncoderDir, 0755); err != nil {
+		t.Fatalf("Failed to create text_encoder directory: %v", err)
+	}
+
+	// Create a safetensors file in the nested directory (no safetensors at top level)
+	nestedSafetensorsPath := filepath.Join(textEncoderDir, "model.safetensors")
+	if err := os.WriteFile(nestedSafetensorsPath, []byte("dummy nested safetensors content"), 0644); err != nil {
+		t.Fatalf("Failed to create nested safetensors file: %v", err)
+	}
+
+	// Create a valid config.json at bundle root
+	cfg := types.Config{
+		Format: types.FormatSafetensors,
+	}
+	configPath := filepath.Join(tempDir, "config.json")
+	f, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create config.json: %v", err)
+	}
+	if err := json.NewEncoder(f).Encode(cfg); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode config: %v", err)
+	}
+	f.Close()
+
+	// Parse the bundle - should succeed by finding safetensors recursively
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Expected successful parse with nested safetensors, got error: %v", err)
+	}
+
+	// The safetensorsFile should include the relative path from modelDir
+	expectedPath := filepath.Join("text_encoder", "model.safetensors")
+	if bundle.safetensorsFile != expectedPath {
+		t.Errorf("Expected safetensorsFile to be %q, got: %s", expectedPath, bundle.safetensorsFile)
+	}
+
+	// Verify SafetensorsPath() returns the full path
+	fullPath := bundle.SafetensorsPath()
+	if fullPath == "" {
+		t.Error("Expected SafetensorsPath() to return a non-empty path")
+	}
+	if !strings.HasSuffix(fullPath, expectedPath) {
+		t.Errorf("Expected SafetensorsPath() to end with %q, got: %s", expectedPath, fullPath)
+	}
+}
+
 func TestParse_WithBothFormats(t *testing.T) {
 	// Create a temporary directory for the test bundle
 	tempDir := t.TempDir()
