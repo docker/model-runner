@@ -20,6 +20,13 @@ type ModelCreateRequest struct {
 	BearerToken string `json:"bearer-token,omitempty"`
 }
 
+// ModelPushRequest represents a model push request. It mirrors ModelCreateRequest
+// so clients can provide an optional bearer token for registry authentication.
+type ModelPushRequest struct {
+	// BearerToken is an optional bearer token for authentication.
+	BearerToken string `json:"bearer-token,omitempty"`
+}
+
 // SimpleModel is a wrapper that allows creating a model with modified configuration
 type SimpleModel struct {
 	types.Model

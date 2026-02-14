@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/huggingface"
+	"github.com/docker/model-runner/pkg/distribution/internal/bundle"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
@@ -589,21 +591,34 @@ func (c *Client) Tag(source string, target string) error {
 }
 
 // PushModel pushes a tagged model from the content store to the registry.
-func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Writer) (err error) {
-	// Parse the tag
-	target, err := c.registry.NewTarget(tag)
+func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Writer, bearerToken ...string) (err error) {
+	originalReference := tag
+	normalizedRef := c.normalizeModelName(tag)
+
+	var token string
+	if len(bearerToken) > 0 && bearerToken[0] != "" {
+		token = bearerToken[0]
+	}
+
+	if isHuggingFaceReference(originalReference) {
+		return c.pushNativeHuggingFace(ctx, originalReference, normalizedRef, progressWriter, token)
+	}
+
+	registryClient := c.registry
+	if token != "" {
+		auth := authn.NewBearer(token)
+		registryClient = registry.FromClient(c.registry, registry.WithAuth(auth))
+	}
+	target, err := registryClient.NewTarget(tag)
 	if err != nil {
 		return fmt.Errorf("new tag: %w", err)
 	}
 
-	// Get the model from the store
-	normalizedRef := c.normalizeModelName(tag)
 	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return fmt.Errorf("reading model: %w", err)
 	}
 
-	// Push the model
 	c.log.Infoln("Pushing model:", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Errorln("Failed to push image:", err, "reference:", tag)
@@ -614,6 +629,64 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 	}
 
 	c.log.Infoln("Successfully pushed model:", tag)
+	if err := progress.WriteSuccess(progressWriter, "Model pushed successfully", oci.ModePush); err != nil {
+		c.log.Warnf("Failed to write success message: %v", err)
+	}
+
+	return nil
+}
+
+func (c *Client) pushNativeHuggingFace(ctx context.Context, reference, normalizedRef string, progressWriter io.Writer, token string) error {
+	repo, _, _ := parseHFReference(reference)
+	c.log.Infof("Pushing native HuggingFace model: repo=%s", utils.SanitizeForLog(repo))
+
+	if progressWriter != nil {
+		_ = progress.WriteProgress(progressWriter, "Preparing HuggingFace upload...", 0, 0, 0, "", oci.ModePush)
+	}
+
+	modelBundle, err := c.store.BundleForModel(normalizedRef)
+	if err != nil {
+		return fmt.Errorf("get model bundle: %w", err)
+	}
+
+	modelDir := filepath.Join(modelBundle.RootDir(), bundle.ModelSubdir)
+	files, totalSize, err := huggingface.CollectUploadFiles(modelDir)
+	if err != nil {
+		return fmt.Errorf("collect bundle files: %w", err)
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("no model files found to upload")
+	}
+
+	hfOpts := []huggingface.ClientOption{
+		huggingface.WithUserAgent(registry.DefaultUserAgent),
+	}
+	if token != "" {
+		hfOpts = append(hfOpts, huggingface.WithToken(token))
+	}
+	hfClient := huggingface.NewClient(hfOpts...)
+
+	if progressWriter != nil {
+		msg := fmt.Sprintf("Uploading %d files (%.2f MB total)", len(files), float64(totalSize)/1024/1024)
+		_ = progress.WriteProgress(progressWriter, msg, uint64(totalSize), 0, 0, "", oci.ModePush)
+	}
+
+	if err := huggingface.UploadFiles(ctx, hfClient, repo, files, totalSize, progressWriter); err != nil {
+		c.log.Errorf("HuggingFace push failed: %v", err)
+		var authErr *huggingface.AuthError
+		var notFoundErr *huggingface.NotFoundError
+		if errors.As(err, &authErr) {
+			return registry.ErrUnauthorized
+		}
+		if errors.As(err, &notFoundErr) {
+			return registry.ErrModelNotFound
+		}
+		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePush); writeErr != nil {
+			c.log.Warnf("Failed to write error message: %v", writeErr)
+		}
+		return fmt.Errorf("upload model to HuggingFace: %w", err)
+	}
+
 	if err := progress.WriteSuccess(progressWriter, "Model pushed successfully", oci.ModePush); err != nil {
 		c.log.Warnf("Failed to write success message: %v", err)
 	}
