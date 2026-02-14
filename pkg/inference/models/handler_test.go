@@ -135,8 +135,6 @@ func TestPullModel(t *testing.T) {
 }
 
 func TestHandleGetModel(t *testing.T) {
-	tempDir := t.TempDir()
-
 	// Create a test registry
 	server := httptest.NewServer(testregistry.New())
 	defer server.Close()
@@ -207,7 +205,9 @@ func TestHandleGetModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log := logrus.NewEntry(logrus.StandardLogger())
+			tempDir := t.TempDir()
+			logger := logrus.New()
+			log := logrus.NewEntry(logger)
 			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
 				StoreRootPath: tempDir,
 				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
@@ -262,14 +262,6 @@ func TestHandleGetModel(t *testing.T) {
 				if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 					t.Errorf("Failed to decode response body: %v", err)
 				}
-			}
-
-			// Clean tempDir after each test
-			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to clean temp directory: %v", err)
-			}
-			if err := os.MkdirAll(tempDir, 0755); err != nil {
-				t.Fatalf("Failed to recreate temp directory: %v", err)
 			}
 		})
 	}
