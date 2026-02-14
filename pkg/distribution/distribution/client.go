@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,7 +24,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/utils"
-	"log/slog"
 )
 
 // Client provides model distribution functionality
@@ -113,7 +113,7 @@ func NewClient(opts ...Option) (*Client, error) {
 
 	// Migrate any legacy hf.co tags to huggingface.co
 	if err := c.migrateHFTags(); err != nil {
-		options.logger.Warn(fmt.Sprintf("Failed to migrate HuggingFace tags: %v", err))
+		options.logger.Warn("Failed to migrate HuggingFace tags", "error", err)
 	}
 
 	return c, nil
@@ -133,7 +133,7 @@ func (c *Client) migrateHFTags() error {
 		return err
 	}
 	if migrated > 0 {
-		c.log.Info(fmt.Sprintf("Migrated %d HuggingFace tag(s) from hf.co to huggingface.co", migrated))
+		c.log.Info("Migrated HuggingFace tag(s) from hf.co to huggingface.co", "count", migrated)
 	}
 	return nil
 }
@@ -288,7 +288,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 				return fmt.Errorf("getting cached model config: %w", err)
 			}
 			if err := progress.WriteSuccess(progressWriter, fmt.Sprintf("Using cached model: %s", cfg.GetSize()), oci.ModePull); err != nil {
-				c.log.Warn(fmt.Sprintf("Writing progress: %v", err))
+				c.log.Warn("Writing progress", "error", err)
 			}
 			return nil
 		}
@@ -339,25 +339,25 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	for _, layer := range layers {
 		digest, err := layer.Digest()
 		if err != nil {
-			c.log.Warn(fmt.Sprintf("Failed to get layer digest: %v", err))
+			c.log.Warn("Failed to get layer digest", "error", err)
 			continue
 		}
 
 		// Check if there's an incomplete download for this layer (use DiffID for uncompressed models)
 		diffID, err := layer.DiffID()
 		if err != nil {
-			c.log.Warn(fmt.Sprintf("Failed to get layer diffID: %v", err))
+			c.log.Warn("Failed to get layer diffID", "error", err)
 			continue
 		}
 
 		incompleteSize, err := c.store.GetIncompleteSize(diffID)
 		if err != nil {
-			c.log.Warn(fmt.Sprintf("Failed to check incomplete size for layer %s: %v", digest, err))
+			c.log.Warn("Failed to check incomplete size for layer", "digest", digest, "error", err)
 			continue
 		}
 
 		if incompleteSize > 0 {
-			c.log.Info(fmt.Sprintf("Found incomplete download for layer %s: %d bytes", digest, incompleteSize))
+			c.log.Info("Found incomplete download for layer", "digest", digest, "bytes", incompleteSize)
 			resumeOffsets[digest.String()] = incompleteSize
 		}
 	}
@@ -366,14 +366,14 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	// and re-fetch using the original reference to ensure compatibility with all registries
 	var rangeSuccess *remote.RangeSuccess
 	if len(resumeOffsets) > 0 {
-		c.log.Info(fmt.Sprintf("Resuming %d interrupted layer download(s)", len(resumeOffsets)))
+		c.log.Info("Resuming interrupted layer download(s)", "count", len(resumeOffsets))
 		// Create a RangeSuccess tracker to record which Range requests succeed
 		rangeSuccess = &remote.RangeSuccess{}
 		ctx = remote.WithResumeOffsets(ctx, resumeOffsets)
 		ctx = remote.WithRangeSuccess(ctx, rangeSuccess)
 		// Re-fetch the model using the original tag reference
 		// The digest has already been validated above, and the resume context will handle layer resumption
-		c.log.Info(fmt.Sprintf("Re-fetching model with original reference for resume: %s", utils.SanitizeForLog(reference)))
+		c.log.Info("Re-fetching model with original reference for resume", "model", utils.SanitizeForLog(reference))
 		remoteModel, err = registryClient.Model(ctx, reference)
 		if err != nil {
 			return fmt.Errorf("reading model from registry with resume context: %w", err)
@@ -396,7 +396,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 
 		err = progress.WriteSuccess(progressWriter, fmt.Sprintf("Using cached model: %s", cfg.GetSize()), oci.ModePull)
 		if err != nil {
-			c.log.Warn(fmt.Sprintf("Writing progress: %v", err))
+			c.log.Warn("Writing progress", "error", err)
 		}
 
 		// Ensure model has the correct tag
@@ -417,13 +417,13 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	}
 	if err = c.store.Write(remoteModel, []string{reference}, progressWriter, writeOpts...); err != nil {
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePull); writeErr != nil {
-			c.log.Warn(fmt.Sprintf("Failed to write error message: %v", writeErr))
+			c.log.Warn("Failed to write error message", "error", writeErr)
 		}
 		return fmt.Errorf("writing image to store: %w", err)
 	}
 
 	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully", oci.ModePull); err != nil {
-		c.log.Warn(fmt.Sprintf("Failed to write success message: %v", err))
+		c.log.Warn("Failed to write success message", "error", err)
 	}
 
 	return nil
@@ -441,7 +441,7 @@ func (c *Client) LoadModel(r io.Reader, progressWriter io.Writer) (string, error
 		}
 		if err != nil {
 			if errors.Is(err, io.ErrUnexpectedEOF) {
-				c.log.Info(fmt.Sprintf("Model load interrupted (likely cancelled): %s", utils.SanitizeForLog(err.Error())))
+				c.log.Info("Model load interrupted (likely cancelled)", "error", utils.SanitizeForLog(err.Error()))
 				return "", fmt.Errorf("model load interrupted: %w", err)
 			}
 			return "", fmt.Errorf("reading blob from stream: %w", err)
@@ -464,7 +464,7 @@ func (c *Client) LoadModel(r io.Reader, progressWriter io.Writer) (string, error
 	c.log.Info("loaded model", "id", digest.String())
 
 	if err := progress.WriteSuccess(progressWriter, "Model loaded successfully", oci.ModePull); err != nil {
-		c.log.Warn(fmt.Sprintf("Failed to write success message: %v", err))
+		c.log.Warn("Failed to write success message", "error", err)
 	}
 
 	return digest.String(), nil
@@ -484,7 +484,7 @@ func (c *Client) ListModels() ([]types.Model, error) {
 		// Read the models
 		model, err := c.store.Read(modelInfo.ID)
 		if err != nil {
-			c.log.Warn(fmt.Sprintf("Failed to read model with ID %s: %v", modelInfo.ID, err))
+			c.log.Warn("Failed to read model with ID", "model", modelInfo.ID, "error", err)
 			continue
 		}
 		result = append(result, model)
@@ -623,14 +623,14 @@ tc.log.Info("pushing model", "tag", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Error("failed to push image", "error", err, "reference", tag)
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePush); writeErr != nil {
-			c.log.Warn(fmt.Sprintf("Failed to write error message: %v", writeErr))
+			c.log.Warn("Failed to write error message", "error", writeErr)
 		}
 		return fmt.Errorf("pushing image: %w", err)
 	}
 
 	c.log.Info("successfully pushed model", "tag", tag)
 	if err := progress.WriteSuccess(progressWriter, "Model pushed successfully", oci.ModePush); err != nil {
-		c.log.Warn(fmt.Sprintf("Failed to write success message: %v", err))
+		c.log.Warn("Failed to write success message", "error", err)
 	}
 
 	return nil
@@ -797,12 +797,12 @@ func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, 
 	}
 
 	if config.GetFormat() == "" {
-		log.Warn(fmt.Sprintf("Model format field is empty for %s, unable to verify format compatibility", utils.SanitizeForLog(reference)))
+		log.Warn("Model format field is empty for , unable to verify format compatibility", "model", utils.SanitizeForLog(reference))
 	} else if !slices.Contains(GetSupportedFormats(), config.GetFormat()) {
 		// Write warning but continue with pull
 		log.Warn(warnUnsupportedFormat)
 		if err := progress.WriteWarning(progressWriter, warnUnsupportedFormat, oci.ModePull); err != nil {
-			log.Warn(fmt.Sprintf("Failed to write warning message: %v", err))
+			log.Warn("Failed to write warning message", "error", err)
 		}
 		// Don't return an error - allow the pull to continue
 	}
@@ -847,7 +847,7 @@ func parseHFReference(reference string) (repo, revision, tag string) {
 // This is used when the model is stored as raw files (safetensors) on HuggingFace Hub
 func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, progressWriter io.Writer, token string) error {
 	repo, revision, tag := parseHFReference(reference)
-	c.log.Info(fmt.Sprintf("Pulling native HuggingFace model: repo=%s, revision=%s, tag=%s", utils.SanitizeForLog(repo), utils.SanitizeForLog(revision), utils.SanitizeForLog(tag)))
+	c.log.Info("Pulling native HuggingFace model", "repo", utils.SanitizeForLog(repo), "revision", utils.SanitizeForLog(revision), "tag", utils.SanitizeForLog(tag))
 
 	// Create HuggingFace client
 	hfOpts := []huggingface.ClientOption{
@@ -879,23 +879,23 @@ func (c *Client) pullNativeHuggingFace(ctx context.Context, reference string, pr
 			return registry.ErrModelNotFound
 		}
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePull); writeErr != nil {
-			c.log.Warn(fmt.Sprintf("Failed to write error message: %v", writeErr))
+			c.log.Warn("Failed to write error message", "error", writeErr)
 		}
 		return fmt.Errorf("build model from HuggingFace: %w", err)
 	}
 
 	// Write model to store with normalized tag
 	storageTag := c.normalizeModelName(reference)
-	c.log.Info(fmt.Sprintf("Writing model to store with tag: %s", utils.SanitizeForLog(storageTag)))
+	c.log.Info("Writing model to store with tag", "model", utils.SanitizeForLog(storageTag))
 	if err := c.store.Write(model, []string{storageTag}, progressWriter); err != nil {
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePull); writeErr != nil {
-			c.log.Warn(fmt.Sprintf("Failed to write error message: %v", writeErr))
+			c.log.Warn("Failed to write error message", "error", writeErr)
 		}
 		return fmt.Errorf("writing model to store: %w", err)
 	}
 
 	if err := progress.WriteSuccess(progressWriter, "Model pulled successfully", oci.ModePull); err != nil {
-		c.log.Warn(fmt.Sprintf("Failed to write success message: %v", err))
+		c.log.Warn("Failed to write success message", "error", err)
 	}
 
 	return nil

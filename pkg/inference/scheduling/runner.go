@@ -192,13 +192,13 @@ func run(
 	if r.openAIRecorder != nil {
 		r.openAIRecorder.SetConfigForModel(modelID, runnerConfig)
 	} else {
-		r.log.Warn(fmt.Sprintf("OpenAI recorder is nil for model %s", modelID))
+		r.log.Warn("OpenAI recorder is nil for model", "model", modelID)
 	}
 
 	// Start the backend run loop.
 	go func() {
 		if err := backend.Run(runCtx, socket, modelID, modelRef, mode, runnerConfig); err != nil {
-			log.Warn(fmt.Sprintf("Backend %s running model %s exited with error: %v", backend.Name(), utils.SanitizeForLog(modelRef), err))
+			log.Warn("Backend running model exited with error", "backend", backend.Name(), "model", utils.SanitizeForLog(modelRef), "error", err)
 			r.err = err
 		}
 		close(runDone)
@@ -264,13 +264,13 @@ func (r *runner) terminate() {
 
 	// Close the proxy's log.
 	if err := r.proxyLog.Close(); err != nil {
-		r.log.Warn(fmt.Sprintf("Unable to close reverse proxy log writer: %v", err))
+		r.log.Warn("Unable to close reverse proxy log writer", "error", err)
 	}
 
 	if r.openAIRecorder != nil {
 		r.openAIRecorder.RemoveModel(r.model)
 	} else {
-		r.log.Warn(fmt.Sprintf("OpenAI recorder is nil for model %s", r.model))
+		r.log.Warn("OpenAI recorder is nil for model", "model", r.model)
 	}
 }
 

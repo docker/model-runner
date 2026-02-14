@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
+t"io"
+t"log/slog"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
-
-	"log/slog"
 
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/registry"
@@ -111,21 +110,21 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
 		sanitizedFrom := utils.SanitizeForLog(request.From, -1)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			h.log.Info(fmt.Sprintf("Request canceled/timed out while pulling model %q", sanitizedFrom))
+			h.log.Info("Request canceled/timed out while pulling model", "model", sanitizedFrom)
 			return
 		}
 		if errors.Is(err, registry.ErrInvalidReference) {
-			h.log.Warn(fmt.Sprintf("Invalid model reference %q: %v", sanitizedFrom, err))
+			h.log.Warn("Invalid model reference", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			h.log.Warn(fmt.Sprintf("Unauthorized to pull model %q: %v", sanitizedFrom, err))
+			h.log.Warn("Unauthorized to pull model", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		if errors.Is(err, registry.ErrModelNotFound) {
-			h.log.Warn(fmt.Sprintf("Failed to pull model %q: %v", sanitizedFrom, err))
+			h.log.Warn("Failed to pull model", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
@@ -469,17 +468,17 @@ func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, mo
 
 	if err := h.manager.Push(model, req.BearerToken, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
-			h.log.Warn(fmt.Sprintf("Invalid model reference %q: %v", utils.SanitizeForLog(model, -1), err))
+			h.log.Warn("Invalid model reference", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			h.log.Warn(fmt.Sprintf("Failed to push model %q: %v", utils.SanitizeForLog(model, -1), err))
+			h.log.Warn("Failed to push model", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			h.log.Warn(fmt.Sprintf("Unauthorized to push model %q: %v", utils.SanitizeForLog(model, -1), err))
+			h.log.Warn("Unauthorized to push model", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -514,7 +513,7 @@ func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Reques
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		h.log.Warn(fmt.Sprintf("Failed to repackage model %q: %v", utils.SanitizeForLog(model, -1), err))
+		h.log.Warn("Failed to repackage model", "model", utils.SanitizeForLog(model, -1), "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -535,7 +534,7 @@ func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Reques
 func (h *HTTPHandler) handlePurge(w http.ResponseWriter, _ *http.Request) {
 	err := h.manager.Purge()
 	if err != nil {
-		h.log.Warn(fmt.Sprintf("Failed to purge models: %v", err))
+		h.log.Warn("Failed to purge models", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

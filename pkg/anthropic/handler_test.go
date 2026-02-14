@@ -1,13 +1,11 @@
 package anthropic
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
 )
 
 func TestWriteAnthropicError(t *testing.T) {
@@ -54,16 +52,16 @@ func TestWriteAnthropicError(t *testing.T) {
 			h.writeAnthropicError(rec, tt.statusCode, tt.errorType, tt.message)
 
 			if rec.Code != tt.statusCode {
-				t.Error(fmt.Sprintf("expected status %d, got %d", tt.statusCode, rec.Code))
+				t.Errorf("expected status %d, got %d", tt.statusCode, rec.Code)
 			}
 
 			if contentType := rec.Header().Get("Content-Type"); contentType != "application/json" {
-				t.Error(fmt.Sprintf("expected Content-Type application/json, got %s", contentType))
+				t.Errorf("expected Content-Type application/json, got %s", contentType)
 			}
 
 			body := strings.TrimSpace(rec.Body.String())
 			if body != tt.wantBody {
-				t.Error(fmt.Sprintf("expected body %s, got %s", tt.wantBody, body))
+				t.Errorf("expected body %s, got %s", tt.wantBody, body)
 			}
 		})
 	}
@@ -85,12 +83,12 @@ func TestRouteHandlers(t *testing.T) {
 
 	for _, route := range expectedRoutes {
 		if _, exists := routes[route]; !exists {
-			t.Error(fmt.Sprintf("expected route %s to be registered", route))
+			t.Errorf("expected route %s to be registered", route)
 		}
 	}
 
 	if len(routes) != len(expectedRoutes) {
-		t.Error(fmt.Sprintf("expected %d routes, got %d", len(expectedRoutes), len(routes)))
+		t.Errorf("expected %d routes, got %d", len(expectedRoutes), len(routes))
 	}
 }
 
@@ -98,7 +96,7 @@ func TestAPIPrefix(t *testing.T) {
 	t.Parallel()
 
 	if APIPrefix != "/anthropic" {
-		t.Error(fmt.Sprintf("expected APIPrefix to be /anthropic, got %s", APIPrefix))
+		t.Errorf("expected APIPrefix to be /anthropic, got %s", APIPrefix)
 	}
 }
 
@@ -115,15 +113,15 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
+		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
 	}
 	if !strings.Contains(body, "Invalid JSON") {
-		t.Error(fmt.Sprintf("expected body to contain 'Invalid JSON', got %s", body))
+		t.Errorf("expected body to contain 'Invalid JSON', got %s", body)
 	}
 }
 
@@ -140,15 +138,15 @@ func TestProxyToBackend_MissingModel(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
+		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
 	}
 	if !strings.Contains(body, "Missing required field: model") {
-		t.Error(fmt.Sprintf("expected body to contain 'Missing required field: model', got %s", body))
+		t.Errorf("expected body to contain 'Missing required field: model', got %s", body)
 	}
 }
 
@@ -165,15 +163,15 @@ func TestProxyToBackend_EmptyModel(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusBadRequest {
-		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusBadRequest, rec.Code))
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "invalid_request_error") {
-		t.Error(fmt.Sprintf("expected body to contain 'invalid_request_error', got %s", body))
+		t.Errorf("expected body to contain 'invalid_request_error', got %s", body)
 	}
 	if !strings.Contains(body, "Missing required field: model") {
-		t.Error(fmt.Sprintf("expected body to contain 'Missing required field: model', got %s", body))
+		t.Errorf("expected body to contain 'Missing required field: model', got %s", body)
 	}
 }
 
@@ -194,11 +192,11 @@ func TestProxyToBackend_RequestTooLarge(t *testing.T) {
 	h.proxyToBackend(rec, req, "/v1/messages")
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Error(fmt.Sprintf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code))
+		t.Errorf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code)
 	}
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "request_too_large") {
-		t.Error(fmt.Sprintf("expected body to contain 'request_too_large', got %s", body))
+		t.Errorf("expected body to contain 'request_too_large', got %s", body)
 	}
 }

@@ -1,7 +1,6 @@
 package scheduling
 
 import (
-	"fmt"
 	"context"
 	"errors"
 	"net/http"
@@ -142,7 +141,7 @@ func (i *installer) run(ctx context.Context) {
 			continue
 		}
 		if err := backend.Install(ctx, i.httpClient); err != nil {
-			i.log.Warn(fmt.Sprintf("Backend installation failed for %s: %v", name, err))
+			i.log.Warn("Backend installation failed for", "backend", name, "error", err)
 			select {
 			case <-ctx.Done():
 				status.err = errors.Join(errInstallerShuttingDown, ctx.Err())

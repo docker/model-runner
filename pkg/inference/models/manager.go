@@ -52,7 +52,7 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		distribution.WithRegistryClient(registryClient),
 	)
 	if err != nil {
-		log.Error(fmt.Sprintf("Failed to create distribution client: %v", err))
+		log.Error("Failed to create distribution client", "error", err)
 		// Continue without distribution client. The model manager will still
 		// respond to requests, but may return errors if the client is required.
 	}
@@ -92,13 +92,13 @@ func (m *Manager) ResolveID(modelRef string) string {
 	sanitizedModelRef := utils.SanitizeForLog(modelRef, -1)
 	model, err := m.GetLocal(sanitizedModelRef)
 	if err != nil {
-		m.log.Warn(fmt.Sprintf("Failed to resolve model ref %s to ID: %v", sanitizedModelRef, err))
+		m.log.Warn("Failed to resolve model ref to ID", "model", sanitizedModelRef, "error", err)
 		return sanitizedModelRef
 	}
 
 	modelID, err := model.ID()
 	if err != nil {
-		m.log.Warn(fmt.Sprintf("Failed to get model ID for ref %s: %v", sanitizedModelRef, err))
+		m.log.Warn("Failed to get model ID for ref", "model", sanitizedModelRef, "error", err)
 		return sanitizedModelRef
 	}
 
@@ -172,7 +172,7 @@ func (m *Manager) List() ([]*Model, error) {
 	for _, model := range models {
 		apiModel, err := ToModel(model)
 		if err != nil {
-			m.log.Warn(fmt.Sprintf("error while converting model, skipping: %v", err))
+			m.log.Warn("error while converting model, skipping", "error", err)
 			continue
 		}
 		apiModels = append(apiModels, apiModel)
@@ -300,7 +300,7 @@ func (m *Manager) Tag(ref, target string) error {
 			for _, mModel := range models {
 				modelID, idErr := mModel.ID()
 				if idErr != nil {
-					m.log.Warn(fmt.Sprintf("Failed to get model ID: %v", idErr))
+					m.log.Warn("Failed to get model ID", "error", idErr)
 					continue
 				}
 
@@ -359,7 +359,7 @@ func (m *Manager) Tag(ref, target string) error {
 
 		// Now tag using the found model reference (the matching tag)
 		if tagErr := m.distributionClient.Tag(foundModelRef, target); tagErr != nil {
-			m.log.Warn(fmt.Sprintf("Failed to apply tag %q to resolved model %q: %v", utils.SanitizeForLog(target, -1), utils.SanitizeForLog(foundModelRef, -1), tagErr))
+			m.log.Warn("Failed to apply tag to resolved model", "target", utils.SanitizeForLog(target, -1), "model", utils.SanitizeForLog(foundModelRef, -1), "error", tagErr)
 			return fmt.Errorf("error while tagging model: %w", tagErr)
 		}
 	} else if err != nil {
@@ -417,7 +417,7 @@ func (m *Manager) Purge() error {
 		return fmt.Errorf("model distribution service unavailable")
 	}
 	if err := m.distributionClient.ResetStore(); err != nil {
-		m.log.Warn(fmt.Sprintf("Failed to purge models: %v", err))
+		m.log.Warn("Failed to purge models", "error", err)
 		return fmt.Errorf("error while purging models: %w", err)
 	}
 	return nil

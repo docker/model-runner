@@ -108,7 +108,7 @@ func (v *vllmMetal) Install(ctx context.Context, httpClient *http.Client) error 
 				v.pythonPath = pythonPath
 				return v.verifyInstallation(ctx)
 			}
-			v.log.Info(fmt.Sprintf("vllm-metal version mismatch: installed %s, want %s", installed, vllmMetalVersion))
+			v.log.Info("vllm-metal version mismatch", "installed", installed, "want", vllmMetalVersion)
 		}
 	}
 
@@ -119,7 +119,7 @@ func (v *vllmMetal) Install(ctx context.Context, httpClient *http.Client) error 
 
 	// Save version file
 	if err := os.WriteFile(versionFile, []byte(vllmMetalVersion), 0644); err != nil {
-		v.log.Warn(fmt.Sprintf("failed to write version file: %v", err))
+		v.log.Warn("failed to write version file", "error", err)
 	}
 
 	v.pythonPath = pythonPath
@@ -129,7 +129,7 @@ func (v *vllmMetal) Install(ctx context.Context, httpClient *http.Client) error 
 // downloadAndExtract downloads the vllm-metal image from Docker Hub and extracts it.
 // The image contains a self-contained Python installation with all packages pre-installed.
 func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) error {
-	v.log.Info(fmt.Sprintf("Downloading vllm-metal %s from Docker Hub...", vllmMetalVersion))
+	v.log.Info("Downloading vllm-metal from Docker Hub...", "version", vllmMetalVersion)
 
 	// Create temp directory for download
 	downloadDir, err := os.MkdirTemp("", "vllm-metal-install")
@@ -174,7 +174,7 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 		return fmt.Errorf("failed to make python3 executable: %w", err)
 	}
 
-	v.log.Info(fmt.Sprintf("vllm-metal %s installed successfully", vllmMetalVersion))
+	v.log.Info("vllm-metal installed successfully", "version", vllmMetalVersion)
 	return nil
 }
 

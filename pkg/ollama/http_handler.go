@@ -62,7 +62,7 @@ func NewHTTPHandler(log logging.Logger, scheduler *scheduling.Scheduler, schedul
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	safeMethod := utils.SanitizeForLog(r.Method, -1)
 	safePath := utils.SanitizeForLog(r.URL.Path, -1)
-	h.log.Info(fmt.Sprintf("Ollama API request: %s %s", safeMethod, safePath))
+	h.log.Info("Ollama API request", "method", safeMethod, "path", safePath)
 	h.httpHandler.ServeHTTP(w, r)
 }
 
@@ -145,14 +145,14 @@ func (w *ollamaProgressWriter) Write(p []byte) (n int, err error) {
 			return w.writer.Write(p)
 		}
 		// Unrecognized type, pass through to avoid losing information
-		w.log.Warn(fmt.Sprintf("Unknown progress message type: %s", msg.Type))
+		w.log.Warn("Unknown progress message type", "message", msg.Type)
 		return w.writer.Write(p)
 	}
 
 	// Marshal and write ollama format
 	data, err := json.Marshal(ollamaMsg)
 	if err != nil {
-		w.log.Warn(fmt.Sprintf("Failed to marshal ollama progress: %v", err))
+		w.log.Warn("Failed to marshal ollama progress", "error", err)
 		return w.writer.Write(p)
 	}
 
@@ -187,7 +187,7 @@ func (h *HTTPHandler) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
 
@@ -196,7 +196,7 @@ func (h *HTTPHandler) handleListModels(w http.ResponseWriter, r *http.Request) {
 	// Get models from the model manager
 	modelsList, err := h.modelManager.List()
 	if err != nil {
-		h.log.Error(fmt.Sprintf("Failed to list models: %v", err))
+		h.log.Error("Failed to list models", "error", err)
 		http.Error(w, "Failed to list models", http.StatusInternalServerError)
 		return
 	}
@@ -243,7 +243,7 @@ func (h *HTTPHandler) handleListModels(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
 
@@ -260,7 +260,7 @@ func (h *HTTPHandler) handlePS(w http.ResponseWriter, r *http.Request) {
 		// Get model details to populate additional fields
 		model, err := h.modelManager.GetLocal(backend.ModelName)
 		if err != nil {
-			h.log.Warn(fmt.Sprintf("Failed to get model details for %s: %v", backend.ModelName, err))
+			h.log.Warn("Failed to get model details for", "backend", backend.ModelName, "error", err)
 			// Still add the model with basic info
 			models = append(models, PSModel{
 				Name:   backend.ModelName,
@@ -303,7 +303,7 @@ func (h *HTTPHandler) handlePS(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
 
@@ -324,7 +324,7 @@ func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	// Get model details
 	model, err := h.modelManager.GetLocal(modelName)
 	if err != nil {
-		h.log.Error(fmt.Sprintf("Failed to get model: %v", err))
+		h.log.Error("Failed to get model", "error", err)
 		http.Error(w, fmt.Sprintf("Model not found: %v", err), http.StatusNotFound)
 		return
 	}
@@ -332,7 +332,7 @@ func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 	// Get config
 	config, err := model.Config()
 	if err != nil {
-		h.log.Error(fmt.Sprintf("Failed to get model config: %v", err))
+		h.log.Error("Failed to get model config", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to get model config: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -350,7 +350,7 @@ func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
 
@@ -417,7 +417,7 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 
 	if hasContextSize || reasoningBudget != nil || hasKeepAlive {
 		sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-		h.log.Info(fmt.Sprintf("configureModel: configuring model %s", sanitizedModelName))
+		h.log.Info("configureModel: configuring model", "model", sanitizedModelName)
 		configureRequest := scheduling.ConfigureRequest{
 			Model: modelName,
 		}
@@ -434,12 +434,12 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 			if err == nil {
 				configureRequest.KeepAlive = &ka
 			} else {
-				h.log.Warn(fmt.Sprintf("configureModel: invalid keep_alive %q: %v", keepAlive, err))
+				h.log.Warn("configureModel: invalid keep_alive", "model", keepAlive, "error", err)
 			}
 		}
 		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent)
 		if err != nil {
-			h.log.Warn(fmt.Sprintf("configureModel: failed to configure model %s: %v", sanitizedModelName, err))
+			h.log.Warn("configureModel: failed to configure model", "model", sanitizedModelName, "error", err)
 		}
 	}
 }
@@ -456,7 +456,7 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error(fmt.Sprintf("handleGenerate: failed to decode request: %v", err))
+		h.log.Error("handleGenerate: failed to decode request", "error", err)
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -506,7 +506,7 @@ func (h *HTTPHandler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, modelName string) {
 	// Sanitize user input before logging to prevent log injection
 	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-	h.log.Info(fmt.Sprintf("unloadModel: unloading model %s", sanitizedModelName))
+	h.log.Info("unloadModel: unloading model", "model", sanitizedModelName)
 
 	// Create an unload request for the scheduler
 	unloadReq := map[string]interface{}{
@@ -516,19 +516,19 @@ func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, mo
 	// Marshal the unload request
 	reqBody, err := json.Marshal(unloadReq)
 	if err != nil {
-		h.log.Error(fmt.Sprintf("unloadModel: failed to marshal request: %v", err))
+		h.log.Error("unloadModel: failed to marshal request", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to marshal request: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Sanitize the user-provided request body before logging to avoid log injection
 	safeReqBody := utils.SanitizeForLog(string(reqBody), -1)
-	h.log.Info(fmt.Sprintf("unloadModel: sending POST /engines/unload with body: %s", safeReqBody))
+	h.log.Info("unloadModel: sending POST /engines/unload with body", "model", safeReqBody)
 
 	// Create a new request to the scheduler
 	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/engines/unload", strings.NewReader(string(reqBody)))
 	if err != nil {
-		h.log.Error(fmt.Sprintf("unloadModel: failed to create request: %v", err))
+		h.log.Error("unloadModel: failed to create request", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to create request: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -544,7 +544,7 @@ func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, mo
 	// Forward to scheduler HTTP handler
 	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
 
-	h.log.Info(fmt.Sprintf("unloadModel: scheduler response status=%d, body=%s", respRecorder.statusCode, respRecorder.body.String()))
+	h.log.Info("unloadModel: scheduler response", "status", respRecorder.statusCode, "body", respRecorder.body.String())
 
 	// Return the response status
 	w.WriteHeader(respRecorder.statusCode)
@@ -574,7 +574,7 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sanitizedModelName := utils.SanitizeForLog(modelName, -1)
-	h.log.Info(fmt.Sprintf("handleDelete: deleting model %s", sanitizedModelName))
+	h.log.Info("handleDelete: deleting model", "model", sanitizedModelName)
 
 	// First, unload the model from memory
 	unloadReq := map[string]interface{}{
@@ -583,14 +583,14 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	reqBody, err := json.Marshal(unloadReq)
 	if err != nil {
-		h.log.Error(fmt.Sprintf("handleDelete: failed to marshal unload request: %v", err))
+		h.log.Error("handleDelete: failed to marshal unload request", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to marshal request: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/engines/unload", strings.NewReader(string(reqBody)))
 	if err != nil {
-		h.log.Error(fmt.Sprintf("handleDelete: failed to create unload request: %v", err))
+		h.log.Error("handleDelete: failed to create unload request", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to create request: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -603,12 +603,12 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.schedulerHTTP.ServeHTTP(respRecorder, newReq)
-	h.log.Info(fmt.Sprintf("handleDelete: unload response status=%d", respRecorder.statusCode))
+	h.log.Info("handleDelete: unload response", "status", respRecorder.statusCode)
 
 	// Check if unload succeeded before deleting from storage
 	if respRecorder.statusCode < 200 || respRecorder.statusCode >= 300 {
 		sanitizedBody := utils.SanitizeForLog(respRecorder.body.String(), -1)
-		h.log.Error(fmt.Sprintf("handleDelete: unload failed for model %s with status=%d, body=%q", sanitizedModelName, respRecorder.statusCode, sanitizedBody))
+		h.log.Error("handleDelete: unload failed for model", "model", sanitizedModelName, "status", respRecorder.statusCode, "body", sanitizedBody)
 		http.Error(
 			w,
 			fmt.Sprintf("Failed to unload model: scheduler returned status %d", respRecorder.statusCode),
@@ -620,12 +620,12 @@ func (h *HTTPHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	// Then delete the model from storage
 	if _, err := h.modelManager.Delete(modelName, false); err != nil {
 		sanitizedErr := utils.SanitizeForLog(err.Error(), -1)
-		h.log.Error(fmt.Sprintf("handleDelete: failed to delete model %s: %v", sanitizedModelName, sanitizedErr))
+		h.log.Error("handleDelete: failed to delete model", "model", sanitizedModelName, "error", sanitizedErr)
 		http.Error(w, fmt.Sprintf("Failed to delete model: %v", sanitizedErr), http.StatusInternalServerError)
 		return
 	}
 
-	h.log.Info(fmt.Sprintf("handleDelete: successfully deleted model %s", sanitizedModelName))
+	h.log.Info("handleDelete: successfully deleted model", "model", sanitizedModelName)
 
 	// Return success response in Ollama format (empty JSON object)
 	w.Header().Set("Content-Type", "application/json")
@@ -659,7 +659,7 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 
 	// Call the model manager's Pull method with the wrapped writer
 	if err := h.modelManager.Pull(modelName, "", r, ollamaWriter); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to pull model: %s", utils.SanitizeForLog(err.Error(), -1)))
+		h.log.Error("Failed to pull model", "error", utils.SanitizeForLog(err.Error(), -1))
 
 		// Send error in Ollama JSON format
 		errorResponse := ollamaPullStatus{
@@ -671,7 +671,7 @@ func (h *HTTPHandler) handlePull(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			if err := json.NewEncoder(w).Encode(errorResponse); err != nil {
-				h.log.Error(fmt.Sprintf("failed to encode response: %v", err))
+				h.log.Error("failed to encode response", "error", err)
 			}
 		} else {
 			// Headers already sent - write error as JSON line
@@ -1048,7 +1048,7 @@ func (s *streamingChatResponseWriter) Write(data []byte) (int, error) {
 		// Parse OpenAI chunk using proper struct
 		var chunk openAIChatStreamChunk
 		if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
-			s.log.Warn(fmt.Sprintf("Failed to parse OpenAI chat stream chunk: %v", err))
+			s.log.Warn("Failed to parse OpenAI chat stream chunk", "error", err)
 			continue
 		}
 
@@ -1170,7 +1170,7 @@ func (s *streamingGenerateResponseWriter) Write(data []byte) (int, error) {
 		// Parse OpenAI chunk using proper struct
 		var chunk openAIChatStreamChunk
 		if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
-			s.log.Warn(fmt.Sprintf("Failed to parse OpenAI chat stream chunk: %v", err))
+			s.log.Warn("Failed to parse OpenAI chat stream chunk", "error", err)
 			continue
 		}
 
@@ -1217,7 +1217,7 @@ func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *r
 			// Convert to Ollama error format (simple string)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": openAIErr.Error.Message}); err != nil {
-				h.log.Error(fmt.Sprintf("failed to encode response: %v", err))
+				h.log.Error("failed to encode response", "error", err)
 			}
 		} else {
 			// Fallback: return raw error body
@@ -1229,7 +1229,7 @@ func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *r
 	// Parse OpenAI response using proper struct
 	var openAIResp openAIChatResponse
 	if err := json.Unmarshal([]byte(respRecorder.body.String()), &openAIResp); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to parse OpenAI response: %v", err))
+		h.log.Error("Failed to parse OpenAI response", "error", err)
 		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
 		return
 	}
@@ -1259,7 +1259,7 @@ func (h *HTTPHandler) convertChatResponse(w http.ResponseWriter, respRecorder *r
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
 
@@ -1304,7 +1304,7 @@ func (h *HTTPHandler) convertGenerateResponse(w http.ResponseWriter, respRecorde
 			// Convert to Ollama error format (simple string)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": openAIErr.Error.Message}); err != nil {
-				h.log.Error(fmt.Sprintf("failed to encode response: %v", err))
+				h.log.Error("failed to encode response", "error", err)
 			}
 		} else {
 			// Fallback: return raw error body
@@ -1316,7 +1316,7 @@ func (h *HTTPHandler) convertGenerateResponse(w http.ResponseWriter, respRecorde
 	// Parse OpenAI chat response (since we're now using chat completions endpoint)
 	var openAIResp openAIChatResponse
 	if err := json.Unmarshal([]byte(respRecorder.body.String()), &openAIResp); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to parse OpenAI chat response: %v", err))
+		h.log.Error("Failed to parse OpenAI chat response", "error", err)
 		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
 		return
 	}
@@ -1340,6 +1340,6 @@ func (h *HTTPHandler) convertGenerateResponse(w http.ResponseWriter, respRecorde
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Error(fmt.Sprintf("Failed to encode response: %v", err))
+		h.log.Error("Failed to encode response", "error", err)
 	}
 }
