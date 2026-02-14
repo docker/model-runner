@@ -65,7 +65,7 @@ func (h *AggregatedMetricsHandler) collectAndAggregateMetrics(ctx context.Contex
 
 			families, err := h.fetchRunnerMetrics(ctx, runner)
 			if err != nil {
-				h.log.Warnf("Failed to fetch metrics from runner %s/%s: %v", runner.BackendName, runner.ModelName, err)
+				h.log.Warn("Failed to fetch metrics from runner /", "backend", runner.BackendName, "model", runner.ModelName, "error", err)
 				return
 			}
 
@@ -165,7 +165,7 @@ func (h *AggregatedMetricsHandler) writeAggregatedMetrics(w http.ResponseWriter,
 	encoder := expfmt.NewEncoder(w, expfmt.NewFormat(expfmt.TypeTextPlain))
 	for _, family := range families {
 		if err := encoder.Encode(family); err != nil {
-			h.log.Errorf("Failed to encode metric family %s: %v", *family.Name, err)
+			h.log.Error("Failed to encode metric family", "family", *family.Name, "error", err)
 			continue
 		}
 	}

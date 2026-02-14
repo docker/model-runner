@@ -1,13 +1,11 @@
 package anthropic
 
 import (
-	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestWriteAnthropicError(t *testing.T) {
@@ -48,9 +46,9 @@ func TestWriteAnthropicError(t *testing.T) {
 			t.Parallel()
 
 			rec := httptest.NewRecorder()
-			discard := logrus.New()
-			discard.SetOutput(io.Discard)
-			h := &Handler{log: logrus.NewEntry(discard)}
+			discard := slog.Default()
+			// discard output is controlled by the slog handler level
+			h := &Handler{log: discard}
 			h.writeAnthropicError(rec, tt.statusCode, tt.errorType, tt.message)
 
 			if rec.Code != tt.statusCode {
@@ -105,9 +103,9 @@ func TestAPIPrefix(t *testing.T) {
 func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{invalid json`))
@@ -130,9 +128,9 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 func TestProxyToBackend_MissingModel(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{"messages": []}`))
@@ -155,9 +153,9 @@ func TestProxyToBackend_MissingModel(t *testing.T) {
 func TestProxyToBackend_EmptyModel(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(`{"model": ""}`))
@@ -180,9 +178,9 @@ func TestProxyToBackend_EmptyModel(t *testing.T) {
 func TestProxyToBackend_RequestTooLarge(t *testing.T) {
 	t.Parallel()
 
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	h := &Handler{log: logrus.NewEntry(discard)}
+	discard := slog.Default()
+	// discard output is controlled by the slog handler level
+	h := &Handler{log: discard}
 
 	// Create a request body that exceeds the maxRequestBodySize (10MB)
 	// We'll use a reader that simulates a large body without actually allocating it

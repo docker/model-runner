@@ -448,7 +448,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		preloadBody, err := json.Marshal(OpenAIInferenceRequest{Model: configureRequest.Model})
 		if err != nil {
-			h.scheduler.log.Warnf("failed to marshal preload request body: %v", err)
+			h.scheduler.log.Warn("failed to marshal preload request body", "error", err)
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -460,7 +460,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 			bytes.NewReader(preloadBody),
 		)
 		if err != nil {
-			h.scheduler.log.Warnf("failed to create preload request: %v", err)
+			h.scheduler.log.Warn("failed to create preload request", "error", err)
 			return
 		}
 		preloadReq.Header.Set("User-Agent", r.UserAgent())
@@ -470,7 +470,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 		recorder := httptest.NewRecorder()
 		h.handleOpenAIInference(recorder, preloadReq)
 		if recorder.Code != http.StatusOK {
-			h.scheduler.log.Warnf("background model preload failed with status %d: %s", recorder.Code, recorder.Body.String())
+			h.scheduler.log.Warn("background model preload failed", "status", recorder.Code, "body", recorder.Body.String())
 		}
 	}()
 

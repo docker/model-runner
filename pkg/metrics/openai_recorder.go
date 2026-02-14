@@ -205,7 +205,7 @@ func (r *OpenAIRecorder) truncateBase64Data(data string) string {
 
 func (r *OpenAIRecorder) SetConfigForModel(model string, config *inference.BackendConfiguration) {
 	if config == nil {
-		r.log.Warnf("SetConfigForModel called with nil config for model %s", model)
+		r.log.Warn("SetConfigForModel called with nil config for model", "model", model)
 		return
 	}
 
@@ -399,9 +399,9 @@ func (r *OpenAIRecorder) RecordResponse(id, model string, rw http.ResponseWriter
 				return
 			}
 		}
-		r.log.Errorf("Matching request (id=%s) not found for model %s - %d\n%s", id, modelID, statusCode, response)
+		r.log.Error("Matching request not found for model", "id", id, "model", modelID, "statusCode", statusCode, "response", response)
 	} else {
-		r.log.Errorf("Model %s not found in records - %d\n%s", modelID, statusCode, response)
+		r.log.Error("Model not found in records", "model", modelID, "statusCode", statusCode, "response", response)
 	}
 }
 
@@ -717,7 +717,7 @@ func (r *OpenAIRecorder) handleStreamingRequests(w http.ResponseWriter, req *htt
 
 	// Send heartbeat to establish connection.
 	if _, err := fmt.Fprintf(w, "event: connected\ndata: {\"status\": \"connected\"}\n\n"); err != nil {
-		r.log.Errorf("Failed to write connected event to response: %v", err)
+		r.log.Error("Failed to write connected event to response", "error", err)
 	}
 	flusher.Flush()
 
@@ -738,17 +738,17 @@ func (r *OpenAIRecorder) handleStreamingRequests(w http.ResponseWriter, req *htt
 			// Send as SSE event.
 			jsonData, err := json.Marshal(modelRecords)
 			if err != nil {
-				r.log.Errorf("Failed to marshal record for streaming: %v", err)
+				r.log.Error("Failed to marshal record for streaming", "error", err)
 				errorMsg := fmt.Sprintf(`{"error": "Failed to marshal record: %v"}`, err)
 				if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorMsg); writeErr != nil {
-					r.log.Errorf("Failed to write error event to response: %v", writeErr)
+					r.log.Error("Failed to write error event to response", "error", writeErr)
 				}
 				flusher.Flush()
 				continue
 			}
 
 			if _, err := fmt.Fprintf(w, "event: new_request\ndata: %s\n\n", jsonData); err != nil {
-				r.log.Errorf("Failed to write new_request event to response: %v", err)
+				r.log.Error("Failed to write new_request event to response", "error", err)
 			}
 			flusher.Flush()
 
@@ -841,14 +841,14 @@ func (r *OpenAIRecorder) sendExistingRecords(w http.ResponseWriter, model string
 			}}
 			jsonData, err := json.Marshal(singleRecord)
 			if err != nil {
-				r.log.Errorf("Failed to marshal existing record for streaming: %v", err)
+				r.log.Error("Failed to marshal existing record for streaming", "error", err)
 				errorMsg := fmt.Sprintf(`{"error": "Failed to marshal existing record: %v"}`, err)
 				if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", errorMsg); writeErr != nil {
-					r.log.Errorf("Failed to write error event to response: %v", writeErr)
+					r.log.Error("Failed to write error event to response", "error", writeErr)
 				}
 			} else {
 				if _, writeErr := fmt.Fprintf(w, "event: existing_request\ndata: %s\n\n", jsonData); writeErr != nil {
-					r.log.Errorf("Failed to write existing_request event to response: %v", writeErr)
+					r.log.Error("Failed to write existing_request event to response", "error", writeErr)
 				}
 			}
 		}
@@ -863,8 +863,8 @@ func (r *OpenAIRecorder) RemoveModel(model string) {
 
 	if _, exists := r.records[modelID]; exists {
 		delete(r.records, modelID)
-		r.log.Infof("Removed records for model: %s", modelID)
+		r.log.Info("Removed records for model", "model", modelID)
 	} else {
-		r.log.Warnf("No records found for model: %s", modelID)
+		r.log.Warn("No records found for model", "model", modelID)
 	}
 }

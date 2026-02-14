@@ -55,7 +55,7 @@ func NewHTTPHandler(log logging.Logger, schedulerHTTP http.Handler, allowedOrigi
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cleanPath := strings.ReplaceAll(r.URL.Path, "\n", "")
 	cleanPath = strings.ReplaceAll(cleanPath, "\r", "")
-	h.log.Infof("Responses API request: %s %s", r.Method, cleanPath)
+	h.log.Info("Responses API request", "method", r.Method, "path", cleanPath)
 	h.httpHandler.ServeHTTP(w, r)
 }
 
@@ -305,7 +305,7 @@ func (h *HTTPHandler) sendJSON(w http.ResponseWriter, statusCode int, data inter
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		h.log.Errorf("Failed to encode JSON response: %v", err)
+		h.log.Error("Failed to encode JSON response", "error", err)
 	}
 }
 

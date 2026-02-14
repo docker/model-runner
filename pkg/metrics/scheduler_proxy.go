@@ -40,7 +40,7 @@ func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	// Get the socket path for the active llama.cpp runner
 	socket, err := h.scheduler.GetLlamaCppSocket()
 	if err != nil {
-		h.log.Errorf("Failed to get llama.cpp socket: %v", err)
+		h.log.Error("Failed to get llama.cpp socket", "error", err)
 		http.Error(w, "Metrics endpoint not available", http.StatusServiceUnavailable)
 		return
 	}
@@ -58,7 +58,7 @@ func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	// Create request to the backend metrics endpoint
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "http://unix/metrics", http.NoBody)
 	if err != nil {
-		h.log.Errorf("Failed to create metrics request: %v", err)
+		h.log.Error("Failed to create metrics request", "error", err)
 		http.Error(w, "Failed to create metrics request", http.StatusInternalServerError)
 		return
 	}
@@ -73,7 +73,7 @@ func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	// Make the request to the backend
 	resp, err := client.Do(req)
 	if err != nil {
-		h.log.Errorf("Failed to fetch metrics from backend: %v", err)
+		h.log.Error("Failed to fetch metrics from backend", "error", err)
 		http.Error(w, "Backend metrics unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -91,9 +91,9 @@ func (h *SchedulerMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 
 	// Copy response body
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		h.log.Errorf("Failed to copy metrics response: %v", err)
+		h.log.Error("Failed to copy metrics response", "error", err)
 		return
 	}
 
-	h.log.Debugf("Successfully proxied metrics request")
+	h.log.Debug("Successfully proxied metrics request")
 }

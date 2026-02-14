@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/sirupsen/logrus"
 )
 
 // mockBackend is a minimal backend implementation for testing
@@ -55,10 +55,8 @@ func (b *fastFailBackend) Run(ctx context.Context, socket, model string, modelRe
 }
 
 // createTestLogger creates a logger for testing
-func createTestLogger() *logrus.Entry {
-	log := logrus.New()
-	log.SetOutput(io.Discard)
-	return logrus.NewEntry(log)
+func createTestLogger() *slog.Logger {
+	return slog.Default()
 }
 
 // Test memory size constants
@@ -68,7 +66,7 @@ const (
 
 // createDefunctMockRunner creates a mock runner with a closed done channel,
 // simulating a defunct (crashed/terminated) runner for testing
-func createDefunctMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
+func createDefunctMockRunner(ctx context.Context, log *slog.Logger, backend inference.Backend) *runner {
 	defunctRunnerDone := make(chan struct{})
 	_, defunctRunnerCancel := context.WithCancel(ctx)
 
@@ -97,7 +95,7 @@ func createDefunctMockRunner(ctx context.Context, log *logrus.Entry, backend inf
 
 // createAliveTerminableMockRunner creates a mock runner with an open done channel
 // (i.e., not defunct) that will close when cancel is invoked, so terminate() returns.
-func createAliveTerminableMockRunner(ctx context.Context, log *logrus.Entry, backend inference.Backend) *runner {
+func createAliveTerminableMockRunner(ctx context.Context, log *slog.Logger, backend inference.Backend) *runner {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 

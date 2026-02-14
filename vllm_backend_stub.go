@@ -3,12 +3,13 @@
 package main
 
 import (
+	"log/slog"
+
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
-	"github.com/sirupsen/logrus"
 )
 
-func initVLLMBackend(log *logrus.Logger, modelManager *models.Manager, customBinaryPath string) (inference.Backend, error) {
+func initVLLMBackend(log *slog.Logger, modelManager *models.Manager, customBinaryPath string) (inference.Backend, error) {
 	return nil, nil
 }
 

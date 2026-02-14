@@ -14,7 +14,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
-	"github.com/sirupsen/logrus"
 )
 
 type Tracker struct {
@@ -49,13 +48,7 @@ func NewTracker(httpClient *http.Client, log logging.Logger, userAgent string, d
 		userAgent = userAgent + " docker-model-runner"
 	}
 
-	if os.Getenv("DEBUG") == "1" {
-		if logger, ok := log.(*logrus.Logger); ok {
-			logger.SetLevel(logrus.DebugLevel)
-		} else if entry, ok := log.(*logrus.Entry); ok {
-			entry.Logger.SetLevel(logrus.DebugLevel)
-		}
-	}
+	// Debug level is now configured via LOG_LEVEL environment variable
 
 	return &Tracker{
 		doNotTrack: os.Getenv("DO_NOT_TRACK") == "1" || doNotTrack,
@@ -75,7 +68,7 @@ func (t *Tracker) TrackModel(model types.Model, userAgent, action string) {
 
 func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	tags := model.Tags()
-	t.log.Debugln("Tracking model:", tags)
+	t.log.Debug("tracking model", "tags", tags)
 	if len(tags) == 0 {
 		return
 	}
@@ -90,14 +83,14 @@ func (t *Tracker) trackModel(model types.Model, userAgent, action string) {
 	for _, tag := range tags {
 		ref, err := reference.ParseReference(tag, registry.GetDefaultRegistryOptions()...)
 		if err != nil {
-			t.log.Errorf("Error parsing reference: %v\n", err)
+			t.log.Error("error parsing reference", "error", err)
 			return
 		}
 		if err = t.headManifest(ref, ua); err != nil {
-			t.log.Debugf("Manifest does not exist or error occurred: %v\n", err)
+			t.log.Debug("manifest does not exist or error occurred", "error", err)
 			continue
 		}
-		t.log.Debugln("Tracked", utils.SanitizeForLog(ref.Name(), -1), utils.SanitizeForLog(ref.Identifier(), -1), "with user agent:", utils.SanitizeForLog(ua, -1))
+		t.log.Debug("tracked", "name", utils.SanitizeForLog(ref.Name(), -1), "identifier", utils.SanitizeForLog(ref.Identifier(), -1), "userAgent", utils.SanitizeForLog(ua, -1))
 	}
 }
 

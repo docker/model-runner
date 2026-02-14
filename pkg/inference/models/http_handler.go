@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -18,7 +19,6 @@ import (
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
-	"github.com/sirupsen/logrus"
 )
 
 // HTTPHandler manages inference model pulls and storage.
@@ -40,7 +40,7 @@ type ClientConfig struct {
 	// StoreRootPath is the root path for the model store.
 	StoreRootPath string
 	// Logger is the logger to use.
-	Logger *logrus.Entry
+	Logger *slog.Logger
 	// Transport is the HTTP transport to use.
 	Transport http.RoundTripper
 	// UserAgent is the user agent to use.
@@ -108,21 +108,21 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 	if err := h.manager.Pull(request.From, request.BearerToken, r, w); err != nil {
 		sanitizedFrom := utils.SanitizeForLog(request.From, -1)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			h.log.Infof("Request canceled/timed out while pulling model %q", sanitizedFrom)
+			h.log.Info("Request canceled/timed out while pulling model", "model", sanitizedFrom)
 			return
 		}
 		if errors.Is(err, registry.ErrInvalidReference) {
-			h.log.Warnf("Invalid model reference %q: %v", sanitizedFrom, err)
+			h.log.Warn("Invalid model reference", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			h.log.Warnf("Unauthorized to pull model %q: %v", sanitizedFrom, err)
+			h.log.Warn("Unauthorized to pull model", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		if errors.Is(err, registry.ErrModelNotFound) {
-			h.log.Warnf("Failed to pull model %q: %v", sanitizedFrom, err)
+			h.log.Warn("Failed to pull model", "model", sanitizedFrom, "error", err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
@@ -165,7 +165,7 @@ func (h *HTTPHandler) handleExportModel(w http.ResponseWriter, r *http.Request, 
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		h.log.Warnln("Error while exporting model:", err)
+		h.log.Warn("error while exporting model", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -182,7 +182,7 @@ func (h *HTTPHandler) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(apiModels); err != nil {
-		h.log.Warnln("Error while encoding model listing response:", err)
+		h.log.Warn("error while encoding model listing response", "error", err)
 	}
 }
 
@@ -198,7 +198,7 @@ func (h *HTTPHandler) handleGetModelByRef(w http.ResponseWriter, r *http.Request
 	if r.URL.Query().Has("remote") {
 		val, err := strconv.ParseBool(r.URL.Query().Get("remote"))
 		if err != nil {
-			h.log.Warnln("Error while parsing remote query parameter:", err)
+			h.log.Warn("error while parsing remote query parameter", "error", err)
 		} else {
 			remote = val
 		}
@@ -223,7 +223,7 @@ func (h *HTTPHandler) handleGetModelByRef(w http.ResponseWriter, r *http.Request
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(apiModel); err != nil {
-		h.log.Warnln("Error while encoding model response:", err)
+		h.log.Warn("error while encoding model response", "error", err)
 	}
 }
 
@@ -310,7 +310,7 @@ func (h *HTTPHandler) handleDeleteModel(w http.ResponseWriter, r *http.Request) 
 	var force bool
 	if r.URL.Query().Has("force") {
 		if val, err := strconv.ParseBool(r.URL.Query().Get("force")); err != nil {
-			h.log.Warnln("Error while parsing force query parameter:", err)
+			h.log.Warn("error while parsing force query parameter", "error", err)
 		} else {
 			force = val
 		}
@@ -327,7 +327,7 @@ func (h *HTTPHandler) handleDeleteModel(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-		h.log.Warnln("Error while deleting model:", err)
+		h.log.Warn("error while deleting model", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -357,7 +357,7 @@ func (h *HTTPHandler) handleOpenAIGetModels(w http.ResponseWriter, r *http.Reque
 	// Write the response.
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(models); err != nil {
-		h.log.Warnln("Error while encoding OpenAI model listing response:", err)
+		h.log.Warn("error while encoding OpenAI model listing response", "error", err)
 	}
 }
 
@@ -383,7 +383,7 @@ func (h *HTTPHandler) handleOpenAIGetModel(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := json.NewEncoder(w).Encode(openaiModel); err != nil {
-		h.log.Warnln("Error while encoding OpenAI model response:", err)
+		h.log.Warn("error while encoding OpenAI model response", "error", err)
 	}
 }
 
@@ -443,7 +443,7 @@ func (h *HTTPHandler) handleTagModel(w http.ResponseWriter, r *http.Request, mod
 		"target":  target,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Warnln("Error while encoding tag response:", err)
+		h.log.Warn("error while encoding tag response", "error", err)
 	}
 }
 
@@ -451,17 +451,17 @@ func (h *HTTPHandler) handleTagModel(w http.ResponseWriter, r *http.Request, mod
 func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
 	if err := h.manager.Push(model, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
-			h.log.Warnf("Invalid model reference %q: %v", utils.SanitizeForLog(model, -1), err)
+			h.log.Warn("Invalid model reference", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, distribution.ErrModelNotFound) {
-			h.log.Warnf("Failed to push model %q: %v", utils.SanitizeForLog(model, -1), err)
+			h.log.Warn("Failed to push model", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, registry.ErrUnauthorized) {
-			h.log.Warnf("Unauthorized to push model %q: %v", utils.SanitizeForLog(model, -1), err)
+			h.log.Warn("Unauthorized to push model", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -496,7 +496,7 @@ func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Reques
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		h.log.Warnf("Failed to repackage model %q: %v", utils.SanitizeForLog(model, -1), err)
+		h.log.Warn("Failed to repackage model", "model", utils.SanitizeForLog(model, -1), "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -509,7 +509,7 @@ func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Reques
 		"target":  req.Target,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.log.Warnln("Error while encoding repackage response:", err)
+		h.log.Warn("error while encoding repackage response", "error", err)
 	}
 }
 
@@ -517,7 +517,7 @@ func (h *HTTPHandler) handleRepackageModel(w http.ResponseWriter, r *http.Reques
 func (h *HTTPHandler) handlePurge(w http.ResponseWriter, _ *http.Request) {
 	err := h.manager.Purge()
 	if err != nil {
-		h.log.Warnf("Failed to purge models: %v", err)
+		h.log.Warn("Failed to purge models", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
