@@ -592,23 +592,18 @@ func (c *Client) Tag(source string, target string) error {
 
 // PushModel pushes a tagged model from the content store to the registry.
 func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Writer, bearerToken ...string) (err error) {
-	// Store original reference before normalization (needed for case-sensitive HuggingFace API)
 	originalReference := tag
-	// Normalize the model reference for store lookups
 	normalizedRef := c.normalizeModelName(tag)
 
-	// Handle bearer token for registry authentication
 	var token string
 	if len(bearerToken) > 0 && bearerToken[0] != "" {
 		token = bearerToken[0]
 	}
 
-	// HuggingFace references use native push (upload raw files to HF Hub)
 	if isHuggingFaceReference(originalReference) {
 		return c.pushNativeHuggingFace(ctx, originalReference, normalizedRef, progressWriter, token)
 	}
 
-	// Parse the tag
 	registryClient := c.registry
 	if token != "" {
 		auth := authn.NewBearer(token)
@@ -619,13 +614,11 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 		return fmt.Errorf("new tag: %w", err)
 	}
 
-	// Get the model from the store
 	mdl, err := c.store.Read(normalizedRef)
 	if err != nil {
 		return fmt.Errorf("reading model: %w", err)
 	}
 
-	// Push the model
 	c.log.Infoln("Pushing model:", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Errorln("Failed to push image:", err, "reference:", tag)
@@ -679,6 +672,7 @@ func (c *Client) pushNativeHuggingFace(ctx context.Context, reference, normalize
 	}
 
 	if err := huggingface.UploadFiles(ctx, hfClient, repo, files, totalSize, progressWriter); err != nil {
+		c.log.Errorf("HuggingFace push failed: %v", err)
 		var authErr *huggingface.AuthError
 		var notFoundErr *huggingface.NotFoundError
 		if errors.As(err, &authErr) {

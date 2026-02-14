@@ -2,6 +2,8 @@ package huggingface
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,6 +20,7 @@ type UploadFile struct {
 	RepoPath  string
 	Size      int64
 	ID        string
+	OID       string
 }
 
 type uploadProgressReader struct {
@@ -93,16 +96,105 @@ func UploadFiles(ctx context.Context, client *Client, repo string, files []Uploa
 		return fmt.Errorf("repository is required")
 	}
 
+	const lfsThreshold = 10 * 1024 * 1024
+
 	var safeWriter io.Writer
 	if progressWriter != nil {
 		safeWriter = &syncWriter{w: progressWriter}
 	}
 
-	for _, file := range files {
+	var lfsFiles []UploadFile
+	var directFiles []UploadFile
+	for i := range files {
+		if files[i].Size >= lfsThreshold {
+			oid, err := computeFileOID(files[i].LocalPath)
+			if err != nil {
+				return fmt.Errorf("compute oid for %s: %w", files[i].RepoPath, err)
+			}
+			files[i].OID = oid
+			lfsFiles = append(lfsFiles, files[i])
+		} else {
+			directFiles = append(directFiles, files[i])
+		}
+	}
+
+	var lfsCommitFiles []LFSCommitFile
+	if len(lfsFiles) > 0 {
+		objects := make([]LFSBatchObject, 0, len(lfsFiles))
+		for _, file := range lfsFiles {
+			objects = append(objects, LFSBatchObject{OID: file.OID, Size: file.Size})
+		}
+		batchResp, err := client.LFSBatch(ctx, repo, objects)
+		if err != nil {
+			return fmt.Errorf("lfs batch: %w", err)
+		}
+		objByOID := make(map[string]LFSObject, len(batchResp.Objects))
+		for _, obj := range batchResp.Objects {
+			objByOID[obj.OID] = obj
+		}
+
+		for _, file := range lfsFiles {
+			obj, ok := objByOID[file.OID]
+			if !ok {
+				return fmt.Errorf("missing lfs response for %s", file.RepoPath)
+			}
+			if obj.Error != nil {
+				return fmt.Errorf("lfs error for %s: %s", file.RepoPath, obj.Error.Message)
+			}
+
+			uploadAction, hasUpload := obj.Actions["upload"]
+			if hasUpload && uploadAction.Href != "" {
+				f, err := os.Open(file.LocalPath)
+				if err != nil {
+					return fmt.Errorf("open file %s: %w", file.LocalPath, err)
+				}
+				pr := &uploadProgressReader{
+					reader:         f,
+					progressWriter: safeWriter,
+					totalImageSize: safeUint64(totalSize),
+					fileSize:       safeUint64(file.Size),
+					fileID:         file.ID,
+				}
+				err = client.UploadLFSObject(ctx, uploadAction, pr, file.Size)
+				f.Close()
+				if err != nil {
+					return fmt.Errorf("upload lfs %s: %w", file.RepoPath, err)
+				}
+
+				if verifyAction, ok := obj.Actions["verify"]; ok {
+					if err := client.VerifyLFSObject(ctx, verifyAction, file.OID, file.Size); err != nil {
+						return fmt.Errorf("verify lfs %s: %w", file.RepoPath, err)
+					}
+				}
+
+				if safeWriter != nil {
+					_ = progress.WriteProgress(safeWriter, "", safeUint64(totalSize), safeUint64(file.Size), safeUint64(file.Size), file.ID, oci.ModePush)
+				}
+			}
+
+			lfsCommitFiles = append(lfsCommitFiles, LFSCommitFile{
+				Path: file.RepoPath,
+				Algo: "sha256",
+				OID:  file.OID,
+				Size: file.Size,
+			})
+		}
+	}
+
+	var commitFiles []CommitFile
+	var openFiles []*os.File
+	defer func() {
+		for _, f := range openFiles {
+			f.Close()
+		}
+	}()
+
+	for _, file := range directFiles {
 		f, err := os.Open(file.LocalPath)
 		if err != nil {
 			return fmt.Errorf("open file %s: %w", file.LocalPath, err)
 		}
+		openFiles = append(openFiles, f)
 
 		pr := &uploadProgressReader{
 			reader:         f,
@@ -112,12 +204,17 @@ func UploadFiles(ctx context.Context, client *Client, repo string, files []Uploa
 			fileID:         file.ID,
 		}
 
-		err = client.UploadFile(ctx, repo, file.RepoPath, pr, file.Size)
-		f.Close()
-		if err != nil {
-			return fmt.Errorf("upload %s: %w", file.RepoPath, err)
-		}
+		commitFiles = append(commitFiles, CommitFile{
+			RepoPath: file.RepoPath,
+			Content:  pr,
+		})
+	}
 
+	if err := client.CreateCommit(ctx, repo, "Upload model via docker model push", commitFiles, lfsCommitFiles); err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+
+	for _, file := range directFiles {
 		if safeWriter != nil {
 			_ = progress.WriteProgress(safeWriter, "", safeUint64(totalSize), safeUint64(file.Size), safeUint64(file.Size), file.ID, oci.ModePush)
 		}
@@ -131,4 +228,18 @@ func safeUint64(n int64) uint64 {
 		return 0
 	}
 	return uint64(n)
+}
+
+func computeFileOID(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

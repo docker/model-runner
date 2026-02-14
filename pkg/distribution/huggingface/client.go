@@ -1,7 +1,9 @@
 package huggingface
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +25,39 @@ type Client struct {
 	userAgent  string
 	token      string
 	baseURL    string
+}
+
+type LFSBatchRequest struct {
+	Operation string           `json:"operation"`
+	Transfers []string         `json:"transfers,omitempty"`
+	Objects   []LFSBatchObject `json:"objects"`
+}
+
+type LFSBatchObject struct {
+	OID  string `json:"oid"`
+	Size int64  `json:"size"`
+}
+
+type LFSObjectError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type LFSAction struct {
+	Href   string            `json:"href"`
+	Header map[string]string `json:"header,omitempty"`
+}
+
+type LFSObject struct {
+	OID     string               `json:"oid"`
+	Size    int64                `json:"size"`
+	Actions map[string]LFSAction `json:"actions,omitempty"`
+	Error   *LFSObjectError      `json:"error,omitempty"`
+}
+
+type LFSBatchResponse struct {
+	Transfer string      `json:"transfer,omitempty"`
+	Objects  []LFSObject `json:"objects"`
 }
 
 // ClientOption configures a Client
@@ -216,7 +251,207 @@ func (c *Client) GetRepoInfo(ctx context.Context, repo, revision string) (*RepoI
 	return &info, nil
 }
 
-// setHeaders sets common headers for HuggingFace API requests
+type CommitFile struct {
+	RepoPath string
+	Content  io.Reader
+}
+
+type LFSCommitFile struct {
+	Path string `json:"path"`
+	Algo string `json:"algo"`
+	OID  string `json:"oid"`
+	Size int64  `json:"size"`
+}
+
+type ndjsonEntry struct {
+	Key   string      `json:"key"`
+	Value interface{} `json:"value"`
+}
+
+// CreateCommit creates a commit in a HuggingFace repository using the NDJSON API.
+// LFS files must be pre-uploaded via LFSBatch + UploadLFSObject before calling this.
+// Small files are sent inline as base64.
+func (c *Client) CreateCommit(ctx context.Context, repo, message string, directFiles []CommitFile, lfsFiles []LFSCommitFile) error {
+	if repo == "" {
+		return fmt.Errorf("repository is required")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/models/%s/commit/main", c.baseURL, escapePath(repo))
+
+	var buf bytes.Buffer
+
+	headerEntry := ndjsonEntry{
+		Key: "header",
+		Value: map[string]interface{}{
+			"summary":     message,
+			"description": "",
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(headerEntry); err != nil {
+		return fmt.Errorf("encode commit header: %w", err)
+	}
+
+	for _, lf := range lfsFiles {
+		entry := ndjsonEntry{
+			Key: "lfsFile",
+			Value: map[string]interface{}{
+				"path": lf.Path,
+				"algo": lf.Algo,
+				"oid":  lf.OID,
+				"size": lf.Size,
+			},
+		}
+		if err := json.NewEncoder(&buf).Encode(entry); err != nil {
+			return fmt.Errorf("encode lfs file entry %s: %w", lf.Path, err)
+		}
+	}
+
+	for _, f := range directFiles {
+		data, err := io.ReadAll(f.Content)
+		if err != nil {
+			return fmt.Errorf("read file %s: %w", f.RepoPath, err)
+		}
+		entry := ndjsonEntry{
+			Key: "file",
+			Value: map[string]interface{}{
+				"path":     f.RepoPath,
+				"encoding": "base64",
+				"content":  base64.StdEncoding.EncodeToString(data),
+			},
+		}
+		if err := json.NewEncoder(&buf).Encode(entry); err != nil {
+			return fmt.Errorf("encode file entry %s: %w", f.RepoPath, err)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
+	if err != nil {
+		return fmt.Errorf("create commit request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-ndjson")
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkUploadResponse(resp, repo); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) LFSBatch(ctx context.Context, repo string, objects []LFSBatchObject) (*LFSBatchResponse, error) {
+	if repo == "" {
+		return nil, fmt.Errorf("repository is required")
+	}
+	if len(objects) == 0 {
+		return &LFSBatchResponse{}, nil
+	}
+
+	endpoint := fmt.Sprintf("%s/%s.git/info/lfs/objects/batch", c.baseURL, escapePath(repo))
+	reqBody := LFSBatchRequest{
+		Operation: "upload",
+		Transfers: []string{"basic"},
+		Objects:   objects,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("encode lfs batch request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("lfs batch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkResponse(resp, repo); err != nil {
+		return nil, err
+	}
+
+	var batchResp LFSBatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
+		return nil, fmt.Errorf("decode lfs batch response: %w", err)
+	}
+
+	return &batchResp, nil
+}
+
+func (c *Client) UploadLFSObject(ctx context.Context, action LFSAction, content io.Reader, size int64) error {
+	if action.Href == "" {
+		return fmt.Errorf("upload action href is empty")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, action.Href, content)
+	if err != nil {
+		return fmt.Errorf("create upload request: %w", err)
+	}
+
+	for key, value := range action.Header {
+		req.Header.Set(key, value)
+	}
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	if size > 0 {
+		req.ContentLength = size
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("upload lfs object: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkUploadResponse(resp, ""); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) VerifyLFSObject(ctx context.Context, action LFSAction, oid string, size int64) error {
+	if action.Href == "" {
+		return nil
+	}
+	data, err := json.Marshal(LFSBatchObject{OID: oid, Size: size})
+	if err != nil {
+		return fmt.Errorf("encode verify request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, action.Href, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create verify request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	c.setHeaders(req)
+	for key, value := range action.Header {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("verify lfs object: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkUploadResponse(resp, ""); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", c.userAgent)
 	if c.token != "" {
@@ -224,7 +459,6 @@ func (c *Client) setHeaders(req *http.Request) {
 	}
 }
 
-// checkResponse checks the HTTP response for errors
 func (c *Client) checkResponse(resp *http.Response, repo string) error {
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -246,7 +480,15 @@ func (c *Client) checkUploadResponse(resp *http.Response, repo string) error {
 	case http.StatusOK, http.StatusCreated, http.StatusAccepted:
 		return nil
 	default:
-		return c.checkResponse(resp, repo)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return &AuthError{Repo: repo, StatusCode: resp.StatusCode}
+		case http.StatusNotFound:
+			return &NotFoundError{Repo: repo}
+		default:
+			return fmt.Errorf("upload failed (status %d): %s", resp.StatusCode, string(body))
+		}
 	}
 }
 
