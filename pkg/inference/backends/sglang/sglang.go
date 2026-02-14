@@ -118,7 +118,7 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	// Get version
 	output, err := s.pythonCmd("-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
-		s.log.Warn(fmt.Sprintf("could not get sglang version: %v", err))
+		s.log.Warn("could not get sglang version", "error", err)
 		s.status = "running sglang version: unknown"
 	} else {
 		s.status = fmt.Sprintf("running sglang version: %s", strings.TrimSpace(string(output)))

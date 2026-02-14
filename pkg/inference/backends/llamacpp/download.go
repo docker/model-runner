@@ -60,7 +60,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		return errLlamaCppUpdateDisabled
 	}
 
-	log.Info(fmt.Sprintf("downloadLatestLlamaCpp: %s, %s, %s, %s", desiredVersion, desiredVariant, vendoredServerStoragePath, llamaCppPath))
+	log.Info("downloadLatestLlamaCpp", "version", desiredVersion, "variant", desiredVariant, "storagePath", vendoredServerStoragePath, "llamaCppPath", llamaCppPath)
 	desiredTag := desiredVersion + "-" + desiredVariant
 	url := fmt.Sprintf("https://hub.docker.com/v2/namespaces/%s/repositories/%s/tags/%s", hubNamespace, hubRepo, desiredTag)
 	resp, err := httpClient.Get(url)
@@ -89,7 +89,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		latest = response.Digest
 	}
 	if latest == "" {
-		log.Warn(fmt.Sprintf("could not fing the %s tag, hub response: %s", desiredTag, body))
+		log.Warn("could not find the tag", "tag", desiredTag, "response", body)
 		return fmt.Errorf("could not find the %s tag", desiredTag)
 	}
 
@@ -107,7 +107,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 
 	data, err = os.ReadFile(currentVersionFile)
 	if err != nil {
-		log.Warn(fmt.Sprintf("failed to read current llama.cpp version: %v", err))
+		log.Warn("failed to read current llama.cpp version", "error", err)
 		log.Warn("proceeding to update llama.cpp binary")
 	} else if strings.TrimSpace(string(data)) == latest {
 		log.Info("current llama.cpp version is already up to date")
@@ -118,7 +118,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		}
 		log.Info("llama.cpp binary must be updated, proceeding to update it")
 	} else {
-		log.Info(fmt.Sprintf("current llama.cpp version is outdated: %s vs %s, proceeding to update it", strings.TrimSpace(string(data)), latest))
+		log.Info("current llama.cpp version is outdated, proceeding to update", "current", strings.TrimSpace(string(data)), "latest", latest)
 	}
 
 	image := fmt.Sprintf("registry-1.docker.io/%s/%s@%s", hubNamespace, hubRepo, latest)
@@ -168,7 +168,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	log.Info(l.status)
 
 	if err := os.WriteFile(currentVersionFile, []byte(latest), 0o644); err != nil {
-		log.Warn(fmt.Sprintf("failed to save llama.cpp version: %v", err))
+		log.Warn("failed to save llama.cpp version", "error", err)
 	}
 
 	return nil
@@ -176,7 +176,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
 func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs, requiredArch, destination string) error {
-	log.Info(fmt.Sprintf("Extracting image %q to %q", image, destination))
+	log.Info("Extracting image", "image", image, "destination", destination)
 	tmpDir, err := os.MkdirTemp("", "docker-tar-extract")
 	if err != nil {
 		return err
@@ -191,7 +191,7 @@ func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs
 func getLlamaCppVersion(log logging.Logger, llamaCpp string) string {
 	output, err := exec.Command(llamaCpp, "--version").CombinedOutput()
 	if err != nil {
-		log.Warn(fmt.Sprintf("could not get llama.cpp version: %v", err))
+		log.Warn("could not get llama.cpp version", "error", err)
 		return "unknown"
 	}
 	re := regexp.MustCompile(`version: \d+ \((\w+)\)`)
@@ -199,6 +199,6 @@ func getLlamaCppVersion(log logging.Logger, llamaCpp string) string {
 	if len(matches) == 2 {
 		return matches[1]
 	}
-	log.Warn(fmt.Sprintf("failed to parse llama.cpp version from output:\n%s", strings.TrimSpace(string(output))))
+	log.Warn("failed to parse llama.cpp version from output:\n", "error", strings.TrimSpace(string(output)))
 	return "unknown"
 }

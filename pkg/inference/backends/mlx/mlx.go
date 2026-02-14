@@ -110,7 +110,7 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 	cmd = exec.CommandContext(ctx, pythonPath, "-c", "import mlx; print(mlx.__version__)")
 	output, outputErr := cmd.Output()
 	if outputErr != nil {
-		m.log.Warn(fmt.Sprintf("could not get MLX version: %v", outputErr))
+		m.log.Warn("could not get MLX version", "error", outputErr)
 		m.status = "running MLX version: unknown"
 	} else {
 		m.status = fmt.Sprintf("running MLX version: %s", strings.TrimSpace(string(output)))

@@ -1,8 +1,8 @@
 package models
 
 import (
-	"fmt"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"log/slog"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	reg "github.com/docker/model-runner/pkg/distribution/registry"
@@ -24,7 +22,7 @@ func getProjectRoot(t *testing.T) string {
 	// Start from the current test file's directory
 	dir, err := os.Getwd()
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to get current directory: %v", err))
+		t.Errorf("Failed to get current directory: %v", err)
 	}
 
 	// Walk up the directory tree until we find the go.mod file
@@ -50,7 +48,7 @@ func TestPullModel(t *testing.T) {
 	// Create a tag for the model
 	uri, err := url.Parse(server.URL)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to parse registry URL: %v", err))
+		t.Errorf("Failed to parse registry URL: %v", err)
 	}
 	tag := uri.Host + "/ai/model:v1.0.0"
 
@@ -58,23 +56,23 @@ func TestPullModel(t *testing.T) {
 	projectRoot := getProjectRoot(t)
 	model, err := builder.FromPath(filepath.Join(projectRoot, "assets", "dummy.gguf"))
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create model builder: %v", err))
+		t.Errorf("Failed to create model builder: %v", err)
 	}
 
 	license, err := model.WithLicense(filepath.Join(projectRoot, "assets", "license.txt"))
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to add license to model: %v", err))
+		t.Errorf("Failed to add license to model: %v", err)
 	}
 
 	// Build the OCI model artifact + push it (use plainHTTP for test registry)
 	client := reg.NewClient(reg.WithPlainHTTP(true))
 	target, err := client.NewTarget(tag)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create model target: %v", err))
+		t.Errorf("Failed to create model target: %v", err)
 	}
 	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to build model: %v", err))
+		t.Errorf("Failed to build model: %v", err)
 	}
 
 	tests := []struct {
@@ -117,19 +115,19 @@ func TestPullModel(t *testing.T) {
 			w := httptest.NewRecorder()
 			err = handler.manager.Pull(tag, "", r, w)
 			if err != nil {
-				t.Error(fmt.Sprintf("Failed to pull model: %v", err))
+				t.Errorf("Failed to pull model: %v", err)
 			}
 
 			if tt.expectedCT != w.Header().Get("Content-Type") {
-				t.Error(fmt.Sprintf("Expected content type %s, got %s", tt.expectedCT, w.Header().Get("Content-Type")))
+				t.Errorf("Expected content type %s, got %s", tt.expectedCT, w.Header().Get("Content-Type"))
 			}
 
 			// Clean tempDir after each test
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Error(fmt.Sprintf("Failed to clean temp directory: %v", err))
+				t.Errorf("Failed to clean temp directory: %v", err)
 			}
 			if err := os.MkdirAll(tempDir, 0755); err != nil {
-				t.Error(fmt.Sprintf("Failed to recreate temp directory: %v", err))
+				t.Errorf("Failed to recreate temp directory: %v", err)
 			}
 		})
 	}
@@ -144,19 +142,19 @@ func TestHandleGetModel(t *testing.T) {
 
 	uri, err := url.Parse(server.URL)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to parse registry URL: %v", err))
+		t.Errorf("Failed to parse registry URL: %v", err)
 	}
 
 	// Prepare the OCI model artifact
 	projectRoot := getProjectRoot(t)
 	model, err := builder.FromPath(filepath.Join(projectRoot, "assets", "dummy.gguf"))
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create model builder: %v", err))
+		t.Errorf("Failed to create model builder: %v", err)
 	}
 
 	license, err := model.WithLicense(filepath.Join(projectRoot, "assets", "license.txt"))
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to add license to model: %v", err))
+		t.Errorf("Failed to add license to model: %v", err)
 	}
 
 	// Build the OCI model artifact + push it (use plainHTTP for test registry)
@@ -164,11 +162,11 @@ func TestHandleGetModel(t *testing.T) {
 	client := reg.NewClient(reg.WithPlainHTTP(true))
 	target, err := client.NewTarget(tag)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create model target: %v", err))
+		t.Errorf("Failed to create model target: %v", err)
 	}
 	err = license.Build(t.Context(), target, os.Stdout)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to build model: %v", err))
+		t.Errorf("Failed to build model: %v", err)
 	}
 
 	tests := []struct {
@@ -224,7 +222,7 @@ func TestHandleGetModel(t *testing.T) {
 				w := httptest.NewRecorder()
 				err = handler.manager.Pull(tt.modelName, "", r, w)
 				if err != nil {
-					t.Error(fmt.Sprintf("Failed to pull model: %v", err))
+					t.Errorf("Failed to pull model: %v", err)
 				}
 			}
 
@@ -244,12 +242,12 @@ func TestHandleGetModel(t *testing.T) {
 
 			// Check response
 			if w.Code != tt.expectedCode {
-				t.Error(fmt.Sprintf("Expected status code %d, got %d", tt.expectedCode, w.Code))
+				t.Errorf("Expected status code %d, got %d", tt.expectedCode, w.Code)
 			}
 
 			if tt.expectedError != "" {
 				if !strings.Contains(w.Body.String(), tt.expectedError) {
-					t.Error(fmt.Sprintf("Expected error containing %q, got %q", tt.expectedError, w.Body.String()))
+					t.Errorf("Expected error containing %q, got %q", tt.expectedError, w.Body.String())
 				}
 			} else {
 				// For successful responses, verify we got a valid JSON response
@@ -261,16 +259,16 @@ func TestHandleGetModel(t *testing.T) {
 					Config  json.RawMessage `json:"config"`
 				}
 				if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-					t.Error(fmt.Sprintf("Failed to decode response body: %v", err))
+					t.Errorf("Failed to decode response body: %v", err)
 				}
 			}
 
 			// Clean tempDir after each test
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Error(fmt.Sprintf("Failed to clean temp directory: %v", err))
+				t.Errorf("Failed to clean temp directory: %v", err)
 			}
 			if err := os.MkdirAll(tempDir, 0755); err != nil {
-				t.Error(fmt.Sprintf("Failed to recreate temp directory: %v", err))
+				t.Errorf("Failed to recreate temp directory: %v", err)
 			}
 		})
 	}
@@ -310,7 +308,7 @@ func TestCors(t *testing.T) {
 			m.ServeHTTP(w, req)
 
 			if w.Code != http.StatusNoContent {
-				t.Error(fmt.Sprintf("Expected status code 204 for OPTIONS request, got %d", w.Code))
+				t.Errorf("Expected status code 204 for OPTIONS request, got %d", w.Code)
 			}
 		})
 	}

@@ -1,13 +1,11 @@
 package distribution
 
 import (
-	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"log/slog"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
@@ -153,7 +151,7 @@ func TestNormalizeModelName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := client.normalizeModelName(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("normalizeModelName(%q) = %q, want %q", tt.input, result, tt.expected))
+				t.Errorf("normalizeModelName(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -215,7 +213,7 @@ func TestLooksLikeID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := client.looksLikeID(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("looksLikeID(%q) = %v, want %v", tt.input, result, tt.expected))
+				t.Errorf("looksLikeID(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -277,7 +275,7 @@ func TestLooksLikeDigest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := client.looksLikeDigest(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("looksLikeDigest(%q) = %v, want %v", tt.input, result, tt.expected))
+				t.Errorf("looksLikeDigest(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -294,7 +292,7 @@ func TestNormalizeModelNameWithIDResolution(t *testing.T) {
 
 	// Extract the short ID (12 hex chars after "sha256:")
 	if !strings.HasPrefix(modelID, "sha256:") {
-		t.Error(fmt.Sprintf("Expected model ID to start with 'sha256:', got: %s", modelID))
+		t.Errorf("Expected model ID to start with 'sha256:', got: %s", modelID)
 	}
 	shortID := modelID[7:19] // Extract 12 chars after "sha256:"
 	fullHex := strings.TrimPrefix(modelID, "sha256:")
@@ -325,7 +323,7 @@ func TestNormalizeModelNameWithIDResolution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := client.normalizeModelName(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("normalizeModelName(%q) = %q, want %q", tt.input, result, tt.expected))
+				t.Errorf("normalizeModelName(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -344,7 +342,7 @@ func createTestClient(t *testing.T) (*Client, func()) {
 		WithLogger(slog.Default()),
 	)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create test client: %v", err))
+		t.Errorf("Failed to create test client: %v", err)
 	}
 
 	cleanup := func() {
@@ -375,7 +373,7 @@ func TestIsHuggingFaceReference(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isHuggingFaceReference(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("isHuggingFaceReference(%q) = %v, want %v", tt.input, result, tt.expected))
+				t.Errorf("isHuggingFaceReference(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -437,13 +435,13 @@ func TestParseHFReference(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo, rev, tag := parseHFReference(tt.input)
 			if repo != tt.expectedRepo {
-				t.Error(fmt.Sprintf("parseHFReference(%q) repo = %q, want %q", tt.input, repo, tt.expectedRepo))
+				t.Errorf("parseHFReference(%q) repo = %q, want %q", tt.input, repo, tt.expectedRepo)
 			}
 			if rev != tt.expectedRev {
-				t.Error(fmt.Sprintf("parseHFReference(%q) rev = %q, want %q", tt.input, rev, tt.expectedRev))
+				t.Errorf("parseHFReference(%q) rev = %q, want %q", tt.input, rev, tt.expectedRev)
 			}
 			if tag != tt.expectedTag {
-				t.Error(fmt.Sprintf("parseHFReference(%q) tag = %q, want %q", tt.input, tag, tt.expectedTag))
+				t.Errorf("parseHFReference(%q) tag = %q, want %q", tt.input, tag, tt.expectedTag)
 			}
 		})
 	}
@@ -457,7 +455,7 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 	pr, pw := io.Pipe()
 	target, err := tarball.NewTarget(pw)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create target: %v", err))
+		t.Errorf("Failed to create target: %v", err)
 	}
 
 	done := make(chan error)
@@ -470,15 +468,15 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 
 	bldr, err := builder.FromPath(ggufPath)
 	if err != nil {
-		t.Error(fmt.Sprintf("Failed to create builder from GGUF: %v", err))
+		t.Errorf("Failed to create builder from GGUF: %v", err)
 	}
 
 	if err := bldr.Build(t.Context(), target, nil); err != nil {
-		t.Error(fmt.Sprintf("Failed to build model: %v", err))
+		t.Errorf("Failed to build model: %v", err)
 	}
 
 	if err := <-done; err != nil {
-		t.Error(fmt.Sprintf("Failed to load model: %v", err))
+		t.Errorf("Failed to load model: %v", err)
 	}
 
 	if id == "" {

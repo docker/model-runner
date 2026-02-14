@@ -1,15 +1,13 @@
 package scheduling
 
 import (
-	"fmt"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"testing"
 	"time"
-
-	"log/slog"
 
 	"github.com/docker/model-runner/pkg/inference"
 )
@@ -162,16 +160,16 @@ func TestMakeRunnerKey(t *testing.T) {
 			key := makeRunnerKey(tt.backend, tt.modelID, tt.draftModelID, tt.mode)
 
 			if key.backend != tt.backend {
-				t.Error(fmt.Sprintf("Expected backend %q, got %q", tt.backend, key.backend))
+				t.Errorf("Expected backend %q, got %q", tt.backend, key.backend)
 			}
 			if key.modelID != tt.modelID {
-				t.Error(fmt.Sprintf("Expected modelID %q, got %q", tt.modelID, key.modelID))
+				t.Errorf("Expected modelID %q, got %q", tt.modelID, key.modelID)
 			}
 			if key.draftModelID != tt.draftModelID {
-				t.Error(fmt.Sprintf("Expected draftModelID %q, got %q", tt.draftModelID, key.draftModelID))
+				t.Errorf("Expected draftModelID %q, got %q", tt.draftModelID, key.draftModelID)
 			}
 			if key.mode != tt.mode {
-				t.Error(fmt.Sprintf("Expected mode %v, got %v", tt.mode, key.mode))
+				t.Errorf("Expected mode %v, got %v", tt.mode, key.mode)
 			}
 		})
 	}
@@ -186,16 +184,16 @@ func TestMakeConfigKey(t *testing.T) {
 	key := makeConfigKey(backend, modelID, mode)
 
 	if key.backend != backend {
-		t.Error(fmt.Sprintf("Expected backend %q, got %q", backend, key.backend))
+		t.Errorf("Expected backend %q, got %q", backend, key.backend)
 	}
 	if key.modelID != modelID {
-		t.Error(fmt.Sprintf("Expected modelID %q, got %q", modelID, key.modelID))
+		t.Errorf("Expected modelID %q, got %q", modelID, key.modelID)
 	}
 	if key.draftModelID != "" {
-		t.Error(fmt.Sprintf("Expected empty draftModelID for config key, got %q", key.draftModelID))
+		t.Errorf("Expected empty draftModelID for config key, got %q", key.draftModelID)
 	}
 	if key.mode != mode {
-		t.Error(fmt.Sprintf("Expected mode %v, got %v", mode, key.mode))
+		t.Errorf("Expected mode %v, got %v", mode, key.mode)
 	}
 }
 
@@ -326,7 +324,7 @@ func TestPerModelKeepAliveEviction(t *testing.T) {
 
 	// Runner with short keep_alive should be evicted, never-evict should remain
 	if remaining != 1 {
-		t.Error(fmt.Sprintf("Expected 1 remaining runner after eviction, got %d", remaining))
+		t.Errorf("Expected 1 remaining runner after eviction, got %d", remaining)
 	}
 
 	// Verify that model-never is still present
@@ -382,10 +380,10 @@ func TestIdleCheckDurationWithPerModelKeepAlive(t *testing.T) {
 	// Should be based on the short keep_alive runner (around 100ms + 100ms buffer)
 	// The never-evict runner should be skipped
 	if duration < 0 {
-		t.Error(fmt.Sprintf("Expected positive duration, got %v", duration))
+		t.Errorf("Expected positive duration, got %v", duration)
 	}
 	if duration > 500*time.Millisecond {
-		t.Error(fmt.Sprintf("Expected duration around 200ms, got %v", duration))
+		t.Errorf("Expected duration around 200ms, got %v", duration)
 	}
 
 	loader.unlock()

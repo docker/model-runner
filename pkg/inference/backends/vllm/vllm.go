@@ -94,7 +94,7 @@ func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	versionPath := filepath.Join(filepath.Dir(vllmDir), "version")
 	versionBytes, err := os.ReadFile(versionPath)
 	if err != nil {
-		v.log.Warn(fmt.Sprintf("could not get vllm version: %v", err))
+		v.log.Warn("could not get vllm version", "error", err)
 		v.status = "running vllm version: unknown"
 	} else {
 		v.status = fmt.Sprintf("running vllm version: %s", strings.TrimSpace(string(versionBytes)))

@@ -134,8 +134,8 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
 			return sglangBackend
 		}
-		s.log.Warn(fmt.Sprintf("Model %s is in safetensors format but no compatible backend is available. "+
-			"Backend %s may not support this format and could fail at runtime.", utils.SanitizeForLog(modelRef), backend.Name()))
+		s.log.Warn("Model is in safetensors format but no compatible backend is available",
+			"model", utils.SanitizeForLog(modelRef), "backend", backend.Name())
 	}
 
 	return backend
@@ -204,7 +204,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 	for _, backend := range runningBackends {
 		mode, ok := inference.ParseBackendMode(backend.Mode)
 		if !ok {
-			s.log.Warn(fmt.Sprintf("Unknown backend mode %q, defaulting to completion.", backend.Mode))
+			s.log.Warn("Unknown backend mode, defaulting to completion", "mode", backend.Mode)
 		}
 		// Find the runner slot for this backend/model combination
 		// We iterate through all runners since we don't know the draftModelID
@@ -212,7 +212,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 			if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
 				socket, err := RunnerSocketPath(runnerInfo.slot)
 				if err != nil {
-					s.log.Warn(fmt.Sprintf("Failed to get socket path for runner %s/%s (%s): %v", backend.BackendName, backend.ModelName, key.modelID, err))
+					s.log.Warn("Failed to get socket path for runner / ( )", "backend", backend.BackendName, "backend", backend.ModelName, "model", key.modelID, "error", err)
 					continue
 				}
 
@@ -244,7 +244,7 @@ func (s *Scheduler) GetLlamaCppSocket() (string, error) {
 		if backend.BackendName == llamacpp.Name {
 			mode, ok := inference.ParseBackendMode(backend.Mode)
 			if !ok {
-				s.log.Warn(fmt.Sprintf("Unknown backend mode %q, defaulting to completion.", backend.Mode))
+				s.log.Warn("Unknown backend mode, defaulting to completion", "mode", backend.Mode)
 			}
 			// Find the runner slot for this backend/model combination
 			// We iterate through all runners since we don't know the draftModelID
@@ -334,7 +334,7 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Set the runner configuration
 	if err := s.loader.setRunnerConfig(ctx, backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warn(fmt.Sprintf("Failed to configure %s runner for %s (%s): %s", backend.Name(), utils.SanitizeForLog(req.Model, -1), modelID, err))
+		s.log.Warn("Failed to configure runner for ( )", "backend", backend.Name(), "model", utils.SanitizeForLog(req.Model, -1), "model", modelID, "error", err)
 		return nil, err
 	}
 

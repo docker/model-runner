@@ -1,11 +1,9 @@
 package metrics
 
 import (
-	"fmt"
 	"encoding/json"
-	"testing"
-
 	"log/slog"
+	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/models"
 )
@@ -142,18 +140,18 @@ func TestTruncateMediaFields(t *testing.T) {
 			if inputErr != nil {
 				// For invalid JSON inputs, verify it's returned unchanged
 				if resultStr != tt.expected {
-					t.Error(fmt.Sprintf("Invalid JSON should be returned unchanged. Expected %q, got %q", tt.expected, resultStr))
+					t.Errorf("Invalid JSON should be returned unchanged. Expected %q, got %q", tt.expected, resultStr)
 				}
 			} else {
 				// For valid JSON inputs, verify output is still valid JSON
 				var resultJSON interface{}
 				if err := json.Unmarshal(result, &resultJSON); err != nil {
-					t.Error(fmt.Sprintf("Result should be valid JSON, but got error: %v", err))
+					t.Errorf("Result should be valid JSON, but got error: %v", err)
 				}
 
 				// Also check the content matches expected
 				if resultStr != tt.expected {
-					t.Error(fmt.Sprintf("Expected result %q, but got %q", tt.expected, resultStr))
+					t.Errorf("Expected result %q, but got %q", tt.expected, resultStr)
 				}
 			}
 		})
@@ -201,7 +199,7 @@ func TestTruncateBase64Data(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := recorder.truncateBase64Data(tt.input)
 			if result != tt.expected {
-				t.Error(fmt.Sprintf("Expected %q, got %q", tt.expected, result))
+				t.Errorf("Expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

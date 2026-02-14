@@ -123,7 +123,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 	// Get version
 	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
 	if err != nil {
-		d.log.Warn(fmt.Sprintf("could not get diffusers version: %v", err))
+		d.log.Warn("could not get diffusers version", "error", err)
 		d.status = "running diffusers version: unknown"
 	} else {
 		d.status = fmt.Sprintf("running diffusers version: %s", strings.TrimSpace(string(output)))
@@ -156,7 +156,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("%w: model %s", ErrNoDDUFFile, model)
 	}
 
-	d.log.Info(fmt.Sprintf("Loading DDUF file from: %s", ddufPath))
+	d.log.Info("Loading DDUF file from", "path", ddufPath)
 
 	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
 	if err != nil {
@@ -168,7 +168,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", modelRef)
 	}
 
-	d.log.Info(fmt.Sprintf("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " "))))
+	d.log.Info("Diffusers args", "args", utils.SanitizeForLog(strings.Join(args, " ")))
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
