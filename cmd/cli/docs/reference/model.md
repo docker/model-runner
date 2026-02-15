@@ -18,7 +18,7 @@ Docker Model Runner
 | [`ps`](model_ps.md)                             | List running models                                                                                        |
 | [`pull`](model_pull.md)                         | Pull a model from Docker Hub or HuggingFace to your local environment                                      |
 | [`purge`](model_purge.md)                       | Remove all models                                                                                          |
-| [`push`](model_push.md)                         | Push a model to Docker Hub                                                                                 |
+| [`push`](model_push.md)                         | Push a model to Docker Hub or Hugging Face                                                                 |
 | [`reinstall-runner`](model_reinstall-runner.md) | Reinstall Docker Model Runner (Docker Engine only)                                                         |
 | [`requests`](model_requests.md)                 | Fetch requests+responses from Docker Model Runner                                                          |
 | [`restart-runner`](model_restart-runner.md)     | Restart Docker Model Runner (Docker Engine only)                                                           |
