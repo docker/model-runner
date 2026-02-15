@@ -1,12 +1,10 @@
 package scheduling
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
 )
 
 func TestCors(t *testing.T) {
@@ -39,7 +37,7 @@ func TestCors(t *testing.T) {
 			httpHandler.ServeHTTP(w, req)
 
 			if w.Code != http.StatusNoContent {
-				t.Error(fmt.Sprintf("Expected status code 204 for OPTIONS request, got %d", w.Code))
+				t.Errorf("Expected status code 204 for OPTIONS request, got %d", w.Code)
 			}
 		})
 	}
