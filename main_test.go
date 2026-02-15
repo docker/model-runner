@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -76,7 +75,7 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 
 			llamaConfig, ok := config.(*llamacpp.Config)
 			if !ok {
-				t.Error(fmt.Sprintf("Expected *llamacpp.Config, got %T", config))
+				t.Errorf("Expected *llamacpp.Config, got %T", config)
 			}
 			if llamaConfig == nil {
 				t.Fatal("Expected non-nil config")
