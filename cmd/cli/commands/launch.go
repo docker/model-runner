@@ -4,11 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/docker/model-runner/cmd/cli/desktop"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -84,11 +90,15 @@ func newLaunchCmd() *cobra.Command {
 		image  string
 		detach bool
 		dryRun bool
+		model  string
 	)
 	c := &cobra.Command{
-		Use:   "launch APP [-- APP_ARGS...]",
+		Use:   "launch APP [--model MODEL] [-- APP_ARGS...]",
 		Short: "Launch an app configured to use Docker Model Runner",
 		Long: fmt.Sprintf(`Launch an app configured to use Docker Model Runner.
+
+When --model is specified, the model will be automatically pulled if not
+available locally.
 
 Supported apps: %s`, strings.Join(supportedApps, ", ")),
 		Args:      requireMinArgs(1, "launch", "APP [-- APP_ARGS...]"),
@@ -96,6 +106,30 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := strings.ToLower(args[0])
 			appArgs := args[1:]
+
+			// If --model is specified, ensure the model is available locally.
+			if model != "" {
+				if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
+					return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+				}
+
+				if _, err := desktopClient.Inspect(model, false); err != nil {
+					if !errors.Is(err, desktop.ErrNotFound) {
+						return handleClientError(err, "Failed to inspect model")
+					}
+					cmd.Println("Unable to find model '" + model + "' locally. Pulling from the server.")
+					if err := pullModel(cmd, desktopClient, model); err != nil {
+						return err
+					}
+				}
+
+				// Preload the model in the background so it's warm when the app starts.
+				go func() {
+					if err := desktopClient.Preload(cmd.Context(), model); err != nil {
+						cmd.PrintErrf("background model preload failed: %v\n", err)
+					}
+				}()
+			}
 
 			runner, err := getStandaloneRunner(cmd.Context())
 			if err != nil {
@@ -107,11 +141,20 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 				return err
 			}
 
+			// For host apps, verify the endpoint is reachable via TCP.
+			// The Docker socket URL used for Desktop isn't reachable from
+			// external apps, so we fall back to the standalone runner port.
+			if _, isHost := hostApps[app]; isHost && !dryRun {
+				if err := ensureEndpointReachable(cmd, &ep); err != nil {
+					return err
+				}
+			}
+
 			if ca, ok := containerApps[app]; ok {
-				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
+				return launchContainerApp(cmd, ca, ep.container, model, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
-				return launchHostApp(cmd, app, ep.host, cli, appArgs, dryRun)
+				return launchHostApp(cmd, app, ep.host, cli, model, appArgs, dryRun)
 			}
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
@@ -120,6 +163,7 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 	c.Flags().StringVar(&image, "image", "", "Override container image for containerized apps")
 	c.Flags().BoolVar(&detach, "detach", false, "Run containerized app in background")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Print what would be executed without running it")
+	c.Flags().StringVarP(&model, "model", "m", "", "Model to use (automatically pulled if not available locally)")
 	return c
 }
 
@@ -170,7 +214,7 @@ func resolveBaseEndpoints(runner *standaloneRunner) (engineEndpoints, error) {
 }
 
 // launchContainerApp launches a container-based app via "docker run".
-func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
+func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, model string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
 	img := imageOverride
 	if img == "" {
 		img = ca.defaultImage
@@ -194,6 +238,9 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 	for _, e := range ca.envFn(baseURL) {
 		dockerArgs = append(dockerArgs, "-e", e)
 	}
+	if model != "" {
+		dockerArgs = append(dockerArgs, "-e", "OPENAI_MODEL="+model)
+	}
 	dockerArgs = append(dockerArgs, img)
 	dockerArgs = append(dockerArgs, appArgs...)
 
@@ -206,7 +253,7 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 }
 
 // launchHostApp launches a native host app executable.
-func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
+func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, model string, appArgs []string, dryRun bool) error {
 	if !dryRun {
 		if _, err := exec.LookPath(bin); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)
@@ -225,6 +272,9 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 	}
 
 	env := cli.envFn(baseURL)
+	if model != "" {
+		env = append(env, "OPENAI_MODEL="+model)
+	}
 	if dryRun {
 		cmd.Printf("Would run: %s %s\n", bin, strings.Join(appArgs, " "))
 		for _, e := range env {
@@ -301,6 +351,55 @@ func anthropicEnv(baseURL string) []string {
 // withEnv returns the current process environment extended with extra vars.
 func withEnv(extra ...string) []string {
 	return append(os.Environ(), extra...)
+}
+
+// ensureEndpointReachable verifies that the host endpoint is reachable via TCP.
+// For Docker Desktop, the resolved host URL goes through the Docker socket
+// (e.g. http://localhost/exp/vDD4.40) and isn't reachable from external apps.
+// In that case, this function checks for a standalone runner on the default
+// TCP port and returns an updated endpoint if found.
+func ensureEndpointReachable(cmd *cobra.Command, ep *engineEndpoints) error {
+	u, err := url.Parse(ep.host)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint URL %q: %w", ep.host, err)
+	}
+
+	host := u.Host
+	if !strings.Contains(host, ":") {
+		host = net.JoinHostPort(host, "80")
+	}
+
+	// Quick TCP check to the resolved host endpoint.
+	conn, dialErr := net.DialTimeout("tcp", host, 2*time.Second)
+	if dialErr == nil {
+		conn.Close()
+		return nil // endpoint is reachable
+	}
+
+	// The resolved endpoint isn't reachable. For Docker Desktop this is
+	// expected because the URL is routed through the Docker socket, not TCP.
+	// Try the default standalone runner TCP port as a fallback.
+	fallbackPort := strconv.Itoa(standalone.DefaultControllerPortMoby)
+	fallbackHost := net.JoinHostPort("127.0.0.1", fallbackPort)
+	conn, err = net.DialTimeout("tcp", fallbackHost, 2*time.Second)
+	if err == nil {
+		conn.Close()
+		// Verify it's actually the model runner by making a quick health check.
+		healthURL := "http://" + fallbackHost + "/"
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Get(healthURL) //nolint:gosec // localhost health check
+		if err == nil {
+			resp.Body.Close()
+			cmd.PrintErrf("Using standalone runner at %s\n", fallbackHost)
+			ep.host = "http://" + fallbackHost
+			ep.container = "http://" + net.JoinHostPort("host.docker.internal", fallbackPort)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Docker Model Runner is not reachable at %s.\n"+
+		"If using Docker Desktop, run 'docker model install-runner' to set up a TCP-accessible runner.\n"+
+		"Otherwise, verify the runner is started with 'docker model status'", ep.host)
 }
 
 // runExternal executes a program inheriting stdio.

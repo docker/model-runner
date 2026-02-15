@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"testing"
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
@@ -159,7 +160,7 @@ func TestLaunchContainerAppDryRun(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, ca, testBaseURL, "", "", 0, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -177,7 +178,7 @@ func TestLaunchContainerAppOverrides(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, overrideImage, overridePort, false, nil, true)
+	err := launchContainerApp(cmd, ca, testBaseURL, "", overrideImage, overridePort, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -191,7 +192,7 @@ func TestLaunchContainerAppDetach(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, true, nil, true)
+	err := launchContainerApp(cmd, ca, testBaseURL, "", "", 0, true, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -206,7 +207,7 @@ func TestLaunchContainerAppUsesEnvFn(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, ca, testBaseURL, "", "", 0, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -219,7 +220,7 @@ func TestLaunchContainerAppNilEnvFn(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, ca, testBaseURL, "", "", 0, false, nil, true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "container app requires envFn to be set")
 }
@@ -230,7 +231,7 @@ func TestLaunchHostAppDryRunOpenai(t *testing.T) {
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
 	// Use "ls" as a bin that exists in PATH
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -245,7 +246,7 @@ func TestLaunchHostAppDryRunCodex(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv("/v1")}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -260,7 +261,7 @@ func TestLaunchHostAppDryRunWithArgs(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, []string{"-m", "ai/qwen3"}, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", []string{"-m", "ai/qwen3"}, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -272,7 +273,7 @@ func TestLaunchHostAppDryRunAnthropic(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: anthropicEnv}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -290,7 +291,7 @@ func TestLaunchHostAppNotFound(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, "", nil, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 
@@ -307,7 +308,7 @@ func TestLaunchHostAppNotFoundNilEnvFn(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: nil}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, "", nil, false)
 	require.Error(t, err)
 
 	errOutput := stderr.String()
@@ -331,6 +332,93 @@ func TestLaunchUnconfigurableHostAppDryRun(t *testing.T) {
 	require.Contains(t, output, "openclaw config set models.providers.docker-model-runner.baseUrl")
 }
 
+func TestLaunchContainerAppWithModel(t *testing.T) {
+	ca := testContainerApp(openaiEnv(openaiPathSuffix))
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, ca, testBaseURL, "ai/glm-4.7-flash", "", 0, false, nil, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "OPENAI_MODEL=ai/glm-4.7-flash")
+}
+
+func TestLaunchContainerAppWithoutModel(t *testing.T) {
+	ca := testContainerApp(openaiEnv(openaiPathSuffix))
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, ca, testBaseURL, "", "", 0, false, nil, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.NotContains(t, output, "OPENAI_MODEL")
+}
+
+func TestLaunchHostAppWithModel(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "ai/glm-4.7-flash", nil, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "OPENAI_MODEL=ai/glm-4.7-flash")
+}
+
+func TestLaunchHostAppWithoutModel(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.NotContains(t, output, "OPENAI_MODEL")
+}
+
+func TestEnsureEndpointReachableWithPort(t *testing.T) {
+	// Start a test HTTP server to simulate a reachable endpoint.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{
+		host:      "http://" + ln.Addr().String(),
+		container: "http://container:1234",
+	}
+	err = ensureEndpointReachable(cmd, &ep)
+	require.NoError(t, err)
+	// Endpoint should not have changed.
+	require.Equal(t, "http://"+ln.Addr().String(), ep.host)
+}
+
+func TestEnsureEndpointReachableFallback(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	// Use a URL with no port (like Docker Desktop) pointing to a non-listening address.
+	// The function should either fall back to the standalone runner on port 12434
+	// (if one is running) or return an error.
+	ep := engineEndpoints{
+		host:      "http://192.0.2.1", // RFC 5737 TEST-NET, guaranteed not to route
+		container: "http://container:1234",
+	}
+	err := ensureEndpointReachable(cmd, &ep)
+	if err == nil {
+		// Fallback succeeded — verify endpoint was updated to the standalone runner.
+		require.Contains(t, ep.host, "127.0.0.1")
+	} else {
+		require.Contains(t, err.Error(), "not reachable")
+	}
+}
+
 func TestNewLaunchCmdFlags(t *testing.T) {
 	cmd := newLaunchCmd()
 
@@ -338,6 +426,7 @@ func TestNewLaunchCmdFlags(t *testing.T) {
 	require.NotNil(t, cmd.Flags().Lookup("image"))
 	require.NotNil(t, cmd.Flags().Lookup("detach"))
 	require.NotNil(t, cmd.Flags().Lookup("dry-run"))
+	require.NotNil(t, cmd.Flags().Lookup("model"))
 }
 
 func TestNewLaunchCmdValidArgs(t *testing.T) {
