@@ -199,6 +199,6 @@ func getLlamaCppVersion(log logging.Logger, llamaCpp string) string {
 	if len(matches) == 2 {
 		return matches[1]
 	}
-	log.Warn("failed to parse llama.cpp version from output:\n", "error", strings.TrimSpace(string(output)))
+	log.Warn("Failed to parse llama.cpp version from output", "output", strings.TrimSpace(string(output)))
 	return "unknown"
 }

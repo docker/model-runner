@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -54,6 +53,9 @@ var Log = log
 // testLog is a test-override logger used by createLlamaCppConfigFromEnv.
 var testLog = log
 
+// exitFunc is the function called for fatal errors. Overridable in tests.
+var exitFunc = os.Exit
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -65,7 +67,8 @@ func main() {
 
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Error(fmt.Sprintf("Failed to get user home directory: %v", err))
+		log.Error("Failed to get user home directory", "error", err)
+		os.Exit(1)
 	}
 
 	modelPath := os.Getenv("MODELS_PATH")
@@ -118,18 +121,18 @@ func main() {
 		modelManager,
 		nil,
 	)
-	log.Info(fmt.Sprintf("LLAMA_SERVER_PATH: %s", llamaServerPath))
+	log.Info("LLAMA_SERVER_PATH", "path", llamaServerPath)
 	if vllmServerPath != "" {
-		log.Info(fmt.Sprintf("VLLM_SERVER_PATH: %s", vllmServerPath))
+		log.Info("VLLM_SERVER_PATH", "path", vllmServerPath)
 	}
 	if sglangServerPath != "" {
-		log.Info(fmt.Sprintf("SGLANG_SERVER_PATH: %s", sglangServerPath))
+		log.Info("SGLANG_SERVER_PATH", "path", sglangServerPath)
 	}
 	if mlxServerPath != "" {
-		log.Info(fmt.Sprintf("MLX_SERVER_PATH: %s", mlxServerPath))
+		log.Info("MLX_SERVER_PATH", "path", mlxServerPath)
 	}
 	if vllmMetalServerPath != "" {
-		log.Info(fmt.Sprintf("VLLM_METAL_SERVER_PATH: %s", vllmMetalServerPath))
+		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
 	}
 
 	// Create llama.cpp configuration from environment variables
@@ -149,12 +152,14 @@ func main() {
 		llamaCppConfig,
 	)
 	if err != nil {
-		log.Error(fmt.Sprintf("unable to initialize %s backend: %v", llamacpp.Name, err))
+		log.Error("Unable to initialize backend", "backend", llamacpp.Name, "error", err)
+		os.Exit(1)
 	}
 
 	vllmBackend, err := initVLLMBackend(log, modelManager, vllmServerPath)
 	if err != nil {
-		log.Error(fmt.Sprintf("unable to initialize %s backend: %v", vllm.Name, err))
+		log.Error("Unable to initialize backend", "backend", vllm.Name, "error", err)
+		os.Exit(1)
 	}
 
 	mlxBackend, err := mlx.New(
@@ -165,7 +170,8 @@ func main() {
 		mlxServerPath,
 	)
 	if err != nil {
-		log.Error(fmt.Sprintf("unable to initialize %s backend: %v", mlx.Name, err))
+		log.Error("Unable to initialize backend", "backend", mlx.Name, "error", err)
+		os.Exit(1)
 	}
 
 	sglangBackend, err := sglang.New(
@@ -176,7 +182,8 @@ func main() {
 		sglangServerPath,
 	)
 	if err != nil {
-		log.Error(fmt.Sprintf("unable to initialize %s backend: %v", sglang.Name, err))
+		log.Error("Unable to initialize backend", "backend", sglang.Name, "error", err)
+		os.Exit(1)
 	}
 
 	diffusersBackend, err := diffusers.New(
@@ -188,7 +195,8 @@ func main() {
 	)
 
 	if err != nil {
-		log.Error(fmt.Sprintf("unable to initialize diffusers backend: %v", err))
+		log.Error("Unable to initialize backend", "backend", diffusers.Name, "error", err)
+		os.Exit(1)
 	}
 
 	var vllmMetalBackend inference.Backend
@@ -200,7 +208,7 @@ func main() {
 			vllmMetalServerPath,
 		)
 		if err != nil {
-			log.Warn(fmt.Sprintf("Failed to initialize vllm-metal backend: %v", err))
+			log.Warn("Failed to initialize vllm-metal backend", "error", err)
 		}
 	}
 
@@ -310,7 +318,7 @@ func main() {
 	if tcpPort != "" {
 		// Use TCP port
 		addr := ":" + tcpPort
-		log.Info(fmt.Sprintf("Listening on TCP port %s", tcpPort))
+		log.Info("Listening on TCP port", "port", tcpPort)
 		server.Addr = addr
 		go func() {
 			serverErrors <- server.ListenAndServe()
@@ -319,12 +327,14 @@ func main() {
 		// Use Unix socket
 		if err := os.Remove(sockName); err != nil {
 			if !os.IsNotExist(err) {
-				log.Error(fmt.Sprintf("Failed to remove existing socket: %v", err))
+				log.Error("Failed to remove existing socket", "error", err)
+				os.Exit(1)
 			}
 		}
 		ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockName, Net: "unix"})
 		if err != nil {
-			log.Error(fmt.Sprintf("Failed to listen on socket: %v", err))
+			log.Error("Failed to listen on socket", "error", err)
+			os.Exit(1)
 		}
 		go func() {
 			serverErrors <- server.Serve(ln)
@@ -349,19 +359,22 @@ func main() {
 				var err error
 				certPath, keyPath, err = modeltls.EnsureCertificates("", "")
 				if err != nil {
-					log.Error(fmt.Sprintf("Failed to ensure TLS certificates: %v", err))
+					log.Error("Failed to ensure TLS certificates", "error", err)
+					os.Exit(1)
 				}
-				log.Info(fmt.Sprintf("Using TLS certificate: %s", certPath))
-				log.Info(fmt.Sprintf("Using TLS key: %s", keyPath))
+				log.Info("Using TLS certificate", "path", certPath)
+				log.Info("Using TLS key", "path", keyPath)
 			} else {
 				log.Error("TLS enabled but no certificate provided and auto-cert is disabled")
+				os.Exit(1)
 			}
 		}
 
 		// Load TLS configuration
 		tlsConfig, err := modeltls.LoadTLSConfig(certPath, keyPath)
 		if err != nil {
-			log.Error(fmt.Sprintf("Failed to load TLS configuration: %v", err))
+			log.Error("Failed to load TLS configuration", "error", err)
+			os.Exit(1)
 		}
 
 		tlsServer = &http.Server{
@@ -371,7 +384,7 @@ func main() {
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 
-		log.Info(fmt.Sprintf("Listening on TLS port %s", tlsPort))
+		log.Info("Listening on TLS port", "port", tlsPort)
 		go func() {
 			// Use ListenAndServeTLS with empty strings since TLSConfig already has the certs
 			ln, err := tls.Listen("tcp", tlsServer.Addr, tlsConfig)
@@ -399,27 +412,27 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		if err != nil {
-			log.Error(fmt.Sprintf("Server error: %v", err))
+			log.Error("Server error", "error", err)
 		}
 	case err := <-tlsServerErrorsChan:
 		if err != nil {
-			log.Error(fmt.Sprintf("TLS server error: %v", err))
+			log.Error("TLS server error", "error", err)
 		}
 	case <-ctx.Done():
 		log.Info("Shutdown signal received")
 		log.Info("Shutting down the server")
 		if err := server.Close(); err != nil {
-			log.Error(fmt.Sprintf("Server shutdown error: %v", err))
+			log.Error("Server shutdown error", "error", err)
 		}
 		if tlsServer != nil {
 			log.Info("Shutting down the TLS server")
 			if err := tlsServer.Close(); err != nil {
-				log.Error(fmt.Sprintf("TLS server shutdown error: %v", err))
+				log.Error("TLS server shutdown error", "error", err)
 			}
 		}
 		log.Info("Waiting for the scheduler to stop")
 		if err := <-schedulerErrors; err != nil {
-			log.Error(fmt.Sprintf("Scheduler error: %v", err))
+			log.Error("Scheduler error", "error", err)
 		}
 	}
 	log.Info("Docker Model Runner stopped")
@@ -443,12 +456,13 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	for _, arg := range args {
 		for _, disallowed := range disallowedArgs {
 			if arg == disallowed {
-				testLog.Error(fmt.Sprintf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed))
+				testLog.Error("LLAMA_ARGS cannot override argument", "arg", disallowed)
+				exitFunc(1)
 			}
 		}
 	}
 
-	testLog.Info(fmt.Sprintf("Using custom arguments: %v", args))
+	testLog.Info("Using custom arguments", "args", args)
 	return &llamacpp.Config{
 		Args: args,
 	}

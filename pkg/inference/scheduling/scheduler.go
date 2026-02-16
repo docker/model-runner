@@ -212,7 +212,7 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 			if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
 				socket, err := RunnerSocketPath(runnerInfo.slot)
 				if err != nil {
-					s.log.Warn("Failed to get socket path for runner / ( )", "backend", backend.BackendName, "backend", backend.ModelName, "model", key.modelID, "error", err)
+					s.log.Warn("Failed to get socket path for runner", "backend", backend.BackendName, "model", backend.ModelName, "modelID", key.modelID, "error", err)
 					continue
 				}
 
@@ -334,7 +334,7 @@ func (s *Scheduler) ConfigureRunner(ctx context.Context, backend inference.Backe
 
 	// Set the runner configuration
 	if err := s.loader.setRunnerConfig(ctx, backend.Name(), modelID, mode, runnerConfig); err != nil {
-		s.log.Warn("Failed to configure runner for ( )", "backend", backend.Name(), "model", utils.SanitizeForLog(req.Model, -1), "model", modelID, "error", err)
+		s.log.Warn("Failed to configure runner", "backend", backend.Name(), "model", utils.SanitizeForLog(req.Model, -1), "modelID", modelID, "error", err)
 		return nil, err
 	}
 

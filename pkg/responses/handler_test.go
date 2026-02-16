@@ -38,8 +38,7 @@ func (m *mockSchedulerHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func newTestHandler(mock *mockSchedulerHTTP) *HTTPHandler {
-	log := slog.Default()
-	// log output is controlled by the slog handler level
+	log := slog.New(slog.DiscardHandler)
 	return NewHTTPHandler(log, mock, nil)
 }
 
@@ -89,7 +88,7 @@ func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Errorf("failed to decode response: %v", err)
+		t.Fatalf("failed to decode response: %v", err)
 	}
 
 	if result.Object != "response" {
@@ -174,7 +173,7 @@ func TestHandler_GetResponse(t *testing.T) {
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Errorf("failed to decode response: %v", err)
+		t.Fatalf("failed to decode response: %v", err)
 	}
 
 	if result.ID != "resp_test123" {
@@ -298,7 +297,7 @@ func TestHandler_CreateResponse_WithPreviousResponse(t *testing.T) {
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
 	}
 
 	var result Response
@@ -384,7 +383,7 @@ func TestHandler_CreateResponse_UpstreamError_NonJSONBody(t *testing.T) {
 	}
 
 	if result.Error == nil {
-		t.Error("expected error, got nil")
+		t.Fatalf("expected error, got nil")
 	}
 
 	if result.Error.Code != "upstream_error" {
@@ -437,7 +436,7 @@ func TestHandler_CreateResponse_Streaming(t *testing.T) {
 	// Read all body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Errorf("failed to read body: %v", err)
+		t.Fatalf("failed to read body: %v", err)
 	}
 
 	bodyStr := string(body)
@@ -516,7 +515,7 @@ func TestHandler_CreateResponse_WithTools(t *testing.T) {
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
 	}
 
 	var result Response
@@ -629,13 +628,13 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 	memStore := handler.store
 
 	if memStore.Count() != 1 {
-		t.Errorf("expected exactly one response in store, got %d", memStore.Count())
+		t.Fatalf("expected exactly one response in store, got %d", memStore.Count())
 	}
 
 	// Get the response ID from the store
 	responseIDs := memStore.GetResponseIDs()
 	if len(responseIDs) != 1 {
-		t.Errorf("expected exactly one response ID in store, got %d", len(responseIDs))
+		t.Fatalf("expected exactly one response ID in store, got %d", len(responseIDs))
 	}
 
 	// Retrieve the response using the public API
