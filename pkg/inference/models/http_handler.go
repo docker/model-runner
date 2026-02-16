@@ -1,11 +1,13 @@
 package models
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"net/http"
 	"path"
@@ -449,7 +451,22 @@ func (h *HTTPHandler) handleTagModel(w http.ResponseWriter, r *http.Request, mod
 
 // handlePushModel handles POST <inference-prefix>/models/{name}/push requests.
 func (h *HTTPHandler) handlePushModel(w http.ResponseWriter, r *http.Request, model string) {
-	if err := h.manager.Push(model, r, w); err != nil {
+	var req ModelPushRequest
+	if r.Body != nil && r.Body != http.NoBody {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(bytes.TrimSpace(body)) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	if err := h.manager.Push(model, req.BearerToken, r, w); err != nil {
 		if errors.Is(err, distribution.ErrInvalidReference) {
 			h.log.Warn("Invalid model reference", "model", utils.SanitizeForLog(model, -1), "error", err)
 			http.Error(w, "Invalid model reference", http.StatusBadRequest)
