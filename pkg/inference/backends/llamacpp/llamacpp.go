@@ -115,7 +115,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	// digest to be equal to the one on Docker Hub.
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
-		l.log.Info("failed to ensure latest llama.cpp \n", "error", err)
+		l.log.Info("Failed to ensure latest llama.cpp", "error", err)
 		if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
 			l.status = inference.FormatError(fmt.Sprintf("failed to install llama.cpp: %v", err))
 		}

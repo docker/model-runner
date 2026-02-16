@@ -233,7 +233,7 @@ func (l *loader) evict(idleOnly bool) int {
 		default:
 		}
 		if unused && (!idleOnly || idle || defunct) && (!idleOnly || !neverEvict || defunct) {
-			l.log.Info("Evicting backend runner with model ( ) in mode", "backend", r.backend, "backend", r.modelID, "model", runnerInfo.modelRef, "mode", r.mode)
+			l.log.Info("Evicting backend runner", "backend", r.backend, "model", r.modelID, "modelRef", runnerInfo.modelRef, "mode", r.mode)
 			l.freeRunnerSlot(runnerInfo.slot, r)
 			evictedCount++
 		} else if unused {
@@ -256,7 +256,7 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 	for r, runnerInfo := range l.runners {
 		unused := l.references[runnerInfo.slot] == 0
 		if unused && (allBackends || r.backend == backend) && r.modelID == model && r.mode == mode {
-			l.log.Info("Evicting backend runner with model ( ) in mode", "backend", r.backend, "backend", r.modelID, "model", runnerInfo.modelRef, "mode", r.mode)
+			l.log.Info("Evicting backend runner", "backend", r.backend, "model", r.modelID, "modelRef", runnerInfo.modelRef, "mode", r.mode)
 			l.freeRunnerSlot(runnerInfo.slot, r)
 			found = true
 		}
@@ -455,7 +455,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		runnerConfig = &defaultConfig
 	}
 
-	l.log.Info("Loading backend runner with model in mode", "backend", backendName, "backend", modelID, "mode", mode)
+	l.log.Info("Loading backend runner", "backend", backendName, "model", modelID, "mode", mode)
 
 	// Acquire the loader lock and defer its release.
 	if !l.lock(ctx) {
@@ -485,7 +485,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		if ok {
 			select {
 			case <-l.slots[existing.slot].done:
-				l.log.Warn("runner for is defunct. Waiting for it to be evicted.", "backend", backendName, "model", existing.modelRef)
+				l.log.Warn("Runner is defunct, waiting for eviction", "backend", backendName, "model", existing.modelRef)
 				if l.references[existing.slot] == 0 {
 					l.evictRunner(backendName, modelID, mode)
 					// Continue the loop to retry loading after evicting the defunct runner
@@ -530,7 +530,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			// Create the runner.
 			runner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
-				l.log.Warn("Unable to start backend runner with model in mode", "backend", backendName, "backend", modelID, "mode", mode, "error", err)
+				l.log.Warn("Unable to start backend runner", "backend", backendName, "model", modelID, "mode", mode, "error", err)
 				return nil, fmt.Errorf("unable to start runner: %w", err)
 			}
 
@@ -542,7 +542,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			// deduplication of runners and keep slot / memory reservations.
 			if err := runner.wait(ctx); err != nil {
 				runner.terminate()
-				l.log.Warn("Initialization for backend runner with model in mode failed", "backend", backendName, "backend", modelID, "mode", mode, "error", err)
+				l.log.Warn("Backend runner initialization failed", "backend", backendName, "model", modelID, "mode", mode, "error", err)
 				return nil, fmt.Errorf("error waiting for runner to be ready: %w", err)
 			}
 
@@ -615,7 +615,7 @@ func (l *loader) setRunnerConfig(ctx context.Context, backendName, modelID strin
 
 	// If the configuration hasn't changed, then just return.
 	if existingConfig, ok := l.runnerConfigs[configKey]; ok && reflect.DeepEqual(runnerConfig, existingConfig) {
-		l.log.Info("Configuration for runner for modelID unchanged", "backend", backendName, "model", modelID)
+		l.log.Info("Runner configuration unchanged", "backend", backendName, "model", modelID)
 		return nil
 	}
 
@@ -638,7 +638,7 @@ func (l *loader) setRunnerConfig(ctx context.Context, backendName, modelID strin
 		return errRunnerAlreadyActive
 	}
 
-	l.log.Info("Configuring runner for", "backend", backendName, "model", modelID)
+	l.log.Info("Configuring runner", "backend", backendName, "model", modelID)
 	l.runnerConfigs[configKey] = runnerConfig
 	return nil
 }

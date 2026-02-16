@@ -292,7 +292,7 @@ func TestNormalizeModelNameWithIDResolution(t *testing.T) {
 
 	// Extract the short ID (12 hex chars after "sha256:")
 	if !strings.HasPrefix(modelID, "sha256:") {
-		t.Errorf("Expected model ID to start with 'sha256:', got: %s", modelID)
+		t.Fatalf("Expected model ID to start with 'sha256:', got: %s", modelID)
 	}
 	shortID := modelID[7:19] // Extract 12 chars after "sha256:"
 	fullHex := strings.TrimPrefix(modelID, "sha256:")
@@ -342,7 +342,7 @@ func createTestClient(t *testing.T) (*Client, func()) {
 		WithLogger(slog.Default()),
 	)
 	if err != nil {
-		t.Errorf("Failed to create test client: %v", err)
+		t.Fatalf("Failed to create test client: %v", err)
 	}
 
 	cleanup := func() {
@@ -455,7 +455,7 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 	pr, pw := io.Pipe()
 	target, err := tarball.NewTarget(pw)
 	if err != nil {
-		t.Errorf("Failed to create target: %v", err)
+		t.Fatalf("Failed to create target: %v", err)
 	}
 
 	done := make(chan error)
@@ -468,15 +468,15 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 
 	bldr, err := builder.FromPath(ggufPath)
 	if err != nil {
-		t.Errorf("Failed to create builder from GGUF: %v", err)
+		t.Fatalf("Failed to create builder from GGUF: %v", err)
 	}
 
 	if err := bldr.Build(t.Context(), target, nil); err != nil {
-		t.Errorf("Failed to build model: %v", err)
+		t.Fatalf("Failed to build model: %v", err)
 	}
 
 	if err := <-done; err != nil {
-		t.Errorf("Failed to load model: %v", err)
+		t.Fatalf("Failed to load model: %v", err)
 	}
 
 	if id == "" {
