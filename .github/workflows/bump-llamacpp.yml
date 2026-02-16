@@ -1,7 +1,8 @@
 name: Bump llama.cpp
 
+run-name: "Bump llama.cpp${{ inputs.tag && format(' to {0}', inputs.tag) || '' }}"
+
 permissions:
-  actions: write
   contents: write
   pull-requests: write
 
@@ -44,8 +45,6 @@ jobs:
           COMMIT_MSG: ${{ steps.bump.outputs.commit-msg }}
         run: |
           TAG=$(echo "$COMMIT_MSG" | grep -oP '[^/]+(?=\)$)')
-          gh api -X PATCH "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f name="Bump llama.cpp to $TAG"
           BRANCH="bump-llamacpp-$TAG"
           git checkout -b "$BRANCH"
           git commit --signoff -m "$COMMIT_MSG"
