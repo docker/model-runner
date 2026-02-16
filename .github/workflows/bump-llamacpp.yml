@@ -32,10 +32,12 @@ jobs:
           echo "$OUTPUT"
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "### Already up to date" >> "$GITHUB_STEP_SUMMARY"
           else
             COMMIT_MSG=$(echo "$OUTPUT" | grep -oP "(?<=-m ').*(?=')")
             echo "commit-msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "### $COMMIT_MSG" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Create pull request
