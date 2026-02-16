@@ -171,16 +171,18 @@ func main() {
 		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
 	}
 
-	diffusersBackend, err := diffusers.New(
-		log,
-		modelManager,
-		log.WithFields(logrus.Fields{"component": diffusers.Name}),
-		nil,
-		diffusersServerPath,
-	)
-
-	if err != nil {
-		log.Fatalf("unable to initialize diffusers backend: %v", err)
+	var diffusersBackend inference.Backend
+	if platform.SupportsDiffusers() {
+		diffusersBackend, err = diffusers.New(
+			log,
+			modelManager,
+			log.WithFields(logrus.Fields{"component": diffusers.Name}),
+			nil,
+			diffusersServerPath,
+		)
+		if err != nil {
+			log.Warnf("Failed to initialize diffusers backend: %v", err)
+		}
 	}
 
 	var vllmMetalBackend inference.Backend
@@ -197,12 +199,15 @@ func main() {
 	}
 
 	backends := map[string]inference.Backend{
-		llamacpp.Name:  llamaCppBackend,
-		mlx.Name:       mlxBackend,
-		sglang.Name:    sglangBackend,
-		diffusers.Name: diffusersBackend,
+		llamacpp.Name: llamaCppBackend,
+		mlx.Name:      mlxBackend,
+		sglang.Name:   sglangBackend,
 	}
 	registerVLLMBackend(backends, vllmBackend)
+
+	if diffusersBackend != nil {
+		backends[diffusers.Name] = diffusersBackend
+	}
 
 	if vllmMetalBackend != nil {
 		backends[vllmmetal.Name] = vllmMetalBackend
@@ -212,6 +217,9 @@ func main() {
 	var deferredBackends []string
 	if vllmMetalBackend != nil {
 		deferredBackends = append(deferredBackends, vllmmetal.Name)
+	}
+	if diffusersBackend != nil {
+		deferredBackends = append(deferredBackends, diffusers.Name)
 	}
 
 	scheduler := scheduling.NewScheduler(
