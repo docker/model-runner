@@ -69,7 +69,9 @@ func (r *Registry) handleBlobUpload(w http.ResponseWriter, req *http.Request, pa
 	switch req.Method {
 	case http.MethodPost:
 		// Start upload
+		r.mu.RLock()
 		uploadID := fmt.Sprintf("upload-%d", len(r.blobs))
+		r.mu.RUnlock()
 		location := fmt.Sprintf("/v2/%s/blobs/uploads/%s", repo, uploadID)
 		w.Header().Set("Location", location)
 		w.Header().Set("Docker-Upload-UUID", uploadID)
