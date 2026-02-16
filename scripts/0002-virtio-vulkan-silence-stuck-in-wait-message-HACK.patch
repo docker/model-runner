@@ -1,0 +1,15 @@
+diff --git a/src/virtio/vulkan/vn_common.c b/src/virtio/vulkan/vn_common.c
+index 2d389a8..3020ad6 100644
+--- a/src/virtio/vulkan/vn_common.c
++++ b/src/virtio/vulkan/vn_common.c
+@@ -269,8 +269,8 @@ vn_relax(struct vn_relax_state *state)
+ 
+    if (unlikely(*iter % (1 << warn_order) == 0)) {
+       struct vn_instance *instance = state->instance;
+-      vn_log(instance, "stuck in %s wait with iter at %d", state->reason_str,
+-             *iter);
++      //vn_log(instance, "stuck in %s wait with iter at %d", state->reason_str,
++      //       *iter);
+ 
+       struct vn_ring *ring = instance->ring.ring;
+       const uint32_t status = vn_ring_load_status(ring);
