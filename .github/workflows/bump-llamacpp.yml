@@ -40,15 +40,16 @@ jobs:
 
       - name: Create pull request
         if: steps.bump.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMIT_MSG: ${{ steps.bump.outputs.commit-msg }}
-        run: |
-          TAG=$(echo "$COMMIT_MSG" | grep -oP '[^/]+(?=\)$)')
-          BRANCH="bump-llamacpp-$TAG"
-          git checkout -b "$BRANCH"
-          git commit --signoff -m "$COMMIT_MSG"
-          git push -u origin "$BRANCH"
-          gh pr create \
-            --title "chore: bump llama.cpp to $TAG" \
-            --body "Bumps llama.cpp submodule to [$TAG](https://github.com/ggml-org/llama.cpp/releases/$TAG)."
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          sign-commits: 'true'
+          commit-message: ${{ steps.bump.outputs.commit-msg }}
+          title: ${{ steps.bump.outputs.commit-msg }}
+          body: |
+            Bumps llama.cpp submodule.
+          branch: bump-llamacpp
+          base: main
+          labels: dependencies
+          delete-branch: true
+          add-paths: llamacpp/native/vendor/llama.cpp
