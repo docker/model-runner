@@ -35,7 +35,9 @@ jobs:
             echo "### Already up to date" >> "$GITHUB_STEP_SUMMARY"
           else
             COMMIT_MSG=$(echo "$OUTPUT" | grep -oP "(?<=-m ').*(?=')")
+            TAG=$(echo "$COMMIT_MSG" | grep -oP '[^/]+(?=\)$)')
             echo "commit-msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "### $COMMIT_MSG" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -50,7 +52,7 @@ jobs:
           title: ${{ steps.bump.outputs.commit-msg }}
           body: |
             Bumps llama.cpp submodule.
-          branch: bump-llamacpp
+          branch: bump-llamacpp-${{ steps.bump.outputs.tag }}
           base: main
           labels: dependencies
           delete-branch: true
