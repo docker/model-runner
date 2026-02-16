@@ -177,6 +177,8 @@ jobs:
   test:
     needs: prepare
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -198,6 +200,8 @@ jobs:
   trigger-model-cli-release:
     needs: [prepare, test, release-notes]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Download release notes
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -236,6 +240,8 @@ jobs:
     if: ${{ !inputs.skipPackaging }}
     needs: [prepare, trigger-model-cli-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Trigger release-model workflow in packaging repo
         env:

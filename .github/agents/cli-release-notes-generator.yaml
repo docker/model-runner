@@ -37,7 +37,7 @@ agents:
          ```
          If that doesn't work well, use git log to find merge commits that touched cmd/cli/:
          ```
-         git log <previous_tag>..<release_tag> --merges --oneline -- cmd/cli/
+         git log <previous_tag>..<release_tag> --merges --oneline -- cmd/cli/ pkg/
          ```
          Then fetch PR details for each.
 
@@ -53,7 +53,7 @@ agents:
 
       3. **Format**: Write release notes following the template below.
 
-      4. **Save**: Write the release notes to `release-notes.md` in the current directory.
+      4. **Save**: Use the `write_file` tool to save the release notes to `release-notes.md` in the current directory.
 
       ## Template
 
@@ -87,8 +87,6 @@ agents:
 
 permissions:
   allow:
-    - shell:cmd=gh pr *
+    - shell:cmd=gh pr list *
+    - shell:cmd=gh pr view *
     - shell:cmd=git log *
-    - shell:cmd=git tag *
-    - shell:cmd=cat *
-    - shell:cmd=echo *
