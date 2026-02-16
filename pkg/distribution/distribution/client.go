@@ -786,7 +786,7 @@ func checkCompat(image types.ModelArtifact, log *logrus.Entry, reference string,
 	if err != nil {
 		return err
 	}
-	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 {
+	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 && manifest.Config.MediaType != types.MediaTypeModelConfigV02 {
 		return fmt.Errorf("config type %q is unsupported: %w", manifest.Config.MediaType, ErrUnsupportedMediaType)
 	}
 

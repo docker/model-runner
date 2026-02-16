@@ -12,7 +12,6 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
-	"github.com/docker/model-runner/pkg/distribution/packaging"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -100,9 +99,41 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 }
 
 // buildModelFromFiles constructs an OCI model artifact from downloaded files.
+// For safetensors models, it uses the V0.2 layer-per-file packaging (FromDirectory)
+// which preserves directory structure and adds each file as an individual layer with
+// filepath annotations. For GGUF models, it uses the V0.1 packaging (FromPaths)
+// for backward compatibility.
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+	// Check if this is a safetensors model - use V0.2 packaging
+	if isSafetensorsModel(weightFiles) {
+		return buildSafetensorsModelV02(tempDir, createdTime)
+	}
+
+	// For GGUF models, use V0.1 packaging (backward compatible)
+	return buildGGUFModelV01(localPaths, weightFiles, configFiles, createdTime)
+}
+
+// buildSafetensorsModelV02 builds a safetensors model using V0.2 layer-per-file packaging.
+// It uses builder.FromDirectory which recursively scans the tempDir and creates one layer
+// per file, preserving nested directory structure with filepath annotations.
 // If createdTime is non-nil, it is used as the creation timestamp for the OCI config
 // to produce deterministic digests. Otherwise time.Now() is used.
-func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+func buildSafetensorsModelV02(tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+	var dirOpts []builder.DirectoryOption
+	if createdTime != nil {
+		dirOpts = append(dirOpts, builder.WithCreatedTime(*createdTime))
+	}
+
+	b, err := builder.FromDirectory(tempDir, dirOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("create builder from directory: %w", err)
+	}
+
+	return b.Model(), nil
+}
+
+// buildGGUFModelV01 builds a GGUF model using V0.1 packaging (backward compatible).
+func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, createdTime *time.Time) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string
 	for _, f := range weightFiles {
@@ -126,25 +157,6 @@ func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles 
 		return nil, fmt.Errorf("create builder: %w", err)
 	}
 
-	// Create config archive if we have config files
-	if len(configFiles) > 0 {
-		configArchive, configArchiveErr := createConfigArchive(localPaths, configFiles, tempDir)
-		if configArchiveErr != nil {
-			return nil, fmt.Errorf("create config archive: %w", configArchiveErr)
-		}
-		// Note: configArchive is created inside tempDir and will be cleaned up when
-		// the caller removes tempDir. The file must exist until after store.Write()
-		// completes since the model artifact references it lazily.
-
-		if configArchive != "" {
-			var withConfigErr error
-			b, withConfigErr = b.WithConfigArchive(configArchive)
-			if withConfigErr != nil {
-				return nil, fmt.Errorf("add config archive: %w", withConfigErr)
-			}
-		}
-	}
-
 	// Check for chat template and add it
 	for _, f := range configFiles {
 		if isChatTemplate(f.Path) {
@@ -160,38 +172,6 @@ func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles 
 	}
 
 	return b.Model(), nil
-}
-
-// createConfigArchive creates a tar archive of config files in the specified tempDir
-func createConfigArchive(localPaths map[string]string, configFiles []RepoFile, tempDir string) (string, error) {
-	// Collect config file paths (excluding chat templates which are added separately)
-	var configPaths []string
-	for _, f := range configFiles {
-		if isChatTemplate(f.Path) {
-			continue // Chat templates are added as separate layers
-		}
-		localPath, ok := localPaths[f.Path]
-		if !ok {
-			return "", fmt.Errorf("internal error: missing local path for downloaded config file %s", f.Path)
-		}
-		configPaths = append(configPaths, localPath)
-	}
-
-	if len(configPaths) == 0 {
-		// No config files to archive
-		return "", nil
-	}
-
-	// Sort for reproducibility
-	sort.Strings(configPaths)
-
-	// Create the archive in our tempDir so it gets cleaned up with everything else
-	archivePath, err := packaging.CreateConfigArchiveInDir(configPaths, tempDir)
-	if err != nil {
-		return "", fmt.Errorf("create config archive: %w", err)
-	}
-
-	return archivePath, nil
 }
 
 // isChatTemplate checks if a file is a chat template
