@@ -1,0 +1,55 @@
+name: Bump llama.cpp
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'llama.cpp tag to bump to (e.g. b8068). Defaults to latest.'
+        required: false
+        type: string
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          submodules: recursive
+
+      - name: Bump llama.cpp
+        id: bump
+        run: |
+          OUTPUT=$(./scripts/bump-llamacpp.sh ${{ inputs.tag }})
+          echo "$OUTPUT"
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            COMMIT_MSG=$(echo "$OUTPUT" | grep -oP "(?<=-m ').*(?=')")
+            echo "commit-msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG: ${{ steps.bump.outputs.commit-msg }}
+        run: |
+          TAG=$(echo "$COMMIT_MSG" | grep -oP '[^/]+(?=\)$)')
+          gh api -X PATCH "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f name="Bump llama.cpp to $TAG"
+          BRANCH="bump-llamacpp-$TAG"
+          git checkout -b "$BRANCH"
+          git commit --signoff -m "$COMMIT_MSG"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "chore: bump llama.cpp to $TAG" \
+            --body "Bumps llama.cpp submodule to [$TAG](https://github.com/ggml-org/llama.cpp/releases/$TAG)."
