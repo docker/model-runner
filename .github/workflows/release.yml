@@ -156,7 +156,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@bd5439a1cabc3c448abf7a0d29b6f9a0d5fd4ec7
+        uses: docker/cagent-action@a893bceeae87a21b91ca2b09459365e51f765e5d
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -184,7 +184,7 @@ jobs:
           cat release-notes.md
 
       - name: Upload release notes
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: release-notes
           path: release-notes.md
@@ -295,7 +295,7 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -308,7 +308,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -323,7 +323,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-vllm
@@ -341,7 +341,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-sglang
@@ -357,7 +357,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build Diffusers image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-diffusers
@@ -370,7 +370,7 @@ jobs:
           tags: ${{ steps.tags.outputs.diffusers }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -386,7 +386,7 @@ jobs:
 
       - name: Build MUSA image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -402,7 +402,7 @@ jobs:
 
       - name: Build CANN image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -426,7 +426,7 @@ jobs:
       contents: write
     steps:
       - name: Download release notes
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-notes
 

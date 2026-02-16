@@ -185,7 +185,7 @@ func TestVLLMAllowedFlags_Categories(t *testing.T) {
 		"model":       {"--max-model-len", "--max-num-batched-tokens", "--max-num-seqs", "--block-size", "--swap-space", "--seed"},
 		"dtype":       {"--dtype", "--quantization", "-q", "--kv-cache-dtype"},
 		"performance": {"--enforce-eager", "--enable-prefix-caching", "--enable-chunked-prefill"},
-		"tokenizer":   {"--tokenizer-mode", "--trust-remote-code", "--max-logprobs"},
+		"tokenizer":   {"--tokenizer-mode", "--max-logprobs"},
 		"misc":        {"--revision", "--load-format", "--disable-log-stats", "--served-model-name", "--gpu-memory-utilization"},
 	}
 
