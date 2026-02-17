@@ -16,12 +16,28 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/mattn/go-shellwords"
 	"golang.org/x/sync/errgroup"
 )
+
+// PlatformSupport provides platform capability checks for backend selection.
+// This interface allows injecting mock platform checks in tests.
+type PlatformSupport interface {
+	SupportsMLX() bool
+	SupportsVLLM() bool
+	SupportsSGLang() bool
+}
+
+// defaultPlatformSupport delegates to the platform package.
+type defaultPlatformSupport struct{}
+
+func (defaultPlatformSupport) SupportsMLX() bool    { return platform.SupportsMLX() }
+func (defaultPlatformSupport) SupportsVLLM() bool   { return platform.SupportsVLLM() }
+func (defaultPlatformSupport) SupportsSGLang() bool { return platform.SupportsSGLang() }
 
 // Scheduler is used to coordinate inference scheduling across multiple backends
 // and models.
@@ -45,6 +61,8 @@ type Scheduler struct {
 	// deferredBackends lists backends whose installation is deferred until
 	// explicitly requested (e.g. via install-backend endpoint).
 	deferredBackends []string
+	// platformSupport provides platform capability checks for backend selection.
+	platformSupport PlatformSupport
 }
 
 // NewScheduler creates a new inference scheduler. Backends listed in
@@ -72,6 +90,7 @@ func NewScheduler(
 		tracker:          tracker,
 		openAIRecorder:   openAIRecorder,
 		deferredBackends: deferredBackends,
+		platformSupport:  defaultPlatformSupport{},
 	}
 
 	// Scheduler successfully initialized.
@@ -123,16 +142,22 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 			return vllmMetalBackend
 		}
 		// Fall back to MLX on macOS
-		if mlxBackend, ok := s.backends[mlx.Name]; ok && mlxBackend != nil {
-			return mlxBackend
+		if s.platformSupport.SupportsMLX() {
+			if mlxBackend, ok := s.backends[mlx.Name]; ok && mlxBackend != nil {
+				return mlxBackend
+			}
 		}
 		// Prefer vLLM for safetensors models on Linux
-		if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
-			return vllmBackend
+		if s.platformSupport.SupportsVLLM() {
+			if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
+				return vllmBackend
+			}
 		}
 		// Fall back to SGLang if vLLM is not available
-		if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
-			return sglangBackend
+		if s.platformSupport.SupportsSGLang() {
+			if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
+				return sglangBackend
+			}
 		}
 		s.log.Warnf("Model %s is in safetensors format but no compatible backend is available. "+
 			"Backend %s may not support this format and could fail at runtime.",
