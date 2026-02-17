@@ -260,7 +260,7 @@ func (h *HTTPHandler) handlePS(w http.ResponseWriter, r *http.Request) {
 		// Get model details to populate additional fields
 		model, err := h.modelManager.GetLocal(backend.ModelName)
 		if err != nil {
-			h.log.Warn("Failed to get model details for", "backend", backend.ModelName, "error", err)
+			h.log.Warn("Failed to get model details", "model", backend.ModelName, "error", err)
 			// Still add the model with basic info
 			models = append(models, PSModel{
 				Name:   backend.ModelName,
@@ -434,7 +434,7 @@ func (h *HTTPHandler) configureModel(ctx context.Context, modelName string, opti
 			if err == nil {
 				configureRequest.KeepAlive = &ka
 			} else {
-				h.log.Warn("configureModel: invalid keep_alive", "model", keepAlive, "error", err)
+				h.log.Warn("configureModel: invalid keep_alive", "keep_alive", keepAlive, "error", err)
 			}
 		}
 		_, err := h.scheduler.ConfigureRunner(ctx, nil, configureRequest, userAgent)
@@ -523,7 +523,7 @@ func (h *HTTPHandler) unloadModel(ctx context.Context, w http.ResponseWriter, mo
 
 	// Sanitize the user-provided request body before logging to avoid log injection
 	safeReqBody := utils.SanitizeForLog(string(reqBody), -1)
-	h.log.Info("unloadModel: sending POST /engines/unload with body", "model", safeReqBody)
+	h.log.Info("unloadModel: sending POST /engines/unload with body", "body", safeReqBody)
 
 	// Create a new request to the scheduler
 	newReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/engines/unload", strings.NewReader(string(reqBody)))

@@ -65,7 +65,7 @@ func (h *AggregatedMetricsHandler) collectAndAggregateMetrics(ctx context.Contex
 
 			families, err := h.fetchRunnerMetrics(ctx, runner)
 			if err != nil {
-				h.log.Warn("Failed to fetch metrics from runner /", "backend", runner.BackendName, "model", runner.ModelName, "error", err)
+				h.log.Warn("Failed to fetch metrics from runner", "backend", runner.BackendName, "model", runner.ModelName, "error", err)
 				return
 			}
 
