@@ -26,7 +26,7 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean build-cli install-cli
 # Default target
 .DEFAULT_GOAL := build
 
@@ -36,6 +36,9 @@ build:
 
 build-cli:
 	$(MAKE) -C cmd/cli
+
+install-cli:
+	$(MAKE) -C cmd/cli install
 
 docs:
 	$(MAKE) -C cmd/cli docs
