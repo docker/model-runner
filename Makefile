@@ -34,6 +34,12 @@ BUILD_DMR ?= 1
 build:
 	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
 
+build-cli:
+	$(MAKE) -C cmd/cli
+
+docs:
+	$(MAKE) -C cmd/cli docs
+
 # Run the application locally
 run: build
 	@LLAMACPP_BIN="llamacpp/install/bin"; \
