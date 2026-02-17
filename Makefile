@@ -76,10 +76,8 @@ validate:
 	@echo "✓ Shellcheck validation passed!"
 
 lint:
-	@echo "Running golangci-lint on root module..."
+	@echo "Running golangci-lint..."
 	golangci-lint run ./...
-	@echo "Running golangci-lint on cmd/cli module..."
-	cd cmd/cli && golangci-lint run ./...
 	@echo "✓ Go linting passed!"
 
 # Build Docker image

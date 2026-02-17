@@ -51,9 +51,7 @@ jobs:
       - name: Check go mod tidy
         run: |
           go mod tidy
-          go mod tidy -C cmd/cli
-          go work sync
-          git diff --exit-code go.mod go.sum cmd/cli/go.mod cmd/cli/go.sum go.work go.work.sum
+          git diff --exit-code go.mod go.sum
 
       - name: Run tests with race detection
         run: go test -race ./...

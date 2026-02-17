@@ -1,6 +1,6 @@
-name: Release model-runner images for CE
+name: Release
 run-name: >-
-  Release model-runner images for CE
+  Release
   ${{ inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
   ${{ inputs.pushLatest && ' + latest' || '' }}
 
@@ -58,6 +58,7 @@ jobs:
       contents: write
     outputs:
       release_tag: ${{ steps.resolve.outputs.release_tag }}
+      version: ${{ steps.resolve.outputs.version }}
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
     steps:
       - name: Checkout code
@@ -71,8 +72,8 @@ jobs:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
         run: |
-          # --- Find the latest existing v* tag (excluding CLI tags) ---
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | { grep -v '^cmd/' || true; } | head -1)
+          # --- Find the latest existing v* tag ---
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
           echo "Latest existing tag: ${LATEST_TAG:-<none>}"
 
           if [ -n "$EXPLICIT_TAG" ]; then
@@ -83,6 +84,7 @@ jobs:
             fi
             # Explicit tag provided — use it directly
             RELEASE_TAG="$EXPLICIT_TAG"
+            VERSION="${EXPLICIT_TAG#v}"
             PREVIOUS_TAG="$LATEST_TAG"
             echo "Explicit tag provided: $RELEASE_TAG"
 
@@ -91,6 +93,7 @@ jobs:
             if [ -z "$LATEST_TAG" ]; then
               echo "No existing tags found — starting at v0.1.0"
               RELEASE_TAG="v0.1.0"
+              VERSION="0.1.0"
               PREVIOUS_TAG=""
             else
               PREVIOUS_TAG="$LATEST_TAG"
@@ -115,14 +118,17 @@ jobs:
                   ;;
               esac
 
-              RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+              VERSION="${MAJOR}.${MINOR}.${PATCH}"
+              RELEASE_TAG="v${VERSION}"
               echo "Auto-bumped $BUMP_TYPE: $LATEST_TAG → $RELEASE_TAG"
             fi
           fi
 
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "previous_tag=${PREVIOUS_TAG:-}" >> "$GITHUB_OUTPUT"
           echo "🏷️  Release tag:  $RELEASE_TAG"
+          echo "🏷️  Version:      $VERSION"
           echo "🏷️  Previous tag: ${PREVIOUS_TAG:-<none>}"
 
       - name: Create and push tag
@@ -206,7 +212,7 @@ jobs:
           cache: true
 
       - name: Run tests
-        run: go test ./...
+        run: go test -race ./...
 
   # ---------------------------------------------------------------------------
   # Build and push Docker images
@@ -417,10 +423,104 @@ jobs:
           tags: ${{ steps.tags.outputs.cann }}
 
   # ---------------------------------------------------------------------------
+  # Trigger model-cli-release workflow (private repo — signs binaries)
+  # ---------------------------------------------------------------------------
+  trigger-model-cli-release:
+    needs: [prepare, test, release-notes]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download release notes
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-notes
+
+      - name: Read release notes
+        id: notes
+        run: |
+          # Read release notes, base64-encode to safely pass multiline content
+          NOTES_B64=$(base64 < release-notes.md)
+          echo "changelog_b64=$NOTES_B64" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger model-cli-release workflow
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          echo "🚀 Triggering model-cli-release workflow"
+          echo "   ref: $RELEASE_TAG"
+          echo "   release_tag: v$VERSION"
+          gh workflow run release.yml \
+            --repo docker/model-cli-release \
+            -f ref="$RELEASE_TAG" \
+            -f release_tag="v$VERSION" \
+            -f changelog_b64="${{ steps.notes.outputs.changelog_b64 }}"
+          echo "✅ model-cli-release workflow triggered"
+
+  # ---------------------------------------------------------------------------
+  # Trigger Docker CE packaging workflow
+  # ---------------------------------------------------------------------------
+  trigger-packaging:
+    if: ${{ !inputs.skipPackaging }}
+    needs: [prepare, trigger-model-cli-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger release-model workflow in packaging repo
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          echo "📦 Triggering release-model workflow in docker/packaging"
+          echo "   tag_ref: $RELEASE_TAG"
+          gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f tag="$RELEASE_TAG"
+          echo "✅ release-model workflow triggered in docker/packaging"
+
+      - name: Post instructions for release-repo
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
+          ## 📋 Next Steps: Release to Docker CE
+
+          The \`release-model\` workflow has been triggered in \`docker/packaging\`.
+          Once it completes, follow these manual steps:
+
+          ### 1. Get the packaging image tag
+
+          Check the [release-model workflow runs](https://github.com/docker/packaging/actions/workflows/release-model.yml)
+          for the image tag. It will look like:
+          \`\`\`
+          dockereng/packaging:model-v${VERSION}-<build_number>
+          \`\`\`
+
+          ### 2. Trigger the plugin release
+
+          Run the [release buildx, compose, model, cagent](https://github.com/docker/release-repo/actions/workflows/plugin.yml) workflow with:
+
+          | Parameter | Value |
+          |-----------|-------|
+          | **Image** | \`dockereng/packaging:model-v${VERSION}-<build_number>\` |
+          | **Expected version** | \`${VERSION}\` (no v-prefix) |
+          | **Release channel** | \`stable\` |
+          | **Deploy to live** | ✅ Yes |
+
+          > **Tag reference used:** \`${RELEASE_TAG}\`
+          SUMMARY
+
+          echo "📋 Instructions for docker/release-repo have been added to the job summary"
+
+  # ---------------------------------------------------------------------------
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build]
+    needs: [prepare, release-notes, build, trigger-model-cli-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -434,6 +534,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           echo "Creating GitHub Release for $RELEASE_TAG"
           gh release create "$RELEASE_TAG" \
