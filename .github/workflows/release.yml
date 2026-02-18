@@ -465,7 +465,7 @@ jobs:
           echo "   tag_ref: $RELEASE_TAG"
           gh workflow run release-model.yml \
             --repo docker/packaging \
-            -f tag="$RELEASE_TAG"
+            -f ref="$RELEASE_TAG"
           echo "✅ release-model workflow triggered in docker/packaging"
 
       - name: Post instructions for release-repo
