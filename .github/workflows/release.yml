@@ -426,23 +426,11 @@ jobs:
   # Trigger model-cli-release workflow (private repo — signs binaries)
   # ---------------------------------------------------------------------------
   trigger-model-cli-release:
-    needs: [prepare, test, release-notes]
+    needs: [prepare, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Download release notes
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
-        with:
-          name: release-notes
-
-      - name: Read release notes
-        id: notes
-        run: |
-          # Read release notes, base64-encode to safely pass multiline content
-          NOTES_B64=$(base64 < release-notes.md)
-          echo "changelog_b64=$NOTES_B64" >> "$GITHUB_OUTPUT"
-
       - name: Trigger model-cli-release workflow
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
@@ -450,71 +438,123 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           echo "🚀 Triggering model-cli-release workflow"
-          echo "   ref: $RELEASE_TAG"
-          echo "   release_tag: v$VERSION"
+          echo "   model-cli-ref: $RELEASE_TAG"
+          echo "   tag: v$VERSION"
           gh workflow run release.yml \
             --repo docker/model-cli-release \
-            -f ref="$RELEASE_TAG" \
-            -f release_tag="v$VERSION" \
-            -f changelog_b64="${{ steps.notes.outputs.changelog_b64 }}"
+            -f model-cli-ref="$RELEASE_TAG" \
+            -f tag="v$VERSION"
           echo "✅ model-cli-release workflow triggered"
 
   # ---------------------------------------------------------------------------
-  # Trigger Docker CE packaging workflow
+  # Trigger Docker CE packaging workflow, wait for it, then trigger release-repo
   # ---------------------------------------------------------------------------
   trigger-packaging:
     if: ${{ !inputs.skipPackaging }}
     needs: [prepare, trigger-model-cli-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
     steps:
       - name: Trigger release-model workflow in packaging repo
+        id: trigger
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
           echo "📦 Triggering release-model workflow in docker/packaging"
-          echo "   tag_ref: $RELEASE_TAG"
+          echo "   ref: $RELEASE_TAG"
           gh workflow run release-model.yml \
             --repo docker/packaging \
-            -f tag="$RELEASE_TAG"
+            -f ref="$RELEASE_TAG"
           echo "✅ release-model workflow triggered in docker/packaging"
 
-      - name: Post instructions for release-repo
+      - name: Wait for packaging workflow to complete
+        id: packaging
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          echo "⏳ Waiting for packaging workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of release-model.yml
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/packaging \
+              --workflow release-model.yml \
+              --limit 1 \
+              --json databaseId,createdAt \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found packaging run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find packaging workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for packaging run $RUN_ID to complete..."
+          gh run watch "$RUN_ID" \
+            --repo docker/packaging \
+            --exit-status
+
+          # Get the run number to construct the image tag
+          RUN_NUMBER=$(gh run view "$RUN_ID" \
+            --repo docker/packaging \
+            --json number \
+            --jq '.number')
+
+          PACKAGING_IMAGE="dockereng/packaging:model-v${VERSION}-${RUN_NUMBER}"
+          echo "📦 Packaging image: $PACKAGING_IMAGE"
+          echo "packaging_image=$PACKAGING_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "✅ Packaging workflow completed successfully"
+
+      - name: Trigger release-repo plugin workflow
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
+        run: |
+          echo "🚀 Triggering plugin release in docker/release-repo"
+          echo "   packaging_image: $PACKAGING_IMAGE"
+          echo "   model_version: $VERSION"
+          echo "   channel: stable"
+          echo "   release_live: true"
+          gh workflow run plugin.yml \
+            --repo docker/release-repo \
+            --ref production \
+            -f packaging_image="$PACKAGING_IMAGE" \
+            -f model_version="$VERSION" \
+            -f channel=stable \
+            -f release_live=true
+          echo "✅ Plugin release workflow triggered in docker/release-repo"
+
+      - name: Post summary
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
-          ## 📋 Next Steps: Release to Docker CE
+          ## 📦 Docker CE Packaging & Release
 
-          The \`release-model\` workflow has been triggered in \`docker/packaging\`.
-          Once it completes, follow these manual steps:
+          | Step | Status |
+          |------|--------|
+          | Packaging image | \`${PACKAGING_IMAGE}\` |
+          | Model version | \`${VERSION}\` |
+          | Release channel | \`stable\` |
+          | Deploy to live | ✅ Yes |
+          | Release tag | \`${RELEASE_TAG}\` |
 
-          ### 1. Get the packaging image tag
-
-          Check the [release-model workflow runs](https://github.com/docker/packaging/actions/workflows/release-model.yml)
-          for the image tag. It will look like:
-          \`\`\`
-          dockereng/packaging:model-v${VERSION}-<build_number>
-          \`\`\`
-
-          ### 2. Trigger the plugin release
-
-          Run the [release buildx, compose, model, cagent](https://github.com/docker/release-repo/actions/workflows/plugin.yml) workflow with:
-
-          | Parameter | Value |
-          |-----------|-------|
-          | **Image** | \`dockereng/packaging:model-v${VERSION}-<build_number>\` |
-          | **Expected version** | \`${VERSION}\` (no v-prefix) |
-          | **Release channel** | \`stable\` |
-          | **Deploy to live** | ✅ Yes |
-
-          > **Tag reference used:** \`${RELEASE_TAG}\`
+          The plugin release workflow has been triggered in [docker/release-repo](https://github.com/docker/release-repo/actions/workflows/plugin.yml).
           SUMMARY
-
-          echo "📋 Instructions for docker/release-repo have been added to the job summary"
 
   # ---------------------------------------------------------------------------
   # Create GitHub Release with AI-generated release notes
