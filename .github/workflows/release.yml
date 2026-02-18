@@ -428,6 +428,7 @@ jobs:
   trigger-model-cli-release:
     needs: [prepare, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -445,6 +446,40 @@ jobs:
             -f model-cli-ref="$RELEASE_TAG" \
             -f tag="v$VERSION"
           echo "✅ model-cli-release workflow triggered"
+
+      - name: Wait for model-cli-release to complete
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+        run: |
+          echo "⏳ Waiting for model-cli-release workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of release.yml in model-cli-release
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/model-cli-release \
+              --workflow release.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found model-cli-release run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find model-cli-release workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for model-cli-release run $RUN_ID to complete..."
+          gh run watch "$RUN_ID" \
+            --repo docker/model-cli-release \
+            --exit-status
+          echo "✅ model-cli-release workflow completed successfully"
 
   # ---------------------------------------------------------------------------
   # Trigger Docker CE packaging workflow, wait for it, then trigger release-repo
