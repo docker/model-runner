@@ -440,7 +440,7 @@ jobs:
         id: notes
         run: |
           # Read release notes, base64-encode to safely pass multiline content
-          NOTES_B64=$(base64 < release-notes.md)
+          NOTES_B64=$(base64 -w 0 < release-notes.md)
           echo "changelog_b64=$NOTES_B64" >> "$GITHUB_OUTPUT"
 
       - name: Trigger model-cli-release workflow
