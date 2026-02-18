@@ -484,6 +484,53 @@ jobs:
           echo "✅ release-cli-dd workflow completed successfully"
 
   # ---------------------------------------------------------------------------
+  # Bump docker-model version in pinata and open a PR
+  # ---------------------------------------------------------------------------
+  bump-pinata:
+    needs: [prepare, release-cli-desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pinata
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: docker/pinata
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+
+      - name: Bump docker-model version in build.json
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          NEW_VERSION="v${VERSION}"
+          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
+          mv build.json.tmp build.json
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
+        with:
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          base: main
+          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }}"
+          branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
+          title: "Bump docker-model to v${{ needs.prepare.outputs.version }}"
+          body: |
+            ### Ticket(s)
+
+            N/A — automated version bump
+
+            ### What this PR does
+
+            Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+
+            ### Notes for the reviewer
+
+            Automated PR created by the model-runner release workflow.
+
+          draft: true
+
+  # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
   # (triggers docker/packaging → docker/release-repo)
   # ---------------------------------------------------------------------------
