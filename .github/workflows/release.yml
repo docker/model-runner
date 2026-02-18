@@ -595,6 +595,31 @@ jobs:
           SUMMARY
 
   # ---------------------------------------------------------------------------
+  # Verify Docker CE installation — run test-docker-ce-installation.sh
+  # to confirm the CLI version is available via get.docker.com
+  # ---------------------------------------------------------------------------
+  verify-docker-ce:
+    needs: [prepare, release-cli-docker-ce]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        base_image:
+          - ubuntu:24.04
+          - debian:12
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Docker CE installation
+        env:
+          BASE_IMAGE: ${{ matrix.base_image }}
+        run: |
+          chmod +x scripts/test-docker-ce-installation.sh
+          ./scripts/test-docker-ce-installation.sh "${{ needs.prepare.outputs.release_tag }}"
+
+  # ---------------------------------------------------------------------------
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
