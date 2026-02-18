@@ -426,23 +426,11 @@ jobs:
   # Trigger model-cli-release workflow (private repo — signs binaries)
   # ---------------------------------------------------------------------------
   trigger-model-cli-release:
-    needs: [prepare, test, release-notes]
+    needs: [prepare, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Download release notes
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
-        with:
-          name: release-notes
-
-      - name: Read release notes
-        id: notes
-        run: |
-          # Read release notes, base64-encode to safely pass multiline content
-          NOTES_B64=$(base64 < release-notes.md | tr -d '\n')
-          echo "changelog_b64=$NOTES_B64" >> "$GITHUB_OUTPUT"
-
       - name: Trigger model-cli-release workflow
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
@@ -450,13 +438,12 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           echo "🚀 Triggering model-cli-release workflow"
-          echo "   ref: $RELEASE_TAG"
-          echo "   release_tag: v$VERSION"
+          echo "   model-cli-ref: $RELEASE_TAG"
+          echo "   tag: v$VERSION"
           gh workflow run release.yml \
             --repo docker/model-cli-release \
-            -f ref="$RELEASE_TAG" \
-            -f release_tag="v$VERSION" \
-            -f changelog_b64="${{ steps.notes.outputs.changelog_b64 }}"
+            -f model-cli-ref="$RELEASE_TAG" \
+            -f tag="v$VERSION"
           echo "✅ model-cli-release workflow triggered"
 
   # ---------------------------------------------------------------------------
