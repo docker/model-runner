@@ -484,6 +484,45 @@ jobs:
           echo "✅ release-cli-dd workflow completed successfully"
 
   # ---------------------------------------------------------------------------
+  # Bump docker-model version in pinata and open a PR
+  # ---------------------------------------------------------------------------
+  bump-pinata:
+    needs: [prepare, release-cli-desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Bump docker-model version in pinata
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh repo clone docker/pinata -- --depth 1
+          cd pinata
+
+          OLD_VERSION=$(jq -r '.["docker-model"].version' build.json)
+          NEW_VERSION="v${VERSION}"
+          echo "Bumping docker-model version: $OLD_VERSION → $NEW_VERSION"
+
+          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
+          mv build.json.tmp build.json
+
+          BRANCH="bump-docker-model-${NEW_VERSION}"
+          git checkout -b "$BRANCH"
+          git add build.json
+          git commit -m "chore: bump docker-model to ${NEW_VERSION}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --repo docker/pinata \
+            --head "$BRANCH" \
+            --title "Bump docker-model to ${NEW_VERSION}" \
+            --body "Bump docker-model version from ${OLD_VERSION} to ${NEW_VERSION}." \
+            --draft
+          echo "✅ Pinata PR created"
+
+  # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
   # (triggers docker/packaging → docker/release-repo)
   # ---------------------------------------------------------------------------
