@@ -424,7 +424,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
-  # (triggers docker/model-cli-release: signs macOS/Windows binaries,
+  # (triggers docker/inference-engine-llama.cpp: signs macOS/Windows binaries,
   #  pushes docker/docker-model-cli-desktop-module to Docker Hub)
   # ---------------------------------------------------------------------------
   release-cli-desktop:
@@ -434,38 +434,38 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Trigger model-cli-release workflow
+      - name: Trigger release-cli-dd workflow
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          echo "🚀 Triggering model-cli-release workflow"
+          echo "🚀 Triggering release-cli-dd workflow"
           echo "   model-cli-ref: $RELEASE_TAG"
           echo "   tag: v$VERSION"
-          gh workflow run release.yml \
-            --repo docker/model-cli-release \
+          gh workflow run release-cli-dd.yml \
+            --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
             -f tag="v$VERSION"
-          echo "✅ model-cli-release workflow triggered"
+          echo "✅ release-cli-dd workflow triggered"
 
-      - name: Wait for model-cli-release to complete
+      - name: Wait for release-cli-dd to complete
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
         run: |
-          echo "⏳ Waiting for model-cli-release workflow to appear..."
+          echo "⏳ Waiting for release-cli-dd workflow to appear..."
           sleep 15
 
-          # Find the most recent run of release.yml in model-cli-release
+          # Find the most recent run of release-cli-dd.yml in inference-engine-llama.cpp
           for i in $(seq 1 10); do
             RUN_ID=$(gh run list \
-              --repo docker/model-cli-release \
-              --workflow release.yml \
+              --repo docker/inference-engine-llama.cpp \
+              --workflow release-cli-dd.yml \
               --limit 1 \
               --json databaseId \
               --jq '.[0].databaseId')
             if [ -n "$RUN_ID" ]; then
-              echo "Found model-cli-release run: $RUN_ID"
+              echo "Found release-cli-dd run: $RUN_ID"
               break
             fi
             echo "  Retry $i/10..."
@@ -473,15 +473,15 @@ jobs:
           done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find model-cli-release workflow run"
+            echo "::error::Could not find release-cli-dd workflow run"
             exit 1
           fi
 
-          echo "⏳ Waiting for model-cli-release run $RUN_ID to complete..."
+          echo "⏳ Waiting for release-cli-dd run $RUN_ID to complete..."
           gh run watch "$RUN_ID" \
-            --repo docker/model-cli-release \
+            --repo docker/inference-engine-llama.cpp \
             --exit-status
-          echo "✅ model-cli-release workflow completed successfully"
+          echo "✅ release-cli-dd workflow completed successfully"
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
