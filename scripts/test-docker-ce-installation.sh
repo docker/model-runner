@@ -3,23 +3,26 @@
 set -eux -o pipefail
 
 main() {
-  # Find the remote that points to docker/model-runner.
-  local remote
-  remote=$(git remote -v | awk '/docker\/model-runner/ && /\(fetch\)/ {print $1; exit}')
+  local cli_version="${1:-}"
 
-  if [ -n "$remote" ]; then
-    echo "Fetching tags from $remote (docker/model-runner)..."
-    git fetch "$remote" --tags >/dev/null 2>&1 || echo "Warning: Failed to fetch tags from $remote. Continuing with local tags." >&2
-  else
-    echo "Warning: No remote found for docker/model-runner, using local tags only" >&2
-  fi
-
-  local cli_version
-  cli_version=$(git tag -l --sort=-version:refname "cmd/cli/v*" | head -1 | sed 's|^cmd/cli/||')
-
+  # If no version argument provided, try to detect from git tags
   if [ -z "$cli_version" ]; then
-    echo "Error: Could not determine CLI version from git tags" >&2
-    exit 1
+    local remote
+    remote=$(git remote -v | awk '/docker\/model-runner/ && /\(fetch\)/ {print $1; exit}')
+
+    if [ -n "$remote" ]; then
+      echo "Fetching tags from $remote (docker/model-runner)..."
+      git fetch "$remote" --tags >/dev/null 2>&1 || echo "Warning: Failed to fetch tags from $remote. Continuing with local tags." >&2
+    else
+      echo "Warning: No remote found for docker/model-runner, using local tags only" >&2
+    fi
+
+    cli_version=$(git tag -l --sort=-version:refname "v*" | head -1)
+
+    if [ -z "$cli_version" ]; then
+      echo "Error: Could not determine CLI version from git tags. Pass version as argument: $0 <version>" >&2
+      exit 1
+    fi
   fi
 
   echo "Testing Docker CE installation with expected CLI version: $cli_version"

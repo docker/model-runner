@@ -177,6 +177,9 @@ func isRetryableError(err error) bool {
 		"no route to host",
 		"network is unreachable",
 		"i/o timeout",
+		"stream error",
+		"internal_error",
+		"protocol_error",
 	}
 
 	for _, pattern := range retryablePatterns {

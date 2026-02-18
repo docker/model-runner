@@ -56,6 +56,15 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: model
+      value_type: string
+      description: Model to use (for opencode)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: port
       value_type: int
       default_value: "0"

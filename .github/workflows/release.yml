@@ -1,6 +1,6 @@
-name: Release model-runner images for CE
+name: Release
 run-name: >-
-  Release model-runner images for CE
+  Release
   ${{ inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
   ${{ inputs.pushLatest && ' + latest' || '' }}
 
@@ -58,6 +58,7 @@ jobs:
       contents: write
     outputs:
       release_tag: ${{ steps.resolve.outputs.release_tag }}
+      version: ${{ steps.resolve.outputs.version }}
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
     steps:
       - name: Checkout code
@@ -71,8 +72,8 @@ jobs:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
         run: |
-          # --- Find the latest existing v* tag (excluding CLI tags) ---
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | { grep -v '^cmd/' || true; } | head -1)
+          # --- Find the latest existing v* tag ---
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
           echo "Latest existing tag: ${LATEST_TAG:-<none>}"
 
           if [ -n "$EXPLICIT_TAG" ]; then
@@ -83,6 +84,7 @@ jobs:
             fi
             # Explicit tag provided — use it directly
             RELEASE_TAG="$EXPLICIT_TAG"
+            VERSION="${EXPLICIT_TAG#v}"
             PREVIOUS_TAG="$LATEST_TAG"
             echo "Explicit tag provided: $RELEASE_TAG"
 
@@ -91,6 +93,7 @@ jobs:
             if [ -z "$LATEST_TAG" ]; then
               echo "No existing tags found — starting at v0.1.0"
               RELEASE_TAG="v0.1.0"
+              VERSION="0.1.0"
               PREVIOUS_TAG=""
             else
               PREVIOUS_TAG="$LATEST_TAG"
@@ -115,14 +118,17 @@ jobs:
                   ;;
               esac
 
-              RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+              VERSION="${MAJOR}.${MINOR}.${PATCH}"
+              RELEASE_TAG="v${VERSION}"
               echo "Auto-bumped $BUMP_TYPE: $LATEST_TAG → $RELEASE_TAG"
             fi
           fi
 
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "previous_tag=${PREVIOUS_TAG:-}" >> "$GITHUB_OUTPUT"
           echo "🏷️  Release tag:  $RELEASE_TAG"
+          echo "🏷️  Version:      $VERSION"
           echo "🏷️  Previous tag: ${PREVIOUS_TAG:-<none>}"
 
       - name: Create and push tag
@@ -156,7 +162,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@bd5439a1cabc3c448abf7a0d29b6f9a0d5fd4ec7
+        uses: docker/cagent-action@d53201d5c0adae9b27bb615beb0a6e45757806ee
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -184,7 +190,7 @@ jobs:
           cat release-notes.md
 
       - name: Upload release notes
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: release-notes
           path: release-notes.md
@@ -206,7 +212,7 @@ jobs:
           cache: true
 
       - name: Run tests
-        run: go test ./...
+        run: go test -race ./...
 
   # ---------------------------------------------------------------------------
   # Build and push Docker images
@@ -295,7 +301,7 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -308,7 +314,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -323,7 +329,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-vllm
@@ -341,7 +347,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-sglang
@@ -357,7 +363,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build Diffusers image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-diffusers
@@ -370,7 +376,7 @@ jobs:
           tags: ${{ steps.tags.outputs.diffusers }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -386,7 +392,7 @@ jobs:
 
       - name: Build MUSA image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -402,7 +408,7 @@ jobs:
 
       - name: Build CANN image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -417,16 +423,295 @@ jobs:
           tags: ${{ steps.tags.outputs.cann }}
 
   # ---------------------------------------------------------------------------
+  # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
+  # (triggers docker/inference-engine-llama.cpp: signs macOS/Windows binaries,
+  #  pushes docker/docker-model-cli-desktop-module to Docker Hub)
+  # ---------------------------------------------------------------------------
+  release-cli-desktop:
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger release-cli-dd workflow
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          echo "🚀 Triggering release-cli-dd workflow"
+          echo "   model-cli-ref: $RELEASE_TAG"
+          echo "   tag: v$VERSION"
+          gh workflow run release-cli-dd.yml \
+            --repo docker/inference-engine-llama.cpp \
+            -f model-cli-ref="$RELEASE_TAG" \
+            -f tag="v$VERSION"
+          echo "✅ release-cli-dd workflow triggered"
+
+      - name: Wait for release-cli-dd to complete
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+        run: |
+          echo "⏳ Waiting for release-cli-dd workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of release-cli-dd.yml in inference-engine-llama.cpp
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/inference-engine-llama.cpp \
+              --workflow release-cli-dd.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found release-cli-dd run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find release-cli-dd workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for release-cli-dd run $RUN_ID to complete..."
+          gh run watch "$RUN_ID" \
+            --repo docker/inference-engine-llama.cpp \
+            --exit-status
+          echo "✅ release-cli-dd workflow completed successfully"
+
+  # ---------------------------------------------------------------------------
+  # Bump docker-model version in pinata and open a PR
+  # ---------------------------------------------------------------------------
+  bump-pinata:
+    needs: [prepare, release-cli-desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pinata
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: docker/pinata
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          fetch-depth: 0
+
+      - name: Bump docker-model version in build.json
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          NEW_VERSION="v${VERSION}"
+          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
+          mv build.json.tmp build.json
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
+        with:
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          base: main
+          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }}"
+          branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
+          title: "Bump docker-model to v${{ needs.prepare.outputs.version }}"
+          body: |
+            ### Ticket(s)
+
+            N/A — automated version bump
+
+            ### What this PR does
+
+            Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+
+            ### Notes for the reviewer
+
+            Automated PR created by the model-runner release workflow.
+
+          draft: true
+
+  # ---------------------------------------------------------------------------
+  # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
+  # (triggers docker/packaging → docker/release-repo)
+  # ---------------------------------------------------------------------------
+  release-cli-docker-ce:
+    if: ${{ !inputs.skipPackaging }}
+    needs: [prepare, release-cli-desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger release-model workflow in packaging repo
+        id: trigger
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          echo "📦 Triggering release-model workflow in docker/packaging"
+          echo "   ref: $RELEASE_TAG"
+          gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f ref="$RELEASE_TAG"
+          echo "✅ release-model workflow triggered in docker/packaging"
+
+      - name: Wait for packaging workflow to complete
+        id: packaging
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          echo "⏳ Waiting for packaging workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of release-model.yml
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/packaging \
+              --workflow release-model.yml \
+              --limit 1 \
+              --json databaseId,createdAt \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found packaging run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find packaging workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for packaging run $RUN_ID to complete..."
+          gh run watch "$RUN_ID" \
+            --repo docker/packaging \
+            --exit-status
+
+          # Get the run number to construct the image tag
+          RUN_NUMBER=$(gh run view "$RUN_ID" \
+            --repo docker/packaging \
+            --json number \
+            --jq '.number')
+
+          PACKAGING_IMAGE="dockereng/packaging:model-v${VERSION}-${RUN_NUMBER}"
+          echo "📦 Packaging image: $PACKAGING_IMAGE"
+          echo "packaging_image=$PACKAGING_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "✅ Packaging workflow completed successfully"
+
+      - name: Trigger release-repo plugin workflow
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
+        run: |
+          echo "🚀 Triggering plugin release in docker/release-repo"
+          echo "   packaging_image: $PACKAGING_IMAGE"
+          echo "   model_version: $VERSION"
+          echo "   channel: stable"
+          echo "   release_live: true"
+          gh workflow run plugin.yml \
+            --repo docker/release-repo \
+            --ref production \
+            -f packaging_image="$PACKAGING_IMAGE" \
+            -f model_version="$VERSION" \
+            -f channel=stable \
+            -f release_live=true
+          echo "✅ Plugin release workflow triggered in docker/release-repo"
+
+      - name: Wait for release-repo plugin workflow to complete
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+        run: |
+          echo "⏳ Waiting for release-repo plugin workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of plugin.yml in release-repo
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/release-repo \
+              --workflow plugin.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found release-repo run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find release-repo plugin workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for release-repo run $RUN_ID to complete (includes manual deploy-to-live approval)..."
+          gh run watch "$RUN_ID" \
+            --repo docker/release-repo \
+            --exit-status
+          echo "✅ Release-repo plugin workflow completed successfully"
+
+      - name: Post summary
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
+          ## 📦 Docker CE Packaging & Release
+
+          | Step | Status |
+          |------|--------|
+          | Packaging image | \`${PACKAGING_IMAGE}\` |
+          | Model version | \`${VERSION}\` |
+          | Release channel | \`stable\` |
+          | Deploy to live | ✅ Yes |
+          | Release tag | \`${RELEASE_TAG}\` |
+
+          The plugin release workflow has been triggered in [docker/release-repo](https://github.com/docker/release-repo/actions/workflows/plugin.yml).
+          SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # Verify Docker CE installation — run test-docker-ce-installation.sh
+  # to confirm the CLI version is available via get.docker.com
+  # ---------------------------------------------------------------------------
+  verify-docker-ce:
+    needs: [prepare, release-cli-docker-ce, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        base_image:
+          - ubuntu:24.04
+          - debian:12
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Docker CE installation
+        env:
+          BASE_IMAGE: ${{ matrix.base_image }}
+        run: |
+          chmod +x scripts/test-docker-ce-installation.sh
+          ./scripts/test-docker-ce-installation.sh "${{ needs.prepare.outputs.release_tag }}"
+
+  # ---------------------------------------------------------------------------
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build]
+    needs: [prepare, release-notes, build, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Download release notes
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-notes
 
@@ -434,6 +719,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           echo "Creating GitHub Release for $RELEASE_TAG"
           gh release create "$RELEASE_TAG" \

@@ -95,6 +95,7 @@ func newLaunchCmd() *cobra.Command {
 		detach     bool
 		dryRun     bool
 		configOnly bool
+		model      string
 	)
 	c := &cobra.Command{
 		Use:   "launch [APP] [-- APP_ARGS...]",
@@ -155,7 +156,7 @@ Examples:
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
-				return launchHostApp(cmd, app, ep.host, cli, appArgs, dryRun)
+				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
 			}
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
@@ -165,6 +166,7 @@ Examples:
 	c.Flags().BoolVar(&detach, "detach", false, "Run containerized app in background")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Print what would be executed without running it")
 	c.Flags().BoolVar(&configOnly, "config", false, "Print configuration without launching")
+	c.Flags().StringVar(&model, "model", "", "Model to use (for opencode)")
 	return c
 }
 
@@ -315,7 +317,12 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 }
 
 // launchHostApp launches a native host app executable.
-func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
+func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, model string, runner *standaloneRunner, appArgs []string, dryRun bool) error {
+	// Special handling for opencode: use dedicated launcher
+	if bin == "opencode" {
+		return launchOpenCode(cmd, baseURL, model, runner, appArgs, dryRun)
+	}
+
 	if !dryRun {
 		if _, err := exec.LookPath(bin); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)
