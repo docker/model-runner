@@ -8,14 +8,6 @@ updates:
       go-modules-root:
         patterns:
           - "*"
-  - package-ecosystem: gomod
-    directory: /cmd/cli
-    schedule:
-      interval: weekly
-    groups:
-      go-modules-cli:
-        patterns:
-          - "*"
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -423,11 +423,14 @@ jobs:
           tags: ${{ steps.tags.outputs.cann }}
 
   # ---------------------------------------------------------------------------
-  # Trigger model-cli-release workflow (private repo — signs binaries)
+  # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
+  # (triggers docker/model-cli-release: signs macOS/Windows binaries,
+  #  pushes docker/docker-model-cli-desktop-module to Docker Hub)
   # ---------------------------------------------------------------------------
-  trigger-model-cli-release:
+  release-cli-desktop:
     needs: [prepare, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -446,12 +449,47 @@ jobs:
             -f tag="v$VERSION"
           echo "✅ model-cli-release workflow triggered"
 
+      - name: Wait for model-cli-release to complete
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+        run: |
+          echo "⏳ Waiting for model-cli-release workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of release.yml in model-cli-release
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/model-cli-release \
+              --workflow release.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found model-cli-release run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find model-cli-release workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for model-cli-release run $RUN_ID to complete..."
+          gh run watch "$RUN_ID" \
+            --repo docker/model-cli-release \
+            --exit-status
+          echo "✅ model-cli-release workflow completed successfully"
+
   # ---------------------------------------------------------------------------
-  # Trigger Docker CE packaging workflow, wait for it, then trigger release-repo
+  # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
+  # (triggers docker/packaging → docker/release-repo)
   # ---------------------------------------------------------------------------
-  trigger-packaging:
+  release-cli-docker-ce:
     if: ${{ !inputs.skipPackaging }}
-    needs: [prepare, trigger-model-cli-release]
+    needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -560,7 +598,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, trigger-model-cli-release]
+    needs: [prepare, release-notes, build, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
