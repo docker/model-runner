@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
@@ -18,6 +17,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
+	"github.com/moby/moby/api/types/container"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +55,8 @@ type standaloneRunner struct {
 	// hostPort is the port that the runner is listening to on the host.
 	hostPort uint16
 	// gatewayIP is the gateway IP address that the runner is listening on.
+	//
+	// TODO(thaJeztah): consider changing this to a netip.Addr
 	gatewayIP string
 	// gatewayPort is the gateway port that the runner is listening on.
 	gatewayPort uint16
@@ -65,13 +67,15 @@ type standaloneRunner struct {
 func inspectStandaloneRunner(container container.Summary) *standaloneRunner {
 	result := &standaloneRunner{}
 	for _, port := range container.Ports {
-		if port.IP == "127.0.0.1" {
+		if port.IP.IsLoopback() {
 			result.hostPort = port.PublicPort
 		} else {
 			// We don't really have a good way of knowing what the gateway IP
 			// address is, but in the standard standalone configuration we only
 			// bind to two interfaces: 127.0.0.1 and the gateway interface.
-			result.gatewayIP = port.IP
+			if port.IP.IsValid() {
+				result.gatewayIP = port.IP.String()
+			}
 			result.gatewayPort = port.PublicPort
 		}
 	}

@@ -8,18 +8,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/spf13/cobra"
 )
 
@@ -137,7 +137,7 @@ func pullNIMImage(ctx context.Context, dockerClient *client.Client, model string
 		}
 	}
 
-	pullOptions := image.PullOptions{}
+	pullOptions := client.ImagePullOptions{}
 
 	// Set authentication if available
 	if authStr != "" {
@@ -186,7 +186,9 @@ func pullNIMImage(ctx context.Context, dockerClient *client.Client, model string
 	defer reader.Close()
 
 	// Stream pull progress
-	io.Copy(cmd.OutOrStdout(), reader)
+	//
+	// TODO(thaJeztah): format output / progress?
+	_, _ = io.Copy(cmd.OutOrStdout(), reader)
 
 	return nil
 }
@@ -195,15 +197,16 @@ func pullNIMImage(ctx context.Context, dockerClient *client.Client, model string
 func findNIMContainer(ctx context.Context, dockerClient *client.Client, model string) (string, error) {
 	containerName := nimContainerName(model)
 
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
+	res, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{
 		All: true,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	for _, c := range containers {
+	for _, c := range res.Items {
 		for _, name := range c.Names {
+			// TODO(thaJeztah): replace this with a filter, or use "inspect"
 			if strings.TrimPrefix(name, "/") == containerName {
 				return c.ID, nil
 			}
@@ -246,17 +249,18 @@ func createNIMContainer(ctx context.Context, dockerClient *client.Client, model 
 	}
 
 	// Container configuration
-	env := []string{}
+	var env []string
 	if ngcAPIKey != "" {
 		env = append(env, "NGC_API_KEY="+ngcAPIKey)
 	}
 
-	portStr := strconv.Itoa(nimDefaultPort)
+	hostPort, _ := network.PortFrom(nimDefaultPort, network.TCP)
+
 	config := &container.Config{
 		Image: model,
 		Env:   env,
-		ExposedPorts: nat.PortSet{
-			nat.Port(portStr + "/tcp"): struct{}{},
+		ExposedPorts: network.PortSet{
+			hostPort: struct{}{},
 		},
 	}
 
@@ -269,11 +273,11 @@ func createNIMContainer(ctx context.Context, dockerClient *client.Client, model 
 				Target: "/opt/nim/.cache",
 			},
 		},
-		PortBindings: nat.PortMap{
-			nat.Port(portStr + "/tcp"): []nat.PortBinding{
+		PortBindings: network.PortMap{
+			hostPort: []network.PortBinding{
 				{
-					HostIP:   "127.0.0.1",
-					HostPort: portStr,
+					HostIP:   netip.MustParseAddr("127.0.0.1"),
+					HostPort: strconv.Itoa(nimDefaultPort),
 				},
 			},
 		},
@@ -291,13 +295,19 @@ func createNIMContainer(ctx context.Context, dockerClient *client.Client, model 
 	}
 
 	// Create the container
-	resp, err := dockerClient.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: nil,
+		Platform:         nil,
+		Name:             containerName,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create NIM container: %w", err)
 	}
 
 	// Start the container
-	if err := dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if _, err := dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		return "", fmt.Errorf("failed to start NIM container: %w", err)
 	}
 
@@ -315,13 +325,13 @@ func createNIMContainer(ctx context.Context, dockerClient *client.Client, model 
 func waitForNIMReady(ctx context.Context, cmd *cobra.Command) error {
 	cmd.Println("Waiting for NIM to be ready (this may take several minutes)...")
 
-	client := &http.Client{
+	httpClient := &http.Client{
 		Timeout: 5 * time.Second,
 	}
 
 	maxRetries := 120 // 10 minutes with 5 second intervals
 	for i := 0; i < maxRetries; i++ {
-		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/models", nimDefaultPort))
+		resp, err := httpClient.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/models", nimDefaultPort))
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -356,14 +366,14 @@ func runNIMModel(ctx context.Context, dockerClient *client.Client, model string,
 
 	if containerID != "" {
 		// Container exists, check if it's running
-		inspect, err := dockerClient.ContainerInspect(ctx, containerID)
+		inspect, err := dockerClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to inspect NIM container: %w", err)
 		}
 
-		if !inspect.State.Running {
+		if !inspect.Container.State.Running {
 			// Container exists but is not running, start it
-			if err := dockerClient.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
+			if _, err := dockerClient.ContainerStart(ctx, containerID, client.ContainerStartOptions{}); err != nil {
 				return fmt.Errorf("failed to start existing NIM container: %w", err)
 			}
 			cmd.Printf("Started existing NIM container %s\n", nimContainerName(model))
@@ -397,7 +407,7 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 	// The NIM container runs on localhost:8000 and provides an OpenAI-compatible API
 
 	// Create a simple HTTP client to talk to the NIM
-	client := &http.Client{
+	httpClient := &http.Client{
 		Timeout: 300 * time.Second,
 	}
 
@@ -422,7 +432,7 @@ func chatWithNIM(cmd *cobra.Command, model, prompt string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request to NIM: %w", err)
 	}

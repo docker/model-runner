@@ -4,7 +4,7 @@ import (
 	"context"
 	"os/exec"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // GPUSupport encodes the GPU support available on a Docker engine.
@@ -27,7 +27,7 @@ const (
 func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (GPUSupport, error) {
 	// Query Docker Engine for its effective configuration.
 	// Docker Info is the source of truth for which runtimes are actually usable.
-	info, err := dockerClient.Info(ctx)
+	res, err := dockerClient.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		// Preserve best-effort behavior: if Docker Info is unavailable (e.g. in
 		// restricted or degraded environments), do not treat this as a hard failure.
@@ -48,7 +48,7 @@ func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (
 	}
 
 	for _, r := range supportedRuntimes {
-		if _, ok := info.Runtimes[r.name]; ok {
+		if _, ok := res.Info.Runtimes[r.name]; ok {
 			return r.support, nil
 		}
 	}
@@ -66,40 +66,29 @@ func ProbeGPUSupport(ctx context.Context, dockerClient client.SystemAPIClient) (
 
 // HasNVIDIARuntime determines whether there is an nvidia runtime available
 func HasNVIDIARuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
-	info, err := dockerClient.Info(ctx)
-	if err != nil {
-		return false, err
-	}
-	_, hasNvidia := info.Runtimes["nvidia"]
-	return hasNvidia, nil
+	return hasRuntime(ctx, dockerClient, "nvidia")
 }
 
 // HasROCmRuntime determines whether there is a ROCm runtime available
 func HasROCmRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
-	info, err := dockerClient.Info(ctx)
-	if err != nil {
-		return false, err
-	}
-	_, hasROCm := info.Runtimes["rocm"]
-	return hasROCm, nil
+	return hasRuntime(ctx, dockerClient, "rocm")
 }
 
 // HasMTHREADSRuntime determines whether there is a mthreads runtime available
 func HasMTHREADSRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
-	info, err := dockerClient.Info(ctx)
-	if err != nil {
-		return false, err
-	}
-	_, hasMTHREADS := info.Runtimes["mthreads"]
-	return hasMTHREADS, nil
+	return hasRuntime(ctx, dockerClient, "mthreads")
 }
 
 // HasCANNRuntime determines whether there is a Ascend CANN runtime available
 func HasCANNRuntime(ctx context.Context, dockerClient client.SystemAPIClient) (bool, error) {
-	info, err := dockerClient.Info(ctx)
+	return hasRuntime(ctx, dockerClient, "cann")
+}
+
+func hasRuntime(ctx context.Context, dockerClient client.SystemAPIClient, runtimeName string) (bool, error) {
+	res, err := dockerClient.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return false, err
 	}
-	_, hasCANN := info.Runtimes["cann"]
-	return hasCANN, nil
+	_, ok := res.Info.Runtimes[runtimeName]
+	return ok, nil
 }
