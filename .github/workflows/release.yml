@@ -423,9 +423,11 @@ jobs:
           tags: ${{ steps.tags.outputs.cann }}
 
   # ---------------------------------------------------------------------------
-  # Trigger model-cli-release workflow (private repo — signs binaries)
+  # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
+  # (triggers docker/model-cli-release: signs macOS/Windows binaries,
+  #  pushes docker/docker-model-cli-desktop-module to Docker Hub)
   # ---------------------------------------------------------------------------
-  trigger-model-cli-release:
+  release-cli-desktop:
     needs: [prepare, test]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -482,11 +484,12 @@ jobs:
           echo "✅ model-cli-release workflow completed successfully"
 
   # ---------------------------------------------------------------------------
-  # Trigger Docker CE packaging workflow, wait for it, then trigger release-repo
+  # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
+  # (triggers docker/packaging → docker/release-repo)
   # ---------------------------------------------------------------------------
-  trigger-packaging:
+  release-cli-docker-ce:
     if: ${{ !inputs.skipPackaging }}
-    needs: [prepare, trigger-model-cli-release]
+    needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -595,7 +598,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, trigger-model-cli-release]
+    needs: [prepare, release-notes, build, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
