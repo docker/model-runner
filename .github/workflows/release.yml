@@ -491,7 +491,7 @@ jobs:
     if: ${{ !inputs.skipPackaging }}
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:
@@ -574,6 +574,40 @@ jobs:
             -f release_live=true
           echo "✅ Plugin release workflow triggered in docker/release-repo"
 
+      - name: Wait for release-repo plugin workflow to complete
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+        run: |
+          echo "⏳ Waiting for release-repo plugin workflow to appear..."
+          sleep 15
+
+          # Find the most recent run of plugin.yml in release-repo
+          for i in $(seq 1 10); do
+            RUN_ID=$(gh run list \
+              --repo docker/release-repo \
+              --workflow plugin.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found release-repo run: $RUN_ID"
+              break
+            fi
+            echo "  Retry $i/10..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not find release-repo plugin workflow run"
+            exit 1
+          fi
+
+          echo "⏳ Waiting for release-repo run $RUN_ID to complete (includes manual deploy-to-live approval)..."
+          gh run watch "$RUN_ID" \
+            --repo docker/release-repo \
+            --exit-status
+          echo "✅ Release-repo plugin workflow completed successfully"
+
       - name: Post summary
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -599,7 +633,7 @@ jobs:
   # to confirm the CLI version is available via get.docker.com
   # ---------------------------------------------------------------------------
   verify-docker-ce:
-    needs: [prepare, release-cli-docker-ce]
+    needs: [prepare, release-cli-docker-ce, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
