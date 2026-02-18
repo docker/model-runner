@@ -19,7 +19,7 @@ require (
 	github.com/gpustack/gguf-parser-go v0.24.0
 	github.com/jaypipes/ghw v0.23.0
 	github.com/kolesnikovae/go-winjob v1.0.0
-	github.com/mattn/go-runewidth v0.0.19
+	github.com/mattn/go-runewidth v0.0.20
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/moby/moby/client v0.2.2
 	github.com/moby/term v0.5.2
