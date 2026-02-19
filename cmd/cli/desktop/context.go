@@ -15,12 +15,11 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/connhelper"
 	"github.com/docker/cli/cli/context/docker"
-	"github.com/docker/docker/api/types/container"
-	clientpkg "github.com/docker/docker/client"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
 	modeltls "github.com/docker/model-runner/pkg/tls"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
 
@@ -75,7 +74,7 @@ func isCloudContext(cli *command.DockerCli) bool {
 }
 
 // DockerClientForContext creates a Docker client for the specified context.
-func DockerClientForContext(cli *command.DockerCli, name string) (*clientpkg.Client, error) {
+func DockerClientForContext(cli *command.DockerCli, name string) (*client.Client, error) {
 	c, err := cli.ContextStore().GetMetadata(name)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load context metadata: %w", err)
@@ -85,10 +84,9 @@ func DockerClientForContext(cli *command.DockerCli, name string) (*clientpkg.Cli
 		return nil, fmt.Errorf("unable to determine context endpoint: %w", err)
 	}
 
-	opts := []clientpkg.Opt{
-		clientpkg.FromEnv,
-		clientpkg.WithAPIVersionNegotiation(),
-		clientpkg.WithHost(endpoint.Host),
+	opts := []client.Opt{
+		client.FromEnv,
+		client.WithHost(endpoint.Host),
 	}
 
 	helper, err := connhelper.GetConnectionHelper(endpoint.Host)
@@ -97,12 +95,12 @@ func DockerClientForContext(cli *command.DockerCli, name string) (*clientpkg.Cli
 	}
 	if helper != nil {
 		opts = append(opts,
-			clientpkg.WithHost(helper.Host),
-			clientpkg.WithDialContext(helper.Dialer),
+			client.WithHost(helper.Host),
+			client.WithDialContext(helper.Dialer),
 		)
 	}
 
-	return clientpkg.NewClientWithOpts(opts...)
+	return client.New(opts...)
 }
 
 // ModelRunnerContext encodes the operational context of a Model CLI command and
@@ -205,11 +203,14 @@ func wakeUpCloudIfIdle(ctx context.Context, cli *command.DockerCli) error {
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
 	}
+	defer dockerClient.Close()
 
 	// The call is expected to fail with a client error due to nil arguments, but it triggers
 	// Docker Cloud to wake up from idle. Only return unexpected failures (network issues,
 	// server errors) so they're logged as warnings.
-	_, err = dockerClient.ContainerCreate(ctx, &container.Config{}, nil, nil, nil, "")
+	_, err = dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{},
+	})
 	if err != nil && !errdefs.IsInvalidArgument(err) {
 		return fmt.Errorf("failed to wake up Docker Cloud: %w", err)
 	}
@@ -337,11 +338,21 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 	// Construct the HTTP client.
 	var httpClient DockerHttpClient
 	if kind == types.ModelRunnerEngineKindDesktop {
-		dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
-		if err != nil {
-			return nil, fmt.Errorf("unable to create model runner client: %w", err)
+		if useTLS {
+			// For Desktop context, if TLS is enabled, we should either fully support it or fail fast
+			// Since Desktop context uses Docker client, we need to handle TLS differently
+			// For now, we'll fail fast to make the behavior clear
+			return nil, fmt.Errorf("TLS is not supported for Desktop contexts")
 		}
-		httpClient = dockerClient.HTTPClient()
+
+		// FIXME(thaJeztah): can we get the user-agent in some other way? (or just use a default, specific to DMR)?
+		// dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
+		// if err != nil {
+		// 	return nil, fmt.Errorf("unable to create model runner client: %w", err)
+		// }
+		// httpClient = dockerClient.HTTPClient()
+		// dockerClient.Close()
+		httpClient = http.DefaultClient
 	} else {
 		httpClient = http.DefaultClient
 	}
@@ -353,13 +364,6 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 	// Construct TLS client if TLS is enabled
 	var tlsClient DockerHttpClient
 	if useTLS {
-		if kind == types.ModelRunnerEngineKindDesktop {
-			// For Desktop context, if TLS is enabled, we should either fully support it or fail fast
-			// Since Desktop context uses Docker client, we need to handle TLS differently
-			// For now, we'll fail fast to make the behavior clear
-			return nil, fmt.Errorf("TLS is not supported for Desktop contexts")
-		}
-
 		tlsConfig, err := modeltls.LoadClientTLSConfig(tlsCACert, tlsSkipVerify)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load TLS configuration: %w", err)

@@ -26,13 +26,22 @@ DOCKER_BUILD_ARGS := \
 BUILD_DMR ?= 1
 
 # Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
+.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate validate-all lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean build-cli install-cli
 # Default target
 .DEFAULT_GOAL := build
 
 # Build the Go application
 build:
-	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
+	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(APP_NAME) .
+
+build-cli:
+	$(MAKE) -C cmd/cli
+
+install-cli:
+	$(MAKE) -C cmd/cli install
+
+docs:
+	$(MAKE) -C cmd/cli docs
 
 # Run the application locally
 run: build
@@ -76,11 +85,28 @@ validate:
 	@echo "✓ Shellcheck validation passed!"
 
 lint:
-	@echo "Running golangci-lint on root module..."
+	@echo "Running golangci-lint..."
 	golangci-lint run ./...
-	@echo "Running golangci-lint on cmd/cli module..."
-	cd cmd/cli && golangci-lint run ./...
 	@echo "✓ Go linting passed!"
+
+# Run all CI validations locally (use before committing)
+validate-all:
+	@echo "==> Checking go mod tidy..."
+	@go mod tidy
+	@git diff --exit-code go.mod go.sum || (echo "ERROR: go.mod/go.sum were not tidy. The files have been updated — please commit the changes." && exit 1)
+	@echo "✓ go.mod is tidy"
+	@echo ""
+	@echo "==> Running linter..."
+	@$(MAKE) lint
+	@echo ""
+	@echo "==> Running tests with race detection..."
+	@go test -race ./...
+	@echo "✓ All tests passed!"
+	@echo ""
+	@echo "==> Running shellcheck validation..."
+	@$(MAKE) validate
+	@echo ""
+	@echo "==> All validations passed! ✅"
 
 # Build Docker image
 docker-build:
@@ -219,12 +245,16 @@ vllm-metal-clean:
 help:
 	@echo "Available targets:"
 	@echo "  build				- Build the Go application"
+	@echo "  build-cli			- Build the CLI (docker-model plugin)"
+	@echo "  install-cli			- Build and install the CLI as a Docker plugin"
+	@echo "  docs				- Generate CLI documentation"
 	@echo "  run				- Run the application locally"
 	@echo "  clean				- Clean build artifacts"
 	@echo "  test				- Run tests"
-	@echo "  integration-tests		- Run integration tests"
+	@echo "  integration-tests		- Run integration tests (requires Docker)"
 	@echo "  test-docker-ce-installation	- Test Docker CE installation with CLI plugin"
 	@echo "  validate			- Run shellcheck validation"
+	@echo "  validate-all			- Run all CI validations locally (lint, test, shellcheck, go mod tidy)"
 	@echo "  lint				- Run Go linting with golangci-lint"
 	@echo "  docker-build			- Build Docker image for current platform"
 	@echo "  docker-build-multiplatform	- Build Docker image for multiple platforms"

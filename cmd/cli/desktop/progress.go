@@ -9,10 +9,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-units"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/moby/moby/api/types/jsonstream"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 )
 
 // DisplayProgress displays progress messages from a model pull/push operation
@@ -160,7 +161,7 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 
 	// Determine status based on progress
 	var status string
-	var progressDetail *jsonmessage.JSONProgress
+	var progressDetail *jsonstream.Progress
 
 	if msg.Layer.Current == 0 {
 		status = "Waiting"
@@ -170,7 +171,7 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		} else {
 			status = "Downloading"
 		}
-		progressDetail = &jsonmessage.JSONProgress{
+		progressDetail = &jsonstream.Progress{
 			Current: int64(msg.Layer.Current),
 			Total:   int64(msg.Layer.Size),
 		}
@@ -180,7 +181,7 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		} else {
 			status = "Pull complete"
 		}
-		progressDetail = &jsonmessage.JSONProgress{
+		progressDetail = &jsonstream.Progress{
 			Current: int64(msg.Layer.Current),
 			Total:   int64(msg.Layer.Size),
 		}
@@ -196,7 +197,7 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		displayID = displayID[:12]
 	}
 
-	dockerMsg := jsonmessage.JSONMessage{
+	dockerMsg := jsonstream.Message{
 		ID:       displayID,
 		Status:   status,
 		Progress: progressDetail,

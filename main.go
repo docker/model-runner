@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -271,6 +272,14 @@ func main() {
 	// Add Anthropic Messages API compatibility layer
 	anthropicHandler := anthropic.NewHandler(log, schedulerHTTP, nil, modelManager)
 	router.Handle(anthropic.APIPrefix+"/", anthropicHandler)
+
+	// Register /version endpoint
+	router.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
+			log.Warnf("failed to write version response: %v", err)
+		}
+	})
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

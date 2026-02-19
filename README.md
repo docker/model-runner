@@ -176,16 +176,23 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 ## Using the Makefile
 
-This project includes a Makefile to simplify common development tasks. It requires Docker Desktop >= 4.41.0
-The Makefile provides the following targets:
+This project includes a Makefile to simplify common development tasks. Docker targets require Docker Desktop >= 4.41.0.
+Run `make help` for a full list, but the key targets are:
 
 - `build` - Build the Go application
+- `build-cli` - Build the CLI (`docker-model` plugin)
+- `install-cli` - Build and install the CLI as a Docker plugin
+- `docs` - Generate CLI documentation
 - `run` - Run the application locally
 - `clean` - Clean build artifacts
 - `test` - Run tests
-- `docker-build` - Build the Docker image
+- `validate-all` - **Run all CI validations locally** (lint, test, shellcheck, go mod tidy)
+- `lint` - Run Go linting with golangci-lint
+- `validate` - Run shellcheck validation on shell scripts
+- `integration-tests` - Run integration tests (requires Docker)
+- `docker-build` - Build the Docker image for current platform
 - `docker-run` - Run the application in a Docker container with TCP port access and mounted model storage
-- `help` - Show available targets
+- `help` - Show all available targets and configuration options
 
 ### Running in Docker
 
