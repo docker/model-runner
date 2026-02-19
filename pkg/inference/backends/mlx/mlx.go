@@ -80,22 +80,11 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 		return errors.New("MLX is only available on macOS ARM64")
 	}
 
-	var pythonPath string
-
-	// Use custom python path if specified
-	if m.customPythonPath != "" {
-		pythonPath = m.customPythonPath
-	} else {
-		// Check if Python 3 is available
-		var err error
-		pythonPath, err = exec.LookPath("python3")
-		if err != nil {
-			m.status = ErrStatusNotFound.Error()
-			return ErrStatusNotFound
-		}
+	pythonPath, err := backends.FindPythonPath(m.customPythonPath, "")
+	if err != nil {
+		m.status = ErrStatusNotFound.Error()
+		return ErrStatusNotFound
 	}
-
-	// Store the python path for later use
 	m.pythonPath = pythonPath
 
 	// Check if mlx-lm package is installed by attempting to import it

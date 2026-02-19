@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
@@ -28,7 +26,6 @@ const (
 var (
 	ErrNotImplemented    = errors.New("not implemented")
 	ErrDiffusersNotFound = errors.New("diffusers package not installed")
-	ErrPythonNotFound    = errors.New("python3 not found in PATH")
 	ErrNoDDUFFile        = errors.New("no DDUF file found in model bundle")
 )
 
@@ -91,37 +88,22 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 		return ErrNotImplemented
 	}
 
-	var pythonPath string
-
-	// Use custom python path if specified
-	if d.customPythonPath != "" {
-		pythonPath = d.customPythonPath
-	} else {
-		venvPython := filepath.Join(diffusersDir, "bin", "python3")
-		pythonPath = venvPython
-
-		if _, err := os.Stat(venvPython); err != nil {
-			// Fall back to system Python
-			systemPython, err := exec.LookPath("python3")
-			if err != nil {
-				d.status = ErrPythonNotFound.Error()
-				return ErrPythonNotFound
-			}
-			pythonPath = systemPython
-		}
+	pythonPath, err := backends.FindPythonPath(d.customPythonPath, diffusersDir)
+	if err != nil {
+		d.status = err.Error()
+		return err
 	}
-
 	d.pythonPath = pythonPath
 
 	// Check if diffusers is installed
-	if err := d.pythonCmd("-c", "import diffusers").Run(); err != nil {
+	if err := backends.NewPythonCmd(d.pythonPath, "-c", "import diffusers").Run(); err != nil {
 		d.status = "diffusers package not installed"
 		d.log.Warnf("diffusers package not found. Install with: uv pip install diffusers torch")
 		return ErrDiffusersNotFound
 	}
 
 	// Get version
-	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
+	output, err := backends.NewPythonCmd(d.pythonPath, "-c", "import diffusers; print(diffusers.__version__)").Output()
 	if err != nil {
 		d.log.Warnf("could not get diffusers version: %v", err)
 		d.status = "running diffusers version: unknown"
@@ -226,12 +208,3 @@ func (d *diffusers) GetRequiredMemoryForModel(_ context.Context, _ string, _ *in
 	}, nil
 }
 
-// pythonCmd creates an exec.Cmd that runs python with the given arguments.
-// It uses the configured pythonPath if available, otherwise falls back to "python3".
-func (d *diffusers) pythonCmd(args ...string) *exec.Cmd {
-	pythonBinary := "python3"
-	if d.pythonPath != "" {
-		pythonBinary = d.pythonPath
-	}
-	return exec.Command(pythonBinary, args...)
-}

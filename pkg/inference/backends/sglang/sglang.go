@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/diskusage"
@@ -27,7 +25,6 @@ const (
 var (
 	ErrNotImplemented = errors.New("not implemented")
 	ErrSGLangNotFound = errors.New("sglang package not installed")
-	ErrPythonNotFound = errors.New("python3 not found in PATH")
 )
 
 // sglang is the SGLang-based backend implementation.
@@ -86,37 +83,22 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 		return ErrNotImplemented
 	}
 
-	var pythonPath string
-
-	// Use custom python path if specified
-	if s.customPythonPath != "" {
-		pythonPath = s.customPythonPath
-	} else {
-		venvPython := filepath.Join(sglangDir, "bin", "python3")
-		pythonPath = venvPython
-
-		if _, err := os.Stat(venvPython); err != nil {
-			// Fall back to system Python
-			systemPython, err := exec.LookPath("python3")
-			if err != nil {
-				s.status = ErrPythonNotFound.Error()
-				return ErrPythonNotFound
-			}
-			pythonPath = systemPython
-		}
+	pythonPath, err := backends.FindPythonPath(s.customPythonPath, sglangDir)
+	if err != nil {
+		s.status = err.Error()
+		return err
 	}
-
 	s.pythonPath = pythonPath
 
 	// Check if sglang is installed
-	if err := s.pythonCmd("-c", "import sglang").Run(); err != nil {
+	if err := backends.NewPythonCmd(s.pythonPath, "-c", "import sglang").Run(); err != nil {
 		s.status = "sglang package not installed"
 		s.log.Warnf("sglang package not found. Install with: uv pip install sglang")
 		return ErrSGLangNotFound
 	}
 
 	// Get version
-	output, err := s.pythonCmd("-c", "import sglang; print(sglang.__version__)").Output()
+	output, err := backends.NewPythonCmd(s.pythonPath, "-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
 		s.log.Warnf("could not get sglang version: %v", err)
 		s.status = "running sglang version: unknown"
@@ -204,12 +186,3 @@ func (s *sglang) GetRequiredMemoryForModel(_ context.Context, _ string, _ *infer
 	}, nil
 }
 
-// pythonCmd creates an exec.Cmd that runs python with the given arguments.
-// It uses the configured pythonPath if available, otherwise falls back to "python3".
-func (s *sglang) pythonCmd(args ...string) *exec.Cmd {
-	pythonBinary := "python3"
-	if s.pythonPath != "" {
-		pythonBinary = s.pythonPath
-	}
-	return exec.Command(pythonBinary, args...)
-}
