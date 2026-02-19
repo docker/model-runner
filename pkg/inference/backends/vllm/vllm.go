@@ -44,9 +44,33 @@ type vLLM struct {
 	customBinaryPath string
 }
 
-// New creates a new vLLM-based backend.
+// Options holds the configuration for the unified vLLM backend constructor.
+type Options struct {
+	Config          *Config // Linux-only: extra vllm args (nil = defaults)
+	LinuxBinaryPath string  // Linux: custom vllm binary path
+	MetalPythonPath string  // macOS ARM64: custom python path
+}
+
+// New creates the appropriate vLLM backend for the current platform.
+// On macOS ARM64, it returns the vllm-metal backend; on Linux, the standard
+// vLLM backend. On unsupported platforms, the returned backend's Install/Run
+// methods return errors.
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, opts Options) (inference.Backend, error) {
+	if platform.SupportsVLLMMetal() {
+		return newMetal(log, modelManager, serverLog, opts.MetalPythonPath)
+	}
+	return newLinux(log, modelManager, serverLog, opts.Config, opts.LinuxBinaryPath)
+}
+
+// NeedsDeferredInstall reports whether vllm on the current platform
+// requires deferred (on-demand) installation.
+func NeedsDeferredInstall() bool {
+	return platform.SupportsVLLMMetal()
+}
+
+// newLinux creates a new Linux vLLM-based backend.
 // customBinaryPath is an optional path to a custom vllm binary; if empty, the default path is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string) (inference.Backend, error) {
+func newLinux(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultVLLMConfig()

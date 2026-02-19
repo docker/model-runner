@@ -1,4 +1,4 @@
-package vllmmetal
+package vllm
 
 import (
 	"context"
@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	// Name is the backend name.
-	Name              = "vllm-metal"
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
 	vllmMetalVersion = "v0.1.0-20260126-121650"
@@ -52,9 +50,9 @@ type vllmMetal struct {
 	status string
 }
 
-// New creates a new vllm-metal backend.
+// newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)

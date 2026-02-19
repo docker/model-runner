@@ -13,22 +13,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/model-runner/pkg/anthropic"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
-	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
-	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
-	"github.com/docker/model-runner/pkg/inference/platform"
-	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/metrics"
-	"github.com/docker/model-runner/pkg/middleware"
-	"github.com/docker/model-runner/pkg/ollama"
-	"github.com/docker/model-runner/pkg/responses"
 	"github.com/docker/model-runner/pkg/routing"
 	modeltls "github.com/docker/model-runner/pkg/tls"
 	"github.com/sirupsen/logrus"
@@ -100,17 +91,6 @@ func main() {
 	}
 	baseTransport.Proxy = http.ProxyFromEnvironment
 
-	clientConfig := models.ClientConfig{
-		StoreRootPath: modelPath,
-		Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
-		Transport:     baseTransport,
-	}
-	modelManager := models.NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), clientConfig)
-	modelHandler := models.NewHTTPHandler(
-		log,
-		modelManager,
-		nil,
-	)
 	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
 	if vllmServerPath != "" {
 		log.Infof("VLLM_SERVER_PATH: %s", vllmServerPath)
@@ -128,184 +108,89 @@ func main() {
 	// Create llama.cpp configuration from environment variables
 	llamaCppConfig := createLlamaCppConfigFromEnv()
 
-	llamaCppBackend, err := llamacpp.New(
-		log,
-		modelManager,
-		log.WithFields(logrus.Fields{"component": llamacpp.Name}),
-		llamaServerPath,
-		func() string {
-			wd, _ := os.Getwd()
-			d := filepath.Join(wd, "updated-inference", "bin")
-			_ = os.MkdirAll(d, 0o755)
-			return d
-		}(),
-		llamaCppConfig,
-	)
-	if err != nil {
-		log.Fatalf("unable to initialize %s backend: %v", llamacpp.Name, err)
-	}
+	updatedServerPath := func() string {
+		wd, _ := os.Getwd()
+		d := filepath.Join(wd, "updated-inference", "bin")
+		_ = os.MkdirAll(d, 0o755)
+		return d
+	}()
 
-	vllmBackend, err := initVLLMBackend(log, modelManager, vllmServerPath)
-	if err != nil {
-		log.Fatalf("unable to initialize %s backend: %v", vllm.Name, err)
-	}
-
-	mlxBackend, err := mlx.New(
-		log,
-		modelManager,
-		log.WithFields(logrus.Fields{"component": mlx.Name}),
-		nil,
-		mlxServerPath,
-	)
-	if err != nil {
-		log.Fatalf("unable to initialize %s backend: %v", mlx.Name, err)
-	}
-
-	sglangBackend, err := sglang.New(
-		log,
-		modelManager,
-		log.WithFields(logrus.Fields{"component": sglang.Name}),
-		nil,
-		sglangServerPath,
-	)
-	if err != nil {
-		log.Fatalf("unable to initialize %s backend: %v", sglang.Name, err)
-	}
-
-	var diffusersBackend inference.Backend
-	if platform.SupportsDiffusers() {
-		diffusersBackend, err = diffusers.New(
-			log,
-			modelManager,
-			log.WithFields(logrus.Fields{"component": diffusers.Name}),
-			nil,
-			diffusersServerPath,
-		)
-		if err != nil {
-			log.Warnf("Failed to initialize diffusers backend: %v", err)
-		}
-	}
-
-	var vllmMetalBackend inference.Backend
-	if platform.SupportsVLLMMetal() {
-		vllmMetalBackend, err = vllmmetal.New(
-			log,
-			modelManager,
-			log.WithFields(logrus.Fields{"component": vllmmetal.Name}),
-			vllmMetalServerPath,
-		)
-		if err != nil {
-			log.Warnf("Failed to initialize vllm-metal backend: %v", err)
-		}
-	}
-
-	backends := map[string]inference.Backend{
-		llamacpp.Name: llamaCppBackend,
-		mlx.Name:      mlxBackend,
-		sglang.Name:   sglangBackend,
-	}
-	registerVLLMBackend(backends, vllmBackend)
-
-	if diffusersBackend != nil {
-		backends[diffusers.Name] = diffusersBackend
-	}
-
-	if vllmMetalBackend != nil {
-		backends[vllmmetal.Name] = vllmMetalBackend
-	}
-
-	// Backends whose installation is deferred until explicitly requested.
-	var deferredBackends []string
-	if vllmMetalBackend != nil {
-		deferredBackends = append(deferredBackends, vllmmetal.Name)
-	}
-	if diffusersBackend != nil {
-		deferredBackends = append(deferredBackends, diffusers.Name)
-	}
-
-	scheduler := scheduling.NewScheduler(
-		log,
-		backends,
-		llamaCppBackend,
-		modelManager,
-		http.DefaultClient,
-		metrics.NewTracker(
+	svc, err := routing.NewService(routing.ServiceConfig{
+		Log: log,
+		ClientConfig: models.ClientConfig{
+			StoreRootPath: modelPath,
+			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+			Transport:     baseTransport,
+		},
+		Backends: append(
+			routing.DefaultBackendDefs(routing.BackendsConfig{
+				Log:                  log,
+				LlamaCppVendoredPath: llamaServerPath,
+				LlamaCppUpdatedPath:  updatedServerPath,
+				LlamaCppConfig:       llamaCppConfig,
+				IncludeMLX:           true,
+				MLXPath:              mlxServerPath,
+				IncludeVLLM:          includeVLLM,
+				VLLMPath:             vllmServerPath,
+				VLLMMetalPath:        vllmMetalServerPath,
+			}),
+			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
+				return sglang.New(log, mm, log.WithFields(logrus.Fields{"component": sglang.Name}), nil, sglangServerPath)
+			}},
+			routing.BackendDef{Name: diffusers.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
+				return diffusers.New(log, mm, log.WithFields(logrus.Fields{"component": diffusers.Name}), nil, diffusersServerPath)
+			}},
+		),
+		OnBackendError: func(name string, err error) {
+			log.Fatalf("unable to initialize %s backend: %v", name, err)
+		},
+		DefaultBackendName: llamacpp.Name,
+		HTTPClient:         http.DefaultClient,
+		MetricsTracker: metrics.NewTracker(
 			http.DefaultClient,
 			log.WithField("component", "metrics"),
 			"",
 			false,
 		),
-		deferredBackends,
-	)
+		IncludeResponsesAPI: true,
+		ExtraRoutes: func(r *routing.NormalizedServeMux, s *routing.Service) {
+			// Root handler – only catches exact "/" requests
+			r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path != "/" {
+					http.NotFound(w, req)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("Docker Model Runner is running"))
+			})
 
-	// Create the HTTP handler for the scheduler
-	schedulerHTTP := scheduling.NewHTTPHandler(scheduler, modelHandler, nil)
+			// Version endpoint
+			r.HandleFunc("/version", func(w http.ResponseWriter, req *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
+					log.Warnf("failed to write version response: %v", err)
+				}
+			})
 
-	router := routing.NewNormalizedServeMux()
-
-	// Register path prefixes to forward all HTTP methods (including OPTIONS) to components
-	// Components handle method routing internally
-	// Register both with and without trailing slash to avoid redirects
-	router.Handle(inference.ModelsPrefix, modelHandler)
-	router.Handle(inference.ModelsPrefix+"/", modelHandler)
-	router.Handle(inference.InferencePrefix+"/", schedulerHTTP)
-	// Add OpenAI Responses API compatibility layer
-	responsesHandler := responses.NewHTTPHandler(log, schedulerHTTP, nil)
-	router.Handle(responses.APIPrefix+"/", responsesHandler)
-	router.Handle(responses.APIPrefix, responsesHandler) // Also register for exact match without trailing slash
-	router.Handle("/v1"+responses.APIPrefix+"/", responsesHandler)
-	router.Handle("/v1"+responses.APIPrefix, responsesHandler)
-	// Also register Responses API under inference prefix to support all inference engines
-	router.Handle(inference.InferencePrefix+responses.APIPrefix+"/", responsesHandler)
-	router.Handle(inference.InferencePrefix+responses.APIPrefix, responsesHandler)
-
-	// Add path aliases: /v1 -> /engines/v1, /rerank -> /engines/rerank, /score -> /engines/score.
-	aliasHandler := &middleware.AliasHandler{Handler: schedulerHTTP}
-	router.Handle("/v1/", aliasHandler)
-	router.Handle("/rerank", aliasHandler)
-	router.Handle("/score", aliasHandler)
-
-	// Add Ollama API compatibility layer (only register with trailing slash to catch sub-paths)
-	ollamaHandler := ollama.NewHTTPHandler(log, scheduler, schedulerHTTP, nil, modelManager)
-	router.Handle(ollama.APIPrefix+"/", ollamaHandler)
-
-	// Add Anthropic Messages API compatibility layer
-	anthropicHandler := anthropic.NewHandler(log, schedulerHTTP, nil, modelManager)
-	router.Handle(anthropic.APIPrefix+"/", anthropicHandler)
-
-	// Register /version endpoint
-	router.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
-			log.Warnf("failed to write version response: %v", err)
-		}
+			// Metrics endpoint
+			if os.Getenv("DISABLE_METRICS") != "1" {
+				metricsHandler := metrics.NewAggregatedMetricsHandler(
+					log.WithField("component", "metrics"),
+					s.SchedulerHTTP,
+				)
+				r.Handle("/metrics", metricsHandler)
+				log.Info("Metrics endpoint enabled at /metrics")
+			} else {
+				log.Info("Metrics endpoint disabled")
+			}
+		},
 	})
-
-	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Only respond to exact root path
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Docker Model Runner is running"))
-	})
-
-	// Add metrics endpoint if enabled
-	if os.Getenv("DISABLE_METRICS") != "1" {
-		metricsHandler := metrics.NewAggregatedMetricsHandler(
-			log.WithField("component", "metrics"),
-			schedulerHTTP,
-		)
-		router.Handle("/metrics", metricsHandler)
-		log.Info("Metrics endpoint enabled at /metrics")
-	} else {
-		log.Info("Metrics endpoint disabled")
+	if err != nil {
+		log.Fatalf("failed to initialize service: %v", err)
 	}
 
 	server := &http.Server{
-		Handler:           router,
+		Handler:           svc.Router,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	serverErrors := make(chan error, 1)
@@ -375,7 +260,7 @@ func main() {
 
 		tlsServer = &http.Server{
 			Addr:              ":" + tlsPort,
-			Handler:           router,
+			Handler:           svc.Router,
 			TLSConfig:         tlsConfig,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
@@ -394,7 +279,7 @@ func main() {
 
 	schedulerErrors := make(chan error, 1)
 	go func() {
-		schedulerErrors <- scheduler.Run(ctx)
+		schedulerErrors <- svc.Scheduler.Run(ctx)
 	}()
 
 	var tlsServerErrorsChan <-chan error

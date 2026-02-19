@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -345,14 +346,18 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 			return nil, fmt.Errorf("TLS is not supported for Desktop contexts")
 		}
 
-		// FIXME(thaJeztah): can we get the user-agent in some other way? (or just use a default, specific to DMR)?
-		// dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
-		// if err != nil {
-		// 	return nil, fmt.Errorf("unable to create model runner client: %w", err)
-		// }
-		// httpClient = dockerClient.HTTPClient()
-		// dockerClient.Close()
-		httpClient = http.DefaultClient
+		dockerClient, err := DockerClientForContext(cli, cli.CurrentContext())
+		if err != nil {
+			return nil, fmt.Errorf("unable to create model runner client: %w", err)
+		}
+		_ = dockerClient.Close()
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return dockerClient.Dialer()(ctx)
+				},
+			},
+		}
 	} else {
 		httpClient = http.DefaultClient
 	}
