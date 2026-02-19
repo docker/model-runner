@@ -13,12 +13,12 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 	"github.com/nxadm/tail"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -51,7 +51,7 @@ func newLogsCmd() *cobra.Command {
 				} else if ctrID == "" {
 					return errors.New("unable to identify Model Runner container")
 				}
-				log, err := dockerClient.ContainerLogs(cmd.Context(), ctrID, container.LogsOptions{
+				log, err := dockerClient.ContainerLogs(cmd.Context(), ctrID, client.ContainerLogsOptions{
 					ShowStdout: true,
 					ShowStderr: true,
 					Follow:     follow,

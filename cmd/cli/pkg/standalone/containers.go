@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,14 +17,12 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // controllerContainerName is the name to use for the controller container.
@@ -51,6 +50,8 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
+	defer tw.Close()
+
 	header := &tar.Header{
 		Name: ".docker/config.json",
 		Mode: 0600,
@@ -73,8 +74,10 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 	}
 
 	// Copy directly into the .docker directory
-	err = dockerClient.CopyToContainer(ctx, containerID, "/home/modelrunner", &buf, container.CopyToContainerOptions{
-		CopyUIDGID: true,
+	_, err = dockerClient.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+		DestinationPath: "/home/modelrunner",
+		Content:         &buf,
+		CopyUIDGID:      true,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to copy config file to container: %w", err)
@@ -90,17 +93,18 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 }
 
 func execInContainer(ctx context.Context, dockerClient *client.Client, containerID, cmd string, asRoot bool) error {
-	execConfig := container.ExecOptions{
-		Cmd: []string{"sh", "-c", cmd},
-	}
+	var user string
 	if asRoot {
-		execConfig.User = "root"
+		user = "root"
 	}
-	execResp, err := dockerClient.ContainerExecCreate(ctx, containerID, execConfig)
+	execResp, err := dockerClient.ExecCreate(ctx, containerID, client.ExecCreateOptions{
+		Cmd:  []string{"sh", "-c", cmd},
+		User: user,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create exec for command '%s': %w", cmd, err)
 	}
-	if err := dockerClient.ContainerExecStart(ctx, execResp.ID, container.ExecStartOptions{}); err != nil {
+	if _, err := dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{}); err != nil {
 		return fmt.Errorf("failed to start exec for command '%s': %w", cmd, err)
 	}
 
@@ -110,7 +114,7 @@ func execInContainer(ctx context.Context, dockerClient *client.Client, container
 
 	// Poll until the command finishes or timeout occurs
 	for {
-		inspectResp, err := dockerClient.ContainerExecInspect(ctx, execResp.ID)
+		inspectResp, err := dockerClient.ExecInspect(ctx, execResp.ID, client.ExecInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to inspect exec for command '%s': %w", cmd, err)
 		}
@@ -143,38 +147,37 @@ func FindControllerContainer(ctx context.Context, dockerClient client.ContainerA
 	}
 
 	// Identify all controller containers.
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
-		Filters: filters.NewArgs(
-			// Don't include a value on this first label selector; Docker Cloud
-			// middleware only shows these containers if no value is queried.
-			filters.Arg("label", labelDesktopService),
-			filters.Arg("label", labelRole+"="+roleController),
-		),
+	res, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{
+		// Don't include a value on this first label selector; Docker Cloud
+		// middleware only shows these containers if no value is queried.
+		Filters: make(client.Filters).Add("label", labelDesktopService, labelRole+"="+roleController),
 	})
 	if err != nil {
 		return "", "", container.Summary{}, fmt.Errorf("unable to identify model runner containers: %w", err)
 	}
-	if len(containers) == 0 {
+	if len(res.Items) == 0 {
 		return "", "", container.Summary{}, nil
 	}
+	ctr := res.Items[0]
+
 	var containerName string
-	if len(containers[0].Names) > 0 {
-		containerName = strings.TrimPrefix(containers[0].Names[0], "/")
+	if len(ctr.Names) > 0 {
+		containerName = strings.TrimPrefix(ctr.Names[0], "/")
 	}
-	return containers[0].ID, containerName, containers[0], nil
+	return ctr.ID, containerName, ctr, nil
 }
 
 // determineBridgeGatewayIP attempts to identify the engine's host gateway IP
 // address on the bridge network. It may return an empty IP address even with a
 // nil error if no IP could be identified.
 func determineBridgeGatewayIP(ctx context.Context, dockerClient client.NetworkAPIClient) (string, error) {
-	bridge, err := dockerClient.NetworkInspect(ctx, "bridge", network.InspectOptions{})
+	res, err := dockerClient.NetworkInspect(ctx, "bridge", client.NetworkInspectOptions{})
 	if err != nil {
 		return "", err
 	}
-	for _, config := range bridge.IPAM.Config {
-		if config.Gateway != "" {
-			return config.Gateway, nil
+	for _, config := range res.Network.IPAM.Config {
+		if config.Gateway.IsValid() {
+			return config.Gateway.String(), nil
 		}
 	}
 	return "", nil
@@ -184,7 +187,7 @@ func determineBridgeGatewayIP(ctx context.Context, dockerClient client.NetworkAP
 // concurrently, taking advantage of the fact that ContainerStart is idempotent.
 func ensureContainerStarted(ctx context.Context, dockerClient client.ContainerAPIClient, containerID string) error {
 	for i := 10; i > 0; i-- {
-		err := dockerClient.ContainerStart(ctx, containerID, container.StartOptions{})
+		_, err := dockerClient.ContainerStart(ctx, containerID, client.ContainerStartOptions{})
 		if err == nil {
 			return nil
 		}
@@ -222,12 +225,12 @@ func ensureContainerStarted(ctx context.Context, dockerClient client.ContainerAP
 
 // isRootless detects if Docker is running in rootless mode.
 func isRootless(ctx context.Context, dockerClient *client.Client) bool {
-	info, err := dockerClient.Info(ctx)
+	res, err := dockerClient.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		// If we can't get Docker info, assume it's not rootless to preserve old behavior.
 		return false
 	}
-	for _, opt := range info.SecurityOptions {
+	for _, opt := range res.Info.SecurityOptions {
 		if strings.Contains(opt, "rootless") {
 			return true
 		}
@@ -304,8 +307,18 @@ func isPortBindingError(err error) bool {
 func CreateControllerContainer(ctx context.Context, dockerClient *client.Client, port uint16, host string, environment string, doNotTrack bool, gpu gpupkg.GPUSupport, backend string, modelStorageVolume string, printer StatusPrinter, engineKind types.ModelRunnerEngineKind, debug bool, vllmOnWSL bool, proxyCert string, tlsOpts TLSOptions) error {
 	imageName := controllerImageName(gpu, backend)
 
+	var hostIP netip.Addr
+	if host != "" {
+		p, err := netip.ParseAddr(host)
+		if err != nil {
+			return fmt.Errorf("invalid host: must be a valid IP-address: %w", err)
+		}
+		hostIP = p
+	}
+
 	// Set up the container configuration.
 	portStr := strconv.Itoa(int(port))
+	expPort, _ := network.PortFrom(port, network.TCP)
 	env := []string{
 		"MODEL_RUNNER_PORT=" + portStr,
 		"MODEL_RUNNER_ENVIRONMENT=" + environment,
@@ -331,6 +344,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			tlsPort = DefaultTLSPortMoby
 		}
 	}
+	expTLSPort, _ := network.PortFrom(tlsPort, network.TCP)
 
 	// Add TLS environment variables if TLS is enabled
 	if tlsOpts.Enabled {
@@ -356,11 +370,11 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		// If no cert paths, auto-cert will be used inside the container
 	}
 
-	exposedPorts := nat.PortSet{
-		nat.Port(portStr + "/tcp"): struct{}{},
+	exposedPorts := network.PortSet{
+		expPort: struct{}{},
 	}
 	if tlsOpts.Enabled {
-		exposedPorts[nat.Port(strconv.Itoa(int(tlsPort))+"/tcp")] = struct{}{}
+		exposedPorts[expTLSPort] = struct{}{}
 	}
 
 	config := &container.Config{
@@ -443,14 +457,24 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	}
 
 	// Helper function to create port bindings with optional bridge gateway IP
-	createPortBindings := func(port string) []nat.PortBinding {
-		portBindings := []nat.PortBinding{{HostIP: host, HostPort: port}}
+	createPortBindings := func(port string) []network.PortBinding {
+		portBindings := []network.PortBinding{{
+			HostIP:   hostIP,
+			HostPort: port,
+		}}
 		if os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") != "1" {
 			// Don't bind the bridge gateway IP if we're treating Docker Desktop as Moby.
 			// Only add bridge gateway IP binding if host is 127.0.0.1 and not in rootless mode
 			if host == "127.0.0.1" && !isRootless(ctx, dockerClient) && !vllmOnWSL {
 				if bridgeGatewayIP, err := determineBridgeGatewayIP(ctx, dockerClient); err == nil && bridgeGatewayIP != "" {
-					portBindings = append(portBindings, nat.PortBinding{HostIP: bridgeGatewayIP, HostPort: port})
+					var gwIP netip.Addr
+					if p, err := netip.ParseAddr(bridgeGatewayIP); err == nil {
+						gwIP = p
+					}
+					portBindings = append(portBindings, network.PortBinding{
+						HostIP:   gwIP,
+						HostPort: port,
+					})
 				}
 			}
 		}
@@ -458,14 +482,14 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	}
 
 	// Create port bindings for the main port
-	hostConfig.PortBindings = nat.PortMap{
-		nat.Port(portStr + "/tcp"): createPortBindings(portStr),
+	hostConfig.PortBindings = network.PortMap{
+		expPort: createPortBindings(portStr),
 	}
 
 	// Add TLS port bindings if TLS is enabled
 	if tlsOpts.Enabled {
 		tlsPortStr := strconv.Itoa(int(tlsPort))
-		hostConfig.PortBindings[nat.Port(tlsPortStr+"/tcp")] = createPortBindings(tlsPortStr)
+		hostConfig.PortBindings[expTLSPort] = createPortBindings(tlsPortStr)
 	}
 	switch gpu {
 	case gpupkg.GPUSupportNone:
@@ -553,7 +577,13 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	// pass silently and simply work in conjunction with any concurrent
 	// installers to start the container.
 	// TODO: Remove strings.Contains check once we ensure it's not necessary.
-	resp, err := dockerClient.ContainerCreate(ctx, config, hostConfig, nil, nil, controllerContainerName)
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: nil,
+		Platform:         nil,
+		Name:             controllerContainerName,
+	})
 	if err != nil && !errdefs.IsConflict(err) && !strings.Contains(err.Error(), "is already in use by container") {
 		return fmt.Errorf("failed to create container %s: %w", controllerContainerName, err)
 	}
@@ -563,7 +593,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 	printer.Printf("Starting model runner container %s...\n", controllerContainerName)
 	if err := ensureContainerStarted(ctx, dockerClient, controllerContainerName); err != nil {
 		if created {
-			_ = dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+			_, _ = dockerClient.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 		}
 		if isPortBindingError(err) {
 			return fmt.Errorf("failed to start container %s: %w\n\nThe port may already be in use by Docker Desktop's Model Runner.\nTry running: docker desktop disable model-runner", controllerContainerName, err)
@@ -586,7 +616,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			printer.Printf("Warning: failed to update CA certificates: %v\n", err)
 		} else {
 			printer.Printf("Restarting container to apply CA certificate...\n")
-			if err := dockerClient.ContainerRestart(ctx, resp.ID, container.StopOptions{}); err != nil {
+			if _, err := dockerClient.ContainerRestart(ctx, resp.ID, client.ContainerRestartOptions{}); err != nil {
 				printer.Printf("Warning: failed to restart container after adding CA certificate: %v\n", err)
 			}
 		}
@@ -599,21 +629,18 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 // containers.
 func PruneControllerContainers(ctx context.Context, dockerClient client.ContainerAPIClient, skipRunning bool, printer StatusPrinter) error {
 	// Identify all controller containers.
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
+	res, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{
 		All: true,
-		Filters: filters.NewArgs(
-			// Don't include a value on this first label selector; Docker Cloud
-			// middleware only shows these containers if no value is queried.
-			filters.Arg("label", labelDesktopService),
-			filters.Arg("label", labelRole+"="+roleController),
-		),
+		// Don't include a value on this first label selector; Docker Cloud
+		// middleware only shows these containers if no value is queried.
+		Filters: make(client.Filters).Add("label", labelDesktopService, labelRole+"="+roleController),
 	})
 	if err != nil {
 		return fmt.Errorf("unable to identify model runner containers: %w", err)
 	}
 
 	// Remove all controller containers.
-	for _, ctr := range containers {
+	for _, ctr := range res.Items {
 		if skipRunning && ctr.State == container.StateRunning {
 			continue
 		}
@@ -622,7 +649,7 @@ func PruneControllerContainers(ctx context.Context, dockerClient client.Containe
 		} else {
 			printer.Printf("Removing container %s...\n", ctr.ID[:12])
 		}
-		err := dockerClient.ContainerRemove(ctx, ctr.ID, container.RemoveOptions{Force: true})
+		_, err := dockerClient.ContainerRemove(ctx, ctr.ID, client.ContainerRemoveOptions{Force: true})
 		if err != nil {
 			return fmt.Errorf("failed to remove container %s: %w", ctr.Names[0], err)
 		}

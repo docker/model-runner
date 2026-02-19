@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 )
 
 // EnsureControllerImage ensures that the controller container image is pulled.
@@ -15,7 +14,7 @@ func EnsureControllerImage(ctx context.Context, dockerClient client.ImageAPIClie
 	imageName := controllerImageName(gpu, backend)
 
 	// Perform the pull.
-	out, err := dockerClient.ImagePull(ctx, imageName, image.PullOptions{})
+	out, err := dockerClient.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
 	}
@@ -35,13 +34,13 @@ func EnsureControllerImage(ctx context.Context, dockerClient client.ImageAPIClie
 func PruneControllerImages(ctx context.Context, dockerClient client.ImageAPIClient, printer StatusPrinter) error {
 	// Remove the standard image, if present.
 	imageNameCPU := fmtControllerImageName(ControllerImage, controllerImageVersion(), "")
-	if _, err := dockerClient.ImageRemove(ctx, imageNameCPU, image.RemoveOptions{}); err == nil {
+	if _, err := dockerClient.ImageRemove(ctx, imageNameCPU, client.ImageRemoveOptions{}); err == nil {
 		printer.Println("Removed image", imageNameCPU)
 	}
 
 	// Remove the CUDA GPU image, if present.
 	imageNameCUDA := fmtControllerImageName(ControllerImage, controllerImageVersion(), "cuda")
-	if _, err := dockerClient.ImageRemove(ctx, imageNameCUDA, image.RemoveOptions{}); err == nil {
+	if _, err := dockerClient.ImageRemove(ctx, imageNameCUDA, client.ImageRemoveOptions{}); err == nil {
 		printer.Println("Removed image", imageNameCUDA)
 	}
 	return nil
