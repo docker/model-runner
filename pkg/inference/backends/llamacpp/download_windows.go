@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/logging"
 )
 
@@ -23,13 +24,13 @@ func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger,
 		case "amd64":
 			canUseCUDA11, err = hasCUDA11CapableGPU(ctx, nvGPUInfoBin)
 			if err != nil {
-				l.status = fmt.Sprintf("failed to check CUDA 11 capability: %v", err)
+				l.status = inference.FormatError(fmt.Sprintf("failed to check CUDA 11 capability: %v", err))
 				return fmt.Errorf("failed to check CUDA 11 capability: %w", err)
 			}
 		case "arm64":
 			canUseOpenCL, err = hasOpenCL()
 			if err != nil {
-				l.status = fmt.Sprintf("failed to check OpenCL capability: %v", err)
+				l.status = inference.FormatError(fmt.Sprintf("failed to check OpenCL capability: %v", err))
 				return fmt.Errorf("failed to check OpenCL capability: %w", err)
 			}
 		}
@@ -41,7 +42,7 @@ func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger,
 	} else if canUseOpenCL {
 		desiredVariant = "opencl"
 	}
-	l.status = fmt.Sprintf("looking for updates for %s variant", desiredVariant)
+	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailCheckingForUpdates, desiredVariant))
 	return l.downloadLatestLlamaCpp(ctx, log, httpClient, llamaCppPath, vendoredServerStoragePath, desiredVersion,
 		desiredVariant)
 }

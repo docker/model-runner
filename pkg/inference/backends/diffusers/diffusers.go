@@ -63,7 +63,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		modelManager:     modelManager,
 		serverLog:        serverLog,
 		config:           conf,
-		status:           "not installed",
+		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
 	}, nil
 }
@@ -88,6 +88,7 @@ func (d *diffusers) UsesTCP() bool {
 // Install implements inference.Backend.Install.
 func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 	if !platform.SupportsDiffusers() {
+		d.status = inference.FormatNotInstalled(inference.DetailOnlyLinux)
 		return ErrNotImplemented
 	}
 
@@ -104,7 +105,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 			// Fall back to system Python
 			systemPython, err := exec.LookPath("python3")
 			if err != nil {
-				d.status = ErrPythonNotFound.Error()
+				d.status = inference.FormatError(inference.DetailPythonNotFound)
 				return ErrPythonNotFound
 			}
 			pythonPath = systemPython
@@ -115,7 +116,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 
 	// Check if diffusers is installed
 	if err := d.pythonCmd("-c", "import diffusers").Run(); err != nil {
-		d.status = "diffusers package not installed"
+		d.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
 		d.log.Warnf("diffusers package not found. Install with: uv pip install diffusers torch")
 		return ErrDiffusersNotFound
 	}
@@ -124,9 +125,9 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
 	if err != nil {
 		d.log.Warnf("could not get diffusers version: %v", err)
-		d.status = "running diffusers version: unknown"
+		d.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
-		d.status = fmt.Sprintf("running diffusers version: %s", strings.TrimSpace(string(output)))
+		d.status = inference.FormatRunning(fmt.Sprintf("diffusers %s", strings.TrimSpace(string(output))))
 	}
 
 	return nil

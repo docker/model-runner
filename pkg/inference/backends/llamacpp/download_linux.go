@@ -2,7 +2,6 @@ package llamacpp
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"path/filepath"
 
@@ -12,7 +11,6 @@ import (
 func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _ *http.Client,
 	_, vendoredServerStoragePath string,
 ) error {
-	l.status = fmt.Sprintf("running llama.cpp version: %s",
-		getLlamaCppVersion(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server")))
+	l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server"), "", "")
 	return errLlamaCppUpdateDisabled
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,93 @@ const (
 	// image generation mode.
 	BackendModeImageGeneration
 )
+
+// Backend status constants for standardized status reporting.
+// Backends should use these prefixes when reporting their status.
+const (
+	// StatusRunning indicates the backend is operational and ready.
+	// Format: "Running: <details>" (e.g., "Running: vllm v0.1.0")
+	StatusRunning = "Running"
+
+	// StatusError indicates the backend encountered an error.
+	// Format: "Error: <details>" (e.g., "Error: installation failed")
+	StatusError = "Error"
+
+	// StatusNotInstalled indicates the backend is not installed.
+	// Format: "Not Installed: <details>" or just "Not Installed"
+	StatusNotInstalled = "Not Installed"
+
+	// StatusInstalling indicates the backend is currently being installed.
+	// Format: "Installing: <details>" or just "Installing"
+	StatusInstalling = "Installing"
+)
+
+// Common status detail messages for consistent reporting across backends.
+const (
+	DetailBinaryNotFound      = "binary not found"
+	DetailPackageNotInstalled = "package not installed"
+	DetailImportFailed        = "import failed"
+	DetailVersionUnknown      = "version unknown"
+	DetailPythonNotFound      = "Python not found"
+	DetailOnlyLinux           = "only supported on Linux"
+	DetailOnlyAppleSilicon    = "only supported on Apple Silicon"
+	DetailDownloading         = "downloading"
+	DetailCheckingForUpdates  = "checking for updates"
+)
+
+// FormatStatus formats a backend status with optional details.
+// If details is empty, returns just the status type.
+// Otherwise, returns "Status: details".
+func FormatStatus(statusType, details string) string {
+	if details == "" {
+		return statusType
+	}
+	return statusType + ": " + details
+}
+
+// ParseStatus splits a formatted status string into type and details.
+// Returns the status type and details separately.
+func ParseStatus(status string) (statusType, details string) {
+	if status == "" {
+		return StatusNotInstalled, ""
+	}
+
+	for _, prefix := range []string{StatusRunning, StatusError, StatusNotInstalled, StatusInstalling} {
+		if status == prefix {
+			return prefix, ""
+		}
+		if details, found := strings.CutPrefix(status, prefix+": "); found {
+			return prefix, details
+		}
+	}
+
+	return StatusError, status
+}
+
+// FormatRunning formats a running status with version/details.
+// Example: FormatRunning("vllm 0.1.0") -> "Running: vllm 0.1.0"
+func FormatRunning(details string) string {
+	return FormatStatus(StatusRunning, details)
+}
+
+// FormatError formats an error status with error message.
+// Example: FormatError("installation failed") -> "Error: installation failed"
+func FormatError(details string) string {
+	return FormatStatus(StatusError, details)
+}
+
+// FormatNotInstalled formats a not installed status with optional details.
+// Example: FormatNotInstalled("package not found") -> "Not Installed: package not found"
+// Example: FormatNotInstalled("") -> "Not Installed"
+func FormatNotInstalled(details string) string {
+	return FormatStatus(StatusNotInstalled, details)
+}
+
+// FormatInstalling formats an installing status with optional details.
+// Example: FormatInstalling("downloading") -> "Installing: downloading"
+func FormatInstalling(details string) string {
+	return FormatStatus(StatusInstalling, details)
+}
 
 type ErrGGUFParse struct {
 	Err error
