@@ -115,7 +115,7 @@ func main() {
 		return d
 	}()
 
-	svc := routing.NewService(routing.ServiceConfig{
+	svc, err := routing.NewService(routing.ServiceConfig{
 		Log: log,
 		ClientConfig: models.ClientConfig{
 			StoreRootPath: modelPath,
@@ -183,6 +183,9 @@ func main() {
 			}
 		},
 	})
+	if err != nil {
+		log.Fatalf("failed to initialize service: %v", err)
+	}
 
 	server := &http.Server{
 		Handler:           svc.Router,

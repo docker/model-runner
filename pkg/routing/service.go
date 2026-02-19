@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/docker/model-runner/pkg/inference"
@@ -79,14 +80,17 @@ type Service struct {
 
 // NewService wires up the full inference service stack from the given
 // configuration and returns the assembled Service.
-func NewService(cfg ServiceConfig) *Service {
+func NewService(cfg ServiceConfig) (*Service, error) {
 	modelManager := models.NewManager(cfg.Log, cfg.ClientConfig)
 	modelHandler := models.NewHTTPHandler(cfg.Log, modelManager, cfg.AllowedOrigins)
 
 	backends := initBackends(cfg.Log, modelManager, cfg.Backends, cfg.OnBackendError)
 	deferredBackends := vllmmetal.TryRegister(cfg.Log, modelManager, backends, cfg.VLLMMetalServerPath)
 
-	defaultBackend := backends[cfg.DefaultBackendName]
+	defaultBackend, ok := backends[cfg.DefaultBackendName]
+	if !ok {
+		return nil, fmt.Errorf("default backend %q not found or failed to initialize", cfg.DefaultBackendName)
+	}
 
 	scheduler := scheduling.NewScheduler(
 		cfg.Log,
@@ -123,7 +127,7 @@ func NewService(cfg ServiceConfig) *Service {
 		cfg.ExtraRoutes(svc.Router, svc)
 	}
 
-	return svc
+	return svc, nil
 }
 
 // initBackends creates and registers backends from the given definitions.
