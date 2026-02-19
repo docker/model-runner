@@ -16,7 +16,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
+	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/moby/moby/api/types/container"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +29,7 @@ const (
 	// installation will try to reach the model runner while waiting for it to
 	// be ready.
 	installWaitRetryInterval = 500 * time.Millisecond
-	backendUsage             = "Specify backend (" + llamacpp.Name + "|" + vllm.Name + "|" + diffusers.Name + "|" + vllmmetal.Name + "). Default: " + llamacpp.Name
+	backendUsage             = "Specify backend (" + llamacpp.Name + "|" + vllm.Name + "|" + diffusers.Name + "). Default: " + llamacpp.Name
 )
 
 // waitForStandaloneRunnerAfterInstall waits for a standalone model runner
@@ -242,14 +242,14 @@ type runnerOptions struct {
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
 func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error {
-	// vllm-metal is installed on-demand via the running model runner,
-	// not as a standalone container. This applies to all engine kinds.
-	if opts.backend == vllmmetal.Name {
-		cmd.Println("Installing vllm-metal backend...")
-		if err := desktopClient.InstallBackend(vllmmetal.Name); err != nil {
-			return fmt.Errorf("failed to install vllm-metal backend: %w", err)
+	// On macOS ARM64, the vllm backend requires deferred installation
+	// (on-demand via the running model runner), not as a standalone container.
+	if opts.backend == vllm.Name && platform.SupportsVLLMMetal() {
+		cmd.Println("Installing vllm backend...")
+		if err := desktopClient.InstallBackend(vllm.Name); err != nil {
+			return fmt.Errorf("failed to install vllm backend: %w", err)
 		}
-		cmd.Println("vllm-metal backend installed successfully")
+		cmd.Println("vllm backend installed successfully")
 		return nil
 	}
 
@@ -340,7 +340,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 	}
 
 	// Validate backend selection
-	validBackends := []string{llamacpp.Name, vllm.Name, diffusers.Name, vllmmetal.Name}
+	validBackends := []string{llamacpp.Name, vllm.Name, diffusers.Name}
 	if opts.backend != "" {
 		isValid := false
 		for _, valid := range validBackends {
@@ -354,8 +354,8 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		}
 	}
 
-	// Validate backend-GPU compatibility
-	if opts.backend == vllm.Name && gpu != gpupkg.GPUSupportCUDA {
+	// Validate backend-GPU compatibility (only on Linux; macOS ARM64 uses Metal)
+	if opts.backend == vllm.Name && !platform.SupportsVLLMMetal() && gpu != gpupkg.GPUSupportCUDA {
 		return fmt.Errorf("--backend vllm requires CUDA GPU support (--gpu=cuda or auto-detected CUDA)")
 	}
 

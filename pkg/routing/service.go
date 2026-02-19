@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/docker/model-runner/pkg/logging"
@@ -19,6 +18,9 @@ type BackendDef struct {
 	// Init creates the backend. It receives the model manager, which
 	// is not yet available when the BackendDef slice is constructed.
 	Init func(*models.Manager) (inference.Backend, error)
+	// Deferred, when true, skips automatic installation at startup.
+	// The backend is installed on first use instead.
+	Deferred bool
 }
 
 // ServiceConfig holds the parameters needed to build the full inference
@@ -38,10 +40,6 @@ type ServiceConfig struct {
 	// DefaultBackendName is the key used to look up the default backend
 	// (typically llamacpp.Name).
 	DefaultBackendName string
-
-	// VLLMMetalServerPath is passed to vllmmetal.TryRegister. If empty
-	// the default installation path is used.
-	VLLMMetalServerPath string
 
 	// HTTPClient is used by the scheduler for backend downloads and
 	// health checks.
@@ -84,8 +82,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	modelManager := models.NewManager(cfg.Log, cfg.ClientConfig)
 	modelHandler := models.NewHTTPHandler(cfg.Log, modelManager, cfg.AllowedOrigins)
 
-	backends := initBackends(cfg.Log, modelManager, cfg.Backends, cfg.OnBackendError)
-	deferredBackends := vllmmetal.TryRegister(cfg.Log, modelManager, backends, cfg.VLLMMetalServerPath)
+	backends, deferredBackends := initBackends(cfg.Log, modelManager, cfg.Backends, cfg.OnBackendError)
 
 	defaultBackend, ok := backends[cfg.DefaultBackendName]
 	if !ok {
@@ -131,8 +128,11 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 }
 
 // initBackends creates and registers backends from the given definitions.
-func initBackends(log logging.Logger, mm *models.Manager, defs []BackendDef, onError func(string, error)) map[string]inference.Backend {
+// It returns the backend map and a list of backend names whose installation
+// should be deferred until explicitly requested.
+func initBackends(log logging.Logger, mm *models.Manager, defs []BackendDef, onError func(string, error)) (map[string]inference.Backend, []string) {
 	backends := make(map[string]inference.Backend, len(defs))
+	var deferred []string
 	for _, def := range defs {
 		b, err := def.Init(mm)
 		if err != nil {
@@ -145,7 +145,10 @@ func initBackends(log logging.Logger, mm *models.Manager, defs []BackendDef, onE
 		}
 		if b != nil {
 			backends[def.Name] = b
+			if def.Deferred {
+				deferred = append(deferred, def.Name)
+			}
 		}
 	}
-	return backends
+	return backends, deferred
 }

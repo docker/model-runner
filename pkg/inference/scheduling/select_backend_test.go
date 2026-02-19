@@ -14,14 +14,16 @@ import (
 
 // mockPlatformSupport allows tests to control platform capability checks.
 type mockPlatformSupport struct {
-	mlx    bool
-	vllm   bool
-	sglang bool
+	mlx       bool
+	vllm      bool
+	vllmMetal bool
+	sglang    bool
 }
 
-func (m mockPlatformSupport) SupportsMLX() bool    { return m.mlx }
-func (m mockPlatformSupport) SupportsVLLM() bool   { return m.vllm }
-func (m mockPlatformSupport) SupportsSGLang() bool { return m.sglang }
+func (m mockPlatformSupport) SupportsMLX() bool       { return m.mlx }
+func (m mockPlatformSupport) SupportsVLLM() bool      { return m.vllm }
+func (m mockPlatformSupport) SupportsVLLMMetal() bool { return m.vllmMetal }
+func (m mockPlatformSupport) SupportsSGLang() bool    { return m.sglang }
 
 // mockModel is a minimal Model implementation for testing.
 type mockModel struct {
@@ -82,7 +84,7 @@ func TestSelectBackendForModel(t *testing.T) {
 			expectedBackend: vllm.Name,
 		},
 		{
-			name: "macOS with MLX and vLLM registered selects MLX for safetensors",
+			name: "macOS without vllm-metal support falls back to MLX for safetensors",
 			backends: map[string]inference.Backend{
 				"llamacpp":  llamacppBackend,
 				mlx.Name:    mlxBackend,
@@ -93,6 +95,19 @@ func TestSelectBackendForModel(t *testing.T) {
 			platform:        mockPlatformSupport{mlx: true, vllm: false, sglang: false},
 			model:           safetensorsModel,
 			expectedBackend: mlx.Name,
+		},
+		{
+			name: "macOS ARM64 with vllm-metal support selects unified vllm for safetensors",
+			backends: map[string]inference.Backend{
+				"llamacpp":  llamacppBackend,
+				mlx.Name:    mlxBackend,
+				vllm.Name:   vllmBackend,
+				sglang.Name: sglangBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{mlx: true, vllmMetal: true},
+			model:           safetensorsModel,
+			expectedBackend: vllm.Name,
 		},
 		{
 			name: "Linux with only SGLang selects SGLang for safetensors",

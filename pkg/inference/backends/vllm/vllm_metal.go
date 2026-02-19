@@ -1,4 +1,4 @@
-package vllmmetal
+package vllm
 
 import (
 	"context"
@@ -19,12 +19,9 @@ import (
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/logging"
-	"github.com/sirupsen/logrus"
 )
 
 const (
-	// Name is the backend name.
-	Name              = "vllm-metal"
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
 	vllmMetalVersion = "v0.1.0-20260126-121650"
@@ -53,9 +50,9 @@ type vllmMetal struct {
 	status string
 }
 
-// New creates a new vllm-metal backend.
+// newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -70,22 +67,6 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		installDir:       installDir,
 		status:           "not installed",
 	}, nil
-}
-
-// TryRegister initializes the vllm-metal backend if the platform supports it
-// and registers it in the provided backends map. It returns the backend names
-// whose installation should be deferred until explicitly requested.
-func TryRegister(log logging.Logger, modelManager *models.Manager, backends map[string]inference.Backend, serverPath string) []string {
-	if !platform.SupportsVLLMMetal() {
-		return nil
-	}
-	backend, err := New(log, modelManager, log.WithFields(logrus.Fields{"component": Name}), serverPath)
-	if err != nil {
-		log.Warnf("Failed to initialize vllm-metal backend: %v", err)
-		return nil
-	}
-	backends[Name] = backend
-	return []string{Name}
 }
 
 // Name implements inference.Backend.Name.
