@@ -16,6 +16,8 @@ DIFFUSERS_RELEASE="${1:?Usage: $0 <DIFFUSERS_RELEASE> <TARBALL>}"
 TARBALL_ARG="${2:?Usage: $0 <DIFFUSERS_RELEASE> <TARBALL>}"
 WORK_DIR=$(mktemp -d)
 
+echo "Building diffusers tarball for release: $DIFFUSERS_RELEASE"
+
 # Convert tarball path to absolute before we cd elsewhere
 TARBALL="$(cd "$(dirname "$TARBALL_ARG")" && pwd)/$(basename "$TARBALL_ARG")"
 
