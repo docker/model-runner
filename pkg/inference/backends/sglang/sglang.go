@@ -61,7 +61,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		modelManager:     modelManager,
 		serverLog:        serverLog,
 		config:           conf,
-		status:           "not installed",
+		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
 	}, nil
 }
@@ -83,6 +83,7 @@ func (s *sglang) UsesTCP() bool {
 
 func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	if !platform.SupportsSGLang() {
+		s.status = inference.FormatNotInstalled(inference.DetailOnlyLinux)
 		return ErrNotImplemented
 	}
 
@@ -99,7 +100,7 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 			// Fall back to system Python
 			systemPython, err := exec.LookPath("python3")
 			if err != nil {
-				s.status = ErrPythonNotFound.Error()
+				s.status = inference.FormatError(inference.DetailPythonNotFound)
 				return ErrPythonNotFound
 			}
 			pythonPath = systemPython
@@ -110,7 +111,7 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 
 	// Check if sglang is installed
 	if err := s.pythonCmd("-c", "import sglang").Run(); err != nil {
-		s.status = "sglang package not installed"
+		s.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
 		s.log.Warnf("sglang package not found. Install with: uv pip install sglang")
 		return ErrSGLangNotFound
 	}
@@ -119,9 +120,9 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	output, err := s.pythonCmd("-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
 		s.log.Warnf("could not get sglang version: %v", err)
-		s.status = "running sglang version: unknown"
+		s.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
-		s.status = fmt.Sprintf("running sglang version: %s", strings.TrimSpace(string(output)))
+		s.status = inference.FormatRunning(fmt.Sprintf("sglang %s", strings.TrimSpace(string(output))))
 	}
 
 	return nil

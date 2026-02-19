@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/logging"
 )
@@ -100,8 +101,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	if err != nil {
 		return fmt.Errorf("failed to read bundled llama.cpp version: %w", err)
 	} else if strings.TrimSpace(string(data)) == latest {
-		l.status = fmt.Sprintf("running llama.cpp %s (%s) version: %s",
-			desiredTag, latest, getLlamaCppVersion(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server")))
+		l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server"), desiredTag, latest)
 		return errLlamaCppUpToDate
 	}
 
@@ -112,8 +112,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	} else if strings.TrimSpace(string(data)) == latest {
 		log.Infoln("current llama.cpp version is already up to date")
 		if _, statErr := os.Stat(llamaCppPath); statErr == nil {
-			l.status = fmt.Sprintf("running llama.cpp %s (%s) version: %s",
-				desiredTag, latest, getLlamaCppVersion(log, llamaCppPath))
+			l.setRunningStatus(log, llamaCppPath, desiredTag, latest)
 			return nil
 		}
 		log.Infoln("llama.cpp binary must be updated, proceeding to update it")
@@ -128,7 +127,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	}
 	defer os.RemoveAll(downloadDir)
 
-	l.status = fmt.Sprintf("downloading %s (%s) variant of llama.cpp", desiredTag, latest)
+	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailDownloading, desiredTag))
 	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir); extractErr != nil {
 		return fmt.Errorf("could not extract image: %w", extractErr)
 	}
@@ -164,7 +163,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	}
 
 	log.Infoln("successfully updated llama.cpp binary")
-	l.status = fmt.Sprintf("running llama.cpp %s (%s) version: %s", desiredTag, latest, getLlamaCppVersion(log, llamaCppPath))
+	l.setRunningStatus(log, llamaCppPath, desiredTag, latest)
 	log.Infoln(l.status)
 
 	if err := os.WriteFile(currentVersionFile, []byte(latest), 0o644); err != nil {
@@ -186,6 +185,15 @@ func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs
 		return err
 	}
 	return dockerhub.Extract(imageTar, requiredArch, requiredOs, destination)
+}
+
+func (l *llamaCpp) setRunningStatus(log logging.Logger, binaryPath, variant, digest string) {
+	version := getLlamaCppVersion(log, binaryPath)
+	if variant == "" && digest == "" {
+		l.status = inference.FormatRunning(fmt.Sprintf("llama.cpp %s", version))
+	} else {
+		l.status = inference.FormatRunning(fmt.Sprintf("llama.cpp %s (%s) %s", variant, digest, version))
+	}
 }
 
 func getLlamaCppVersion(log logging.Logger, llamaCpp string) string {

@@ -1,10 +1,12 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 
 	"github.com/docker/cli/cli-plugins/hooks"
@@ -12,6 +14,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/docker/model-runner/pkg/inference"
 	"github.com/spf13/cobra"
 )
 
@@ -56,17 +59,65 @@ func newStatusCmd() *cobra.Command {
 func textStatus(cmd *cobra.Command, status desktop.Status, backendStatus map[string]string) {
 	if status.Running {
 		cmd.Println("Docker Model Runner is running")
-		cmd.Println("\nStatus:")
-		for b, s := range backendStatus {
-			if s != "not running" {
-				cmd.Println(b+":", s)
-			}
-		}
+		cmd.Println()
+		cmd.Print(backendStatusTable(backendStatus))
 	} else {
 		cmd.Println("Docker Model Runner is not running")
 		hooks.PrintNextSteps(cmd.OutOrStdout(), []string{enableViaCLI, enableViaGUI})
 		osExit(1)
 	}
+}
+
+func backendStatusTable(backendStatus map[string]string) string {
+	var buf bytes.Buffer
+	table := newTable(&buf)
+	table.Header([]string{"BACKEND", "STATUS", "DETAILS"})
+
+	type backendInfo struct {
+		name       string
+		statusType string
+		details    string
+		sortOrder  int
+	}
+
+	backends := make([]backendInfo, 0, len(backendStatus))
+	for name, statusText := range backendStatus {
+		statusType, details := inference.ParseStatus(statusText)
+
+		// Assign sort order: Running < Error < Not Installed < Installing
+		sortOrder := 4
+		switch statusType {
+		case inference.StatusRunning:
+			sortOrder = 0
+		case inference.StatusError:
+			sortOrder = 1
+		case inference.StatusNotInstalled:
+			sortOrder = 2
+		case inference.StatusInstalling:
+			sortOrder = 3
+		}
+
+		backends = append(backends, backendInfo{
+			name:       name,
+			statusType: statusType,
+			details:    details,
+			sortOrder:  sortOrder,
+		})
+	}
+
+	sort.Slice(backends, func(i, j int) bool {
+		if backends[i].sortOrder != backends[j].sortOrder {
+			return backends[i].sortOrder < backends[j].sortOrder
+		}
+		return backends[i].name < backends[j].name
+	})
+
+	for _, backend := range backends {
+		table.Append([]string{backend.name, backend.statusType, backend.details})
+	}
+
+	table.Render()
+	return buf.String()
 }
 
 func makeEndpoint(host string, port int) string {
