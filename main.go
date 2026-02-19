@@ -122,7 +122,7 @@ func main() {
 			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
 			Transport:     baseTransport,
 		},
-		Backends: append(append(
+		Backends: append(
 			routing.DefaultBackendDefs(routing.BackendsConfig{
 				Log:                  log,
 				LlamaCppVendoredPath: llamaServerPath,
@@ -130,6 +130,9 @@ func main() {
 				LlamaCppConfig:       llamaCppConfig,
 				IncludeMLX:           true,
 				MLXPath:              mlxServerPath,
+				IncludeVLLM:          includeVLLM,
+				VLLMPath:             vllmServerPath,
+				VLLMMetalPath:        vllmMetalServerPath,
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.WithFields(logrus.Fields{"component": sglang.Name}), nil, sglangServerPath)
@@ -137,13 +140,12 @@ func main() {
 			routing.BackendDef{Name: diffusers.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return diffusers.New(log, mm, log.WithFields(logrus.Fields{"component": diffusers.Name}), nil, diffusersServerPath)
 			}},
-		), vllmBackendDefs(log, vllmServerPath)...),
+		),
 		OnBackendError: func(name string, err error) {
 			log.Fatalf("unable to initialize %s backend: %v", name, err)
 		},
-		DefaultBackendName:  llamacpp.Name,
-		VLLMMetalServerPath: vllmMetalServerPath,
-		HTTPClient:          http.DefaultClient,
+		DefaultBackendName: llamacpp.Name,
+		HTTPClient:         http.DefaultClient,
 		MetricsTracker: metrics.NewTracker(
 			http.DefaultClient,
 			log.WithField("component", "metrics"),

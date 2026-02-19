@@ -14,7 +14,6 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/docker/model-runner/pkg/inference/backends/vllmmetal"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/utils"
@@ -29,15 +28,17 @@ import (
 type PlatformSupport interface {
 	SupportsMLX() bool
 	SupportsVLLM() bool
+	SupportsVLLMMetal() bool
 	SupportsSGLang() bool
 }
 
 // defaultPlatformSupport delegates to the platform package.
 type defaultPlatformSupport struct{}
 
-func (defaultPlatformSupport) SupportsMLX() bool    { return platform.SupportsMLX() }
-func (defaultPlatformSupport) SupportsVLLM() bool   { return platform.SupportsVLLM() }
-func (defaultPlatformSupport) SupportsSGLang() bool { return platform.SupportsSGLang() }
+func (defaultPlatformSupport) SupportsMLX() bool       { return platform.SupportsMLX() }
+func (defaultPlatformSupport) SupportsVLLM() bool      { return platform.SupportsVLLM() }
+func (defaultPlatformSupport) SupportsVLLMMetal() bool { return platform.SupportsVLLMMetal() }
+func (defaultPlatformSupport) SupportsSGLang() bool    { return platform.SupportsSGLang() }
 
 // Scheduler is used to coordinate inference scheduling across multiple backends
 // and models.
@@ -121,8 +122,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 // selectBackendForModel selects the appropriate backend for a model based on its format.
 // If the model is in safetensors format, it will prefer the best available backend:
-// - On macOS: vllm-metal > MLX
-// - On Linux: vLLM > SGLang
+// - vLLM (handles platform dispatch internally: vllm-metal on macOS ARM64, standard vLLM on Linux)
+// - MLX on macOS
+// - SGLang on Linux
 func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.Backend, modelRef string) inference.Backend {
 	config, err := model.Config()
 	if err != nil {
@@ -131,15 +133,11 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 	}
 
 	if config.GetFormat() == types.FormatSafetensors {
-		// Prefer vllm-metal for safetensors models on macOS (most feature-rich for Metal),
-		// but only if it has been installed.
-		if vllmMetalBackend, ok := s.backends[vllmmetal.Name]; ok && vllmMetalBackend != nil {
-			if s.installer.isInstalled(vllmmetal.Name) {
-				return vllmMetalBackend
+		// Prefer vLLM for safetensors models (handles platform dispatch internally)
+		if s.platformSupport.SupportsVLLM() || s.platformSupport.SupportsVLLMMetal() {
+			if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
+				return vllmBackend
 			}
-			s.log.Infof("vllm-metal backend is available but not installed. "+
-				"To install, run: docker model install-runner --backend %s", vllmmetal.Name)
-			return vllmMetalBackend
 		}
 		// Fall back to MLX on macOS
 		if s.platformSupport.SupportsMLX() {
@@ -147,13 +145,7 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 				return mlxBackend
 			}
 		}
-		// Prefer vLLM for safetensors models on Linux
-		if s.platformSupport.SupportsVLLM() {
-			if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
-				return vllmBackend
-			}
-		}
-		// Fall back to SGLang if vLLM is not available
+		// Fall back to SGLang on Linux
 		if s.platformSupport.SupportsSGLang() {
 			if sglangBackend, ok := s.backends[sglang.Name]; ok && sglangBackend != nil {
 				return sglangBackend

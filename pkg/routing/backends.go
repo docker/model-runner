@@ -28,8 +28,9 @@ type BackendsConfig struct {
 	IncludeMLX bool
 	MLXPath    string
 
-	IncludeVLLM bool
-	VLLMPath    string
+	IncludeVLLM   bool
+	VLLMPath      string
+	VLLMMetalPath string
 }
 
 // DefaultBackendDefs returns BackendDef entries for the configured backends.
@@ -56,9 +57,16 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 	}
 
 	if cfg.IncludeVLLM {
-		defs = append(defs, BackendDef{Name: vllm.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return vllm.New(cfg.Log, mm, sl(vllm.Name), nil, cfg.VLLMPath)
-		}})
+		defs = append(defs, BackendDef{
+			Name:     vllm.Name,
+			Deferred: vllm.NeedsDeferredInstall(),
+			Init: func(mm *models.Manager) (inference.Backend, error) {
+				return vllm.New(cfg.Log, mm, sl(vllm.Name), vllm.Options{
+					LinuxBinaryPath: cfg.VLLMPath,
+					MetalPythonPath: cfg.VLLMMetalPath,
+				})
+			},
+		})
 	}
 
 	return defs
