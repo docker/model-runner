@@ -19,6 +19,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -69,6 +70,22 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		installDir:       installDir,
 		status:           "not installed",
 	}, nil
+}
+
+// TryRegister initializes the vllm-metal backend if the platform supports it
+// and registers it in the provided backends map. It returns the backend names
+// whose installation should be deferred until explicitly requested.
+func TryRegister(log logging.Logger, modelManager *models.Manager, backends map[string]inference.Backend, serverPath string) []string {
+	if !platform.SupportsVLLMMetal() {
+		return nil
+	}
+	backend, err := New(log, modelManager, log.WithFields(logrus.Fields{"component": Name}), serverPath)
+	if err != nil {
+		log.Warnf("Failed to initialize vllm-metal backend: %v", err)
+		return nil
+	}
+	backends[Name] = backend
+	return []string{Name}
 }
 
 // Name implements inference.Backend.Name.
