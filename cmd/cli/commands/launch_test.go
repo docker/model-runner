@@ -230,7 +230,7 @@ func TestLaunchHostAppDryRunOpenai(t *testing.T) {
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
 	// Use "ls" as a bin that exists in PATH
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -245,7 +245,7 @@ func TestLaunchHostAppDryRunCodex(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv("/v1")}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -260,7 +260,7 @@ func TestLaunchHostAppDryRunWithArgs(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, []string{"-m", "ai/qwen3"}, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, []string{"-m", "ai/qwen3"}, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -272,7 +272,7 @@ func TestLaunchHostAppDryRunAnthropic(t *testing.T) {
 	cmd := newTestCmd(buf)
 
 	cli := hostApp{envFn: anthropicEnv}
-	err := launchHostApp(cmd, "ls", testBaseURL, cli, nil, true)
+	err := launchHostApp(cmd, "ls", testBaseURL, cli, "", nil, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -290,7 +290,7 @@ func TestLaunchHostAppNotFound(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: openaiEnv(openaiPathSuffix)}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, "", nil, nil, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 
@@ -307,7 +307,7 @@ func TestLaunchHostAppNotFoundNilEnvFn(t *testing.T) {
 	cmd.SetErr(stderr)
 
 	cli := hostApp{envFn: nil}
-	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, nil, false)
+	err := launchHostApp(cmd, "nonexistent-binary-xyz", testBaseURL, cli, "", nil, nil, false)
 	require.Error(t, err)
 
 	errOutput := stderr.String()
@@ -345,13 +345,20 @@ func TestNewLaunchCmdValidArgs(t *testing.T) {
 	require.Equal(t, supportedApps, cmd.ValidArgs)
 }
 
-func TestNewLaunchCmdRequiresAtLeastOneArg(t *testing.T) {
+func TestNewLaunchCmdNoArgsListsApps(t *testing.T) {
+	buf := new(bytes.Buffer)
 	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
 	cmd.SetArgs([]string{})
 	err := cmd.Execute()
 
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "requires at least 1 arg")
+	require.NoError(t, err)
+	output := buf.String()
+	require.Contains(t, output, "Supported apps:")
+	for _, app := range supportedApps {
+		require.Contains(t, output, app)
+	}
+	require.Contains(t, output, "Usage: docker model launch [APP]")
 }
 
 func TestNewLaunchCmdDispatchContainerApp(t *testing.T) {
@@ -412,6 +419,187 @@ func TestNewLaunchCmdDispatchUnsupportedApp(t *testing.T) {
 	cmd.SetArgs([]string{"bogus"})
 
 	err = cmd.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported app")
+}
+
+func TestNewLaunchCmdConfigFlag(t *testing.T) {
+	ctx, err := desktop.NewContextForTest(
+		"http://localhost"+inference.ExperimentalEndpointsPrefix,
+		nil,
+		types.ModelRunnerEngineKindDesktop,
+	)
+	require.NoError(t, err)
+	modelRunner = ctx
+
+	buf := new(bytes.Buffer)
+	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"openwebui", "--config"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Configuration for openwebui")
+	require.Contains(t, output, "container app")
+	require.Contains(t, output, "ghcr.io/open-webui/open-webui:latest")
+}
+
+func TestNewLaunchCmdConfigFlagHostApp(t *testing.T) {
+	ctx, err := desktop.NewContextForTest(
+		"http://localhost"+inference.ExperimentalEndpointsPrefix,
+		nil,
+		types.ModelRunnerEngineKindDesktop,
+	)
+	require.NoError(t, err)
+	modelRunner = ctx
+
+	buf := new(bytes.Buffer)
+	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"claude", "--config"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Configuration for claude")
+	require.Contains(t, output, "host app")
+	require.Contains(t, output, "ANTHROPIC_BASE_URL")
+	require.Contains(t, output, "ANTHROPIC_API_KEY")
+}
+
+func TestNewLaunchCmdRejectsExtraArgsWithoutDash(t *testing.T) {
+	ctx, err := desktop.NewContextForTest(
+		"http://localhost"+inference.ExperimentalEndpointsPrefix,
+		nil,
+		types.ModelRunnerEngineKindDesktop,
+	)
+	require.NoError(t, err)
+	modelRunner = ctx
+
+	buf := new(bytes.Buffer)
+	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"opencode", "extra-arg"})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unexpected arguments")
+	require.Contains(t, err.Error(), "Use '--'")
+}
+
+func TestNewLaunchCmdRejectsExtraArgsBeforeDash(t *testing.T) {
+	ctx, err := desktop.NewContextForTest(
+		"http://localhost"+inference.ExperimentalEndpointsPrefix,
+		nil,
+		types.ModelRunnerEngineKindDesktop,
+	)
+	require.NoError(t, err)
+	modelRunner = ctx
+
+	buf := new(bytes.Buffer)
+	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"claude", "extra", "--", "--help"})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unexpected arguments before '--'")
+}
+
+func TestNewLaunchCmdPassthroughArgs(t *testing.T) {
+	ctx, err := desktop.NewContextForTest(
+		"http://localhost"+inference.ExperimentalEndpointsPrefix,
+		nil,
+		types.ModelRunnerEngineKindDesktop,
+	)
+	require.NoError(t, err)
+	modelRunner = ctx
+
+	buf := new(bytes.Buffer)
+	cmd := newLaunchCmd()
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"openwebui", "--dry-run", "--", "--extra-flag"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Would run: docker")
+	require.Contains(t, output, "--extra-flag")
+}
+
+func TestAppDescriptionsExistForAllApps(t *testing.T) {
+	for _, app := range supportedApps {
+		require.NotEmpty(t, appDescriptions[app], "missing description for app %q", app)
+	}
+}
+
+func TestListSupportedApps(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := listSupportedApps(cmd)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Supported apps:")
+	require.Contains(t, output, "claude")
+	require.Contains(t, output, "opencode")
+	require.Contains(t, output, "openwebui")
+}
+
+func TestPrintAppConfigContainerApp(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{container: testBaseURL, host: testBaseURL}
+	err := printAppConfig(cmd, "openwebui", ep, "", 0)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Configuration for openwebui")
+	require.Contains(t, output, "container app")
+	require.Contains(t, output, "ghcr.io/open-webui/open-webui:latest")
+	require.Contains(t, output, "OPENAI_API_BASE")
+}
+
+func TestPrintAppConfigContainerAppOverrides(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{container: testBaseURL, host: testBaseURL}
+	err := printAppConfig(cmd, "openwebui", ep, "custom/image:v2", 9999)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "custom/image:v2")
+	require.NotContains(t, output, "ghcr.io/open-webui/open-webui:latest")
+	require.Contains(t, output, "9999")
+}
+
+func TestPrintAppConfigHostApp(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{container: testBaseURL, host: testBaseURL}
+	err := printAppConfig(cmd, "claude", ep, "", 0)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Configuration for claude")
+	require.Contains(t, output, "host app")
+	require.Contains(t, output, "ANTHROPIC_BASE_URL")
+}
+
+func TestPrintAppConfigUnsupported(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{container: testBaseURL, host: testBaseURL}
+	err := printAppConfig(cmd, "bogus", ep, "", 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported app")
 }

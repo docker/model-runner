@@ -2,12 +2,14 @@ package builder
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/files"
+	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -197,13 +199,30 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 		return nil, fmt.Errorf("no weight files (safetensors, GGUF, or DDUF) found in directory: %s", dirPath)
 	}
 
-	// Build config
+	// Extract config metadata from weight files using format-specific logic
 	config := types.Config{
 		Format: detectedFormat,
 	}
-
-	// TODO: Extract additional metadata from weight files if needed
-	// For safetensors, we might want to read config.json from the directory
+	if detectedFormat != "" {
+		f, fmtErr := format.Get(detectedFormat)
+		if fmtErr != nil {
+			log.Printf("warning: could not get format handler for %q: %v", detectedFormat, fmtErr)
+		} else {
+			extracted, extractErr := f.ExtractConfig(weightFiles)
+			if extractErr != nil {
+				log.Printf("warning: could not extract config from weight files: %v", extractErr)
+			} else {
+				// Preserve the detected format, overlay extracted metadata
+				config.Parameters = extracted.Parameters
+				config.Quantization = extracted.Quantization
+				config.Architecture = extracted.Architecture
+				config.Size = extracted.Size
+				config.GGUF = extracted.GGUF
+				config.Safetensors = extracted.Safetensors
+				config.Diffusers = extracted.Diffusers
+			}
+		}
+	}
 
 	// Use the provided creation time, or fall back to current time
 	var created time.Time

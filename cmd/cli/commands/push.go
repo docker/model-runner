@@ -9,7 +9,7 @@ import (
 func newPushCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "push MODEL",
-		Short: "Push a model to Docker Hub",
+		Short: "Push a model to Docker Hub or Hugging Face",
 		Args:  requireExactArgs(1, "push", "MODEL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return pushModel(cmd, desktopClient, args[0])

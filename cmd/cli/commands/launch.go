@@ -78,24 +78,64 @@ var supportedApps = func() []string {
 	return apps
 }()
 
+// appDescriptions provides human-readable descriptions for supported apps.
+var appDescriptions = map[string]string{
+	"anythingllm": "RAG platform with Docker Model Runner provider",
+	"claude":      "Claude Code AI assistant",
+	"codex":       "Codex CLI",
+	"openclaw":    "Open Claw AI assistant",
+	"opencode":    "Open Code AI code editor",
+	"openwebui":   "Open WebUI for models",
+}
+
 func newLaunchCmd() *cobra.Command {
 	var (
-		port   int
-		image  string
-		detach bool
-		dryRun bool
+		port       int
+		image      string
+		detach     bool
+		dryRun     bool
+		configOnly bool
+		model      string
 	)
 	c := &cobra.Command{
-		Use:   "launch APP [-- APP_ARGS...]",
+		Use:   "launch [APP] [-- APP_ARGS...]",
 		Short: "Launch an app configured to use Docker Model Runner",
 		Long: fmt.Sprintf(`Launch an app configured to use Docker Model Runner.
 
-Supported apps: %s`, strings.Join(supportedApps, ", ")),
-		Args:      requireMinArgs(1, "launch", "APP [-- APP_ARGS...]"),
+Without arguments, lists all supported apps.
+
+Supported apps: %s
+
+Examples:
+  docker model launch
+  docker model launch opencode
+  docker model launch claude -- --help
+  docker model launch openwebui --port 3000
+  docker model launch claude --config`, strings.Join(supportedApps, ", ")),
 		ValidArgs: supportedApps,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// No args - list supported apps
+			if len(args) == 0 {
+				return listSupportedApps(cmd)
+			}
+
 			app := strings.ToLower(args[0])
-			appArgs := args[1:]
+
+			// Extract passthrough args using -- separator
+			var appArgs []string
+			dashIdx := cmd.ArgsLenAtDash()
+			if dashIdx == -1 {
+				// No "--" separator
+				if len(args) > 1 {
+					return fmt.Errorf("unexpected arguments: %s\nUse '--' to pass extra arguments to the app", strings.Join(args[1:], " "))
+				}
+			} else {
+				// "--" was used: require exactly 1 arg (the app name) before it
+				if dashIdx != 1 {
+					return fmt.Errorf("unexpected arguments before '--': %s\nUsage: docker model launch [APP] [-- APP_ARGS...]", strings.Join(args[1:dashIdx], " "))
+				}
+				appArgs = args[dashIdx:]
+			}
 
 			runner, err := getStandaloneRunner(cmd.Context())
 			if err != nil {
@@ -107,11 +147,16 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 				return err
 			}
 
+			// --config: print configuration without launching
+			if configOnly {
+				return printAppConfig(cmd, app, ep, image, port)
+			}
+
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
-				return launchHostApp(cmd, app, ep.host, cli, appArgs, dryRun)
+				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
 			}
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
@@ -120,7 +165,73 @@ Supported apps: %s`, strings.Join(supportedApps, ", ")),
 	c.Flags().StringVar(&image, "image", "", "Override container image for containerized apps")
 	c.Flags().BoolVar(&detach, "detach", false, "Run containerized app in background")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Print what would be executed without running it")
+	c.Flags().BoolVar(&configOnly, "config", false, "Print configuration without launching")
+	c.Flags().StringVar(&model, "model", "", "Model to use (for opencode)")
 	return c
+}
+
+// listSupportedApps prints all supported apps with their descriptions and install status.
+func listSupportedApps(cmd *cobra.Command) error {
+	cmd.Println("Supported apps:")
+	cmd.Println()
+	for _, name := range supportedApps {
+		desc := appDescriptions[name]
+		if desc == "" {
+			desc = name
+		}
+		status := ""
+		if _, ok := hostApps[name]; ok {
+			if _, err := exec.LookPath(name); err != nil {
+				status = " (not installed)"
+			}
+		}
+		cmd.Printf("  %-15s %s%s\n", name, desc, status)
+	}
+	cmd.Println()
+	cmd.Println("Usage: docker model launch [APP] [-- APP_ARGS...]")
+	return nil
+}
+
+// printAppConfig prints the configuration that would be used for the given app.
+func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOverride string, portOverride int) error {
+	if ca, ok := containerApps[app]; ok {
+		img := imageOverride
+		if img == "" {
+			img = ca.defaultImage
+		}
+		hostPort := portOverride
+		if hostPort == 0 {
+			hostPort = ca.defaultHostPort
+		}
+		cmd.Printf("Configuration for %s (container app):\n", app)
+		cmd.Printf("  Image:          %s\n", img)
+		cmd.Printf("  Container port: %d\n", ca.containerPort)
+		cmd.Printf("  Host port:      %d\n", hostPort)
+		if ca.envFn != nil {
+			cmd.Printf("  Environment:\n")
+			for _, e := range ca.envFn(ep.container) {
+				cmd.Printf("    %s\n", e)
+			}
+		}
+		return nil
+	}
+	if cli, ok := hostApps[app]; ok {
+		cmd.Printf("Configuration for %s (host app):\n", app)
+		if cli.envFn != nil {
+			cmd.Printf("  Environment:\n")
+			for _, e := range cli.envFn(ep.host) {
+				cmd.Printf("    %s\n", e)
+			}
+		}
+		if cli.configInstructions != nil {
+			cmd.Printf("  Manual configuration:\n")
+			for _, line := range cli.configInstructions(ep.host) {
+				cmd.Printf("    %s\n", line)
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 }
 
 // resolveBaseEndpoints resolves the base URLs (without path) for both
@@ -206,7 +317,12 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 }
 
 // launchHostApp launches a native host app executable.
-func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, appArgs []string, dryRun bool) error {
+func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, model string, runner *standaloneRunner, appArgs []string, dryRun bool) error {
+	// Special handling for opencode: use dedicated launcher
+	if bin == "opencode" {
+		return launchOpenCode(cmd, baseURL, model, runner, appArgs, dryRun)
+	}
+
 	if !dryRun {
 		if _, err := exec.LookPath(bin); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)

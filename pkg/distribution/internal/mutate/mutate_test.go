@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/gguf"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -41,10 +41,7 @@ func (l *staticLayer) Uncompressed() (io.ReadCloser, error) {
 }
 
 func TestAppendLayer(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -85,10 +82,7 @@ func TestAppendLayer(t *testing.T) {
 }
 
 func TestConfigMediaTypes(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -109,10 +103,7 @@ func TestConfigMediaTypes(t *testing.T) {
 }
 
 func TestContextSize(t *testing.T) {
-	mdl1, err := gguf.NewModel(filepath.Join("..", "..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
+	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	cfg, err := mdl1.Config()
 	if err != nil {
 		t.Fatalf("Failed to get config file: %v", err)

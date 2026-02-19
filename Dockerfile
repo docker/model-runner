@@ -55,10 +55,10 @@ ARG LLAMA_SERVER_VARIANT
 RUN groupadd --system modelrunner && useradd --system --gid modelrunner -G video --create-home --home-dir /home/modelrunner modelrunner
 # TODO: if the render group ever gets a fixed GID add modelrunner to it
 
-COPY scripts/apt-install.sh apt-install.sh
+COPY scripts/ /scripts/
 
 # Install ca-certificates for HTTPS and vulkan
-RUN ./apt-install.sh
+RUN /scripts/apt-install.sh && rm -rf /scripts
 
 WORKDIR /app
 

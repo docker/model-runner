@@ -177,6 +177,9 @@ func isRetryableError(err error) bool {
 		"no route to host",
 		"network is unreachable",
 		"i/o timeout",
+		"stream error",
+		"internal_error",
+		"protocol_error",
 	}
 
 	for _, pattern := range retryablePatterns {
@@ -223,12 +226,28 @@ func (c *Client) withRetries(
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
+	var hfToken string
+	modelLower := strings.ToLower(model)
+	if strings.HasPrefix(modelLower, "hf.co/") || strings.HasPrefix(modelLower, "huggingface.co/") {
+		hfToken = os.Getenv("HF_TOKEN")
+	}
+
 	return c.withRetries("push", 3, printer, func(attempt int) (string, bool, error, bool) {
 		pushPath := inference.ModelsPrefix + "/" + model + "/push"
+		var body io.Reader
+		if hfToken != "" {
+			jsonData, err := json.Marshal(dmrm.ModelPushRequest{
+				BearerToken: hfToken,
+			})
+			if err != nil {
+				return "", false, fmt.Errorf("error marshaling request: %w", err), false
+			}
+			body = bytes.NewReader(jsonData)
+		}
 		resp, err := c.doRequest(
 			http.MethodPost,
 			pushPath,
-			nil, // Assuming no body is needed for the push request
+			body,
 		)
 		if err != nil {
 			// Only retry on network errors, not on client errors
