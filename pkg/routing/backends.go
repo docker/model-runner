@@ -2,6 +2,7 @@ package routing
 
 import (
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -31,6 +32,9 @@ type BackendsConfig struct {
 	IncludeVLLM   bool
 	VLLMPath      string
 	VLLMMetalPath string
+
+	IncludeDiffusers bool
+	DiffusersPath    string
 }
 
 // DefaultBackendDefs returns BackendDef entries for the configured backends.
@@ -65,6 +69,16 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 					LinuxBinaryPath: cfg.VLLMPath,
 					MetalPythonPath: cfg.VLLMMetalPath,
 				})
+			},
+		})
+	}
+
+	if cfg.IncludeDiffusers {
+		defs = append(defs, BackendDef{
+			Name:     diffusers.Name,
+			Deferred: true,
+			Init: func(mm *models.Manager) (inference.Backend, error) {
+				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath)
 			},
 		})
 	}

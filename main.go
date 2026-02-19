@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -101,6 +100,9 @@ func main() {
 	if mlxServerPath != "" {
 		log.Infof("MLX_SERVER_PATH: %s", mlxServerPath)
 	}
+	if diffusersServerPath != "" {
+		log.Infof("DIFFUSERS_SERVER_PATH: %s", diffusersServerPath)
+	}
 	if vllmMetalServerPath != "" {
 		log.Infof("VLLM_METAL_SERVER_PATH: %s", vllmMetalServerPath)
 	}
@@ -133,12 +135,11 @@ func main() {
 				IncludeVLLM:          includeVLLM,
 				VLLMPath:             vllmServerPath,
 				VLLMMetalPath:        vllmMetalServerPath,
+				IncludeDiffusers:     true,
+				DiffusersPath:        diffusersServerPath,
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.WithFields(logrus.Fields{"component": sglang.Name}), nil, sglangServerPath)
-			}},
-			routing.BackendDef{Name: diffusers.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(log, mm, log.WithFields(logrus.Fields{"component": diffusers.Name}), nil, diffusersServerPath)
 			}},
 		),
 		OnBackendError: func(name string, err error) {
