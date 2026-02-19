@@ -3,15 +3,10 @@
 package main
 
 import (
-	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/routing"
 	"github.com/sirupsen/logrus"
 )
 
-func initVLLMBackend(log *logrus.Logger, modelManager *models.Manager, customBinaryPath string) (inference.Backend, error) {
-	return nil, nil
-}
-
-func registerVLLMBackend(backends map[string]inference.Backend, backend inference.Backend) {
-	// No-op when VLLM is disabled
+func vllmBackendDefs(_ *logrus.Logger, _ string) []routing.BackendDef {
+	return nil
 }
