@@ -13,7 +13,7 @@ This runs the same checks as CI:
 1. **go mod tidy** — ensures `go.mod`/`go.sum` are clean
 2. **Lint** — runs `golangci-lint` (see [`.golangci.yml`](./.golangci.yml) for configuration)
 3. **Tests** — runs all unit tests with race detection (`go test -race ./...`)
-4. **Shellcheck** — validates all shell scripts
+4. **ShellCheck** — validates all shell scripts
 
 If any step fails, fix the issue and re-run before committing.
 
@@ -21,7 +21,7 @@ If any step fails, fix the issue and re-run before committing.
 
 - **Go 1.25.6+**
 - **golangci-lint v2.7.2+** — [Install instructions](https://golangci-lint.run/welcome/install/)
-- **shellcheck** — `brew install shellcheck` (macOS) or `apt-get install shellcheck` (Linux)
+- **ShellCheck** — `brew install shellcheck` (macOS) or `apt-get install shellcheck` (Linux)
 
 ## Project documentation
 

@@ -93,7 +93,7 @@ lint:
 validate-all:
 	@echo "==> Checking go mod tidy..."
 	@go mod tidy
-	@git diff --exit-code go.mod go.sum || (echo "ERROR: go.mod/go.sum are not tidy. Run 'go mod tidy' and commit the changes." && exit 1)
+	@git diff --exit-code go.mod go.sum || (echo "ERROR: go.mod/go.sum were not tidy. The files have been updated — please commit the changes." && exit 1)
 	@echo "✓ go.mod is tidy"
 	@echo ""
 	@echo "==> Running linter..."
