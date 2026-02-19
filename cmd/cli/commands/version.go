@@ -19,18 +19,18 @@ func newVersionCmd() *cobra.Command {
 
 			cmd.Println()
 			cmd.Println("Server:")
-			if desktopClient == nil {
-				cmd.Println(" Version:    (not reachable)")
-				cmd.Println(" Engine:     (not reachable)")
-				return
+			serverVersion := "(not reachable)"
+			if desktopClient != nil {
+				if sv, err := desktopClient.ServerVersion(); err == nil {
+					serverVersion = sv.Version
+				}
 			}
-			sv, err := desktopClient.ServerVersion()
-			if err != nil {
-				cmd.Println(" Version:    (not reachable)")
+			cmd.Printf(" Version:    %s\n", serverVersion)
+			if modelRunner != nil {
+				cmd.Printf(" Engine:     %s\n", modelRunner.EngineKind())
 			} else {
-				cmd.Printf(" Version:    %s\n", sv.Version)
+				cmd.Println(" Engine:     (not reachable)")
 			}
-			cmd.Printf(" Engine:     %s\n", modelRunner.EngineKind())
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}

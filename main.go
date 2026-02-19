@@ -268,7 +268,9 @@ func main() {
 	// Register /version endpoint
 	router.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"version": Version})
+		if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
+			log.Warnf("failed to write version response: %v", err)
+		}
 	})
 
 	// Register root handler LAST - it will only catch exact "/" requests that don't match other patterns
