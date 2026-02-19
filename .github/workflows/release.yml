@@ -443,12 +443,15 @@ jobs:
       contents: read
     steps:
       - name: Trigger release-cli-dd workflow
+        id: trigger
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          echo "🚀 Triggering release-cli-dd workflow"
+          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
+          echo "🚀 Triggering release-cli-dd workflow at $TRIGGER_TIME"
           echo "   model-cli-ref: $RELEASE_TAG"
           echo "   tag: v$VERSION"
           gh workflow run release-cli-dd.yml \
@@ -460,28 +463,29 @@ jobs:
       - name: Wait for release-cli-dd to complete
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          TRIGGER_TIME: ${{ steps.trigger.outputs.trigger_time }}
         run: |
-          echo "⏳ Waiting for release-cli-dd workflow to appear..."
+          echo "⏳ Waiting for release-cli-dd workflow to appear (triggered at $TRIGGER_TIME)..."
           sleep 15
 
-          # Find the most recent run of release-cli-dd.yml in inference-engine-llama.cpp
-          for i in $(seq 1 10); do
+          # Find the run created after our trigger time to avoid picking up unrelated runs
+          for i in $(seq 1 30); do
             RUN_ID=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-            if [ -n "$RUN_ID" ]; then
+              --limit 5 \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
               echo "Found release-cli-dd run: $RUN_ID"
               break
             fi
-            echo "  Retry $i/10..."
+            echo "  Retry $i/30..."
             sleep 10
           done
 
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find release-cli-dd workflow run"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "::error::Could not find release-cli-dd workflow run created after $TRIGGER_TIME"
             exit 1
           fi
 
@@ -557,7 +561,9 @@ jobs:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
-          echo "📦 Triggering release-model workflow in docker/packaging"
+          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
+          echo "📦 Triggering release-model workflow in docker/packaging at $TRIGGER_TIME"
           echo "   ref: $RELEASE_TAG"
           gh workflow run release-model.yml \
             --repo docker/packaging \
@@ -569,28 +575,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          TRIGGER_TIME: ${{ steps.trigger.outputs.trigger_time }}
         run: |
-          echo "⏳ Waiting for packaging workflow to appear..."
+          echo "⏳ Waiting for packaging workflow to appear (triggered at $TRIGGER_TIME)..."
           sleep 15
 
-          # Find the most recent run of release-model.yml
-          for i in $(seq 1 10); do
+          # Find the run created after our trigger time to avoid picking up unrelated runs
+          for i in $(seq 1 30); do
             RUN_ID=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 \
+              --limit 5 \
               --json databaseId,createdAt \
-              --jq '.[0].databaseId')
-            if [ -n "$RUN_ID" ]; then
+              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
               echo "Found packaging run: $RUN_ID"
               break
             fi
-            echo "  Retry $i/10..."
+            echo "  Retry $i/30..."
             sleep 10
           done
 
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find packaging workflow run"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "::error::Could not find packaging workflow run created after $TRIGGER_TIME"
             exit 1
           fi
 
@@ -611,12 +618,15 @@ jobs:
           echo "✅ Packaging workflow completed successfully"
 
       - name: Trigger release-repo plugin workflow
+        id: trigger_release_repo
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           VERSION: ${{ needs.prepare.outputs.version }}
           PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
         run: |
-          echo "🚀 Triggering plugin release in docker/release-repo"
+          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
+          echo "🚀 Triggering plugin release in docker/release-repo at $TRIGGER_TIME"
           echo "   packaging_image: $PACKAGING_IMAGE"
           echo "   model_version: $VERSION"
           echo "   channel: stable"
@@ -633,28 +643,29 @@ jobs:
       - name: Wait for release-repo plugin workflow to complete
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          TRIGGER_TIME: ${{ steps.trigger_release_repo.outputs.trigger_time }}
         run: |
-          echo "⏳ Waiting for release-repo plugin workflow to appear..."
+          echo "⏳ Waiting for release-repo plugin workflow to appear (triggered at $TRIGGER_TIME)..."
           sleep 15
 
-          # Find the most recent run of plugin.yml in release-repo
-          for i in $(seq 1 10); do
+          # Find the run created after our trigger time to avoid picking up unrelated runs
+          for i in $(seq 1 30); do
             RUN_ID=$(gh run list \
               --repo docker/release-repo \
               --workflow plugin.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-            if [ -n "$RUN_ID" ]; then
+              --limit 5 \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
               echo "Found release-repo run: $RUN_ID"
               break
             fi
-            echo "  Retry $i/10..."
+            echo "  Retry $i/30..."
             sleep 10
           done
 
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find release-repo plugin workflow run"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "::error::Could not find release-repo plugin workflow run created after $TRIGGER_TIME"
             exit 1
           fi
 
