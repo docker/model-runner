@@ -32,7 +32,7 @@ BUILD_DMR ?= 1
 
 # Build the Go application
 build:
-	CGO_ENABLED=1 go build -ldflags="-s -w" -o $(APP_NAME) .
+	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(APP_NAME) .
 
 build-cli:
 	$(MAKE) -C cmd/cli

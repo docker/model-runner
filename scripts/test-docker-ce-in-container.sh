@@ -14,10 +14,30 @@ echo "Testing docker model version..."
 version_output=$(docker model version 2>&1 || true)
 echo "Output: $version_output"
 
-if echo "$version_output" | grep -q "version $EXPECTED_VERSION"; then
-  echo "✓ Success: Found expected version $EXPECTED_VERSION"
-  exit 0
+# Extract client version from the "Client:" section (first "Version:" after "Client:")
+client_version=$(echo "$version_output" | awk '/^Client:/{found=1} found && /Version:/{print $2; exit}')
+
+# Extract server version from the "Server:" section (first "Version:" after "Server:")
+server_version=$(echo "$version_output" | awk '/^Server:/{found=1} found && /Version:/{print $2; exit}')
+
+errors=0
+
+if [ "$client_version" = "$EXPECTED_VERSION" ]; then
+  echo "✓ Client version matches expected $EXPECTED_VERSION"
 else
-  echo "✗ Error: Expected version $EXPECTED_VERSION not found in output"
+  echo "✗ Error: Expected client version $EXPECTED_VERSION, got '$client_version'"
+  errors=$((errors + 1))
+fi
+
+if [ "$server_version" = "$EXPECTED_VERSION" ]; then
+  echo "✓ Server version matches expected $EXPECTED_VERSION"
+else
+  echo "✗ Error: Expected server version $EXPECTED_VERSION, got '$server_version'"
+  errors=$((errors + 1))
+fi
+
+if [ "$errors" -gt 0 ]; then
   exit 1
 fi
+
+echo "✓ All version checks passed!"

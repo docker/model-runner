@@ -713,6 +713,34 @@ func (c *Client) Remove(modelArgs []string, force bool) (string, error) {
 	return modelRemoved, nil
 }
 
+type ServerVersionResponse struct {
+	Version string `json:"version"`
+}
+
+func (c *Client) ServerVersion() (ServerVersionResponse, error) {
+	resp, err := c.doRequest(http.MethodGet, "/version", nil)
+	if err != nil {
+		return ServerVersionResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ServerVersionResponse{}, fmt.Errorf("failed to get server version: %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ServerVersionResponse{}, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var version ServerVersionResponse
+	if err := json.Unmarshal(body, &version); err != nil {
+		return ServerVersionResponse{}, fmt.Errorf("failed to unmarshal response body: %w", err)
+	}
+
+	return version, nil
+}
+
 // BackendStatus to be imported from docker/model-runner when https://github.com/docker/model-runner/pull/42 is merged.
 type BackendStatus struct {
 	BackendName string               `json:"backend_name"`
