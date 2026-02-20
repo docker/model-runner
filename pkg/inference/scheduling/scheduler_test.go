@@ -1,12 +1,10 @@
 package scheduling
 
 import (
-	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestCors(t *testing.T) {
@@ -30,9 +28,7 @@ func TestCors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			discard := logrus.New()
-			discard.SetOutput(io.Discard)
-			log := logrus.NewEntry(discard)
+			log := slog.Default()
 			s := NewScheduler(log, nil, nil, nil, nil, nil, nil)
 			httpHandler := NewHTTPHandler(s, nil, []string{"*"})
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -24,7 +25,6 @@ import (
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
 	"github.com/docker/model-runner/pkg/inference/platform"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -717,7 +717,7 @@ func TestClientDefaultLogger(t *testing.T) {
 	}
 
 	// Create client with custom logger
-	customLogger := logrus.NewEntry(logrus.New())
+	customLogger := slog.Default()
 	client, err = NewClient(
 		WithStoreRootPath(tempDir),
 		WithLogger(customLogger),

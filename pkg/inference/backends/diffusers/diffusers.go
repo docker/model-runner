@@ -118,18 +118,18 @@ func (d *diffusers) Install(ctx context.Context, httpClient *http.Client) error 
 				d.pythonPath = pythonPath
 				return d.verifyInstallation(ctx)
 			}
-			d.log.Infof("diffusers version mismatch: installed %s, want %s", installed, diffusersVersion)
+			d.log.Info("diffusers version mismatch", "installed", installed, "expected", diffusersVersion)
 		}
 	}
 
 	d.status = "installing"
-	if err := d.downloadAndExtract(ctx, httpClient); err != nil {
+	if err := d.downloadAndExtract(ctx); err != nil {
 		return fmt.Errorf("failed to install diffusers: %w", err)
 	}
 
 	// Save version file
 	if err := os.WriteFile(versionFile, []byte(diffusersVersion), 0644); err != nil {
-		d.log.Warnf("failed to write version file: %v", err)
+		d.log.Warn("failed to write version file", "error", err)
 	}
 
 	d.pythonPath = pythonPath
@@ -138,8 +138,8 @@ func (d *diffusers) Install(ctx context.Context, httpClient *http.Client) error 
 
 // downloadAndExtract downloads the diffusers image from Docker Hub and extracts it.
 // The image contains a self-contained Python installation with all packages pre-installed.
-func (d *diffusers) downloadAndExtract(ctx context.Context, _ *http.Client) error {
-	d.log.Infof("Downloading diffusers %s from Docker Hub...", diffusersVersion)
+func (d *diffusers) downloadAndExtract(ctx context.Context) error {
+	d.log.Info("Downloading diffusers from Docker Hub...", "version", diffusersVersion)
 
 	// Create temp directory for download
 	downloadDir, err := os.MkdirTemp("", "diffusers-install")
@@ -169,7 +169,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 		return fmt.Errorf("failed to remove existing install dir: %w", err)
 	}
 
-	d.log.Infof("Extracting self-contained Python environment...")
+	d.log.Info("Extracting self-contained Python environment...")
 
 	// Copy the extracted self-contained Python installation directly to install dir
 	// (the image contains /diffusers/ with bin/, lib/, etc.)
@@ -184,7 +184,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 		return fmt.Errorf("failed to make python3 executable: %w", err)
 	}
 
-	d.log.Infof("diffusers %s installed successfully", diffusersVersion)
+	d.log.Info("diffusers installed successfully", "version", diffusersVersion)
 	return nil
 }
 
@@ -232,7 +232,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("%w: model %s", ErrNoDDUFFile, model)
 	}
 
-	d.log.Infof("Loading DDUF file from: %s", ddufPath)
+	d.log.Info("Loading DDUF file from", "path", ddufPath)
 
 	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
 	if err != nil {
@@ -244,7 +244,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", modelRef)
 	}
 
-	d.log.Infof("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " ")))
+	d.log.Info("Diffusers args", "args", utils.SanitizeForLog(strings.Join(args, " ")))
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
@@ -258,7 +258,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		SandboxConfig:    "",
 		Args:             args,
 		Logger:           d.log,
-		ServerLogWriter:  d.serverLog.Writer(),
+		ServerLogWriter:  logging.NewWriter(d.serverLog),
 		ErrorTransformer: ExtractPythonError,
 	})
 }

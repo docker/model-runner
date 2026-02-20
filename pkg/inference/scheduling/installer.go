@@ -118,7 +118,7 @@ func (i *installer) run(ctx context.Context) {
 			// on-demand installs from wait().
 			if diskUsage, err := backend.GetDiskUsage(); err == nil && diskUsage > 0 {
 				if err := i.installBackend(ctx, name); err != nil {
-					i.log.Warnf("Backend installation failed for %s: %v", name, err)
+					i.log.Warn("Backend installation failed", "backend", name, "error", err)
 				}
 			}
 			// If not on disk, leave channels open so wait() can trigger
@@ -140,7 +140,7 @@ func (i *installer) run(ctx context.Context) {
 			continue
 		}
 		if err := backend.Install(ctx, i.httpClient); err != nil {
-			i.log.Warnf("Backend installation failed for %s: %v", name, err)
+			i.log.Warn("Backend installation failed for", "backend", name, "error", err)
 			select {
 			case <-ctx.Done():
 				status.err = errors.Join(errInstallerShuttingDown, ctx.Err())

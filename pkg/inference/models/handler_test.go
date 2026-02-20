@@ -2,7 +2,7 @@ package models
 
 import (
 	"encoding/json"
-	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,7 +15,6 @@ import (
 	reg "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/sirupsen/logrus"
 )
 
 // getProjectRoot returns the absolute path to the project root directory
@@ -100,10 +99,10 @@ func TestPullModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log := logrus.NewEntry(logrus.StandardLogger())
-			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
+			log := slog.Default()
+			manager := NewManager(log.With("component", "model-manager"), ClientConfig{
 				StoreRootPath: tempDir,
-				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+				Logger:        log.With("component", "model-manager"),
 				PlainHTTP:     true,
 			})
 			handler := NewHTTPHandler(log, manager, nil)
@@ -206,11 +205,10 @@ func TestHandleGetModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
-			logger := logrus.New()
-			log := logrus.NewEntry(logger)
-			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
+			log := slog.Default()
+			manager := NewManager(log.With("component", "model-manager"), ClientConfig{
 				StoreRootPath: tempDir,
-				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+				Logger:        log.With("component", "model-manager"),
 				Transport:     http.DefaultTransport,
 				UserAgent:     "test-agent",
 				PlainHTTP:     true,
@@ -289,12 +287,10 @@ func TestCors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			t.Parallel()
-			discard := logrus.New()
-			discard.SetOutput(io.Discard)
-			log := logrus.NewEntry(discard)
-			manager := NewManager(log.WithFields(logrus.Fields{"component": "model-manager"}), ClientConfig{
+			log := slog.Default()
+			manager := NewManager(log.With("component", "model-manager"), ClientConfig{
 				StoreRootPath: tempDir,
-				Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+				Logger:        log.With("component", "model-manager"),
 			})
 			m := NewHTTPHandler(log, manager, []string{"*"})
 			req := httptest.NewRequest(http.MethodOptions, "http://model-runner.docker.internal"+tt.path, http.NoBody)

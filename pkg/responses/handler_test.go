@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
 
 // mockSchedulerHTTP is a mock scheduler that returns predefined responses.
@@ -39,8 +38,7 @@ func (m *mockSchedulerHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func newTestHandler(mock *mockSchedulerHTTP) *HTTPHandler {
-	log := logrus.New()
-	log.SetOutput(io.Discard)
+	log := slog.New(slog.DiscardHandler)
 	return NewHTTPHandler(log, mock, nil)
 }
 

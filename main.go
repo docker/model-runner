@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -14,14 +16,15 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/routing"
 	modeltls "github.com/docker/model-runner/pkg/tls"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -29,13 +32,22 @@ const (
 	DefaultTLSPort = "12444"
 )
 
-var log = logrus.New()
+// initLogger creates the application logger based on LOG_LEVEL env var.
+func initLogger() *slog.Logger {
+	level := logging.ParseLevel(os.Getenv("LOG_LEVEL"))
+	return logging.NewLogger(level)
+}
+
+var log = initLogger()
 
 // Log is the logger used by the application, exported for testing purposes.
 var Log = log
 
 // testLog is a test-override logger used by createLlamaCppConfigFromEnv.
 var testLog = log
+
+// exitFunc is used for Fatal-like exits; overridden in tests.
+var exitFunc = func(code int) { os.Exit(code) }
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -48,7 +60,8 @@ func main() {
 
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatalf("Failed to get user home directory: %v", err)
+		log.Error("Failed to get user home directory", "error", err)
+		exitFunc(1)
 	}
 
 	modelPath := os.Getenv("MODELS_PATH")
@@ -90,21 +103,21 @@ func main() {
 	}
 	baseTransport.Proxy = http.ProxyFromEnvironment
 
-	log.Infof("LLAMA_SERVER_PATH: %s", llamaServerPath)
+	log.Info("LLAMA_SERVER_PATH", "path", llamaServerPath)
 	if vllmServerPath != "" {
-		log.Infof("VLLM_SERVER_PATH: %s", vllmServerPath)
+		log.Info("VLLM_SERVER_PATH", "path", vllmServerPath)
 	}
 	if sglangServerPath != "" {
-		log.Infof("SGLANG_SERVER_PATH: %s", sglangServerPath)
+		log.Info("SGLANG_SERVER_PATH", "path", sglangServerPath)
 	}
 	if mlxServerPath != "" {
-		log.Infof("MLX_SERVER_PATH: %s", mlxServerPath)
+		log.Info("MLX_SERVER_PATH", "path", mlxServerPath)
 	}
 	if diffusersServerPath != "" {
-		log.Infof("DIFFUSERS_SERVER_PATH: %s", diffusersServerPath)
+		log.Info("DIFFUSERS_SERVER_PATH", "path", diffusersServerPath)
 	}
 	if vllmMetalServerPath != "" {
-		log.Infof("VLLM_METAL_SERVER_PATH: %s", vllmMetalServerPath)
+		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
 	}
 
 	// Create llama.cpp configuration from environment variables
@@ -121,7 +134,7 @@ func main() {
 		Log: log,
 		ClientConfig: models.ClientConfig{
 			StoreRootPath: modelPath,
-			Logger:        log.WithFields(logrus.Fields{"component": "model-manager"}),
+			Logger:        log.With("component", "model-manager"),
 			Transport:     baseTransport,
 		},
 		Backends: append(
@@ -139,17 +152,21 @@ func main() {
 				DiffusersPath:        diffusersServerPath,
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-				return sglang.New(log, mm, log.WithFields(logrus.Fields{"component": sglang.Name}), nil, sglangServerPath)
+				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
+			}},
+			routing.BackendDef{Name: diffusers.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
+				return diffusers.New(log, mm, log.With("component", diffusers.Name), nil, diffusersServerPath)
 			}},
 		),
 		OnBackendError: func(name string, err error) {
-			log.Fatalf("unable to initialize %s backend: %v", name, err)
+			log.Error("unable to initialize backend", "backend", name, "error", err)
+			exitFunc(1)
 		},
 		DefaultBackendName: llamacpp.Name,
 		HTTPClient:         http.DefaultClient,
 		MetricsTracker: metrics.NewTracker(
 			http.DefaultClient,
-			log.WithField("component", "metrics"),
+			log.With("component", "metrics"),
 			"",
 			false,
 		),
@@ -169,14 +186,14 @@ func main() {
 			r.HandleFunc("/version", func(w http.ResponseWriter, req *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
-					log.Warnf("failed to write version response: %v", err)
+					log.Warn("failed to write version response", "error", err)
 				}
 			})
 
 			// Metrics endpoint
 			if os.Getenv("DISABLE_METRICS") != "1" {
 				metricsHandler := metrics.NewAggregatedMetricsHandler(
-					log.WithField("component", "metrics"),
+					log.With("component", "metrics"),
 					s.SchedulerHTTP,
 				)
 				r.Handle("/metrics", metricsHandler)
@@ -187,7 +204,8 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalf("failed to initialize service: %v", err)
+		log.Error("failed to initialize service", "error", err)
+		exitFunc(1)
 	}
 
 	server := &http.Server{
@@ -205,7 +223,7 @@ func main() {
 	if tcpPort != "" {
 		// Use TCP port
 		addr := ":" + tcpPort
-		log.Infof("Listening on TCP port %s", tcpPort)
+		log.Info("Listening on TCP port", "port", tcpPort)
 		server.Addr = addr
 		go func() {
 			serverErrors <- server.ListenAndServe()
@@ -214,12 +232,14 @@ func main() {
 		// Use Unix socket
 		if err := os.Remove(sockName); err != nil {
 			if !os.IsNotExist(err) {
-				log.Fatalf("Failed to remove existing socket: %v", err)
+				log.Error("Failed to remove existing socket", "error", err)
+				exitFunc(1)
 			}
 		}
 		ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockName, Net: "unix"})
 		if err != nil {
-			log.Fatalf("Failed to listen on socket: %v", err)
+			log.Error("Failed to listen on socket", "error", err)
+			exitFunc(1)
 		}
 		go func() {
 			serverErrors <- server.Serve(ln)
@@ -244,19 +264,22 @@ func main() {
 				var err error
 				certPath, keyPath, err = modeltls.EnsureCertificates("", "")
 				if err != nil {
-					log.Fatalf("Failed to ensure TLS certificates: %v", err)
+					log.Error("Failed to ensure TLS certificates", "error", err)
+					exitFunc(1)
 				}
-				log.Infof("Using TLS certificate: %s", certPath)
-				log.Infof("Using TLS key: %s", keyPath)
+				log.Info("Using TLS certificate", "cert", certPath)
+				log.Info("Using TLS key", "key", keyPath)
 			} else {
-				log.Fatal("TLS enabled but no certificate provided and auto-cert is disabled")
+				log.Error("TLS enabled but no certificate provided and auto-cert is disabled")
+				exitFunc(1)
 			}
 		}
 
 		// Load TLS configuration
 		tlsConfig, err := modeltls.LoadTLSConfig(certPath, keyPath)
 		if err != nil {
-			log.Fatalf("Failed to load TLS configuration: %v", err)
+			log.Error("Failed to load TLS configuration", "error", err)
+			exitFunc(1)
 		}
 
 		tlsServer = &http.Server{
@@ -266,7 +289,7 @@ func main() {
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 
-		log.Infof("Listening on TLS port %s", tlsPort)
+		log.Info("Listening on TLS port", "port", tlsPort)
 		go func() {
 			// Use ListenAndServeTLS with empty strings since TLSConfig already has the certs
 			ln, err := tls.Listen("tcp", tlsServer.Addr, tlsConfig)
@@ -294,30 +317,30 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		if err != nil {
-			log.Errorf("Server error: %v", err)
+			log.Error("Server error", "error", err)
 		}
 	case err := <-tlsServerErrorsChan:
 		if err != nil {
-			log.Errorf("TLS server error: %v", err)
+			log.Error("TLS server error", "error", err)
 		}
 	case <-ctx.Done():
-		log.Infoln("Shutdown signal received")
-		log.Infoln("Shutting down the server")
+		log.Info("Shutdown signal received")
+		log.Info("Shutting down the server")
 		if err := server.Close(); err != nil {
-			log.Errorf("Server shutdown error: %v", err)
+			log.Error("Server shutdown error", "error", err)
 		}
 		if tlsServer != nil {
-			log.Infoln("Shutting down the TLS server")
+			log.Info("Shutting down the TLS server")
 			if err := tlsServer.Close(); err != nil {
-				log.Errorf("TLS server shutdown error: %v", err)
+				log.Error("TLS server shutdown error", "error", err)
 			}
 		}
-		log.Infoln("Waiting for the scheduler to stop")
+		log.Info("Waiting for the scheduler to stop")
 		if err := <-schedulerErrors; err != nil {
-			log.Errorf("Scheduler error: %v", err)
+			log.Error("Scheduler error", "error", err)
 		}
 	}
-	log.Infoln("Docker Model Runner stopped")
+	log.Info("Docker Model Runner stopped")
 }
 
 // createLlamaCppConfigFromEnv creates a LlamaCppConfig from environment variables
@@ -338,12 +361,13 @@ func createLlamaCppConfigFromEnv() config.BackendConfig {
 	for _, arg := range args {
 		for _, disallowed := range disallowedArgs {
 			if arg == disallowed {
-				testLog.Fatalf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed)
+				testLog.Error(fmt.Sprintf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed))
+				exitFunc(1)
 			}
 		}
 	}
 
-	testLog.Infof("Using custom arguments: %v", args)
+	testLog.Info("Using custom arguments", "args", fmt.Sprintf("%v", args))
 	return &llamacpp.Config{
 		Args: args,
 	}
