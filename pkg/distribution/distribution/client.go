@@ -619,7 +619,7 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 		return fmt.Errorf("reading model: %w", err)
 	}
 
-tc.log.Info("pushing model", "tag", utils.SanitizeForLog(tag, -1))
+	c.log.Info("pushing model", "tag", utils.SanitizeForLog(tag, -1))
 	if err := target.Write(ctx, mdl, progressWriter); err != nil {
 		c.log.Error("failed to push image", "error", err, "reference", tag)
 		if writeErr := progress.WriteError(progressWriter, fmt.Sprintf("Error: %s", err.Error()), oci.ModePush); writeErr != nil {

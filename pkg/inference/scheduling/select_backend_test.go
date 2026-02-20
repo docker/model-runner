@@ -1,6 +1,7 @@
 package scheduling
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -8,7 +9,6 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"log/slog"
 )
 
 // mockPlatformSupport allows tests to control platform capability checks.
