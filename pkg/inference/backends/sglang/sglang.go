@@ -112,14 +112,14 @@ func (s *sglang) Install(_ context.Context, _ *http.Client) error {
 	// Check if sglang is installed
 	if err := s.pythonCmd("-c", "import sglang").Run(); err != nil {
 		s.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
-		s.log.Warnf("sglang package not found. Install with: uv pip install sglang")
+		s.log.Warn("sglang package not found. Install with: uv pip install sglang")
 		return ErrSGLangNotFound
 	}
 
 	// Get version
 	output, err := s.pythonCmd("-c", "import sglang; print(sglang.__version__)").Output()
 	if err != nil {
-		s.log.Warnf("could not get sglang version: %v", err)
+		s.log.Warn("could not get sglang version", "error", err)
 		s.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
 		s.status = inference.FormatRunning(fmt.Sprintf("sglang %s", strings.TrimSpace(string(output))))
@@ -172,7 +172,7 @@ func (s *sglang) Run(ctx context.Context, socket, model string, modelRef string,
 		SandboxConfig:   "",
 		Args:            args,
 		Logger:          s.log,
-		ServerLogWriter: s.serverLog.Writer(),
+		ServerLogWriter: logging.NewWriter(s.serverLog),
 	})
 }
 

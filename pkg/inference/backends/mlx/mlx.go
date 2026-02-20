@@ -103,7 +103,7 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 	cmd := exec.CommandContext(ctx, pythonPath, "-c", "import mlx_lm")
 	if runErr := cmd.Run(); runErr != nil {
 		m.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
-		m.log.Warnf("mlx-lm package not found. Install with: uv pip install mlx-lm")
+		m.log.Warn("mlx-lm package not found. Install with: uv pip install mlx-lm")
 		return fmt.Errorf("mlx-lm package not installed: %w", runErr)
 	}
 
@@ -111,7 +111,7 @@ func (m *mlx) Install(ctx context.Context, httpClient *http.Client) error {
 	cmd = exec.CommandContext(ctx, pythonPath, "-c", "import mlx; print(mlx.__version__)")
 	output, outputErr := cmd.Output()
 	if outputErr != nil {
-		m.log.Warnf("could not get MLX version: %v", outputErr)
+		m.log.Warn("could not get MLX version", "error", outputErr)
 		m.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
 		m.status = inference.FormatRunning(fmt.Sprintf("MLX %s", strings.TrimSpace(string(output))))
@@ -143,7 +143,7 @@ func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mo
 		SandboxConfig:   "",
 		Args:            args,
 		Logger:          m.log,
-		ServerLogWriter: m.serverLog.Writer(),
+		ServerLogWriter: logging.NewWriter(m.serverLog),
 	})
 }
 

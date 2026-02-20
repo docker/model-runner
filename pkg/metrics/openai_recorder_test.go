@@ -2,15 +2,15 @@ package metrics
 
 import (
 	"encoding/json"
+	"log/slog"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/models"
-	"github.com/sirupsen/logrus"
 )
 
 func TestTruncateMediaFields(t *testing.T) {
 	// Create a mock logger and model manager
-	logger := logrus.New()
+	logger := slog.Default()
 	modelManager := &models.Manager{}
 	recorder := NewOpenAIRecorder(logger, modelManager)
 
@@ -159,7 +159,7 @@ func TestTruncateMediaFields(t *testing.T) {
 }
 
 func TestTruncateBase64Data(t *testing.T) {
-	logger := logrus.New()
+	logger := slog.Default()
 	modelManager := &models.Manager{}
 	recorder := NewOpenAIRecorder(logger, modelManager)
 

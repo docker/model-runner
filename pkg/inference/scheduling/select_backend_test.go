@@ -1,7 +1,7 @@
 package scheduling
 
 import (
-	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/types"
@@ -9,7 +9,6 @@ import (
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	"github.com/sirupsen/logrus"
 )
 
 // mockPlatformSupport allows tests to control platform capability checks.
@@ -42,9 +41,7 @@ func (m *mockModel) Descriptor() (types.Descriptor, error) { return types.Descri
 func (m *mockModel) ChatTemplatePath() (string, error)     { return "", nil }
 
 func newTestSchedulerWithPlatform(backends map[string]inference.Backend, defaultBackend inference.Backend, ps PlatformSupport) *Scheduler {
-	discard := logrus.New()
-	discard.SetOutput(io.Discard)
-	log := logrus.NewEntry(discard)
+	log := slog.Default()
 
 	s := NewScheduler(log, backends, defaultBackend, nil, nil, nil, nil)
 	s.platformSupport = ps

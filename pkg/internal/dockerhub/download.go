@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +20,6 @@ import (
 	"github.com/containerd/platforms"
 	"github.com/docker/model-runner/pkg/internal/jsonutil"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sirupsen/logrus"
 )
 
 func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredArch string) error {
@@ -52,7 +51,7 @@ func retry(ctx context.Context, attempts int, sleep time.Duration, f func() (*v1
 	var result *v1.Descriptor
 	for i := 0; i < attempts; i++ {
 		if i > 0 {
-			log.Printf("retry %d after error: %v\n", i, err)
+			slog.Info("retrying after error", "attempt", i, "error", err)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -100,7 +99,7 @@ func dockerCredentials(host string) (string, string, error) {
 	if hubUsername != "" && hubPassword != "" {
 		return hubUsername, hubPassword, nil
 	}
-	logrus.WithField("host", host).Debug("checking for registry auth config")
+	slog.Debug("checking for registry auth config", "host", host)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", "", err
@@ -125,10 +124,10 @@ func dockerCredentials(host string) (string, string, error) {
 			}
 			parts := strings.SplitN(string(creds), ":", 2)
 			if len(parts) != 2 {
-				logrus.Debugf("skipping not user/password auth for registry %s: %s", host, parts[0])
+				slog.Debug("skipping non-user/password auth for registry", "host", host, "auth_type", parts[0])
 				return "", "", nil
 			}
-			logrus.Debugf("using auth for registry %s: user=%s", host, parts[0])
+			slog.Debug("using auth for registry", "host", host, "user", parts[0])
 			return parts[0], parts[1], nil
 		}
 	}

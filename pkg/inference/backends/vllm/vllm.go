@@ -119,7 +119,7 @@ func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	versionPath := filepath.Join(filepath.Dir(vllmDir), "version")
 	versionBytes, err := os.ReadFile(versionPath)
 	if err != nil {
-		v.log.Warnf("could not get vllm version: %v", err)
+		v.log.Warn("could not get vllm version", "error", err)
 		v.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
 		v.status = inference.FormatRunning(fmt.Sprintf("vllm %s", strings.TrimSpace(string(versionBytes))))
@@ -183,7 +183,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		SandboxConfig:   "",
 		Args:            args,
 		Logger:          v.log,
-		ServerLogWriter: v.serverLog.Writer(),
+		ServerLogWriter: logging.NewWriter(v.serverLog),
 	})
 }
 

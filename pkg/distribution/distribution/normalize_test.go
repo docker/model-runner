@@ -2,13 +2,13 @@ package distribution
 
 import (
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
-	"github.com/sirupsen/logrus"
 )
 
 func TestNormalizeModelName(t *testing.T) {
@@ -339,7 +339,7 @@ func createTestClient(t *testing.T) (*Client, func()) {
 	// Create client with minimal config
 	client, err := NewClient(
 		WithStoreRootPath(tempDir),
-		WithLogger(logrus.NewEntry(logrus.StandardLogger())),
+		WithLogger(slog.Default()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create test client: %v", err)

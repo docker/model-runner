@@ -117,14 +117,14 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 	// Check if diffusers is installed
 	if err := d.pythonCmd("-c", "import diffusers").Run(); err != nil {
 		d.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
-		d.log.Warnf("diffusers package not found. Install with: uv pip install diffusers torch")
+		d.log.Warn("diffusers package not found. Install with: uv pip install diffusers torch")
 		return ErrDiffusersNotFound
 	}
 
 	// Get version
 	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
 	if err != nil {
-		d.log.Warnf("could not get diffusers version: %v", err)
+		d.log.Warn("could not get diffusers version", "error", err)
 		d.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
 		d.status = inference.FormatRunning(fmt.Sprintf("diffusers %s", strings.TrimSpace(string(output))))
@@ -157,7 +157,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("%w: model %s", ErrNoDDUFFile, model)
 	}
 
-	d.log.Infof("Loading DDUF file from: %s", ddufPath)
+	d.log.Info("Loading DDUF file from", "path", ddufPath)
 
 	args, err := d.config.GetArgs(ddufPath, socket, mode, backendConfig)
 	if err != nil {
@@ -169,7 +169,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		args = append(args, "--served-model-name", modelRef)
 	}
 
-	d.log.Infof("Diffusers args: %v", utils.SanitizeForLog(strings.Join(args, " ")))
+	d.log.Info("Diffusers args", "args", utils.SanitizeForLog(strings.Join(args, " ")))
 
 	if d.pythonPath == "" {
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
@@ -188,7 +188,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		SandboxConfig:    "",
 		Args:             args,
 		Logger:           d.log,
-		ServerLogWriter:  d.serverLog.Writer(),
+		ServerLogWriter:  logging.NewWriter(d.serverLog),
 		ErrorTransformer: ExtractPythonError,
 	})
 }
