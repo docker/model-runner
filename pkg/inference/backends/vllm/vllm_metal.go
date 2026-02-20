@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
+	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 )
 
@@ -164,7 +165,7 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 	// Copy the extracted self-contained Python installation directly to install dir
 	// (the image contains /vllm-metal/ with bin/, lib/, etc.)
 	vllmMetalDir := filepath.Join(extractDir, "vllm-metal")
-	if err := copyDir(vllmMetalDir, v.installDir); err != nil {
+	if err := utils.CopyDir(vllmMetalDir, v.installDir); err != nil {
 		return fmt.Errorf("failed to copy to install dir: %w", err)
 	}
 
@@ -176,52 +177,6 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 
 	v.log.Infof("vllm-metal %s installed successfully", vllmMetalVersion)
 	return nil
-}
-
-// copyDir recursively copies a directory.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, dstPath)
-		}
-
-		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-			return err
-		}
-
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer srcFile.Close()
-
-		dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = dstFile.ReadFrom(srcFile)
-		return err
-	})
 }
 
 func (v *vllmMetal) verifyInstallation(ctx context.Context) error {

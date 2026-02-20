@@ -25,8 +25,15 @@ DOCKER_BUILD_ARGS := \
 # Test configuration
 BUILD_DMR ?= 1
 
-# Main targets
-.PHONY: build run clean test integration-tests test-docker-ce-installation docker-build docker-build-multiplatform docker-run docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang docker-run-impl help validate validate-all lint docker-build-diffusers docker-run-diffusers vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean diffusers-build diffusers-install diffusers-dev diffusers-clean build-cli install-cli
+# Phony targets grouped by category
+.PHONY: build run clean test integration-tests build-cli install-cli
+.PHONY: validate validate-all lint help
+.PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
+.PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-diffusers docker-run-diffusers
+.PHONY: test-docker-ce-installation
+.PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
+.PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
 # Default target
 .DEFAULT_GOAL := build
 

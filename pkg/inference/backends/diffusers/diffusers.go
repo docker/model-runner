@@ -174,7 +174,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 	// Copy the extracted self-contained Python installation directly to install dir
 	// (the image contains /diffusers/ with bin/, lib/, etc.)
 	diffusersDir := filepath.Join(extractDir, "diffusers")
-	if err := copyDir(diffusersDir, d.installDir); err != nil {
+	if err := utils.CopyDir(diffusersDir, d.installDir); err != nil {
 		return fmt.Errorf("failed to copy to install dir: %w", err)
 	}
 
@@ -188,54 +188,11 @@ func (d *diffusers) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 	return nil
 }
 
-// copyDir recursively copies a directory.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, dstPath)
-		}
-
-		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-			return err
-		}
-
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer srcFile.Close()
-
-		dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = dstFile.ReadFrom(srcFile)
-		return err
-	})
-}
-
+// verifyInstallation checks that the diffusers Python package can be imported.
+// Note: d.pythonPath is not user-controlled — it is set internally by Install()
+// to the bundled Python binary path, so the exec.Command usage is safe.
 func (d *diffusers) verifyInstallation(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, d.pythonPath, "-c", "import diffusers")
+	cmd := exec.CommandContext(ctx, d.pythonPath, "-c", "import diffusers") //nolint:gosec // pythonPath is set internally by Install, not user input
 	if err := cmd.Run(); err != nil {
 		d.status = "import failed"
 		return fmt.Errorf("diffusers import failed: %w", err)
