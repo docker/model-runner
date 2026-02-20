@@ -109,8 +109,6 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 		llamaServerBin = "com.docker.llama-server.exe"
 	}
 
-	l.status = "installing"
-
 	// Temporary workaround for dynamically downloading llama.cpp from Docker Hub.
 	// Internet access and an available docker/docker-model-backend-llamacpp:latest on Docker Hub are required.
 	// Even if docker/docker-model-backend-llamacpp:latest has been downloaded before, we still require its
@@ -119,7 +117,7 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Infof("failed to ensure latest llama.cpp: %v\n", err)
 		if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
-			l.status = fmt.Sprintf("failed to install llama.cpp: %v", err)
+			l.status = inference.FormatError(fmt.Sprintf("failed to install llama.cpp: %v", err))
 		}
 		if errors.Is(err, context.Canceled) {
 			return err

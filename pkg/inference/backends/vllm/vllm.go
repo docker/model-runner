@@ -81,7 +81,7 @@ func newLinux(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		modelManager:     modelManager,
 		serverLog:        serverLog,
 		config:           conf,
-		status:           "not installed",
+		status:           inference.FormatNotInstalled(""),
 		customBinaryPath: customBinaryPath,
 	}, nil
 }
@@ -102,13 +102,14 @@ func (v *vLLM) UsesTCP() bool {
 
 func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	if !platform.SupportsVLLM() {
+		v.status = inference.FormatNotInstalled(inference.DetailOnlyLinux)
 		return errors.New("not implemented")
 	}
 
 	vllmBinaryPath := v.binaryPath()
 	if _, err := os.Stat(vllmBinaryPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			v.status = ErrorNotFound.Error()
+			v.status = inference.FormatNotInstalled(inference.DetailBinaryNotFound)
 			return ErrorNotFound
 		}
 		return fmt.Errorf("failed to check vLLM binary: %w", err)
@@ -119,9 +120,9 @@ func (v *vLLM) Install(_ context.Context, _ *http.Client) error {
 	versionBytes, err := os.ReadFile(versionPath)
 	if err != nil {
 		v.log.Warnf("could not get vllm version: %v", err)
-		v.status = "running vllm version: unknown"
+		v.status = inference.FormatRunning(inference.DetailVersionUnknown)
 	} else {
-		v.status = fmt.Sprintf("running vllm version: %s", strings.TrimSpace(string(versionBytes)))
+		v.status = inference.FormatRunning(fmt.Sprintf("vllm %s", strings.TrimSpace(string(versionBytes))))
 	}
 
 	return nil

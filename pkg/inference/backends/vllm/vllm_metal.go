@@ -65,7 +65,7 @@ func newMetal(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		serverLog:        serverLog,
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
-		status:           "not installed",
+		status:           inference.FormatNotInstalled(""),
 	}, nil
 }
 
@@ -88,6 +88,7 @@ func (v *vllmMetal) UsesTCP() bool {
 // Install implements inference.Backend.Install.
 func (v *vllmMetal) Install(ctx context.Context, httpClient *http.Client) error {
 	if !platform.SupportsVLLMMetal() {
+		v.status = inference.FormatNotInstalled(inference.DetailOnlyAppleSilicon)
 		return ErrPlatformNotSupported
 	}
 
@@ -111,7 +112,7 @@ func (v *vllmMetal) Install(ctx context.Context, httpClient *http.Client) error 
 		}
 	}
 
-	v.status = "installing"
+	v.status = inference.FormatInstalling(fmt.Sprintf("%s vllm-metal %s", inference.DetailDownloading, vllmMetalVersion))
 	if err := v.downloadAndExtract(ctx, httpClient); err != nil {
 		return fmt.Errorf("failed to install vllm-metal: %w", err)
 	}
@@ -226,17 +227,17 @@ func copyDir(src, dst string) error {
 func (v *vllmMetal) verifyInstallation(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, v.pythonPath, "-c", "import vllm_metal")
 	if err := cmd.Run(); err != nil {
-		v.status = "import failed"
+		v.status = inference.FormatError(inference.DetailImportFailed)
 		return fmt.Errorf("vllm_metal import failed: %w", err)
 	}
 
 	versionFile := filepath.Join(v.installDir, ".vllm-metal-version")
 	versionBytes, err := os.ReadFile(versionFile)
 	if err != nil {
-		v.status = "running vllm-metal"
+		v.status = inference.FormatRunning(inference.DetailVersionUnknown)
 		return nil
 	}
-	v.status = fmt.Sprintf("running vllm-metal %s", strings.TrimSpace(string(versionBytes)))
+	v.status = inference.FormatRunning(fmt.Sprintf("vllm-metal %s", strings.TrimSpace(string(versionBytes))))
 	return nil
 }
 

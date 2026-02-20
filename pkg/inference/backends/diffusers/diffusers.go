@@ -73,7 +73,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		modelManager:     modelManager,
 		serverLog:        serverLog,
 		config:           conf,
-		status:           "not installed",
+		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
 	}, nil
