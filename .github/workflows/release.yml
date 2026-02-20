@@ -438,7 +438,6 @@ jobs:
   release-cli-desktop:
     needs: [prepare, test]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -501,7 +500,6 @@ jobs:
   bump-pinata:
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -546,14 +544,24 @@ jobs:
   # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
   # (triggers docker/packaging → docker/release-repo)
+  #
+  # Split into two jobs:
+  #   1. release-cli-docker-ce-trigger: triggers packaging, waits for it, then
+  #      triggers release-repo plugin workflow.
+  #   2. release-cli-docker-ce-wait: requires manual approval (via the
+  #      "release-repo-deploy" environment) before waiting for the release-repo
+  #      workflow to finish. This lets you approve the release-repo deploy-to-live
+  #      gate first, then approve this workflow so both proceed together.
   # ---------------------------------------------------------------------------
-  release-cli-docker-ce:
+  release-cli-docker-ce-trigger:
     if: ${{ !inputs.skipPackaging }}
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     permissions:
       contents: read
+    outputs:
+      packaging_image: ${{ steps.packaging.outputs.packaging_image }}
+      release_repo_trigger_time: ${{ steps.trigger_release_repo.outputs.trigger_time }}
     steps:
       - name: Trigger release-model workflow in packaging repo
         id: trigger
@@ -640,10 +648,49 @@ jobs:
             -f release_live=true
           echo "✅ Plugin release workflow triggered in docker/release-repo"
 
+      - name: Post trigger summary
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
+          ## 📦 Docker CE Packaging & Release — Triggered
+
+          | Step | Status |
+          |------|--------|
+          | Packaging image | \`${PACKAGING_IMAGE}\` |
+          | Model version | \`${VERSION}\` |
+          | Release channel | \`stable\` |
+          | Deploy to live | ✅ Yes |
+          | Release tag | \`${RELEASE_TAG}\` |
+
+          The plugin release workflow has been triggered in [docker/release-repo](https://github.com/docker/release-repo/actions/workflows/plugin.yml).
+
+          ⏳ **Next step:** approve the \`release-repo-deploy\` environment in this workflow
+          once the release-repo deploy-to-live gate has been approved.
+          SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # Wait for release-repo — requires manual approval via the
+  # "release-repo-deploy" environment so the workflow does not block for hours.
+  #
+  # Before approving this step:
+  #   1. Go to docker/release-repo → Actions → plugin.yml run
+  #   2. Approve the deploy-to-live gate there
+  #   3. Come back here and approve the "release-repo-deploy" environment
+  # ---------------------------------------------------------------------------
+  release-cli-docker-ce-wait:
+    needs: [prepare, release-cli-docker-ce-trigger]
+    runs-on: ubuntu-latest
+    environment: release-repo-deploy
+    permissions:
+      contents: read
+    steps:
       - name: Wait for release-repo plugin workflow to complete
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          TRIGGER_TIME: ${{ steps.trigger_release_repo.outputs.trigger_time }}
+          TRIGGER_TIME: ${{ needs.release-cli-docker-ce-trigger.outputs.release_repo_trigger_time }}
         run: |
           echo "⏳ Waiting for release-repo plugin workflow to appear (triggered at $TRIGGER_TIME)..."
           sleep 15
@@ -679,7 +726,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
+          PACKAGING_IMAGE: ${{ needs.release-cli-docker-ce-trigger.outputs.packaging_image }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
           ## 📦 Docker CE Packaging & Release
@@ -701,9 +748,8 @@ jobs:
   # to confirm both client and server versions match the release tag.
   # ---------------------------------------------------------------------------
   verify-docker-ce:
-    needs: [prepare, release-cli-docker-ce, build]
+    needs: [prepare, release-cli-docker-ce-wait, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
