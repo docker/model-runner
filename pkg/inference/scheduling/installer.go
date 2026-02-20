@@ -113,13 +113,12 @@ func (i *installer) run(ctx context.Context) {
 		// existing installation) when files are present, to avoid triggering
 		// a download.
 		if i.deferredBackends[name] {
-			status := i.statuses[name]
+			// If the backend is already on disk from a previous session,
+			// verify it via installBackend which properly serializes with
+			// on-demand installs from wait().
 			if diskUsage, err := backend.GetDiskUsage(); err == nil && diskUsage > 0 {
-				if err := backend.Install(ctx, i.httpClient); err != nil {
-					status.err = err
-					close(status.failed)
-				} else {
-					close(status.installed)
+				if err := i.installBackend(ctx, name); err != nil {
+					i.log.Warnf("Backend installation failed for %s: %v", name, err)
 				}
 			}
 			// If not on disk, leave channels open so wait() can trigger

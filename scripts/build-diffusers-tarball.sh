@@ -57,7 +57,8 @@ uv pip install --python "$PYTHON_DIR/bin/python3" --system \
     torch \
     torchvision \
     accelerate \
-    transformers \
+    "transformers<5" \
+    sentencepiece \
     safetensors \
     fastapi \
     uvicorn \

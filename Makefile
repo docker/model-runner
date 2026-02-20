@@ -299,7 +299,7 @@ diffusers-dev:
 	rm -rf "$(DIFFUSERS_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(DIFFUSERS_INSTALL_DIR)"; \
 	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate" && \
-		pip install diffusers torch torchvision accelerate transformers safetensors fastapi uvicorn pydantic && \
+		pip install diffusers torch torchvision accelerate "transformers<5" sentencepiece safetensors fastapi uvicorn pydantic && \
 		SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages" && \
 		cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server" && \
 		echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
