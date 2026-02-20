@@ -432,8 +432,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
-  # (triggers docker/inference-engine-llama.cpp: signs macOS/Windows binaries,
-  #  pushes docker/docker-model-cli-desktop-module to Docker Hub)
   # ---------------------------------------------------------------------------
   release-cli-desktop:
     needs: [prepare, test]
@@ -441,58 +439,31 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Trigger release-cli-dd workflow
-        id: trigger
+      - name: Trigger Desktop CLI release and wait for completion
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
-          echo "🚀 Triggering release-cli-dd workflow at $TRIGGER_TIME"
-          echo "   model-cli-ref: $RELEASE_TAG"
-          echo "   tag: v$VERSION"
-          gh workflow run release-cli-dd.yml \
+          echo "🚀 Triggering Desktop CLI release workflow"
+
+          # gh workflow run now returns run details (gh v2.87.0+)
+          RUN_URL=$(gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION"
-          echo "✅ release-cli-dd workflow triggered"
+            -f tag="v$VERSION" 2>&1 \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
-      - name: Wait for release-cli-dd to complete
-        env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          TRIGGER_TIME: ${{ steps.trigger.outputs.trigger_time }}
-        run: |
-          echo "⏳ Waiting for release-cli-dd workflow to appear (triggered at $TRIGGER_TIME)..."
-          sleep 15
+          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          echo "::add-mask::$RUN_ID"
+          echo "::add-mask::$RUN_URL"
+          echo "✅ Desktop CLI release workflow triggered"
 
-          # Find the run created after our trigger time to avoid picking up unrelated runs
-          for i in $(seq 1 30); do
-            RUN_ID=$(gh run list \
-              --repo docker/inference-engine-llama.cpp \
-              --workflow release-cli-dd.yml \
-              --limit 5 \
-              --json databaseId,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "Found release-cli-dd run: $RUN_ID"
-              break
-            fi
-            echo "  Retry $i/30..."
-            sleep 10
-          done
-
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "::error::Could not find release-cli-dd workflow run created after $TRIGGER_TIME"
-            exit 1
-          fi
-
-          echo "⏳ Waiting for release-cli-dd run $RUN_ID to complete..."
+          echo "⏳ Waiting for Desktop CLI release to complete..."
           gh run watch "$RUN_ID" \
             --repo docker/inference-engine-llama.cpp \
             --exit-status
-          echo "✅ release-cli-dd workflow completed successfully"
+          echo "✅ Desktop CLI release completed successfully"
 
   # ---------------------------------------------------------------------------
   # Bump docker-model version in pinata and open a PR
@@ -542,16 +513,14 @@ jobs:
           draft: true
 
   # ---------------------------------------------------------------------------
-  # Release CLI for Docker CE — build .deb/.rpm packages and deploy to download.docker.com
-  # (triggers docker/packaging → docker/release-repo)
+  # Release CLI for Docker CE — build .deb/.rpm packages and deploy
   #
   # Split into two jobs:
   #   1. release-cli-docker-ce-trigger: triggers packaging, waits for it, then
-  #      triggers release-repo plugin workflow.
+  #      triggers the deploy workflow.
   #   2. release-cli-docker-ce-wait: requires manual approval (via the
-  #      "release-repo-deploy" environment) before waiting for the release-repo
-  #      workflow to finish. This lets you approve the release-repo deploy-to-live
-  #      gate first, then approve this workflow so both proceed together.
+  #      "release-repo-deploy" environment) before waiting for the deploy
+  #      workflow to finish.
   # ---------------------------------------------------------------------------
   release-cli-docker-ce-trigger:
     if: ${{ !inputs.skipPackaging }}
@@ -561,55 +530,29 @@ jobs:
       contents: read
     outputs:
       packaging_image: ${{ steps.packaging.outputs.packaging_image }}
-      release_repo_trigger_time: ${{ steps.trigger_release_repo.outputs.trigger_time }}
+      release_repo_run_id: ${{ steps.trigger_release_repo.outputs.run_id }}
     steps:
-      - name: Trigger release-model workflow in packaging repo
-        id: trigger
-        env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-        run: |
-          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
-          echo "📦 Triggering release-model workflow in docker/packaging at $TRIGGER_TIME"
-          echo "   ref: $RELEASE_TAG"
-          gh workflow run release-model.yml \
-            --repo docker/packaging \
-            -f ref="$RELEASE_TAG"
-          echo "✅ release-model workflow triggered in docker/packaging"
-
-      - name: Wait for packaging workflow to complete
+      - name: Trigger packaging and wait for completion
         id: packaging
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
-          TRIGGER_TIME: ${{ steps.trigger.outputs.trigger_time }}
         run: |
-          echo "⏳ Waiting for packaging workflow to appear (triggered at $TRIGGER_TIME)..."
-          sleep 15
+          echo "📦 Triggering packaging workflow"
 
-          # Find the run created after our trigger time to avoid picking up unrelated runs
-          for i in $(seq 1 30); do
-            RUN_ID=$(gh run list \
-              --repo docker/packaging \
-              --workflow release-model.yml \
-              --limit 5 \
-              --json databaseId,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "Found packaging run: $RUN_ID"
-              break
-            fi
-            echo "  Retry $i/30..."
-            sleep 10
-          done
+          # gh workflow run now returns run details (gh v2.87.0+)
+          RUN_URL=$(gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f ref="$RELEASE_TAG" 2>&1 \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "::error::Could not find packaging workflow run created after $TRIGGER_TIME"
-            exit 1
-          fi
+          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          echo "::add-mask::$RUN_ID"
+          echo "::add-mask::$RUN_URL"
+          echo "✅ Packaging workflow triggered"
 
-          echo "⏳ Waiting for packaging run $RUN_ID to complete..."
+          echo "⏳ Waiting for packaging to complete..."
           gh run watch "$RUN_ID" \
             --repo docker/packaging \
             --exit-status
@@ -621,64 +564,42 @@ jobs:
             --jq '.number')
 
           PACKAGING_IMAGE="dockereng/packaging:model-v${VERSION}-${RUN_NUMBER}"
-          echo "📦 Packaging image: $PACKAGING_IMAGE"
+          echo "::add-mask::$PACKAGING_IMAGE"
           echo "packaging_image=$PACKAGING_IMAGE" >> "$GITHUB_OUTPUT"
           echo "✅ Packaging workflow completed successfully"
 
-      - name: Trigger release-repo plugin workflow
+      - name: Trigger deploy workflow
         id: trigger_release_repo
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           VERSION: ${{ needs.prepare.outputs.version }}
           PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
         run: |
-          TRIGGER_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          echo "trigger_time=$TRIGGER_TIME" >> "$GITHUB_OUTPUT"
-          echo "🚀 Triggering plugin release in docker/release-repo at $TRIGGER_TIME"
-          echo "   packaging_image: $PACKAGING_IMAGE"
-          echo "   model_version: $VERSION"
-          echo "   channel: stable"
-          echo "   release_live: true"
-          gh workflow run plugin.yml \
+          echo "🚀 Triggering deploy workflow"
+
+          # gh workflow run now returns run details (gh v2.87.0+)
+          RUN_URL=$(gh workflow run plugin.yml \
             --repo docker/release-repo \
             --ref production \
             -f packaging_image="$PACKAGING_IMAGE" \
             -f model_version="$VERSION" \
             -f channel=stable \
-            -f release_live=true
-          echo "✅ Plugin release workflow triggered in docker/release-repo"
+            -f release_live=true 2>&1 \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
-      - name: Post trigger summary
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
-        run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
-          ## 📦 Docker CE Packaging & Release — Triggered
-
-          | Step | Status |
-          |------|--------|
-          | Packaging image | \`${PACKAGING_IMAGE}\` |
-          | Model version | \`${VERSION}\` |
-          | Release channel | \`stable\` |
-          | Deploy to live | ✅ Yes |
-          | Release tag | \`${RELEASE_TAG}\` |
-
-          The plugin release workflow has been triggered in [docker/release-repo](https://github.com/docker/release-repo/actions/workflows/plugin.yml).
-
-          ⏳ **Next step:** approve the \`release-repo-deploy\` environment in this workflow
-          once the release-repo deploy-to-live gate has been approved.
-          SUMMARY
+          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          echo "::add-mask::$RUN_ID"
+          echo "::add-mask::$RUN_URL"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "✅ Deploy workflow triggered"
 
   # ---------------------------------------------------------------------------
-  # Wait for release-repo — requires manual approval via the
-  # "release-repo-deploy" environment so the workflow does not block for hours.
+  # Wait for deploy — requires manual approval via the "release-repo-deploy"
+  # environment so the workflow does not block for hours.
   #
   # Before approving this step:
-  #   1. Go to docker/release-repo → Actions → plugin.yml run
-  #   2. Approve the deploy-to-live gate there
-  #   3. Come back here and approve the "release-repo-deploy" environment
+  #   1. Approve the deploy-to-live gate in the deploy workflow
+  #   2. Come back here and approve the "release-repo-deploy" environment
   # ---------------------------------------------------------------------------
   release-cli-docker-ce-wait:
     needs: [prepare, release-cli-docker-ce-trigger]
@@ -687,60 +608,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Wait for release-repo plugin workflow to complete
+      - name: Wait for deploy workflow to complete
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          TRIGGER_TIME: ${{ needs.release-cli-docker-ce-trigger.outputs.release_repo_trigger_time }}
+          RUN_ID: ${{ needs.release-cli-docker-ce-trigger.outputs.release_repo_run_id }}
         run: |
-          echo "⏳ Waiting for release-repo plugin workflow to appear (triggered at $TRIGGER_TIME)..."
-          sleep 15
-
-          # Find the run created after our trigger time to avoid picking up unrelated runs
-          for i in $(seq 1 30); do
-            RUN_ID=$(gh run list \
-              --repo docker/release-repo \
-              --workflow plugin.yml \
-              --limit 5 \
-              --json databaseId,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$TRIGGER_TIME\")] | sort_by(.createdAt) | last | .databaseId")
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "Found release-repo run: $RUN_ID"
-              break
-            fi
-            echo "  Retry $i/30..."
-            sleep 10
-          done
-
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "::error::Could not find release-repo plugin workflow run created after $TRIGGER_TIME"
-            exit 1
-          fi
-
-          echo "⏳ Waiting for release-repo run $RUN_ID to complete (includes manual deploy-to-live approval)..."
+          echo "::add-mask::$RUN_ID"
+          echo "⏳ Waiting for deploy workflow to complete..."
           gh run watch "$RUN_ID" \
             --repo docker/release-repo \
             --exit-status
-          echo "✅ Release-repo plugin workflow completed successfully"
-
-      - name: Post summary
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          PACKAGING_IMAGE: ${{ needs.release-cli-docker-ce-trigger.outputs.packaging_image }}
-        run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<-SUMMARY
-          ## 📦 Docker CE Packaging & Release
-
-          | Step | Status |
-          |------|--------|
-          | Packaging image | \`${PACKAGING_IMAGE}\` |
-          | Model version | \`${VERSION}\` |
-          | Release channel | \`stable\` |
-          | Deploy to live | ✅ Yes |
-          | Release tag | \`${RELEASE_TAG}\` |
-
-          The plugin release workflow has been triggered in [docker/release-repo](https://github.com/docker/release-repo/actions/workflows/plugin.yml).
-          SUMMARY
+          echo "✅ Deploy workflow completed successfully"
 
   # ---------------------------------------------------------------------------
   # Verify Docker CE installation and server version — install Docker CE,
