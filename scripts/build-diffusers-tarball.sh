@@ -51,18 +51,29 @@ cp -Rp "$PYTHON_PREFIX" "$PYTHON_DIR"
 # Remove the externally-managed marker so we can install packages into it
 rm -f "$PYTHON_DIR/lib/python3.12/EXTERNALLY-MANAGED"
 
+DIFFUSERS_VERSION="0.36.0"
+TORCH_VERSION="2.9.1"
+TRANSFORMERS_VERSION="4.57.5"
+ACCELERATE_VERSION="1.3.0"
+SAFETENSORS_VERSION="0.5.2"
+HUGGINGFACE_HUB_VERSION="0.34.0"
+BITSANDBYTES_VERSION="0.49.1"
+FASTAPI_VERSION="0.115.12"
+UVICORN_VERSION="0.34.1"
+PILLOW_VERSION="11.2.1"
+
 echo "Installing diffusers and dependencies..."
 uv pip install --python "$PYTHON_DIR/bin/python3" --system \
-    diffusers \
-    torch \
-    torchvision \
-    accelerate \
-    "transformers<5" \
-    sentencepiece \
-    safetensors \
-    fastapi \
-    uvicorn \
-    pydantic
+    "diffusers==${DIFFUSERS_VERSION}" \
+    "torch==${TORCH_VERSION}" \
+    "transformers==${TRANSFORMERS_VERSION}" \
+    "accelerate==${ACCELERATE_VERSION}" \
+    "safetensors==${SAFETENSORS_VERSION}" \
+    "huggingface_hub==${HUGGINGFACE_HUB_VERSION}" \
+    "bitsandbytes==${BITSANDBYTES_VERSION}" \
+    "fastapi==${FASTAPI_VERSION}" \
+    "uvicorn[standard]==${UVICORN_VERSION}" \
+    "pillow==${PILLOW_VERSION}"
 
 # Install the diffusers_server module from the project
 echo "Installing diffusers_server module..."
