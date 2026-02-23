@@ -547,7 +547,6 @@ jobs:
       contents: read
     outputs:
       packaging_image: ${{ steps.packaging.outputs.packaging_image }}
-      release_repo_run_id: ${{ steps.trigger_release_repo.outputs.run_id }}
     steps:
       - name: Trigger packaging and wait for completion
         id: packaging
@@ -645,7 +644,6 @@ jobs:
 
           echo "::add-mask::$RUN_ID"
           echo "::add-mask::$RUN_URL"
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "✅ Deploy workflow triggered"
 
   # ---------------------------------------------------------------------------
