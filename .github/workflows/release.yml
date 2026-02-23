@@ -534,12 +534,10 @@ jobs:
   # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy
   #
-  # Split into two jobs:
-  #   1. release-cli-docker-ce-trigger: triggers packaging, waits for it, then
-  #      triggers the deploy workflow.
-  #   2. release-cli-docker-ce-wait: requires manual approval (via the
-  #      "release-repo-deploy" environment) before waiting for the deploy
-  #      workflow to finish.
+  # Triggers packaging, waits for it, then triggers the deploy workflow.
+  # The verify-docker-ce job (which requires manual approval via the
+  # "release-repo-deploy" environment) runs after this to confirm the
+  # deploy completed successfully.
   # ---------------------------------------------------------------------------
   release-cli-docker-ce-trigger:
     if: ${{ !inputs.skipPackaging }}
@@ -651,40 +649,18 @@ jobs:
           echo "✅ Deploy workflow triggered"
 
   # ---------------------------------------------------------------------------
-  # Wait for deploy — requires manual approval via the "release-repo-deploy"
-  # environment so the workflow does not block for hours.
+  # Verify Docker CE installation and server version — requires manual
+  # approval via the "release-repo-deploy" environment. Before approving,
+  # ensure the deploy workflow in docker/release-repo completed successfully.
   #
-  # Before approving this step:
-  #   1. Approve the deploy-to-live gate in the deploy workflow
-  #   2. Come back here and approve the "release-repo-deploy" environment
-  # ---------------------------------------------------------------------------
-  release-cli-docker-ce-wait:
-    needs: [prepare, release-cli-docker-ce-trigger]
-    runs-on: ubuntu-latest
-    environment: release-repo-deploy
-    permissions:
-      contents: read
-    steps:
-      - name: Wait for deploy workflow to complete
-        env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          RUN_ID: ${{ needs.release-cli-docker-ce-trigger.outputs.release_repo_run_id }}
-        run: |
-          echo "::add-mask::$RUN_ID"
-          echo "⏳ Waiting for deploy workflow to complete..."
-          gh run watch "$RUN_ID" \
-            --repo docker/release-repo \
-            --exit-status
-          echo "✅ Deploy workflow completed successfully"
-
-  # ---------------------------------------------------------------------------
-  # Verify Docker CE installation and server version — install Docker CE,
-  # start the released model-runner image, and use `docker model version`
-  # to confirm both client and server versions match the release tag.
+  # Once approved, installs Docker CE, starts the released model-runner
+  # image, and uses `docker model version` to confirm both client and
+  # server versions match the release tag.
   # ---------------------------------------------------------------------------
   verify-docker-ce:
-    needs: [prepare, release-cli-docker-ce-wait, build]
+    needs: [prepare, release-cli-docker-ce-trigger, build]
     runs-on: ubuntu-latest
+    environment: release-repo-deploy
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -698,7 +674,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, release-cli-docker-ce-wait, verify-docker-ce]
+    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
