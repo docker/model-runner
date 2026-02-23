@@ -451,7 +451,7 @@ jobs:
           RUN_URL=$(gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION" 2>&1 \
+            -f tag="v$VERSION" \
             | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
           RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
@@ -544,7 +544,7 @@ jobs:
           # gh workflow run now returns run details (gh v2.87.0+)
           RUN_URL=$(gh workflow run release-model.yml \
             --repo docker/packaging \
-            -f ref="$RELEASE_TAG" 2>&1 \
+            -f ref="$RELEASE_TAG" \
             | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
           RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
@@ -584,7 +584,7 @@ jobs:
             -f packaging_image="$PACKAGING_IMAGE" \
             -f model_version="$VERSION" \
             -f channel=stable \
-            -f release_live=true 2>&1 \
+            -f release_live=true \
             | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
 
           RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
