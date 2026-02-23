@@ -698,7 +698,8 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop]
+    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, release-cli-docker-ce-wait, verify-docker-ce]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
