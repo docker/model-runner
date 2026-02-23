@@ -447,14 +447,33 @@ jobs:
         run: |
           echo "🚀 Triggering Desktop CLI release workflow"
 
-          # gh workflow run now returns run details (gh v2.87.0+)
-          RUN_URL=$(gh workflow run release-cli-dd.yml \
+          # gh workflow run returns run URL on stdout (gh v2.87.0+)
+          OUTPUT=$(gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
+            -f tag="v$VERSION")
 
-          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          RUN_URL=$(echo "$OUTPUT" \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+
+          if [ -z "$RUN_URL" ]; then
+            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
+            sleep 5
+            RUN_ID=$(gh run list \
+              --repo docker/inference-engine-llama.cpp \
+              --workflow release-cli-dd.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          else
+            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          fi
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Failed to determine workflow run ID"
+            exit 1
+          fi
+
           echo "::add-mask::$RUN_ID"
           echo "::add-mask::$RUN_URL"
           echo "✅ Desktop CLI release workflow triggered"
@@ -541,13 +560,32 @@ jobs:
         run: |
           echo "📦 Triggering packaging workflow"
 
-          # gh workflow run now returns run details (gh v2.87.0+)
-          RUN_URL=$(gh workflow run release-model.yml \
+          # gh workflow run returns run URL on stdout (gh v2.87.0+)
+          OUTPUT=$(gh workflow run release-model.yml \
             --repo docker/packaging \
-            -f ref="$RELEASE_TAG" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
+            -f ref="$RELEASE_TAG")
 
-          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          RUN_URL=$(echo "$OUTPUT" \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+
+          if [ -z "$RUN_URL" ]; then
+            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
+            sleep 5
+            RUN_ID=$(gh run list \
+              --repo docker/packaging \
+              --workflow release-model.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          else
+            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          fi
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Failed to determine packaging workflow run ID"
+            exit 1
+          fi
+
           echo "::add-mask::$RUN_ID"
           echo "::add-mask::$RUN_URL"
           echo "✅ Packaging workflow triggered"
@@ -577,17 +615,36 @@ jobs:
         run: |
           echo "🚀 Triggering deploy workflow"
 
-          # gh workflow run now returns run details (gh v2.87.0+)
-          RUN_URL=$(gh workflow run plugin.yml \
+          # gh workflow run returns run URL on stdout (gh v2.87.0+)
+          OUTPUT=$(gh workflow run plugin.yml \
             --repo docker/release-repo \
             --ref production \
             -f packaging_image="$PACKAGING_IMAGE" \
             -f model_version="$VERSION" \
             -f channel=stable \
-            -f release_live=true \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*')
+            -f release_live=true)
 
-          RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          RUN_URL=$(echo "$OUTPUT" \
+            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+
+          if [ -z "$RUN_URL" ]; then
+            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
+            sleep 5
+            RUN_ID=$(gh run list \
+              --repo docker/release-repo \
+              --workflow plugin.yml \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          else
+            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
+          fi
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Failed to determine deploy workflow run ID"
+            exit 1
+          fi
+
           echo "::add-mask::$RUN_ID"
           echo "::add-mask::$RUN_URL"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
