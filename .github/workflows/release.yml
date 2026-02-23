@@ -604,46 +604,19 @@ jobs:
           echo "✅ Packaging workflow completed successfully"
 
       - name: Trigger deploy workflow
-        id: trigger_release_repo
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           VERSION: ${{ needs.prepare.outputs.version }}
           PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
         run: |
           echo "🚀 Triggering deploy workflow"
-
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run plugin.yml \
+          gh workflow run plugin.yml \
             --repo docker/release-repo \
             --ref production \
             -f packaging_image="$PACKAGING_IMAGE" \
             -f model_version="$VERSION" \
             -f channel=stable \
-            -f release_live=true)
-
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
-
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
-              --repo docker/release-repo \
-              --workflow plugin.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
-
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine deploy workflow run ID"
-            exit 1
-          fi
-
-          echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
+            -f release_live=true
           echo "✅ Deploy workflow triggered"
 
   # ---------------------------------------------------------------------------
