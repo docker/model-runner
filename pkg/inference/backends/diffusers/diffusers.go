@@ -8,28 +8,30 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	"github.com/docker/model-runner/pkg/diskusage"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
+	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
 )
 
 const (
 	// Name is the backend name.
-	Name         = "diffusers"
-	diffusersDir = "/opt/diffusers-env"
+	Name              = "diffusers"
+	defaultInstallDir = ".docker/model-runner/diffusers"
+	// diffusersVersion is the diffusers release tag to download from Docker Hub.
+	diffusersVersion = "v0.1.0-20260216-000000"
 )
 
 var (
-	ErrNotImplemented    = errors.New("not implemented")
-	ErrDiffusersNotFound = errors.New("diffusers package not installed")
-	ErrPythonNotFound    = errors.New("python3 not found in PATH")
-	ErrNoDDUFFile        = errors.New("no DDUF file found in model bundle")
+	ErrNoDDUFFile = errors.New("no DDUF file found in model bundle")
+	// ErrPlatformNotSupported indicates the platform is not supported.
+	ErrPlatformNotSupported = errors.New("diffusers is not available on this platform")
 )
 
 // diffusers is the diffusers-based backend implementation for image generation.
@@ -44,19 +46,27 @@ type diffusers struct {
 	config *Config
 	// status is the state in which the diffusers backend is in.
 	status string
-	// pythonPath is the path to the python3 binary.
+	// pythonPath is the path to the bundled python3 binary.
 	pythonPath string
-	// customPythonPath is an optional custom path to the python3 binary.
+	// customPythonPath is an optional custom path to a python3 binary.
 	customPythonPath string
+	// installDir is the directory where diffusers is installed.
+	installDir string
 }
 
 // New creates a new diffusers-based backend for image generation.
-// customPythonPath is an optional path to a custom python3 binary; if empty, the default path is used.
+// customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
 func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultConfig()
 	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	installDir := filepath.Join(homeDir, defaultInstallDir)
 
 	return &diffusers{
 		log:              log,
@@ -65,6 +75,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		config:           conf,
 		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
+		installDir:       installDir,
 	}, nil
 }
 
@@ -76,60 +87,124 @@ func (d *diffusers) Name() string {
 // UsesExternalModelManagement implements inference.Backend.UsesExternalModelManagement.
 // Diffusers uses the shared model manager with bundled DDUF files.
 func (d *diffusers) UsesExternalModelManagement() bool {
-	return false // Use the bundle system for DDUF files
+	return false
 }
 
 // UsesTCP implements inference.Backend.UsesTCP.
-// Diffusers uses TCP for communication, like SGLang.
+// Diffusers uses TCP for communication.
 func (d *diffusers) UsesTCP() bool {
 	return true
 }
 
 // Install implements inference.Backend.Install.
-func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
+func (d *diffusers) Install(ctx context.Context, httpClient *http.Client) error {
 	if !platform.SupportsDiffusers() {
-		d.status = inference.FormatNotInstalled(inference.DetailOnlyLinux)
-		return ErrNotImplemented
+		return ErrPlatformNotSupported
 	}
 
-	var pythonPath string
-
-	// Use custom python path if specified
 	if d.customPythonPath != "" {
-		pythonPath = d.customPythonPath
-	} else {
-		venvPython := filepath.Join(diffusersDir, "bin", "python3")
-		pythonPath = venvPython
+		d.pythonPath = d.customPythonPath
+		return d.verifyInstallation(ctx)
+	}
 
-		if _, err := os.Stat(venvPython); err != nil {
-			// Fall back to system Python
-			systemPython, err := exec.LookPath("python3")
-			if err != nil {
-				d.status = inference.FormatError(inference.DetailPythonNotFound)
-				return ErrPythonNotFound
+	pythonPath := filepath.Join(d.installDir, "bin", "python3")
+	versionFile := filepath.Join(d.installDir, ".diffusers-version")
+
+	// Check if already installed with correct version
+	if _, err := os.Stat(pythonPath); err == nil {
+		if installedVersion, err := os.ReadFile(versionFile); err == nil {
+			installed := strings.TrimSpace(string(installedVersion))
+			if installed == diffusersVersion || installed == "dev" {
+				d.pythonPath = pythonPath
+				return d.verifyInstallation(ctx)
 			}
-			pythonPath = systemPython
+			d.log.Info("diffusers version mismatch", "installed", installed, "expected", diffusersVersion)
 		}
 	}
 
+	d.status = "installing"
+	if err := d.downloadAndExtract(ctx); err != nil {
+		return fmt.Errorf("failed to install diffusers: %w", err)
+	}
+
+	// Save version file
+	if err := os.WriteFile(versionFile, []byte(diffusersVersion), 0644); err != nil {
+		d.log.Warn("failed to write version file", "error", err)
+	}
+
 	d.pythonPath = pythonPath
+	return d.verifyInstallation(ctx)
+}
 
-	// Check if diffusers is installed
-	if err := d.pythonCmd("-c", "import diffusers").Run(); err != nil {
-		d.status = inference.FormatNotInstalled(inference.DetailPackageNotInstalled)
-		d.log.Warn("diffusers package not found. Install with: uv pip install diffusers torch")
-		return ErrDiffusersNotFound
-	}
+// downloadAndExtract downloads the diffusers image from Docker Hub and extracts it.
+// The image contains a self-contained Python installation with all packages pre-installed.
+func (d *diffusers) downloadAndExtract(ctx context.Context) error {
+	d.log.Info("Downloading diffusers from Docker Hub...", "version", diffusersVersion)
 
-	// Get version
-	output, err := d.pythonCmd("-c", "import diffusers; print(diffusers.__version__)").Output()
+	// Create temp directory for download
+	downloadDir, err := os.MkdirTemp("", "diffusers-install")
 	if err != nil {
-		d.log.Warn("could not get diffusers version", "error", err)
-		d.status = inference.FormatRunning(inference.DetailVersionUnknown)
-	} else {
-		d.status = inference.FormatRunning(fmt.Sprintf("diffusers %s", strings.TrimSpace(string(output))))
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(downloadDir)
+
+	// Pull the image
+	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:diffusers-%s", diffusersVersion)
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH); err != nil {
+		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
+	// Extract the image
+	extractDir := filepath.Join(downloadDir, "extracted")
+	if err := dockerhub.Extract(filepath.Join(downloadDir, "image.tar"), runtime.GOARCH, runtime.GOOS, extractDir); err != nil {
+		return fmt.Errorf("failed to extract image: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(d.installDir), 0755); err != nil {
+		return fmt.Errorf("failed to create parent dir: %w", err)
+	}
+
+	// Remove existing install dir if it exists (incomplete installation)
+	if err := os.RemoveAll(d.installDir); err != nil {
+		return fmt.Errorf("failed to remove existing install dir: %w", err)
+	}
+
+	d.log.Info("Extracting self-contained Python environment...")
+
+	// Copy the extracted self-contained Python installation directly to install dir
+	// (the image contains /diffusers/ with bin/, lib/, etc.)
+	diffusersDir := filepath.Join(extractDir, "diffusers")
+	if err := utils.CopyDir(diffusersDir, d.installDir); err != nil {
+		return fmt.Errorf("failed to copy to install dir: %w", err)
+	}
+
+	// Docker COPY strips execute permissions in OCI image layers.
+	// Restore the execute bit on the bundled Python binary.
+	if err := os.Chmod(filepath.Join(d.installDir, "bin", "python3"), 0755); err != nil {
+		return fmt.Errorf("failed to make python3 executable: %w", err)
+	}
+
+	d.log.Info("diffusers installed successfully", "version", diffusersVersion)
+	return nil
+}
+
+// verifyInstallation checks that the diffusers Python package can be imported.
+// Note: d.pythonPath is not user-controlled — it is set internally by Install()
+// to the bundled Python binary path, so the exec.Command usage is safe.
+func (d *diffusers) verifyInstallation(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, d.pythonPath, "-c", "import diffusers") //nolint:gosec // pythonPath is set internally by Install, not user input
+	if err := cmd.Run(); err != nil {
+		d.status = "import failed"
+		return fmt.Errorf("diffusers import failed: %w", err)
+	}
+
+	versionFile := filepath.Join(d.installDir, ".diffusers-version")
+	versionBytes, err := os.ReadFile(versionFile)
+	if err != nil {
+		d.status = "running diffusers"
+		return nil
+	}
+	d.status = fmt.Sprintf("running diffusers %s", strings.TrimSpace(string(versionBytes)))
 	return nil
 }
 
@@ -137,7 +212,7 @@ func (d *diffusers) Install(_ context.Context, _ *http.Client) error {
 func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef string, mode inference.BackendMode, backendConfig *inference.BackendConfiguration) error {
 	if !platform.SupportsDiffusers() {
 		d.log.Warn("diffusers backend is not yet supported on this platform")
-		return ErrNotImplemented
+		return ErrPlatformNotSupported
 	}
 
 	// For diffusers, we support image generation mode
@@ -175,16 +250,11 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("diffusers: python runtime not configured; did you forget to call Install")
 	}
 
-	sandboxPath := ""
-	if _, err := os.Stat(diffusersDir); err == nil {
-		sandboxPath = diffusersDir
-	}
-
 	return backends.RunBackend(ctx, backends.RunnerConfig{
 		BackendName:      "Diffusers",
 		Socket:           socket,
 		BinaryPath:       d.pythonPath,
-		SandboxPath:      sandboxPath,
+		SandboxPath:      "",
 		SandboxConfig:    "",
 		Args:             args,
 		Logger:           d.log,
@@ -200,39 +270,23 @@ func (d *diffusers) Status() string {
 
 // GetDiskUsage implements inference.Backend.GetDiskUsage.
 func (d *diffusers) GetDiskUsage() (int64, error) {
-	// Check if Docker installation exists
-	if _, err := os.Stat(diffusersDir); err == nil {
-		size, err := diskusage.Size(diffusersDir)
+	// Return 0 if not installed
+	if _, err := os.Stat(d.installDir); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	var size int64
+	err := filepath.Walk(d.installDir, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
-			return 0, fmt.Errorf("error while getting diffusers dir size: %w", err)
+			return err
 		}
-		return size, nil
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("error while getting store size: %w", err)
 	}
-	// Python installation doesn't have a dedicated installation directory
-	// It's installed via pip in the system Python environment
-	return 0, nil
-}
-
-// GetRequiredMemoryForModel returns the estimated memory requirements for a model.
-func (d *diffusers) GetRequiredMemoryForModel(_ context.Context, _ string, _ *inference.BackendConfiguration) (inference.RequiredMemory, error) {
-	if !platform.SupportsDiffusers() {
-		return inference.RequiredMemory{}, ErrNotImplemented
-	}
-
-	// Stable Diffusion models typically require significant VRAM
-	// SD 1.5: ~4GB VRAM, SD 2.1: ~5GB VRAM, SDXL: ~8GB VRAM
-	return inference.RequiredMemory{
-		RAM:  4 * 1024 * 1024 * 1024, // 4GB RAM
-		VRAM: 6 * 1024 * 1024 * 1024, // 6GB VRAM (average estimate)
-	}, nil
-}
-
-// pythonCmd creates an exec.Cmd that runs python with the given arguments.
-// It uses the configured pythonPath if available, otherwise falls back to "python3".
-func (d *diffusers) pythonCmd(args ...string) *exec.Cmd {
-	pythonBinary := "python3"
-	if d.pythonPath != "" {
-		pythonBinary = d.pythonPath
-	}
-	return exec.Command(pythonBinary, args...)
+	return size, nil
 }

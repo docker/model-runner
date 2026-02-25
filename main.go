@@ -107,6 +107,9 @@ func main() {
 	if mlxServerPath != "" {
 		log.Info("MLX_SERVER_PATH", "path", mlxServerPath)
 	}
+	if diffusersServerPath != "" {
+		log.Info("DIFFUSERS_SERVER_PATH", "path", diffusersServerPath)
+	}
 	if vllmMetalServerPath != "" {
 		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
 	}
@@ -144,6 +147,8 @@ func main() {
 				IncludeVLLM:          includeVLLM,
 				VLLMPath:             vllmServerPath,
 				VLLMMetalPath:        vllmMetalServerPath,
+				IncludeDiffusers:     true,
+				DiffusersPath:        diffusersServerPath,
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
@@ -166,7 +171,7 @@ func main() {
 		),
 		IncludeResponsesAPI: true,
 		ExtraRoutes: func(r *routing.NormalizedServeMux, s *routing.Service) {
-			// Root handler - only catches exact "/" requests
+			// Root handler – only catches exact "/" requests
 			r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 				if req.URL.Path != "/" {
 					http.NotFound(w, req)
