@@ -40,12 +40,6 @@ func initLogger() *slog.Logger {
 
 var log = initLogger()
 
-// Log is the logger used by the application, exported for testing purposes.
-var Log = log
-
-// testLog is a test-override logger used by createLlamaCppConfigFromEnv.
-var testLog = log
-
 // exitFunc is used for Fatal-like exits; overridden in tests.
 var exitFunc = func(code int) { os.Exit(code) }
 
@@ -118,7 +112,12 @@ func main() {
 	}
 
 	// Create llama.cpp configuration from environment variables
-	llamaCppConfig := createLlamaCppConfigFromEnv()
+	llamaCppConfig, err := createLlamaCppConfigFromEnv()
+	if err != nil {
+		log.Error("invalid LLAMA_ARGS", "error", err)
+		exitFunc(1)
+		return
+	}
 
 	updatedServerPath := func() string {
 		wd, _ := os.Getwd()
@@ -338,34 +337,31 @@ func main() {
 	log.Info("Docker Model Runner stopped")
 }
 
-// createLlamaCppConfigFromEnv creates a LlamaCppConfig from environment variables
-func createLlamaCppConfigFromEnv() config.BackendConfig {
-	// Check if any configuration environment variables are set
+// createLlamaCppConfigFromEnv creates a LlamaCppConfig from environment variables.
+// Returns nil config (use defaults) when LLAMA_ARGS is unset, or an error if
+// the args contain disallowed flags.
+func createLlamaCppConfigFromEnv() (config.BackendConfig, error) {
 	argsStr := os.Getenv("LLAMA_ARGS")
-
-	// If no environment variables are set, use default configuration
 	if argsStr == "" {
-		return nil // nil will cause the backend to use its default configuration
+		return nil, nil
 	}
 
-	// Split the string by spaces, respecting quoted arguments
 	args := splitArgs(argsStr)
 
-	// Check for disallowed arguments
-	disallowedArgs := []string{"--model", "--host", "--embeddings", "--mmproj"}
+	disallowedArgs := map[string]struct{}{
+		"--model":      {},
+		"--host":       {},
+		"--embeddings": {},
+		"--mmproj":     {},
+	}
 	for _, arg := range args {
-		for _, disallowed := range disallowedArgs {
-			if arg == disallowed {
-				testLog.Error(fmt.Sprintf("LLAMA_ARGS cannot override the %s argument as it is controlled by the model runner", disallowed))
-				exitFunc(1)
-			}
+		if _, found := disallowedArgs[arg]; found {
+			return nil, fmt.Errorf("LLAMA_ARGS cannot override %s, which is controlled by the model runner", arg)
 		}
 	}
 
-	testLog.Info("Using custom arguments", "args", fmt.Sprintf("%v", args))
-	return &llamacpp.Config{
-		Args: args,
-	}
+	log.Info("Using custom llama.cpp arguments", "args", args)
+	return &llamacpp.Config{Args: args}, nil
 }
 
 // splitArgs splits a string into arguments, respecting quoted arguments

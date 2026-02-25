@@ -35,11 +35,6 @@ type RouterConfig struct {
 	// layer, registering it under /responses, /v1/responses, and
 	// /engines/responses prefixes. Requires SchedulerHTTP to be set.
 	IncludeResponsesAPI bool
-
-	// ExtraRoutes is called after standard routes are registered,
-	// allowing callers to add custom routes (root handler, metrics, etc.).
-	// It may be nil.
-	ExtraRoutes func(*NormalizedServeMux)
 }
 
 // NewRouter builds a NormalizedServeMux with the standard model-runner
@@ -83,11 +78,6 @@ func NewRouter(cfg RouterConfig) *NormalizedServeMux {
 		router.Handle("/v1"+responses.APIPrefix, responsesHandler)
 		router.Handle(inference.InferencePrefix+responses.APIPrefix+"/", responsesHandler)
 		router.Handle(inference.InferencePrefix+responses.APIPrefix, responsesHandler)
-	}
-
-	// Caller-specific routes (root handler, metrics, etc.).
-	if cfg.ExtraRoutes != nil {
-		cfg.ExtraRoutes(router)
 	}
 
 	return router
