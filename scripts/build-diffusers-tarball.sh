@@ -44,13 +44,6 @@ PYTHON_BIN=$(uv python find 3.12)
 PYTHON_PREFIX=$(cd "$(dirname "$PYTHON_BIN")/.." && pwd)
 echo "Using standalone Python from: $PYTHON_PREFIX"
 
-# Copy the standalone Python to our work area
-PYTHON_DIR="$WORK_DIR/python"
-cp -Rp "$PYTHON_PREFIX" "$PYTHON_DIR"
-
-# Remove the externally-managed marker so we can install packages into it
-rm -f "$PYTHON_DIR/lib/python3.12/EXTERNALLY-MANAGED"
-
 DIFFUSERS_VERSION="0.36.0"
 TORCH_VERSION="2.9.1"
 TRANSFORMERS_VERSION="4.57.5"
@@ -62,8 +55,15 @@ FASTAPI_VERSION="0.115.12"
 UVICORN_VERSION="0.34.1"
 PILLOW_VERSION="11.2.1"
 
+# Remove the externally-managed marker so uv can install packages into the
+# standalone Python.  We install BEFORE copying to the work area because uv
+# resolves the interpreter's real path via symlinks; installing into a copy
+# whose symlinks point back to the original tree produces broken relative
+# paths on Linux.
+rm -f "$PYTHON_PREFIX/lib/python3.12/EXTERNALLY-MANAGED"
+
 echo "Installing diffusers and dependencies..."
-uv pip install --python "$PYTHON_DIR/bin/python3" --system \
+uv pip install --python "$PYTHON_PREFIX/bin/python3" --system \
     "diffusers==${DIFFUSERS_VERSION}" \
     "torch==${TORCH_VERSION}" \
     "transformers==${TRANSFORMERS_VERSION}" \
@@ -74,6 +74,10 @@ uv pip install --python "$PYTHON_DIR/bin/python3" --system \
     "fastapi==${FASTAPI_VERSION}" \
     "uvicorn[standard]==${UVICORN_VERSION}" \
     "pillow==${PILLOW_VERSION}"
+
+# Copy the fully-installed Python to our work area for stripping and packaging
+PYTHON_DIR="$WORK_DIR/python"
+cp -Rp "$PYTHON_PREFIX" "$PYTHON_DIR"
 
 # Install the diffusers_server module from the project
 echo "Installing diffusers_server module..."
