@@ -60,40 +60,31 @@ func TestCreateLlamaCppConfigFromEnv(t *testing.T) {
 				t.Setenv("LLAMA_ARGS", tt.llamaArgs)
 			}
 
-			// Override exitFunc to capture exit calls instead of actually exiting
-			originalExitFunc := exitFunc
-			defer func() { exitFunc = originalExitFunc }()
-
-			var exitCode int
-			exitFunc = func(code int) {
-				exitCode = code
-			}
-
-			config := createLlamaCppConfigFromEnv()
+			cfg, err := createLlamaCppConfigFromEnv()
 
 			if tt.wantErr {
-				if exitCode != 1 {
-					t.Errorf("Expected exit code 1, got %d", exitCode)
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.llamaArgs == "" {
+				if cfg != nil {
+					t.Error("expected nil config for empty args")
 				}
 			} else {
-				if exitCode != 0 {
-					t.Errorf("Expected exit code 0, got %d", exitCode)
+				llamaConfig, ok := cfg.(*llamacpp.Config)
+				if !ok {
+					t.Fatalf("expected *llamacpp.Config, got %T", cfg)
 				}
-				if tt.llamaArgs == "" {
-					if config != nil {
-						t.Error("Expected nil config for empty args")
-					}
-				} else {
-					llamaConfig, ok := config.(*llamacpp.Config)
-					if !ok {
-						t.Fatalf("Expected *llamacpp.Config, got %T", config)
-					}
-					if llamaConfig == nil {
-						t.Fatal("Expected non-nil config")
-					}
-					if len(llamaConfig.Args) == 0 {
-						t.Error("Expected non-empty args")
-					}
+				if llamaConfig == nil {
+					t.Fatal("expected non-nil config")
+				}
+				if len(llamaConfig.Args) == 0 {
+					t.Error("expected non-empty args")
 				}
 			}
 		})
