@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -27,15 +28,9 @@ import (
 	modeltls "github.com/docker/model-runner/pkg/tls"
 )
 
-const (
-	// DefaultTLSPort is the default TLS port for Moby
-	DefaultTLSPort = "12444"
-)
-
 // initLogger creates the application logger based on LOG_LEVEL env var.
 func initLogger() *slog.Logger {
-	level := logging.ParseLevel(os.Getenv("LOG_LEVEL"))
-	return logging.NewLogger(level)
+	return logging.NewLogger(envconfig.LogLevel())
 }
 
 var log = initLogger()
@@ -47,45 +42,29 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sockName := os.Getenv("MODEL_RUNNER_SOCK")
-	if sockName == "" {
-		sockName = "model-runner.sock"
-	}
-
-	userHomeDir, err := os.UserHomeDir()
+	sockName := envconfig.SocketPath()
+	modelPath, err := envconfig.ModelsPath()
 	if err != nil {
-		log.Error("Failed to get user home directory", "error", err)
+		log.Error("Failed to get models path", "error", err)
 		exitFunc(1)
 	}
 
-	modelPath := os.Getenv("MODELS_PATH")
-	if modelPath == "" {
-		modelPath = filepath.Join(userHomeDir, ".docker", "models")
-	}
-
-	_, disableServerUpdate := os.LookupEnv("DISABLE_SERVER_UPDATE")
-	if disableServerUpdate {
+	if envconfig.DisableServerUpdate() {
 		llamacpp.ShouldUpdateServerLock.Lock()
 		llamacpp.ShouldUpdateServer = false
 		llamacpp.ShouldUpdateServerLock.Unlock()
 	}
 
-	desiredServerVersion, ok := os.LookupEnv("LLAMA_SERVER_VERSION")
-	if ok {
-		llamacpp.SetDesiredServerVersion(desiredServerVersion)
+	if v := envconfig.LlamaServerVersion(); v != "" {
+		llamacpp.SetDesiredServerVersion(v)
 	}
 
-	llamaServerPath := os.Getenv("LLAMA_SERVER_PATH")
-	if llamaServerPath == "" {
-		llamaServerPath = "/Applications/Docker.app/Contents/Resources/model-runner/bin"
-	}
-
-	// Get optional custom paths for other backends
-	vllmServerPath := os.Getenv("VLLM_SERVER_PATH")
-	sglangServerPath := os.Getenv("SGLANG_SERVER_PATH")
-	mlxServerPath := os.Getenv("MLX_SERVER_PATH")
-	diffusersServerPath := os.Getenv("DIFFUSERS_SERVER_PATH")
-	vllmMetalServerPath := os.Getenv("VLLM_METAL_SERVER_PATH")
+	llamaServerPath := envconfig.LlamaServerPath()
+	vllmServerPath := envconfig.VLLMServerPath()
+	sglangServerPath := envconfig.SGLangServerPath()
+	mlxServerPath := envconfig.MLXServerPath()
+	diffusersServerPath := envconfig.DiffusersServerPath()
+	vllmMetalServerPath := envconfig.VLLMMetalServerPath()
 
 	// Create a proxy-aware HTTP transport
 	// Use a safe type assertion with fallback, and explicitly set Proxy to http.ProxyFromEnvironment
@@ -169,6 +148,7 @@ func main() {
 			"",
 			false,
 		),
+		AllowedOrigins:      envconfig.AllowedOrigins(),
 		IncludeResponsesAPI: true,
 		ExtraRoutes: func(r *routing.NormalizedServeMux, s *routing.Service) {
 			// Root handler – only catches exact "/" requests
@@ -190,7 +170,7 @@ func main() {
 			})
 
 			// Metrics endpoint
-			if os.Getenv("DISABLE_METRICS") != "1" {
+			if !envconfig.DisableMetrics() {
 				metricsHandler := metrics.NewAggregatedMetricsHandler(
 					log.With("component", "metrics"),
 					s.SchedulerHTTP,
@@ -218,7 +198,7 @@ func main() {
 	tlsServerErrors := make(chan error, 1)
 
 	// Check if we should use TCP port instead of Unix socket
-	tcpPort := os.Getenv("MODEL_RUNNER_PORT")
+	tcpPort := envconfig.TCPPort()
 	if tcpPort != "" {
 		// Use TCP port
 		addr := ":" + tcpPort
@@ -246,19 +226,16 @@ func main() {
 	}
 
 	// Start TLS server if enabled
-	if os.Getenv("MODEL_RUNNER_TLS_ENABLED") == "true" {
-		tlsPort := os.Getenv("MODEL_RUNNER_TLS_PORT")
-		if tlsPort == "" {
-			tlsPort = DefaultTLSPort // Default TLS port for Moby
-		}
+	if envconfig.TLSEnabled() {
+		tlsPort := envconfig.TLSPort()
 
 		// Get certificate paths
-		certPath := os.Getenv("MODEL_RUNNER_TLS_CERT")
-		keyPath := os.Getenv("MODEL_RUNNER_TLS_KEY")
+		certPath := envconfig.TLSCert()
+		keyPath := envconfig.TLSKey()
 
 		// Auto-generate certificates if not provided and auto-cert is not disabled
 		if certPath == "" || keyPath == "" {
-			if os.Getenv("MODEL_RUNNER_TLS_AUTO_CERT") != "false" {
+			if envconfig.TLSAutoCert(true) {
 				log.Info("Auto-generating TLS certificates...")
 				var err error
 				certPath, keyPath, err = modeltls.EnsureCertificates("", "")
@@ -306,7 +283,7 @@ func main() {
 	}()
 
 	var tlsServerErrorsChan <-chan error
-	if os.Getenv("MODEL_RUNNER_TLS_ENABLED") == "true" {
+	if envconfig.TLSEnabled() {
 		tlsServerErrorsChan = tlsServerErrors
 	} else {
 		// Use a nil channel which will block forever when TLS is disabled
@@ -346,7 +323,7 @@ func main() {
 // Returns nil config (use defaults) when LLAMA_ARGS is unset, or an error if
 // the args contain disallowed flags.
 func createLlamaCppConfigFromEnv() (config.BackendConfig, error) {
-	argsStr := os.Getenv("LLAMA_ARGS")
+	argsStr := envconfig.LlamaArgs()
 	if argsStr == "" {
 		return nil, nil
 	}

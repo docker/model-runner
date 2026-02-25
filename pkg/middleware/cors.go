@@ -2,17 +2,17 @@ package middleware
 
 import (
 	"net/http"
-	"os"
-	"strings"
+
+	"github.com/docker/model-runner/pkg/envconfig"
 )
 
 // CorsMiddleware handles CORS and OPTIONS preflight requests with optional allowedOrigins.
-// If allowedOrigins is nil or empty, it falls back to getAllowedOrigins().
+// If allowedOrigins is nil or empty, it falls back to envconfig.AllowedOrigins().
 // This middleware intercepts OPTIONS requests only if the Origin header is present and valid,
 // otherwise passing the request to the router (allowing 405/404 responses as appropriate).
 func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 	if len(allowedOrigins) == 0 {
-		allowedOrigins = getAllowedOrigins()
+		allowedOrigins = envconfig.AllowedOrigins()
 	}
 
 	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
@@ -61,25 +61,4 @@ func CorsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
 func originAllowed(origin string, allowedSet map[string]struct{}) bool {
 	_, ok := allowedSet[origin]
 	return ok
-}
-
-// getAllowedOrigins retrieves allowed origins from the DMR_ORIGINS environment variable.
-// If the variable is not set it returns nil, indicating no origins are allowed.
-func getAllowedOrigins() (origins []string) {
-	dmrOrigins := os.Getenv("DMR_ORIGINS")
-	if dmrOrigins == "" {
-		return nil
-	}
-
-	for _, o := range strings.Split(dmrOrigins, ",") {
-		if trimmed := strings.TrimSpace(o); trimmed != "" {
-			origins = append(origins, trimmed)
-		}
-	}
-
-	if len(origins) == 0 {
-		return nil
-	}
-
-	return origins
 }
