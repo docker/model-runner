@@ -253,6 +253,28 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		return nil
 	}
 
+	// The diffusers backend uses deferred installation: it pulls a Docker
+	// image, extracts a self-contained Python environment, and installs it
+	// to a well-known local folder. Trigger installation via the running
+	// model runner's API, the same way vllm-metal is handled above.
+	if opts.backend == diffusers.Name && platform.SupportsDiffusers() {
+		// For standalone contexts (Moby/Cloud), ensure a base runner is
+		// available first so we have an API endpoint to call.
+		engineKind := modelRunner.EngineKind()
+		if engineKind == types.ModelRunnerEngineKindMoby || engineKind == types.ModelRunnerEngineKindCloud {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), debug); err != nil {
+				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+			}
+		}
+
+		cmd.Println("Installing diffusers backend...")
+		if err := desktopClient.InstallBackend(diffusers.Name); err != nil {
+			return fmt.Errorf("failed to install diffusers backend: %w", err)
+		}
+		cmd.Println("diffusers backend installed successfully")
+		return nil
+	}
+
 	var vllmOnWSL bool
 	// Ensure that we're running in a supported model runner context.
 	engineKind := modelRunner.EngineKind()
