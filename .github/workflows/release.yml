@@ -261,12 +261,6 @@ jobs:
             echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           fi
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "diffusers<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-diffusers" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-diffusers" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
           if [ "$PUSH_LATEST" == "true" ]; then
@@ -365,20 +359,6 @@ jobs:
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.sglang-cuda }}
-
-      - name: Build Diffusers image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          file: Dockerfile
-          target: final-diffusers
-          platforms: linux/amd64, linux/arm64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
-            "VERSION=${{ env.RELEASE_TAG }}"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.diffusers }}
 
       - name: Build ROCm image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
