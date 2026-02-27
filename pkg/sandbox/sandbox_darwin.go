@@ -51,6 +51,15 @@ const ConfigurationLlamaCpp = `(version 1)
 ;;; Deny access to job creation.
 (deny job-creation)
 
+;;; Deny access to launchservicesd to prevent sandbox escape via open(1).
+;;; Without this, a sandboxed process can invoke open(1) which uses
+;;; launchservicesd to ask launchd to spawn a new process, bypassing
+;;; job-creation restrictions because launchd (not the sandbox) is the
+;;; actual parent. See ZDI-CAN-29308.
+(deny mach-lookup
+    (global-name "com.apple.launchservicesd")
+    (global-name "com.apple.coreservices.launchservicesd"))
+
 ;;; Don't allow new executable code to be created in memory at runtime.
 (deny dynamic-code-generation)
 
