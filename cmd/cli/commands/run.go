@@ -820,6 +820,21 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			modelInfo, err := desktopClient.Inspect(model, true)
+			backend := ""
+			if err == nil {
+				backend, _ = GetRequiredBackendFromModelInfo(&modelInfo)
+			}
+
+			if backend != "" {
+				if err := EnsureBackendAvailable(backend, cmd); err != nil {
+					if err.Error() == "backend installation cancelled" {
+						return nil
+					}
+					return err
+				}
+			}
+
 			// Handle --detach flag: just load the model without interaction
 			if detach {
 				if err := desktopClient.Preload(cmd.Context(), model); err != nil {
