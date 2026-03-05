@@ -319,3 +319,9 @@ type Backend interface {
 	// GetDiskUsage returns the disk usage of the backend.
 	GetDiskUsage() (int64, error)
 }
+
+// BackendUpdater is an optional interface for backends that support
+// downloading updated binaries after Install() has succeeded.
+type BackendUpdater interface {
+	UpdateBinary(ctx context.Context, httpClient *http.Client) error
+}
