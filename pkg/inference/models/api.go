@@ -88,8 +88,15 @@ func ToOpenAI(m types.Model) (*OpenAIModel, error) {
 	}
 
 	var contextWindow int32
-	if cw := config.GetContextSize(); cw != nil {
-		contextWindow = *cw
+	var architecture, parameters, quantization, size string
+	if config != nil {
+		if cw := config.GetContextSize(); cw != nil {
+			contextWindow = *cw
+		}
+		architecture = config.GetArchitecture()
+		parameters = config.GetParameters()
+		quantization = config.GetQuantization()
+		size = config.GetSize()
 	}
 
 	return &OpenAIModel{
@@ -98,10 +105,10 @@ func ToOpenAI(m types.Model) (*OpenAIModel, error) {
 		Created:       created,
 		OwnedBy:       "docker",
 		ContextWindow: contextWindow,
-		Architecture:  config.GetArchitecture(),
-		Parameters:    config.GetParameters(),
-		Quantization:  config.GetQuantization(),
-		Size:          config.GetSize(),
+		Architecture:  architecture,
+		Parameters:    parameters,
+		Quantization:  quantization,
+		Size:          size,
 	}, nil
 }
 
