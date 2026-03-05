@@ -11,10 +11,8 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 )
 
-func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
-	llamaCppPath, vendoredServerStoragePath string,
-) error {
-	nvGPUInfoBin := filepath.Join(vendoredServerStoragePath, "com.docker.nv-gpu-info.exe")
+func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client) error {
+	nvGPUInfoBin := filepath.Join(l.installDir, "com.docker.nv-gpu-info.exe")
 	var canUseCUDA11, canUseOpenCL bool
 	var err error
 	ShouldUseGPUVariantLock.Lock()
@@ -43,6 +41,5 @@ func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger,
 		desiredVariant = "opencl"
 	}
 	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailCheckingForUpdates, desiredVariant))
-	return l.downloadLatestLlamaCpp(ctx, log, httpClient, llamaCppPath, vendoredServerStoragePath, desiredVersion,
-		desiredVariant)
+	return l.downloadLatestLlamaCpp(ctx, log, httpClient, desiredVersion, desiredVariant)
 }

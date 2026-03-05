@@ -253,6 +253,17 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		return nil
 	}
 
+	// On macOS/Windows, the llama.cpp backend uses deferred installation.
+	// Trigger installation (and binary update) via the running model runner.
+	if opts.backend == llamacpp.Name && llamacpp.NeedsDeferredInstall() {
+		cmd.Println("Installing llama.cpp backend...")
+		if err := desktopClient.InstallBackend(llamacpp.Name); err != nil {
+			return fmt.Errorf("failed to install llama.cpp backend: %w", err)
+		}
+		cmd.Println("llama.cpp backend installed successfully")
+		return nil
+	}
+
 	// The diffusers backend uses deferred installation: it pulls a Docker
 	// image, extracts a self-contained Python environment, and installs it
 	// to a well-known local folder. Trigger installation via the running
