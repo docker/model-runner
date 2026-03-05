@@ -106,13 +106,10 @@ USER modelrunner
 # Install uv and vLLM as modelrunner user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv venv --python /usr/bin/python3 /opt/vllm-env \
-    && if [ "$TARGETARCH" = "amd64" ]; then \
-    WHEEL_ARCH="manylinux_2_31_x86_64"; \
-    WHEEL_URL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}%2B${VLLM_CUDA_VERSION}-${VLLM_PYTHON_TAG}-${WHEEL_ARCH}.whl"; \
-    ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "$WHEEL_URL"; \
-    else \
-    ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python "vllm==${VLLM_VERSION}"; \
-    fi
+    && printf '%s' "${VLLM_VERSION}" | grep -qE '^(nightly|[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})$' \
+            || { echo "Invalid VLLM_VERSION: must be a version (e.g. 0.16.0), 'nightly', or a hex commit hash"; exit 1; } \
+        && ~/.local/bin/uv pip install --python /opt/vllm-env/bin/python vllm \
+            --extra-index-url "https://wheels.vllm.ai/${VLLM_VERSION}/${VLLM_CUDA_VERSION}"
 
 RUN /opt/vllm-env/bin/python -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
