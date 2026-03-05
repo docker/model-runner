@@ -271,8 +271,14 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	}()
 
 	// Create a request with the body replaced for forwarding upstream.
+	// Set ContentLength explicitly so the backend always receives a Content-Length
+	// header. Without this, HTTP/2 requests (where clients may omit Content-Length)
+	// are forwarded with Transfer-Encoding: chunked, which some backends (e.g.
+	// vLLM's Python/uvicorn server) fail to parse, resulting in an empty body and
+	// a 422 response.
 	upstreamRequest := r.Clone(r.Context())
 	upstreamRequest.Body = io.NopCloser(bytes.NewReader(body))
+	upstreamRequest.ContentLength = int64(len(body))
 
 	// Perform the request.
 	runner.ServeHTTP(w, upstreamRequest)
