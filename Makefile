@@ -11,7 +11,6 @@ DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
 DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
-MODELS_PATH := $(shell pwd)/models-store
 LLAMA_ARGS ?=
 DOCKER_BUILD_ARGS := \
 	--load \
@@ -63,7 +62,6 @@ run: build
 clean:
 	rm -f $(APP_NAME)
 	rm -f model-runner.sock
-	rm -rf $(MODELS_PATH)
 
 # Run tests
 test:
@@ -164,12 +162,11 @@ docker-run-diffusers: docker-build-diffusers
 # Common implementation for running Docker container
 docker-run-impl:
 	@echo ""
-	@echo "Starting service on port $(PORT) with model storage at $(MODELS_PATH)..."
+	@echo "Starting service on port $(PORT)..."
 	@echo "Service will be available at: http://localhost:$(PORT)"
 	@echo "Example usage: curl http://localhost:$(PORT)/models"
 	@echo ""
 	PORT="$(PORT)" \
-	MODELS_PATH="$(MODELS_PATH)" \
 	DOCKER_IMAGE="$(DOCKER_IMAGE)" \
 	LLAMA_ARGS="$(LLAMA_ARGS)" \
 	DMR_ORIGINS="$(DMR_ORIGINS)" \
