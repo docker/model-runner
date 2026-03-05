@@ -5,6 +5,7 @@ LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
+VLLM_VERSION ?= 0.12.0
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
@@ -19,6 +20,7 @@ DOCKER_BUILD_ARGS := \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
 	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+	--build-arg VLLM_VERSION="$(VLLM_VERSION)" \
 	--target $(DOCKER_TARGET) \
 	-t $(DOCKER_IMAGE)
 
@@ -232,13 +234,13 @@ vllm-metal-dev:
 	rm -rf "$(VLLM_METAL_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(VLLM_METAL_INSTALL_DIR)"; \
 	. "$(VLLM_METAL_INSTALL_DIR)/bin/activate" && \
-		VLLM_VERSION="0.13.0" && \
+		VLLM_UPSTREAM_VERSION="0.13.0" && \
 		WORK_DIR=$$(mktemp -d) && \
-		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_VERSION/vllm-$$VLLM_VERSION.tar.gz" && \
+		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_UPSTREAM_VERSION/vllm-$$VLLM_UPSTREAM_VERSION.tar.gz" && \
 		tar -xzf "$$WORK_DIR/vllm.tar.gz" -C "$$WORK_DIR" && \
-		pip install -r "$$WORK_DIR/vllm-$$VLLM_VERSION/requirements/cpu.txt" && \
+		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/cpu.txt" && \
 		pip install -e "$(VLLM_METAL_PATH)" && \
-		pip install -r "$$WORK_DIR/vllm-$$VLLM_VERSION/requirements/common.txt" && \
+		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/common.txt" && \
 		rm -rf "$$WORK_DIR" && \
 		echo "dev" > "$(VLLM_METAL_INSTALL_DIR)/.vllm-metal-version"; \
 	echo "vllm-metal dev installed from $(VLLM_METAL_PATH)"

@@ -340,8 +340,6 @@ jobs:
             "LLAMA_SERVER_VARIANT=cuda"
             "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "VLLM_VERSION=${{ env.VLLM_VERSION }}"
-            "VLLM_CUDA_VERSION=cu130"
-            "VLLM_PYTHON_TAG=cp38-abi3"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
