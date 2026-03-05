@@ -82,11 +82,33 @@ func ToOpenAI(m types.Model) (*OpenAIModel, error) {
 		id = tags[0]
 	}
 
+	config, err := m.Config()
+	if err != nil {
+		return nil, fmt.Errorf("get config: %w", err)
+	}
+
+	var contextWindow int32
+	var architecture, parameters, quantization, size string
+	if config != nil {
+		if cw := config.GetContextSize(); cw != nil {
+			contextWindow = *cw
+		}
+		architecture = config.GetArchitecture()
+		parameters = config.GetParameters()
+		quantization = config.GetQuantization()
+		size = config.GetSize()
+	}
+
 	return &OpenAIModel{
-		ID:      id,
-		Object:  "model",
-		Created: created,
-		OwnedBy: "docker",
+		ID:            id,
+		Object:        "model",
+		Created:       created,
+		OwnedBy:       "docker",
+		ContextWindow: contextWindow,
+		Architecture:  architecture,
+		Parameters:    parameters,
+		Quantization:  quantization,
+		Size:          size,
 	}, nil
 }
 
@@ -100,6 +122,13 @@ type OpenAIModel struct {
 	Created int64 `json:"created"`
 	// OwnedBy is the model owner. At the moment, it is always "docker".
 	OwnedBy string `json:"owned_by"`
+
+	// Additional metadata
+	ContextWindow int32  `json:"context_window,omitempty"`
+	Architecture  string `json:"architecture,omitempty"`
+	Parameters    string `json:"parameters,omitempty"`
+	Quantization  string `json:"quantization,omitempty"`
+	Size          string `json:"size,omitempty"`
 }
 
 // OpenAIModelList represents a list of models using OpenAI conventions.
