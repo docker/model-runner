@@ -171,14 +171,15 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 	}
 
 	return backends.RunBackend(ctx, backends.RunnerConfig{
-		BackendName:     "llama.cpp",
-		Socket:          socket,
-		BinaryPath:      filepath.Join(binPath, "com.docker.llama-server"),
-		SandboxPath:     binPath,
-		SandboxConfig:   sandbox.ConfigurationLlamaCpp,
-		Args:            args,
-		Logger:          l.log,
-		ServerLogWriter: logging.NewWriter(l.serverLog),
+		BackendName:      "llama.cpp",
+		Socket:           socket,
+		BinaryPath:       filepath.Join(binPath, "com.docker.llama-server"),
+		SandboxPath:      binPath,
+		SandboxConfig:    sandbox.ConfigurationLlamaCpp,
+		Args:             args,
+		Logger:           l.log,
+		ServerLogWriter:  logging.NewWriter(l.serverLog),
+		ErrorTransformer: ExtractLlamaCppError,
 	})
 }
 

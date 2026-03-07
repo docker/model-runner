@@ -122,16 +122,16 @@ func run(
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse virtual backend URL: %w", err)
 	}
-	proxy := httputil.NewSingleHostReverseProxy(upstream)
-	standardDirector := proxy.Director
-	proxy.Director = func(r *http.Request) {
-		standardDirector(r)
-		// HACK: Most backends will be happier with a "localhost" hostname than
-		// an "inference.docker.internal" hostname (which they may reject).
-		r.Host = "localhost"
-		// Remove the prefix up to the OpenAI API root.
-		r.URL.Path = trimRequestPathToOpenAIRoot(r.URL.Path)
-		r.URL.RawPath = trimRequestPathToOpenAIRoot(r.URL.RawPath)
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(upstream)
+			// HACK: Most backends will be happier with a "localhost" hostname than
+			// an "inference.docker.internal" hostname (which they may reject).
+			pr.Out.Host = "localhost"
+			// Remove the prefix up to the OpenAI API root.
+			pr.Out.URL.Path = trimRequestPathToOpenAIRoot(pr.Out.URL.Path)
+			pr.Out.URL.RawPath = trimRequestPathToOpenAIRoot(pr.Out.URL.RawPath)
+		},
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		// CORS headers are set by the CorsMiddleware from pkg/inference/cors.go,

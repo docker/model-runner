@@ -45,17 +45,17 @@ func formatModelInfo(model dmrm.Model) string {
 	var sb strings.Builder
 
 	// Model ID
-	sb.WriteString(fmt.Sprintf("Model:       %s\n", model.ID))
+	fmt.Fprintf(&sb, "Model:       %s\n", model.ID)
 
 	// Tags
 	if len(model.Tags) > 0 {
-		sb.WriteString(fmt.Sprintf("Tags:        %s\n", strings.Join(model.Tags, ", ")))
+		fmt.Fprintf(&sb, "Tags:        %s\n", strings.Join(model.Tags, ", "))
 	}
 
 	// Created date
 	if model.Created > 0 {
 		created := time.Unix(model.Created, 0)
-		sb.WriteString(fmt.Sprintf("Created:     %s\n", created.Format(time.RFC3339)))
+		fmt.Fprintf(&sb, "Created:     %s\n", created.Format(time.RFC3339))
 	}
 
 	// Config details
@@ -77,20 +77,20 @@ func formatModelInfo(model dmrm.Model) string {
 
 			for _, field := range fields {
 				if field.value != "" {
-					sb.WriteString(fmt.Sprintf("%-14s%s\n", field.label, field.value))
+					fmt.Fprintf(&sb, "%-14s%s\n", field.label, field.value)
 				}
 			}
 
 			if cfg.ContextSize != nil {
-				sb.WriteString(fmt.Sprintf("%-14s%d\n", "Context Size:", *cfg.ContextSize))
+				fmt.Fprintf(&sb, "%-14s%d\n", "Context Size:", *cfg.ContextSize)
 			}
 
 			// Helper function to print metadata sections
 			printMetadata := func(title string, data map[string]string) {
 				if len(data) > 0 {
-					sb.WriteString(fmt.Sprintf("\n%s:\n", title))
+					fmt.Fprintf(&sb, "\n%s:\n", title)
 					for k, v := range data {
-						sb.WriteString(fmt.Sprintf("  %s: %s\n", k, v))
+						fmt.Fprintf(&sb, "  %s: %s\n", k, v)
 					}
 				}
 			}

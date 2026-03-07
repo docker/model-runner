@@ -189,39 +189,3 @@ func TLSKey() string {
 // TLSAutoCert is true (default) unless MODEL_RUNNER_TLS_AUTO_CERT is set to a falsy value.
 // Call as TLSAutoCert(true) to get the default-true behaviour.
 var TLSAutoCert = BoolWithDefault("MODEL_RUNNER_TLS_AUTO_CERT")
-
-// EnvVar describes a single environment variable with its current value
-// and a human-readable description.
-type EnvVar struct {
-	Name        string
-	Value       any
-	Description string
-}
-
-// AsMap returns a map of all model-runner environment variables with their
-// current values and descriptions. Useful for introspection and documentation.
-func AsMap() map[string]EnvVar {
-	modelsPath, _ := ModelsPath()
-	return map[string]EnvVar{
-		"MODEL_RUNNER_SOCK":          {"MODEL_RUNNER_SOCK", SocketPath(), "Unix socket path (default: model-runner.sock)"},
-		"MODELS_PATH":                {"MODELS_PATH", modelsPath, "Directory for model storage (default: ~/.docker/models)"},
-		"MODEL_RUNNER_PORT":          {"MODEL_RUNNER_PORT", TCPPort(), "TCP port; overrides Unix socket when set"},
-		"LLAMA_SERVER_PATH":          {"LLAMA_SERVER_PATH", LlamaServerPath(), "Path to llama.cpp server binary"},
-		"LLAMA_ARGS":                 {"LLAMA_ARGS", LlamaArgs(), "Extra arguments passed to the llama.cpp server"},
-		"DISABLE_SERVER_UPDATE":      {"DISABLE_SERVER_UPDATE", DisableServerUpdate(), "Skip automatic llama.cpp server updates (any truthy value)"},
-		"LLAMA_SERVER_VERSION":       {"LLAMA_SERVER_VERSION", LlamaServerVersion(), "Pin a specific llama.cpp server version"},
-		"VLLM_SERVER_PATH":           {"VLLM_SERVER_PATH", VLLMServerPath(), "Path to vLLM server binary"},
-		"SGLANG_SERVER_PATH":         {"SGLANG_SERVER_PATH", SGLangServerPath(), "Path to SGLang server binary"},
-		"MLX_SERVER_PATH":            {"MLX_SERVER_PATH", MLXServerPath(), "Path to MLX server binary"},
-		"DIFFUSERS_SERVER_PATH":      {"DIFFUSERS_SERVER_PATH", DiffusersServerPath(), "Path to Diffusers server binary"},
-		"VLLM_METAL_SERVER_PATH":     {"VLLM_METAL_SERVER_PATH", VLLMMetalServerPath(), "Path to vLLM Metal server binary"},
-		"DISABLE_METRICS":            {"DISABLE_METRICS", DisableMetrics(), "Disable Prometheus metrics endpoint (any truthy value, e.g. 1)"},
-		"LOG_LEVEL":                  {"LOG_LEVEL", LogLevel(), "Log verbosity: debug, info, warn, error (default: info)"},
-		"DMR_ORIGINS":                {"DMR_ORIGINS", AllowedOrigins(), "Comma-separated CORS allowed origins (defaults plus any env-provided origins)"},
-		"MODEL_RUNNER_TLS_ENABLED":   {"MODEL_RUNNER_TLS_ENABLED", TLSEnabled(), "Enable TLS listener"},
-		"MODEL_RUNNER_TLS_PORT":      {"MODEL_RUNNER_TLS_PORT", TLSPort(), "TLS listener port (default: 12444)"},
-		"MODEL_RUNNER_TLS_CERT":      {"MODEL_RUNNER_TLS_CERT", TLSCert(), "Path to TLS certificate file"},
-		"MODEL_RUNNER_TLS_KEY":       {"MODEL_RUNNER_TLS_KEY", TLSKey(), "Path to TLS private key file"},
-		"MODEL_RUNNER_TLS_AUTO_CERT": {"MODEL_RUNNER_TLS_AUTO_CERT", TLSAutoCert(true), "Auto-generate TLS certificates (default: true)"},
-	}
-}

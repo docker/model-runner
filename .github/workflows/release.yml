@@ -46,6 +46,11 @@ on:
         required: false
         type: boolean
         default: false
+      imagesOnly:
+        description: "Only build and push Docker images (skip CLI releases, pinata bump, and CE packaging)"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -208,7 +213,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with:
-          go-version: 1.25.6
+          go-version: 1.26.0
           cache: true
 
       - name: Run tests
@@ -414,6 +419,7 @@ jobs:
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
   # ---------------------------------------------------------------------------
   release-cli-desktop:
+    if: ${{ !inputs.imagesOnly }}
     needs: [prepare, test]
     runs-on: ubuntu-latest
     permissions:
@@ -468,6 +474,7 @@ jobs:
   # Bump docker-model version in pinata and open a PR
   # ---------------------------------------------------------------------------
   bump-pinata:
+    if: ${{ !inputs.imagesOnly }}
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
@@ -520,7 +527,7 @@ jobs:
   # deploy completed successfully.
   # ---------------------------------------------------------------------------
   release-cli-docker-ce-trigger:
-    if: ${{ !inputs.skipPackaging }}
+    if: ${{ !inputs.imagesOnly }}
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
@@ -609,6 +616,7 @@ jobs:
   # server versions match the release tag.
   # ---------------------------------------------------------------------------
   verify-docker-ce:
+    if: ${{ !inputs.imagesOnly }}
     needs: [prepare, release-cli-docker-ce-trigger, build]
     runs-on: ubuntu-latest
     environment: release-repo-deploy

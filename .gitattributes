@@ -1,0 +1,4 @@
+# Ensure shell scripts and patch files always use LF line endings.
+# Required for correct execution in Linux containers; Windows may use CRLF.
+*.sh text eol=lf
+*.patch text eol=lf
