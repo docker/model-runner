@@ -809,20 +809,21 @@ func newRunCmd() *cobra.Command {
 				return nil
 			}
 
-			_, err := desktopClient.Inspect(model, false)
-			if err != nil {
-				if !errors.Is(err, desktop.ErrNotFound) {
-					return handleClientError(err, "Failed to inspect model")
-				}
-				cmd.Println("Unable to find model '" + model + "' locally. Pulling from the server.")
-				if err := pullModel(cmd, desktopClient, model); err != nil {
-					return err
+			modelInfo, err := desktopClient.Inspect(model, false)
+			modelFoundLocally := err == nil
+			if err != nil && !errors.Is(err, desktop.ErrNotFound) {
+				return handleClientError(err, "Failed to inspect model")
+			}
+
+			if !modelFoundLocally {
+				remoteInfo, remoteErr := desktopClient.Inspect(model, true)
+				if remoteErr == nil {
+					modelInfo = remoteInfo
 				}
 			}
 
-			modelInfo, err := desktopClient.Inspect(model, true)
 			backend := ""
-			if err == nil {
+			if modelInfo.ID != "" {
 				backend, _ = GetRequiredBackendFromModelInfo(&modelInfo)
 			}
 
@@ -831,6 +832,13 @@ func newRunCmd() *cobra.Command {
 					if err.Error() == "backend installation cancelled" {
 						return nil
 					}
+					return err
+				}
+			}
+
+			if !modelFoundLocally {
+				cmd.Println("Unable to find model '" + model + "' locally. Pulling from the server.")
+				if err := pullModel(cmd, desktopClient, model); err != nil {
 					return err
 				}
 			}

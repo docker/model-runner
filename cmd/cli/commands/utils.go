@@ -292,7 +292,12 @@ func CheckBackendInstalled(backend string) (bool, error) {
 		return false, nil
 	}
 
-	return backendState == "installed" || backendState == "running", nil
+	state := strings.TrimSpace(strings.ToLower(backendState))
+	if strings.HasPrefix(state, "not ") || strings.HasPrefix(state, "error") {
+		return false, nil
+	}
+
+	return strings.HasPrefix(state, "installed") || strings.HasPrefix(state, "running"), nil
 }
 
 func PromptInstallBackend(backend string, cmd *cobra.Command) (bool, error) {
@@ -341,6 +346,14 @@ func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
 
 	if err := InstallBackend(backend, cmd); err != nil {
 		return err
+	}
+
+	installed, err = CheckBackendInstalled(backend)
+	if err != nil {
+		return err
+	}
+	if !installed {
+		return fmt.Errorf("backend %q is still not installed; run 'docker model install-runner --backend %s'", backend, backend)
 	}
 
 	cmd.Printf("Backend %q installed successfully.\n", backend)
