@@ -313,11 +313,8 @@ func PromptInstallBackend(backend string, cmd *cobra.Command) (bool, error) {
 	return input == "" || input == "y" || input == "yes", nil
 }
 
-func InstallBackend(backend string, cmd *cobra.Command) error {
-	installCmd := newInstallRunner()
-	installCmd.SetArgs([]string{"--backend", backend})
-
-	if err := installCmd.Execute(); err != nil {
+func InstallBackend(backend string) error {
+	if err := desktopClient.InstallBackend(backend); err != nil {
 		return fmt.Errorf("failed to install backend %s: %w", backend, err)
 	}
 
@@ -344,7 +341,7 @@ func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
 		return fmt.Errorf("backend installation cancelled")
 	}
 
-	if err := InstallBackend(backend, cmd); err != nil {
+	if err := InstallBackend(backend); err != nil {
 		return err
 	}
 
