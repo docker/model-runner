@@ -1,6 +1,7 @@
 package distribution
 
 import (
+	"bytes"
 	"os"
 	"testing"
 
@@ -80,8 +81,8 @@ func TestGARIntegration(t *testing.T) {
 			t.Fatalf("Failed to read pulled model: %v", err)
 		}
 
-		if string(pulledContent) != string(modelContent) {
-			t.Errorf("Pulled model content doesn't match original: got %q, want %q", pulledContent, modelContent)
+		if !bytes.Equal(pulledContent, modelContent) {
+			t.Errorf("Pulled model content doesn't match original")
 		}
 	})
 

@@ -1,6 +1,7 @@
 package distribution
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -142,8 +143,8 @@ func TestBundle(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to read file with expected contents: %v", err)
 				}
-				if string(got) != string(expected) {
-					t.Fatalf("File contents did not match expected contents. Expected: %s, got: %s", expected, got)
+				if !bytes.Equal(got, expected) {
+					t.Fatalf("File contents did not match expected contents")
 				}
 			}
 		})
