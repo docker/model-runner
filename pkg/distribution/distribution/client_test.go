@@ -27,7 +27,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
-	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/opencontainers/go-digest"
 )
@@ -130,7 +129,7 @@ func (m *modelPackTestArtifact) LayerByDiffID(hash oci.Hash) (oci.Layer, error) 
 }
 
 func (m *modelPackTestArtifact) GetConfigMediaType() oci.MediaType {
-	return types.MediaTypeModelConfigV02
+	return oci.MediaType(modelpack.MediaTypeModelConfigV1)
 }
 
 func newModelPackTestArtifact(t *testing.T, modelFile string) *modelPackTestArtifact {
@@ -240,8 +239,8 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read pulled model: %v", err)
 		}
 
-		if string(pulledContent) != string(modelContent) {
-			t.Errorf("Pulled model content doesn't match original: got %q, want %q", pulledContent, modelContent)
+		if !bytes.Equal(pulledContent, modelContent) {
+			t.Errorf("Pulled model content doesn't match original")
 		}
 	})
 
@@ -279,8 +278,8 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read pulled model: %v", err)
 		}
 
-		if string(pulledContent) != string(modelContent) {
-			t.Errorf("Pulled model content doesn't match original: got %q, want %q", pulledContent, modelContent)
+		if !bytes.Equal(pulledContent, modelContent) {
+			t.Errorf("Pulled model content doesn't match original")
 		}
 	})
 
@@ -292,8 +291,8 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to create client: %v", err)
 		}
 
-		tag := registryHost + "/modelpack-test/model:v1.0.0"
-		ref, err := reference.ParseReference(tag)
+		mpTag := registryHost + "/modelpack-test/model:v1.0.0"
+		ref, err := reference.ParseReference(mpTag)
 		if err != nil {
 			t.Fatalf("Failed to parse reference: %v", err)
 		}
@@ -303,11 +302,11 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to push ModelPack model: %v", err)
 		}
 
-		if err := testClient.PullModel(t.Context(), tag, nil); err != nil {
+		if err := testClient.PullModel(t.Context(), mpTag, nil); err != nil {
 			t.Fatalf("Failed to pull ModelPack model: %v", err)
 		}
 
-		pulledModel, err := testClient.GetModel(tag)
+		pulledModel, err := testClient.GetModel(mpTag)
 		if err != nil {
 			t.Fatalf("Failed to get pulled model: %v", err)
 		}
@@ -330,7 +329,7 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read source GGUF file: %v", err)
 		}
 
-		if string(pulledContent) != string(originalContent) {
+		if !bytes.Equal(pulledContent, originalContent) {
 			t.Errorf("Pulled ModelPack model content doesn't match original")
 		}
 
@@ -540,8 +539,8 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read pulled model: %v", err)
 		}
 
-		if string(pulledContent) != string(testModelContent) {
-			t.Errorf("Pulled model content doesn't match original: got %q, want %q", pulledContent, testModelContent)
+		if !bytes.Equal(pulledContent, testModelContent) {
+			t.Errorf("Pulled model content doesn't match original")
 		}
 
 		// Create a modified version of the model
@@ -590,8 +589,8 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read updated pulled model: %v", err)
 		}
 
-		if string(updatedPulledContent) != string(updatedContent) {
-			t.Errorf("Updated pulled model content doesn't match: got %q, want %q", updatedPulledContent, updatedContent)
+		if !bytes.Equal(updatedPulledContent, updatedContent) {
+			t.Errorf("Updated pulled model content doesn't match")
 		}
 	})
 
@@ -734,7 +733,7 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to read pulled model: %v", err)
 		}
 
-		if string(pulledContent) != string(modelContent) {
+		if !bytes.Equal(pulledContent, modelContent) {
 			t.Errorf("Pulled model content doesn't match original")
 		}
 	})
