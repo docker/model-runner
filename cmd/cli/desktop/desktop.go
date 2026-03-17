@@ -100,7 +100,7 @@ func (c *Client) Status() Status {
 func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, bool, error) {
 	// Check if this is a Hugging Face model and if HF_TOKEN is set
 	var hfToken string
-	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
+	if distribution.IsHuggingFaceReference(strings.ToLower(model)) {
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 
@@ -227,8 +227,7 @@ func (c *Client) withRetries(
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
 	var hfToken string
-	modelLower := strings.ToLower(model)
-	if strings.HasPrefix(modelLower, "hf.co/") || strings.HasPrefix(modelLower, "huggingface.co/") {
+	if distribution.IsHuggingFaceReference(strings.ToLower(model)) {
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 

@@ -276,7 +276,7 @@ func (c *Client) PullModel(ctx context.Context, reference string, progressWriter
 	}
 
 	// HuggingFace references always use native pull (download raw files from HF Hub)
-	if isHuggingFaceReference(originalReference) {
+	if IsHuggingFaceReference(originalReference) {
 		c.log.Info("using native HuggingFace pull", "reference", utils.SanitizeForLog(reference))
 
 		// Check if model already exists in local store (reference is already normalized)
@@ -600,7 +600,7 @@ func (c *Client) PushModel(ctx context.Context, tag string, progressWriter io.Wr
 		token = bearerToken[0]
 	}
 
-	if isHuggingFaceReference(originalReference) {
+	if IsHuggingFaceReference(originalReference) {
 		return c.pushNativeHuggingFace(ctx, originalReference, normalizedRef, progressWriter, token)
 	}
 
@@ -810,8 +810,8 @@ func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, 
 	return nil
 }
 
-// isHuggingFaceReference checks if a reference is a HuggingFace model reference
-func isHuggingFaceReference(reference string) bool {
+// IsHuggingFaceReference checks if a reference is a HuggingFace model reference
+func IsHuggingFaceReference(reference string) bool {
 	return strings.HasPrefix(reference, "huggingface.co/") ||
 		strings.HasPrefix(reference, "hf.co/")
 }
