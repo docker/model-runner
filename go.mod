@@ -1,6 +1,6 @@
 module github.com/docker/model-runner
 
-go 1.26.0
+go 1.25.8
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
