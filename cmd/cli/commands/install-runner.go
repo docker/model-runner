@@ -244,7 +244,8 @@ type runnerOptions struct {
 func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error {
 	// On macOS ARM64, the vllm backend requires deferred installation
 	// (on-demand via the running model runner), not as a standalone container.
-	if opts.backend == vllm.Name && platform.SupportsVLLMMetal() {
+	if opts.backend == vllm.Name && platform.SupportsVLLMMetal() &&
+		modelRunner.EngineKind() != types.ModelRunnerEngineKindDesktop {
 		cmd.Println("Installing vllm backend...")
 		if err := desktopClient.InstallBackend(vllm.Name); err != nil {
 			return fmt.Errorf("failed to install vllm backend: %w", err)
