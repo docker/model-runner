@@ -224,6 +224,66 @@ func getStandaloneRunner(ctx context.Context) (*standaloneRunner, error) {
 	return inspectStandaloneRunner(ctr), nil
 }
 
+// installAction describes what install-runner should do for a given backend.
+type installAction int
+
+const (
+	// installActionDeferredVLLMMetal triggers on-demand vllm-metal installation
+	// via the running model runner's API. Used when the model runner runs
+	// natively on macOS ARM64 (Desktop or MobyManual contexts).
+	installActionDeferredVLLMMetal installAction = iota
+	// installActionDeferredDiffusers triggers on-demand diffusers installation
+	// via the running model runner's API.
+	installActionDeferredDiffusers
+	// installActionAlreadyInDesktop indicates the backend is already available
+	// in Docker Desktop's built-in model runner.
+	installActionAlreadyInDesktop
+	// installActionCreateContainer creates a standalone model runner container.
+	installActionCreateContainer
+)
+
+// resolveInstallAction determines the installation strategy based on the
+// requested backend, engine kind, platform capabilities, and WSL context.
+// This is a pure function to enable comprehensive unit testing of all
+// platform/engine combinations.
+func resolveInstallAction(
+	backend string,
+	engineKind types.ModelRunnerEngineKind,
+	supportsVLLMMetal bool,
+	isWSL bool,
+) installAction {
+	switch backend {
+	case vllm.Name:
+		// On macOS ARM64, Desktop (non-WSL) and MobyManual contexts mean
+		// the model runner runs on the host and supports vllm-metal.
+		if supportsVLLMMetal {
+			if engineKind == types.ModelRunnerEngineKindDesktop && !isWSL {
+				return installActionDeferredVLLMMetal
+			}
+			if engineKind == types.ModelRunnerEngineKindMobyManual {
+				return installActionDeferredVLLMMetal
+			}
+		}
+		// Moby, Cloud, or Desktop+WSL: the Docker daemon is remote Linux,
+		// so create a standalone container with vLLM.
+		return installActionCreateContainer
+
+	case diffusers.Name:
+		// Diffusers always uses deferred installation via the model
+		// runner API (the server downloads the Python environment).
+		return installActionDeferredDiffusers
+
+	default:
+		// For llamacpp and other default backends on Desktop, they are
+		// already included in Docker Desktop's built-in model runner.
+		if engineKind == types.ModelRunnerEngineKindDesktop {
+			return installActionAlreadyInDesktop
+		}
+		// Moby/Cloud: create a standalone container.
+		return installActionCreateContainer
+	}
+}
+
 // runnerOptions holds common configuration for install/start/reinstall commands
 type runnerOptions struct {
 	port            uint16
@@ -242,26 +302,29 @@ type runnerOptions struct {
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
 func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error {
-	// On macOS ARM64, the vllm backend requires deferred installation
-	// (on-demand via the running model runner), not as a standalone container.
-	if opts.backend == vllm.Name && platform.SupportsVLLMMetal() &&
-		modelRunner.EngineKind() != types.ModelRunnerEngineKindDesktop {
+	engineKind := modelRunner.EngineKind()
+	isWSL := engineKind == types.ModelRunnerEngineKindDesktop &&
+		desktop.IsDesktopWSLContext(cmd.Context(), dockerCLI)
+
+	action := resolveInstallAction(
+		opts.backend,
+		engineKind,
+		platform.SupportsVLLMMetal(),
+		isWSL,
+	)
+
+	switch action {
+	case installActionDeferredVLLMMetal:
 		cmd.Println("Installing vllm backend...")
 		if err := desktopClient.InstallBackend(vllm.Name); err != nil {
 			return fmt.Errorf("failed to install vllm backend: %w", err)
 		}
 		cmd.Println("vllm backend installed successfully")
 		return nil
-	}
 
-	// The diffusers backend uses deferred installation: it pulls a Docker
-	// image, extracts a self-contained Python environment, and installs it
-	// to a well-known local folder. Trigger installation via the running
-	// model runner's API, the same way vllm-metal is handled above.
-	if opts.backend == diffusers.Name && platform.SupportsDiffusers() {
+	case installActionDeferredDiffusers:
 		// For standalone contexts (Moby/Cloud), ensure a base runner is
 		// available first so we have an API endpoint to call.
-		engineKind := modelRunner.EngineKind()
 		if engineKind == types.ModelRunnerEngineKindMoby || engineKind == types.ModelRunnerEngineKindCloud {
 			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), debug); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
@@ -274,23 +337,21 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		}
 		cmd.Println("diffusers backend installed successfully")
 		return nil
+
+	case installActionAlreadyInDesktop:
+		cmd.Println("Standalone installation not supported with Docker Desktop")
+		cmd.Println("Use `docker desktop enable model-runner` instead")
+		return nil
+
+	case installActionCreateContainer:
+		// Fall through to container creation below.
 	}
 
-	var vllmOnWSL bool
-	// Ensure that we're running in a supported model runner context.
-	engineKind := modelRunner.EngineKind()
-	if engineKind == types.ModelRunnerEngineKindDesktop {
-		if opts.backend == vllm.Name && desktop.IsDesktopWSLContext(cmd.Context(), dockerCLI) {
-			engineKind = types.ModelRunnerEngineKindMoby
-			vllmOnWSL = true
-		} else {
-			// TODO: We may eventually want to auto-forward this to
-			// docker desktop enable model-runner, but we should first make
-			// sure the CLI flags match.
-			cmd.Println("Standalone installation not supported with Docker Desktop")
-			cmd.Println("Use `docker desktop enable model-runner` instead")
-			return nil
-		}
+	// For Desktop+WSL with vllm, override engine kind to Moby.
+	vllmOnWSL := false
+	if isWSL && opts.backend == vllm.Name {
+		engineKind = types.ModelRunnerEngineKindMoby
+		vllmOnWSL = true
 	}
 
 	port := opts.port
