@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	mockdesktop "github.com/docker/model-runner/cmd/cli/mocks"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
@@ -51,7 +50,7 @@ func TestStatus(t *testing.T) {
 			expectedOutput: func() string {
 				buf := new(bytes.Buffer)
 				fmt.Fprintln(buf, "Docker Model Runner is not running")
-				hooks.PrintNextSteps(buf, []string{enableViaCLI, enableViaGUI})
+				printNextSteps(buf, []string{enableViaCLI, enableViaGUI})
 				return buf.String()
 			}(),
 		},

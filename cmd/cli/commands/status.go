@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
@@ -63,7 +62,7 @@ func textStatus(cmd *cobra.Command, status desktop.Status, backendStatus map[str
 		cmd.Print(backendStatusTable(backendStatus))
 	} else {
 		cmd.Println("Docker Model Runner is not running")
-		hooks.PrintNextSteps(cmd.OutOrStdout(), []string{enableViaCLI, enableViaGUI})
+		printNextSteps(cmd.OutOrStdout(), []string{enableViaCLI, enableViaGUI})
 		osExit(1)
 	}
 }
