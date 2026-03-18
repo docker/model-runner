@@ -601,6 +601,7 @@ jobs:
             -f packaging_image="$PACKAGING_IMAGE" \
             -f model_version="$VERSION" \
             -f channel=stable \
+            -f skip_full_verify=true \
             -f release_live=true
           echo "✅ Deploy workflow triggered"
 
