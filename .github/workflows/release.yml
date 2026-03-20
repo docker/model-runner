@@ -47,7 +47,7 @@ on:
         type: boolean
         default: false
       imagesOnly:
-        description: "Only build and push Docker images (skip CLI releases, pinata bump, and CE packaging)"
+        description: "Only build and push Docker images (skip CLI releases, pinata bump, docs update, and CE packaging)"
         required: false
         type: boolean
         default: false
@@ -517,6 +517,66 @@ jobs:
           draft: true
 
   # ---------------------------------------------------------------------------
+  # Update CLI reference docs in docker/docs
+  # ---------------------------------------------------------------------------
+  update-docs:
+    if: ${{ !inputs.imagesOnly }}
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout docs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: docker/docs
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with:
+          go-version: 1.25.8
+          cache: true
+
+      - name: Vendor model-runner CLI docs
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          VENDOR_MODULE=github.com/docker/model-runner@${RELEASE_TAG} make vendor
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
+        with:
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          base: main
+          commit-message: |
+            vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}
+
+            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
+          branch: update-model-runner-${{ needs.prepare.outputs.release_tag }}
+          title: "vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}"
+          body: |
+            ## Description
+
+            Update Model Runner CLI docs.
+            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
+
+            ```
+            VENDOR_MODULE=github.com/docker/model-runner@${{ needs.prepare.outputs.release_tag }} make vendor
+            ```
+
+            ## Reviews
+
+            <!-- Notes for reviewers here -->
+            <!-- List applicable reviews (optionally @tag reviewers) -->
+
+            - [ ] Technical review
+            - [ ] Editorial review
+            - [ ] Product review
+          draft: true
+
+  # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy
   #
   # Triggers packaging, waits for it, then triggers the deploy workflow.
@@ -631,7 +691,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, verify-docker-ce]
+    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, update-docs, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
