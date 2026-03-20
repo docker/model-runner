@@ -3,7 +3,6 @@
 add_accelerators() {
   # Add NVIDIA GPU support for CUDA variants and GPU-accelerated backends
   if [[ "${DOCKER_IMAGE-}" == *"-cuda" ]] || \
-     [[ "${DOCKER_IMAGE-}" == *"-diffusers" ]] || \
      [[ "${DOCKER_IMAGE-}" == *"-sglang" ]]; then
       if docker info -f '{{range $k, $v := .Runtimes}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null | grep -qx "nvidia"; then
         args+=("--gpus" "all" "--runtime=nvidia")

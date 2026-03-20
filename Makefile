@@ -9,7 +9,6 @@ VLLM_VERSION ?= 0.17.0
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
-DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
@@ -31,7 +30,6 @@ BUILD_DMR ?= 1
 .PHONY: validate validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
-.PHONY: docker-build-diffusers docker-run-diffusers
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
@@ -150,16 +148,6 @@ docker-build-sglang:
 # Run SGLang Docker container with TCP port access and mounted model storage
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
-
-# Build Diffusers Docker image
-docker-build-diffusers:
-	@$(MAKE) docker-build \
-		DOCKER_TARGET=final-diffusers \
-		DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
-
-# Run Diffusers Docker container with TCP port access and mounted model storage
-docker-run-diffusers: docker-build-diffusers
-	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
 
 # Common implementation for running Docker container
 docker-run-impl:
@@ -338,8 +326,6 @@ help:
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
-	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
-	@echo "  docker-run-diffusers		- Run Diffusers Docker container"
 	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"

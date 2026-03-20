@@ -4,7 +4,6 @@ import (
 	"os"
 
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 )
 
@@ -32,10 +31,6 @@ func controllerImageVariant(detectedGPU gpupkg.GPUSupport, backend string) strin
 	// If vLLM backend is requested, return vllm-cuda variant
 	if backend == vllm.Name {
 		return "vllm-cuda"
-	}
-	// If diffusers backend is requested, return diffusers variant
-	if backend == diffusers.Name {
-		return "diffusers"
 	}
 	// Default to llama.cpp backend behavior
 	switch detectedGPU {
