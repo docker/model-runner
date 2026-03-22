@@ -20,7 +20,7 @@ WORK_DIR=$(mktemp -d)
 # Convert tarball path to absolute before we cd elsewhere
 TARBALL="$(cd "$(dirname "$TARBALL_ARG")" && pwd)/$(basename "$TARBALL_ARG")"
 
-VLLM_VERSION="0.13.0"
+VLLM_VERSION="0.17.1"
 # Extract wheel version from release tag (e.g., v0.1.0-20260126-121650 -> 0.1.0)
 VLLM_METAL_WHEEL_VERSION=$(echo "$VLLM_METAL_RELEASE" | sed 's/^v//' | cut -d'-' -f1)
 VLLM_METAL_WHEEL_URL="https://github.com/vllm-project/vllm-metal/releases/download/${VLLM_METAL_RELEASE}/vllm_metal-${VLLM_METAL_WHEEL_VERSION}-cp312-cp312-macosx_11_0_arm64.whl"
@@ -89,4 +89,4 @@ SIZE=$(du -h "$TARBALL" | cut -f1)
 echo "Created: $TARBALL ($SIZE)"
 echo ""
 echo "This tarball is fully self-contained (includes Python 3.12 + all packages)."
-echo "To use: extract to a directory and run bin/python3 -m vllm_metal.server"
+echo "To use: extract to a directory and run bin/python3 -m vllm.entrypoints.openai.api_server --model <path>"

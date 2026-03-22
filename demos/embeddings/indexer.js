@@ -29,7 +29,7 @@ class CodebaseIndexer {
       const ig = ignore().add(content);
       
       // Always ignore these
-      ig.add(['node_modules', '.git', 'embeddings-index.json', 'models-store', 'model-store']);
+      ig.add(['node_modules', '.git', 'embeddings-index.json']);
       
       return ig;
     } catch (error) {

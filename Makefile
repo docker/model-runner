@@ -1,17 +1,16 @@
 # Project variables
 APP_NAME := model-runner
-GO_VERSION := 1.26.0
+GO_VERSION := 1.25.8
 LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
 BASE_IMAGE := ubuntu:24.04
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
+VLLM_VERSION ?= 0.17.0
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
-DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
-MODELS_PATH := $(shell pwd)/models-store
 LLAMA_ARGS ?=
 DOCKER_BUILD_ARGS := \
 	--load \
@@ -19,6 +18,7 @@ DOCKER_BUILD_ARGS := \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
 	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+	--build-arg VLLM_VERSION='$(VLLM_VERSION)' \
 	--target $(DOCKER_TARGET) \
 	-t $(DOCKER_IMAGE)
 
@@ -30,7 +30,6 @@ BUILD_DMR ?= 1
 .PHONY: validate validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
-.PHONY: docker-build-diffusers docker-run-diffusers
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
@@ -63,7 +62,6 @@ run: build
 clean:
 	rm -f $(APP_NAME)
 	rm -f model-runner.sock
-	rm -rf $(MODELS_PATH)
 
 # Run tests
 test:
@@ -151,25 +149,14 @@ docker-build-sglang:
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
 
-# Build Diffusers Docker image
-docker-build-diffusers:
-	@$(MAKE) docker-build \
-		DOCKER_TARGET=final-diffusers \
-		DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
-
-# Run Diffusers Docker container with TCP port access and mounted model storage
-docker-run-diffusers: docker-build-diffusers
-	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
-
 # Common implementation for running Docker container
 docker-run-impl:
 	@echo ""
-	@echo "Starting service on port $(PORT) with model storage at $(MODELS_PATH)..."
+	@echo "Starting service on port $(PORT)..."
 	@echo "Service will be available at: http://localhost:$(PORT)"
 	@echo "Example usage: curl http://localhost:$(PORT)/models"
 	@echo ""
 	PORT="$(PORT)" \
-	MODELS_PATH="$(MODELS_PATH)" \
 	DOCKER_IMAGE="$(DOCKER_IMAGE)" \
 	LLAMA_ARGS="$(LLAMA_ARGS)" \
 	DMR_ORIGINS="$(DMR_ORIGINS)" \
@@ -179,7 +166,7 @@ docker-run-impl:
 
 # vllm-metal (macOS ARM64 only)
 # The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-VLLM_METAL_RELEASE ?= v0.1.0-20260126-121650
+VLLM_METAL_RELEASE ?= v0.1.0-20260320-122309
 VLLM_METAL_INSTALL_DIR := $(HOME)/.docker/model-runner/vllm-metal
 VLLM_METAL_TARBALL := vllm-metal-macos-arm64-$(VLLM_METAL_RELEASE).tar.gz
 
@@ -232,14 +219,15 @@ vllm-metal-dev:
 	rm -rf "$(VLLM_METAL_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(VLLM_METAL_INSTALL_DIR)"; \
 	. "$(VLLM_METAL_INSTALL_DIR)/bin/activate" && \
-		VLLM_VERSION="0.13.0" && \
+		VLLM_UPSTREAM_VERSION="0.17.1" && \
 		WORK_DIR=$$(mktemp -d) && \
-		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_VERSION/vllm-$$VLLM_VERSION.tar.gz" && \
+		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_UPSTREAM_VERSION/vllm-$$VLLM_UPSTREAM_VERSION.tar.gz" && \
 		tar -xzf "$$WORK_DIR/vllm.tar.gz" -C "$$WORK_DIR" && \
-		pip install -r "$$WORK_DIR/vllm-$$VLLM_VERSION/requirements/cpu.txt" && \
-		pip install -e "$(VLLM_METAL_PATH)" && \
-		pip install -r "$$WORK_DIR/vllm-$$VLLM_VERSION/requirements/common.txt" && \
+		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/cpu.txt" && \
+		pip install "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION" && \
+		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/common.txt" && \
 		rm -rf "$$WORK_DIR" && \
+		pip install -e "$(VLLM_METAL_PATH)" && \
 		echo "dev" > "$(VLLM_METAL_INSTALL_DIR)/.vllm-metal-version"; \
 	echo "vllm-metal dev installed from $(VLLM_METAL_PATH)"
 
@@ -339,8 +327,6 @@ help:
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
-	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
-	@echo "  docker-run-diffusers		- Run Diffusers Docker container"
 	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"

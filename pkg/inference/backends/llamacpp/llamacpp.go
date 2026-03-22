@@ -183,6 +183,11 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 	})
 }
 
+// Uninstall implements inference.Backend.Uninstall.
+func (l *llamaCpp) Uninstall() error {
+	return nil
+}
+
 func (l *llamaCpp) Status() string {
 	return l.status
 }

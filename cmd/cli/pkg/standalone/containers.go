@@ -567,7 +567,21 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			ReadOnly: true,
 		})
 
-		env = append(env, "LD_LIBRARY_PATH=/usr/lib/wsl/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}")
+		// Prepend WSL and CUDA library paths to the image's existing LD_LIBRARY_PATH.
+		// Docker does not perform shell expansion in env vars, so we must resolve
+		// the image's value explicitly.
+		ldLibPath := "/usr/lib/wsl/lib:/usr/local/cuda/lib64"
+		if imgInfo, err := dockerClient.ImageInspect(ctx, imageName); err == nil {
+			for _, e := range imgInfo.Config.Env {
+				if strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
+					if v := strings.TrimPrefix(e, "LD_LIBRARY_PATH="); v != "" {
+						ldLibPath += ":" + v
+					}
+					break
+				}
+			}
+		}
+		env = append(env, "LD_LIBRARY_PATH="+ldLibPath)
 		config.Env = env
 	}
 

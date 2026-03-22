@@ -31,6 +31,10 @@ func (m *mockBackend) Run(ctx context.Context, socket, model string, modelRef st
 	return nil
 }
 
+func (m *mockBackend) Uninstall() error {
+	return nil
+}
+
 func (m *mockBackend) Status() string {
 	return "mock"
 }

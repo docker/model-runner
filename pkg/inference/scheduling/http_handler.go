@@ -98,6 +98,7 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = h.handleModels
 
 	m["POST "+inference.InferencePrefix+"/install-backend"] = h.InstallBackend
+	m["POST "+inference.InferencePrefix+"/uninstall-backend"] = h.UninstallBackend
 	m["GET "+inference.InferencePrefix+"/status"] = h.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = h.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = h.GetDiskUsage
@@ -271,8 +272,14 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	}()
 
 	// Create a request with the body replaced for forwarding upstream.
+	// Set ContentLength explicitly so the backend always receives a Content-Length
+	// header. Without this, HTTP/2 requests (where clients may omit Content-Length)
+	// are forwarded with Transfer-Encoding: chunked, which some backends (e.g.
+	// vLLM's Python/uvicorn server) fail to parse, resulting in an empty body and
+	// a 422 response.
 	upstreamRequest := r.Clone(r.Context())
 	upstreamRequest.Body = io.NopCloser(bytes.NewReader(body))
+	upstreamRequest.ContentLength = int64(len(body))
 
 	// Perform the request.
 	runner.ServeHTTP(w, upstreamRequest)
@@ -393,6 +400,43 @@ func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, fmt.Sprintf("backend installation failed: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// uninstallBackendRequest is the JSON body for the uninstall-backend endpoint.
+type uninstallBackendRequest struct {
+	Backend string `json:"backend"`
+}
+
+// UninstallBackend handles POST <inference-prefix>/uninstall-backend requests.
+// It removes a backend's local installation.
+func (h *HTTPHandler) UninstallBackend(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var req uninstallBackendRequest
+	if err := json.Unmarshal(body, &req); err != nil || req.Backend == "" {
+		http.Error(w, "invalid request: backend is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.scheduler.UninstallBackend(r.Context(), req.Backend); err != nil {
+		if errors.Is(err, ErrBackendNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("backend uninstall failed: %v", err), http.StatusInternalServerError)
 		}
 		return
 	}

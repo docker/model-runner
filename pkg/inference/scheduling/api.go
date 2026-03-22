@@ -79,7 +79,9 @@ type BackendStatus struct {
 	// LastUsed represents when this (backend, model, mode) tuple was last used
 	LastUsed time.Time `json:"last_used,omitempty"`
 	// InUse indicates whether this backend is currently handling a request
-	InUse     bool                 `json:"in_use,omitempty"`
+	InUse bool `json:"in_use,omitempty"`
+	// Loading indicates whether this backend is currently being initialized
+	Loading   bool                 `json:"loading,omitempty"`
 	KeepAlive *inference.KeepAlive `json:"keep_alive,omitempty"`
 }
 

@@ -147,6 +147,11 @@ func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mo
 	})
 }
 
+// Uninstall implements inference.Backend.Uninstall.
+func (m *mlx) Uninstall() error {
+	return nil
+}
+
 func (m *mlx) Status() string {
 	return m.status
 }

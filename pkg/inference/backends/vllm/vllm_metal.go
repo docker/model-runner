@@ -25,7 +25,7 @@ import (
 const (
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
-	vllmMetalVersion = "v0.1.0-20260126-121650"
+	vllmMetalVersion = "v0.1.0-20260320-122309"
 )
 
 var (
@@ -207,7 +207,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
-	args, err := v.buildArgs(bundle, socket, mode, config)
+	args, err := v.buildArgs(bundle, socket, model, modelRef, mode, config)
 	if err != nil {
 		return fmt.Errorf("failed to build vllm-metal arguments: %w", err)
 	}
@@ -225,7 +225,9 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 }
 
 // buildArgs builds the command line arguments for vllm-metal server.
-func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, socket string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
+// vllm-metal is a vLLM platform plugin, so we launch vLLM's OpenAI-compatible
+// API server directly; the Metal plugin is auto-discovered via entry points.
+func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, socket, model, modelRef string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
 	// Parse host:port from socket (vllm-metal uses TCP)
 	host, port, err := net.SplitHostPort(socket)
 	if err != nil {
@@ -240,7 +242,7 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 	modelPath := filepath.Dir(safetensorsPath)
 
 	args := []string{
-		"-m", "vllm_metal.server",
+		"-m", "vllm.entrypoints.openai.api_server",
 		"--model", modelPath,
 		"--host", host,
 		"--port", port,
@@ -258,6 +260,10 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 		return nil, fmt.Errorf("image generation mode not supported by vllm-metal backend")
 	}
 
+	// Register model aliases so the model-runner can address the model by its
+	// digest (model) and its human-readable reference (modelRef).
+	args = append(args, "--served-model-name", model, modelRef)
+
 	// Add context size if specified
 	if config != nil && config.ContextSize != nil {
 		args = append(args, "--max-model-len", strconv.Itoa(int(*config.ContextSize)))
@@ -269,6 +275,16 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 	}
 
 	return args, nil
+}
+
+// Uninstall implements inference.Backend.Uninstall.
+func (v *vllmMetal) Uninstall() error {
+	if err := os.RemoveAll(v.installDir); err != nil {
+		return fmt.Errorf("failed to remove vllm-metal install directory: %w", err)
+	}
+	v.pythonPath = ""
+	v.status = inference.FormatNotInstalled("")
+	return nil
 }
 
 // Status implements inference.Backend.Status.

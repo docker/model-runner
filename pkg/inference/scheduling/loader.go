@@ -80,6 +80,15 @@ type runnerInfo struct {
 	modelRef string
 }
 
+// loadingInfo holds metadata about a runner that is being initialized.
+type loadingInfo struct {
+	backendName  string
+	modelID      string
+	draftModelID string
+	modelRef     string
+	mode         inference.BackendMode
+}
+
 // loader manages the loading and unloading of backend runners. It regulates
 // active backends in a manner that avoids exhausting system resources. Loaders
 // assume that all of their backends have been installed, so no load requests
@@ -109,6 +118,12 @@ type loader struct {
 	waiters map[chan<- struct{}]bool
 	// runners maps runner keys to their slot index.
 	runners map[runnerKey]runnerInfo
+	// loading tracks slots that have a runner being initialized. This
+	// allows the lock to be released during long-running operations
+	// (run + wait) while still preventing other goroutines from using
+	// or evicting those slots. The value contains metadata needed to
+	// report loading status.
+	loading map[int]loadingInfo
 	// slots maps slot indices to associated runners. A slot is considered free
 	// if the runner value in it is nil.
 	slots []*runner
@@ -157,6 +172,7 @@ func newLoader(
 		guard:             make(chan struct{}, 1),
 		waiters:           make(map[chan<- struct{}]bool),
 		runners:           make(map[runnerKey]runnerInfo, nSlots),
+		loading:           make(map[int]loadingInfo),
 		slots:             make([]*runner, nSlots),
 		references:        make([]uint, nSlots),
 		timestamps:        make([]time.Time, nSlots),
@@ -265,6 +281,25 @@ func (l *loader) evictRunner(backend, model string, mode inference.BackendMode) 
 		l.log.Warn("No unused runner found", "backend", utils.SanitizeForLog(backend), "model", utils.SanitizeForLog(model), "mode", utils.SanitizeForLog(string(mode)))
 	}
 	return len(l.runners)
+}
+
+// UnloadBackend unloads all runners for a specific backend.
+// It returns the number of unloaded runners.
+func (l *loader) UnloadBackend(ctx context.Context, backend string) int {
+	if !l.lock(ctx) {
+		return 0
+	}
+	defer l.unlock()
+
+	count := 0
+	for r, runnerInfo := range l.runners {
+		if r.backend == backend && l.references[runnerInfo.slot] == 0 {
+			l.log.Info("Evicting backend runner for uninstall", "backend", r.backend, "model", r.modelID, "modelRef", runnerInfo.modelRef, "mode", r.mode)
+			l.freeRunnerSlot(runnerInfo.slot, r)
+			count++
+		}
+	}
+	return count
 }
 
 // Unload unloads runners and returns the number of unloaded runners.
@@ -411,17 +446,52 @@ func (l *loader) run(ctx context.Context) {
 	}
 }
 
+// usedSlots returns the number of slots that are either occupied by a
+// registered runner or reserved for a runner being loaded.
+func (l *loader) usedSlots() int {
+	return len(l.runners) + len(l.loading)
+}
+
+// isSlotLoading reports whether the given slot is reserved for a runner
+// that is currently being initialized.
+func (l *loader) isSlotLoading(slot int) bool {
+	_, ok := l.loading[slot]
+	return ok
+}
+
+// isModelLoading reports whether a runner for the given model is currently
+// being initialized by another goroutine.
+func (l *loader) isModelLoading(backendName, modelID, draftModelID string, mode inference.BackendMode) bool {
+	for _, info := range l.loading {
+		if info.backendName == backendName && info.modelID == modelID && info.draftModelID == draftModelID && info.mode == mode {
+			return true
+		}
+	}
+	return false
+}
+
 // load allocates a runner using the specified backend and modelID. If allocated,
 // it should be released by the caller using the release mechanism (once the
 // runner is no longer needed).
 func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string, mode inference.BackendMode) (*runner, error) {
-	// Grab the backend.
+	// Grab the backend. The backends map is immutable after construction,
+	// so it is safe to read without holding the lock.
 	backend, ok := l.backends[backendName]
 	if !ok {
 		return nil, ErrBackendNotFound
 	}
 
-	// Get runner configuration if available
+	l.log.Info("Loading backend runner", "backend", backendName, "model", modelID, "mode", mode)
+
+	if !l.lock(ctx) {
+		return nil, context.Canceled
+	}
+	// Note: the lock is managed explicitly throughout this function rather
+	// than via defer, because it is released during long-running operations
+	// (run + wait) and re-acquired afterwards.
+
+	// Get runner configuration if available (must be done under lock since
+	// runnerConfigs can be modified concurrently by setRunnerConfig).
 	var runnerConfig *inference.BackendConfiguration
 	draftModelID := ""
 	if rc, ok := l.runnerConfigs[makeConfigKey(backendName, modelID, mode)]; ok {
@@ -455,34 +525,41 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		runnerConfig = &defaultConfig
 	}
 
-	l.log.Info("Loading backend runner", "backend", backendName, "model", modelID, "mode", mode)
-
-	// Acquire the loader lock and defer its release.
-	if !l.lock(ctx) {
-		return nil, context.Canceled
-	}
-	defer l.unlock()
-
 	// Create a polling channel that we can use to detect state changes and
 	// ensure that it's deregistered by the time we return.
 	poll := make(chan struct{}, 1)
 	l.waiters[poll] = true
-	defer func() {
+
+	// cleanupAndReturn is a helper that cleans up the waiter registration,
+	// releases the lock, and returns. All exit paths must go through this
+	// to avoid leaking the poll channel or double-unlocking.
+	cleanupAndReturn := func(r *runner, err error) (*runner, error) {
 		delete(l.waiters, poll)
-	}()
+		l.unlock()
+		return r, err
+	}
 
 	// Loop until we can satisfy the request or an error occurs.
+	// These are declared outside the loop to avoid goto-over-declaration errors.
+	var existing runnerInfo
+	var existingOK bool
 	for {
 		slot := -1
 
 		// If loads are disabled, then there's nothing we can do.
 		if !l.loadsEnabled {
-			return nil, errLoadsDisabled
+			return cleanupAndReturn(nil, errLoadsDisabled)
+		}
+
+		// See if another goroutine is already loading this runner.
+		// If so, wait for it to finish rather than starting a duplicate load.
+		if l.isModelLoading(backendName, modelID, draftModelID, mode) {
+			goto WaitForChange
 		}
 
 		// See if we can satisfy the request with an existing runner.
-		existing, ok := l.runners[makeRunnerKey(backendName, modelID, draftModelID, mode)]
-		if ok {
+		existing, existingOK = l.runners[makeRunnerKey(backendName, modelID, draftModelID, mode)]
+		if existingOK {
 			select {
 			case <-l.slots[existing.slot].done:
 				l.log.Warn("Runner is defunct, waiting for eviction", "backend", backendName, "model", existing.modelRef)
@@ -496,13 +573,13 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			default:
 				l.references[existing.slot]++
 				l.timestamps[existing.slot] = time.Time{}
-				return l.slots[existing.slot], nil
+				return cleanupAndReturn(l.slots[existing.slot], nil)
 			}
 		}
 
-		// If all slots are full, try evicting unused runners.
-		if len(l.runners) == len(l.slots) {
-			l.log.Info("Evicting to make room", "runners", len(l.runners), "slots", len(l.slots))
+		// If all slots are full (including loading reservations), try evicting unused runners.
+		if l.usedSlots() >= len(l.slots) {
+			l.log.Info("Evicting to make room", "runners", len(l.runners), "loading", len(l.loading), "slots", len(l.slots))
 			runnerCountAtLoopStart := len(l.runners)
 			remainingRunners := l.evict(false)
 			// Restart the loop if eviction happened
@@ -511,10 +588,10 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 			}
 		}
 
-		// If there's a free slot, then find the slot.
-		if len(l.runners) < len(l.slots) {
+		// If there's a free slot, then find one that is not reserved for loading.
+		if l.usedSlots() < len(l.slots) {
 			for s, runner := range l.slots {
-				if runner == nil {
+				if runner == nil && !l.isSlotLoading(s) {
 					slot = s
 					break
 				}
@@ -522,35 +599,51 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		}
 
 		if slot < 0 {
-			l.log.Debug("Cannot load model yet", "runners", len(l.runners), "slots", len(l.slots))
+			l.log.Debug("Cannot load model yet", "runners", len(l.runners), "loading", len(l.loading), "slots", len(l.slots))
 		}
 
 		// If we've identified a slot, then we're ready to start a runner.
 		if slot >= 0 {
-			// Create the runner.
-			runner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
+			// Reserve the slot and release the lock for the long-running
+			// operations (run + wait). This allows other goroutines to
+			// proceed with loading different models, releasing runners, etc.
+			l.loading[slot] = loadingInfo{
+				backendName:  backendName,
+				modelID:      modelID,
+				draftModelID: draftModelID,
+				modelRef:     modelRef,
+				mode:         mode,
+			}
+			l.unlock()
+
+			newRunner, err := run(l.log, backend, modelID, modelRef, mode, slot, runnerConfig, l.openAIRecorder)
 			if err != nil {
 				l.log.Warn("Unable to start backend runner", "backend", backendName, "model", modelID, "mode", mode, "error", err)
-				return nil, fmt.Errorf("unable to start runner: %w", err)
+				l.lock(context.Background())
+				delete(l.loading, slot)
+				l.broadcast()
+				return cleanupAndReturn(nil, fmt.Errorf("unable to start runner: %w", err))
 			}
 
-			// Wait for the runner to be ready. In theory it's a little
-			// inefficient to block all other loaders (including those that
-			// might not want this runner), but in reality they would probably
-			// be blocked by the underlying loading anyway (in terms of disk and
-			// GPU performance). We have to retain a lock here though to enforce
-			// deduplication of runners and keep slot / memory reservations.
-			if err := runner.wait(ctx); err != nil {
-				runner.terminate()
+			if err := newRunner.wait(ctx); err != nil {
+				newRunner.terminate()
 				l.log.Warn("Backend runner initialization failed", "backend", backendName, "model", modelID, "mode", mode, "error", err)
-				return nil, fmt.Errorf("error waiting for runner to be ready: %w", err)
+				l.lock(context.Background())
+				delete(l.loading, slot)
+				l.broadcast()
+				return cleanupAndReturn(nil, fmt.Errorf("error waiting for runner to be ready: %w", err))
 			}
+
+			// Re-acquire lock and register the runner.
+			l.lock(context.Background())
+			delete(l.loading, slot)
 
 			// Perform registration and return the runner.
 			l.runners[makeRunnerKey(backendName, modelID, draftModelID, mode)] = runnerInfo{slot, modelRef}
-			l.slots[slot] = runner
+			l.slots[slot] = newRunner
 			l.references[slot] = 1
-			return runner, nil
+			l.broadcast()
+			return cleanupAndReturn(newRunner, nil)
 		}
 
 		// Wait for something to change. Note that we always re-lock with
@@ -561,7 +654,7 @@ func (l *loader) load(ctx context.Context, backendName, modelID, modelRef string
 		select {
 		case <-ctx.Done():
 			l.lock(context.Background())
-			return nil, context.Canceled
+			return cleanupAndReturn(nil, context.Canceled)
 		case <-poll:
 			l.lock(context.Background())
 		}

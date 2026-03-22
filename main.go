@@ -17,7 +17,6 @@ import (
 
 	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/config"
@@ -131,9 +130,6 @@ func main() {
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
-			}},
-			routing.BackendDef{Name: diffusers.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(log, mm, log.With("component", diffusers.Name), nil, diffusersServerPath)
 			}},
 		),
 		OnBackendError: func(name string, err error) {

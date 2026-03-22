@@ -187,6 +187,11 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 	})
 }
 
+// Uninstall implements inference.Backend.Uninstall.
+func (v *vLLM) Uninstall() error {
+	return nil
+}
+
 func (v *vLLM) Status() string {
 	return v.status
 }

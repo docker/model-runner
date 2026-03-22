@@ -168,6 +168,13 @@ func (s *Scheduler) InstallBackend(ctx context.Context, name string) error {
 	return s.installer.installBackend(ctx, name)
 }
 
+// UninstallBackend unloads all runners for the backend and then removes its
+// local installation.
+func (s *Scheduler) UninstallBackend(ctx context.Context, name string) error {
+	s.loader.UnloadBackend(ctx, name)
+	return s.installer.uninstallBackend(ctx, name)
+}
+
 // GetRunningBackendsInfo returns information about all running backends as a slice
 func (s *Scheduler) GetRunningBackendsInfo(ctx context.Context) []BackendStatus {
 	return s.getLoaderStatus(ctx)
@@ -180,7 +187,7 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 	}
 	defer s.loader.unlock()
 
-	result := make([]BackendStatus, 0, len(s.loader.runners))
+	result := make([]BackendStatus, 0, len(s.loader.runners)+len(s.loader.loading))
 
 	for key, runnerInfo := range s.loader.runners {
 		if s.loader.slots[runnerInfo.slot] != nil {
@@ -203,6 +210,16 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 
 			result = append(result, status)
 		}
+	}
+
+	// Include models that are currently being loaded.
+	for _, info := range s.loader.loading {
+		result = append(result, BackendStatus{
+			BackendName: info.backendName,
+			ModelName:   info.modelRef,
+			Mode:        info.mode.String(),
+			Loading:     true,
+		})
 	}
 
 	return result

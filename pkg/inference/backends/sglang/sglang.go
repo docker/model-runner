@@ -176,6 +176,11 @@ func (s *sglang) Run(ctx context.Context, socket, model string, modelRef string,
 	})
 }
 
+// Uninstall implements inference.Backend.Uninstall.
+func (s *sglang) Uninstall() error {
+	return nil
+}
+
 func (s *sglang) Status() string {
 	return s.status
 }

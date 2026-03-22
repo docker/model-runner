@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.25
 ARG ALPINE_VERSION=3.23
 
 ARG DOCS_FORMATS="md,yaml"
@@ -22,7 +22,7 @@ ARG DOCS_FORMATS
 RUN --mount=target=/context \
     --mount=target=.,type=tmpfs <<EOT
   set -e
-  rsync -a --exclude='models-store' /context/. .
+  rsync -a /context/. .
   docsgen --formats "$DOCS_FORMATS" --source "cmd/cli/docs/reference"
   mkdir /out
   cp -r cmd/cli/docs/reference/* /out/
@@ -35,7 +35,7 @@ FROM docs-build AS docs-validate
 RUN --mount=target=/context \
     --mount=target=.,type=tmpfs <<EOT
   set -e
-  rsync -a --exclude='models-store' /context/. .
+  rsync -a /context/. .
   git add -A
   rm -rf cmd/cli/docs/reference/*
   cp -rf /out/* ./cmd/cli/docs/reference/

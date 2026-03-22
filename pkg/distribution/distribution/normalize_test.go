@@ -371,9 +371,9 @@ func TestIsHuggingFaceReference(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isHuggingFaceReference(tt.input)
+			result := IsHuggingFaceReference(tt.input)
 			if result != tt.expected {
-				t.Errorf("isHuggingFaceReference(%q) = %v, want %v", tt.input, result, tt.expected)
+				t.Errorf("IsHuggingFaceReference(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}

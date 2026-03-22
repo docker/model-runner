@@ -122,7 +122,7 @@ func (d *diffusers) Install(ctx context.Context, httpClient *http.Client) error 
 		}
 	}
 
-	d.status = "installing"
+	d.status = inference.FormatInstalling(fmt.Sprintf("%s diffusers %s", inference.DetailDownloading, diffusersVersion))
 	if err := d.downloadAndExtract(ctx); err != nil {
 		return fmt.Errorf("failed to install diffusers: %w", err)
 	}
@@ -194,17 +194,17 @@ func (d *diffusers) downloadAndExtract(ctx context.Context) error {
 func (d *diffusers) verifyInstallation(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, d.pythonPath, "-c", "import diffusers") //nolint:gosec // pythonPath is set internally by Install, not user input
 	if err := cmd.Run(); err != nil {
-		d.status = "import failed"
+		d.status = inference.FormatError(inference.DetailImportFailed)
 		return fmt.Errorf("diffusers import failed: %w", err)
 	}
 
 	versionFile := filepath.Join(d.installDir, ".diffusers-version")
 	versionBytes, err := os.ReadFile(versionFile)
 	if err != nil {
-		d.status = "running diffusers"
+		d.status = inference.FormatRunning(inference.DetailVersionUnknown)
 		return nil
 	}
-	d.status = fmt.Sprintf("running diffusers %s", strings.TrimSpace(string(versionBytes)))
+	d.status = inference.FormatRunning(fmt.Sprintf("diffusers %s", strings.TrimSpace(string(versionBytes))))
 	return nil
 }
 
@@ -264,6 +264,16 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 }
 
 // Status implements inference.Backend.Status.
+// Uninstall implements inference.Backend.Uninstall.
+func (d *diffusers) Uninstall() error {
+	if err := os.RemoveAll(d.installDir); err != nil {
+		return fmt.Errorf("failed to remove diffusers install directory: %w", err)
+	}
+	d.pythonPath = ""
+	d.status = inference.FormatNotInstalled("")
+	return nil
+}
+
 func (d *diffusers) Status() string {
 	return d.status
 }

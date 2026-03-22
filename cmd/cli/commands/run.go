@@ -829,7 +829,7 @@ func newRunCmd() *cobra.Command {
 
 			if backend != "" {
 				if err := EnsureBackendAvailable(backend, cmd); err != nil {
-					if err.Error() == "backend installation cancelled" {
+					if errors.Is(err, errBackendInstallationCancelled) {
 						return nil
 					}
 					return err

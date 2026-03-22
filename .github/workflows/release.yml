@@ -34,7 +34,7 @@ on:
         description: "vLLM version"
         required: false
         type: string
-        default: "0.12.0"
+        default: "0.17.0"
       sglangVersion:
         description: "SGLang version"
         required: false
@@ -167,7 +167,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@0907f9031047bc05644e2416afd54cc3df04c3b2
+        uses: docker/cagent-action@b6e1c73e1bb475e840842b1f43a4647fcb16b495
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -213,7 +213,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with:
-          go-version: 1.26.0
+          go-version: 1.25.8
           cache: true
 
       - name: Run tests
@@ -230,7 +230,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
       LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion || 'latest' }}
-      VLLM_VERSION: ${{ inputs.vllmVersion || '0.12.0' }}
+      VLLM_VERSION: ${{ inputs.vllmVersion }}
       SGLANG_VERSION: ${{ inputs.sglangVersion || '0.4.0' }}
       PUSH_LATEST: ${{ inputs.pushLatest || 'false' }}
       BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
@@ -286,13 +286,13 @@ jobs:
           echo 'EOF' >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
         with:
           version: "lab:latest"
           driver: cloud
@@ -300,7 +300,7 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -314,7 +314,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -330,7 +330,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-vllm
@@ -340,8 +340,6 @@ jobs:
             "LLAMA_SERVER_VARIANT=cuda"
             "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "VLLM_VERSION=${{ env.VLLM_VERSION }}"
-            "VLLM_CUDA_VERSION=cu130"
-            "VLLM_PYTHON_TAG=cp38-abi3"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -349,7 +347,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-sglang
@@ -366,7 +364,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -383,7 +381,7 @@ jobs:
 
       - name: Build MUSA image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -400,7 +398,7 @@ jobs:
 
       - name: Build CANN image
         if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -640,7 +638,7 @@ jobs:
       contents: write
     steps:
       - name: Download release notes
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: release-notes
 

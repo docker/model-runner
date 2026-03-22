@@ -100,7 +100,7 @@ func (c *Client) Status() Status {
 func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, bool, error) {
 	// Check if this is a Hugging Face model and if HF_TOKEN is set
 	var hfToken string
-	if strings.HasPrefix(strings.ToLower(model), "hf.co/") {
+	if distribution.IsHuggingFaceReference(strings.ToLower(model)) {
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 
@@ -227,8 +227,7 @@ func (c *Client) withRetries(
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
 	var hfToken string
-	modelLower := strings.ToLower(model)
-	if strings.HasPrefix(modelLower, "hf.co/") || strings.HasPrefix(modelLower, "huggingface.co/") {
+	if distribution.IsHuggingFaceReference(strings.ToLower(model)) {
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 
@@ -748,6 +747,7 @@ type BackendStatus struct {
 	Mode        string               `json:"mode"`
 	LastUsed    time.Time            `json:"last_used,omitempty"`
 	InUse       bool                 `json:"in_use,omitempty"`
+	Loading     bool                 `json:"loading,omitempty"`
 	KeepAlive   *inference.KeepAlive `json:"keep_alive,omitempty"`
 }
 
@@ -890,6 +890,30 @@ func (c *Client) InstallBackend(backend string) error {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("install backend failed with status %s: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// UninstallBackend removes a backend's local installation via the model runner API.
+func (c *Client) UninstallBackend(backend string) error {
+	uninstallPath := inference.InferencePrefix + "/uninstall-backend"
+	jsonData, err := json.Marshal(struct {
+		Backend string `json:"backend"`
+	}{Backend: backend})
+	if err != nil {
+		return fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	resp, err := c.doRequest(http.MethodPost, uninstallPath, bytes.NewReader(jsonData))
+	if err != nil {
+		return c.handleQueryError(err, uninstallPath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("uninstall backend failed with status %s: %s", resp.Status, string(body))
 	}
 
 	return nil

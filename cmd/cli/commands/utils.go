@@ -10,11 +10,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
@@ -48,16 +48,18 @@ func getDefaultRegistry() string {
 
 var errNotRunning = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")
 
+var errBackendInstallationCancelled = errors.New("backend installation cancelled")
+
 func handleClientError(err error, message string) error {
 	if errors.Is(err, desktop.ErrServiceUnavailable) {
 		err = errNotRunning
 		var buf bytes.Buffer
-		hooks.PrintNextSteps(&buf, []string{enableViaCLI, enableViaGUI})
+		printNextSteps(&buf, []string{enableViaCLI, enableViaGUI})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
 	} else if strings.Contains(err.Error(), vllm.ErrorNotFound.Error()) {
 		// Handle `run` error.
 		var buf bytes.Buffer
-		hooks.PrintNextSteps(&buf, []string{enableVLLM})
+		printNextSteps(&buf, []string{enableVLLM})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
 	}
 	return fmt.Errorf("%s: %w", message, err)
@@ -303,7 +305,7 @@ func CheckBackendInstalled(backend string) (bool, error) {
 func PromptInstallBackend(backend string, cmd *cobra.Command) (bool, error) {
 	fmt.Fprintf(cmd.OutOrStdout(), "Backend %q is not installed. Download and install it now? [Y/n]: ", backend)
 
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(cmd.InOrStdin())
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return false, fmt.Errorf("failed to read input: %w", err)
@@ -338,7 +340,7 @@ func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
 
 	if !confirm {
 		cmd.Printf("Run 'docker model install-runner --backend %s' to install it manually.\n", backend)
-		return fmt.Errorf("backend installation cancelled")
+		return errBackendInstallationCancelled
 	}
 
 	if err := InstallBackend(backend); err != nil {
@@ -357,15 +359,6 @@ func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
 	return nil
 }
 
-func GetRequiredBackend(model string) (string, error) {
-	modelInfo, err := desktopClient.Inspect(model, false)
-	if err != nil {
-		return "", err
-	}
-
-	return GetRequiredBackendFromModelInfo(&modelInfo)
-}
-
 func GetRequiredBackendFromModelInfo(modelInfo *dmrm.Model) (string, error) {
 	config, ok := modelInfo.Config.(*types.Config)
 	if !ok {
@@ -378,8 +371,22 @@ func GetRequiredBackendFromModelInfo(modelInfo *dmrm.Model) (string, error) {
 	case types.FormatGGUF:
 		return llamacpp.Name, nil
 	case types.FormatDiffusers:
-		return "diffusers", nil
+		return diffusers.Name, nil
 	default:
 		return llamacpp.Name, nil
 	}
+}
+
+func printNextSteps(out io.Writer, messages []string) {
+	if len(messages) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, bold("\nWhat's next:"))
+	for _, n := range messages {
+		_, _ = fmt.Fprintln(out, "   ", n)
+	}
+}
+
+func bold(s string) string {
+	return "\033[1m" + s + "\033[0m"
 }
