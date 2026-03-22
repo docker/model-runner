@@ -23,6 +23,23 @@ import (
 
 type contextKey bool
 
+// readRequestBody reads up to maxSize bytes from the request body and writes
+// an appropriate HTTP error if reading fails. Returns (body, true) on success
+// or (nil, false) after writing the error response.
+func readRequestBody(w http.ResponseWriter, r *http.Request, maxSize int64) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSize))
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		}
+		return nil, false
+	}
+	return body, true
+}
+
 const preloadOnlyKey contextKey = false
 
 // HTTPHandler handles HTTP requests for the scheduler.
@@ -133,14 +150,8 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 
 	// Read the entire request body. We put some basic size constraints in place
 	// to avoid DoS attacks. We do this early to avoid client write timeouts.
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -345,14 +356,8 @@ func (h *HTTPHandler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
 // Unload unloads the specified runners (backend, model) from the backend.
 // Currently, this doesn't work for runners that are handling an OpenAI request.
 func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -378,14 +383,8 @@ type installBackendRequest struct {
 // InstallBackend handles POST <inference-prefix>/install-backend requests.
 // It triggers on-demand installation of a deferred backend.
 func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -448,6 +447,7 @@ func (h *HTTPHandler) UninstallBackend(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
 	var backend inference.Backend
+	var err error
 	if b := r.PathValue("backend"); b == "" {
 		backend = h.scheduler.defaultBackend
 	} else {
@@ -458,14 +458,8 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 

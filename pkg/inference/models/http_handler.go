@@ -23,6 +23,28 @@ import (
 	"github.com/docker/model-runner/pkg/middleware"
 )
 
+// parseBoolQueryParam parses a boolean query parameter from the request.
+// Returns the parsed value, or false if the parameter is absent or unparseable
+// (logging a warning in the latter case). Treats presence of the key with an
+// empty value (e.g., `?force`) as true.
+func parseBoolQueryParam(r *http.Request, log logging.Logger, name string) bool {
+	q := r.URL.Query()
+	if !q.Has(name) {
+		return false
+	}
+	valStr := q.Get(name)
+	// Treat presence of key with empty value as true (e.g., `?force`)
+	if valStr == "" {
+		return true
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		log.Warn("error while parsing query parameter", "param", name, "value", valStr, "error", err)
+		return false
+	}
+	return val
+}
+
 // HTTPHandler manages inference model pulls and storage.
 type HTTPHandler struct {
 	// log is the associated logger.
@@ -195,16 +217,7 @@ func (h *HTTPHandler) handleGetModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) handleGetModelByRef(w http.ResponseWriter, r *http.Request, modelRef string) {
-	// Parse remote query parameter
-	remote := false
-	if r.URL.Query().Has("remote") {
-		val, err := strconv.ParseBool(r.URL.Query().Get("remote"))
-		if err != nil {
-			h.log.Warn("error while parsing remote query parameter", "error", err)
-		} else {
-			remote = val
-		}
-	}
+	remote := parseBoolQueryParam(r, h.log, "remote")
 
 	var (
 		apiModel *Model
@@ -309,14 +322,7 @@ func (h *HTTPHandler) handleDeleteModel(w http.ResponseWriter, r *http.Request) 
 
 	modelRef := r.PathValue("name")
 
-	var force bool
-	if r.URL.Query().Has("force") {
-		if val, err := strconv.ParseBool(r.URL.Query().Get("force")); err != nil {
-			h.log.Warn("error while parsing force query parameter", "error", err)
-		} else {
-			force = val
-		}
-	}
+	force := parseBoolQueryParam(r, h.log, "force")
 
 	// First try to delete without normalization (as ID), then with normalization if not found
 	resp, err := h.manager.Delete(modelRef, force)
