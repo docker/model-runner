@@ -653,3 +653,67 @@ jobs:
             --repo docker/model-runner \
             --title "Docker Model Runner $RELEASE_TAG" \
             --notes-file release-notes.md
+
+      - name: Send Slack notification
+        if: success()
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RELEASE_URL="https://github.com/docker/model-runner/releases/tag/${RELEASE_TAG}"
+
+          SLACK_MESSAGE=$(cat <<EOF
+          {
+            "text": "🚀 Docker Model Runner ${RELEASE_TAG} has been released!",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚀 Docker Model Runner Released"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Version:*\n${RELEASE_TAG}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\ndocker/model-runner"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Release"
+                    },
+                    "url": "${RELEASE_URL}",
+                    "style": "primary"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Build"
+                    },
+                    "url": "${BUILD_URL}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "${SLACK_MESSAGE}" \
+            "${SLACK_WEBHOOK_URL}"
