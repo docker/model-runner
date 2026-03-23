@@ -6,14 +6,14 @@ require (
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/containerd/containerd/v2 v2.2.2
 	github.com/containerd/errdefs v1.0.0
-	github.com/containerd/platforms v1.0.0-rc.2
+	github.com/containerd/platforms v1.0.0-rc.3
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.3.0+incompatible
 	github.com/docker/cli-docs-tool v0.11.0
 	github.com/docker/docker-credential-helpers v0.9.5
 	github.com/docker/go-units v0.5.0
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/gpustack/gguf-parser-go v0.24.0
 	github.com/jaypipes/ghw v0.23.0
 	github.com/kolesnikovae/go-winjob v1.0.0
