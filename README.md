@@ -182,6 +182,7 @@ For ModelPack images, Docker Model Runner accepts:
 
 - config media type: `application/vnd.cncf.model.config.v1+json`
 - weight layer media types, including:
+  - `application/vnd.cncf.model.weight.v1.raw` (uncompressed, used by [modctl](https://github.com/modelpack/modctl))
   - `application/vnd.cncf.model.weight.v1.gguf`
   - `application/vnd.cncf.model.weight.v1.safetensors`
 

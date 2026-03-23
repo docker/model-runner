@@ -132,10 +132,11 @@ func (m *modelPackTestArtifact) GetConfigMediaType() oci.MediaType {
 	return oci.MediaType(modelpack.MediaTypeModelConfigV1)
 }
 
-func newModelPackTestArtifact(t *testing.T, modelFile string) *modelPackTestArtifact {
+// newModelPackTestArtifactWithMediaType creates a ModelPack test artifact with a specified weight layer media type.
+func newModelPackTestArtifactWithMediaType(t *testing.T, modelFile string, weightMediaType oci.MediaType) *modelPackTestArtifact {
 	t.Helper()
 
-	layer, err := partial.NewLayer(modelFile, oci.MediaType(modelpack.MediaTypeWeightGGUF))
+	layer, err := partial.NewLayer(modelFile, weightMediaType)
 	if err != nil {
 		t.Fatalf("Failed to create ModelPack layer: %v", err)
 	}
@@ -170,6 +171,11 @@ func newModelPackTestArtifact(t *testing.T, modelFile string) *modelPackTestArti
 		rawConfig: rawConfig,
 		layers:    []oci.Layer{layer},
 	}
+}
+
+func newModelPackTestArtifact(t *testing.T, modelFile string) *modelPackTestArtifact {
+	t.Helper()
+	return newModelPackTestArtifactWithMediaType(t, modelFile, oci.MediaType(modelpack.MediaTypeWeightGGUF))
 }
 
 // newTestClient creates a new client configured for testing with plain HTTP enabled.
@@ -346,6 +352,70 @@ func TestClientPullModel(t *testing.T) {
 
 		if _, ok := cfg.(*modelpack.Model); !ok {
 			t.Errorf("Config type = %T, want *modelpack.Model", cfg)
+		}
+	})
+
+	// This test validates compatibility with real CNCF model-spec artifacts
+	// produced by tools like modctl, which use format-agnostic weight media types
+	// (e.g., application/vnd.cncf.model.weight.v1.raw) instead of format-specific
+	// types. The model format is determined from config.format field instead.
+	t.Run("pull modelpack artifact with raw weight media type", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		testClient, err := newTestClient(tempDir)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		mpTag := registryHost + "/modelpack-raw-test/model:v1.0.0"
+		ref, err := reference.ParseReference(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to parse reference: %v", err)
+		}
+
+		// Use the real model-spec media type that modctl produces
+		mpModel := newModelPackTestArtifactWithMediaType(t, testGGUFFile, oci.MediaType(modelpack.MediaTypeWeightRaw))
+		if err := remote.Write(ref, mpModel, nil, remote.WithPlainHTTP(true)); err != nil {
+			t.Fatalf("Failed to push ModelPack model: %v", err)
+		}
+
+		if err := testClient.PullModel(t.Context(), mpTag, nil); err != nil {
+			t.Fatalf("Failed to pull ModelPack model with raw weight type: %v", err)
+		}
+
+		pulledModel, err := testClient.GetModel(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to get pulled model: %v", err)
+		}
+
+		ggufPaths, err := pulledModel.GGUFPaths()
+		if err != nil {
+			t.Fatalf("Failed to get GGUF paths: %v", err)
+		}
+		if len(ggufPaths) != 1 {
+			t.Fatalf("Unexpected number of GGUF files: %d", len(ggufPaths))
+		}
+
+		pulledContent, err := os.ReadFile(ggufPaths[0])
+		if err != nil {
+			t.Fatalf("Failed to read pulled GGUF file: %v", err)
+		}
+
+		originalContent, err := os.ReadFile(testGGUFFile)
+		if err != nil {
+			t.Fatalf("Failed to read source GGUF file: %v", err)
+		}
+
+		if !bytes.Equal(pulledContent, originalContent) {
+			t.Errorf("Pulled ModelPack model content doesn't match original")
+		}
+
+		cfg, err := pulledModel.Config()
+		if err != nil {
+			t.Fatalf("Failed to read pulled model config: %v", err)
+		}
+		if cfg.GetFormat() != "gguf" {
+			t.Errorf("Config format = %q, want %q", cfg.GetFormat(), "gguf")
 		}
 	})
 

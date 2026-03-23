@@ -237,3 +237,33 @@ func TestGGUFPaths_ModelPackMediaType(t *testing.T) {
 		t.Errorf("Expected 2 GGUF paths, got %d", len(paths))
 	}
 }
+
+// TestGGUFPaths_ModelPackRawMediaType tests that GGUFPaths can find layers with
+// the real CNCF model-spec format-agnostic media type (application/vnd.cncf.model.weight.v1.raw)
+// when the model config specifies format as "gguf".
+func TestGGUFPaths_ModelPackRawMediaType(t *testing.T) {
+	// Create a layer with the real model-spec raw weight media type
+	modelPackRawType := oci.MediaType("application/vnd.cncf.model.weight.v1.raw")
+
+	layer, err := partial.NewLayer(filepath.Join("..", "..", "assets", "dummy.gguf"), modelPackRawType)
+	if err != nil {
+		t.Fatalf("Failed to create ModelPack raw layer: %v", err)
+	}
+
+	// Create a model with mutate and add the layer
+	mdl := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
+
+	mdlWithRawLayer := mutate.AppendLayers(mdl, layer)
+
+	// GGUFPaths should find both: original Docker GGUF + raw ModelPack layer
+	// because the model config format is "gguf" (set by BuildModelFromPath)
+	paths, err := partial.GGUFPaths(mdlWithRawLayer)
+	if err != nil {
+		t.Fatalf("GGUFPaths() error = %v", err)
+	}
+
+	// Should find two: original Docker format + raw ModelPack format
+	if len(paths) != 2 {
+		t.Errorf("Expected 2 GGUF paths, got %d", len(paths))
+	}
+}

@@ -61,7 +61,9 @@ func IsModelPackConfig(raw []byte) bool {
 
 // MapLayerMediaType maps ModelPack layer media types to Docker format.
 // Returns the original value if not a ModelPack type.
-func MapLayerMediaType(mediaType string) string {
+// For format-agnostic types (.raw, .tar), the configFormat parameter is used
+// to determine the target Docker media type.
+func MapLayerMediaType(mediaType string, configFormat ...string) string {
 	// Only process ModelPack weight layers
 	if !strings.HasPrefix(mediaType, MediaTypePrefix) {
 		return mediaType
@@ -73,6 +75,21 @@ func MapLayerMediaType(mediaType string) string {
 		return string(types.MediaTypeGGUF)
 	case strings.Contains(mediaType, "weight") && strings.Contains(mediaType, "safetensors"):
 		return string(types.MediaTypeSafetensors)
+	case IsModelPackWeightMediaType(mediaType):
+		// Format-agnostic weight types (.raw, .tar, etc.) from model-spec v0.0.7+.
+		// Use the config format to determine the target Docker media type.
+		format := ""
+		if len(configFormat) > 0 {
+			format = strings.ToLower(configFormat[0])
+		}
+		switch format {
+		case "gguf":
+			return string(types.MediaTypeGGUF)
+		case "safetensors":
+			return string(types.MediaTypeSafetensors)
+		default:
+			return mediaType
+		}
 	default:
 		// Keep other layer types (doc, code, etc.) as-is
 		return mediaType

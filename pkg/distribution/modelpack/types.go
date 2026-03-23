@@ -22,6 +22,9 @@ const (
 	// MediaTypePrefix is the prefix for all CNCF model config media types.
 	MediaTypePrefix = "application/vnd.cncf.model."
 
+	// MediaTypeWeightPrefix is the prefix for all CNCF model weight media types.
+	MediaTypeWeightPrefix = "application/vnd.cncf.model.weight."
+
 	// MediaTypeModelConfigV1 is the CNCF model config v1 media type.
 	MediaTypeModelConfigV1 = "application/vnd.cncf.model.config.v1+json"
 
@@ -30,7 +33,27 @@ const (
 
 	// MediaTypeWeightSafetensors is the CNCF ModelPack media type for safetensors weight layers.
 	MediaTypeWeightSafetensors = "application/vnd.cncf.model.weight.v1.safetensors"
+
+	// MediaTypeWeightRaw is the CNCF model-spec media type for unarchived, uncompressed model weights.
+	// This is the actual type used by modctl and the official model-spec (v0.0.7+).
+	MediaTypeWeightRaw = "application/vnd.cncf.model.weight.v1.raw"
+
+	// MediaTypeWeightTar is the CNCF model-spec media type for tar-archived model weights.
+	MediaTypeWeightTar = "application/vnd.cncf.model.weight.v1.tar"
+
+	// MediaTypeWeightTarGzip is the CNCF model-spec media type for gzipped tar-archived model weights.
+	MediaTypeWeightTarGzip = "application/vnd.cncf.model.weight.v1.tar+gzip"
+
+	// MediaTypeWeightTarZstd is the CNCF model-spec media type for zstd-compressed tar-archived model weights.
+	MediaTypeWeightTarZstd = "application/vnd.cncf.model.weight.v1.tar+zstd"
 )
+
+// IsModelPackWeightMediaType checks if the given media type is a CNCF ModelPack weight layer type.
+// This includes both format-specific types (e.g., .gguf, .safetensors) and
+// format-agnostic types from the official model-spec (e.g., .raw, .tar).
+func IsModelPackWeightMediaType(mediaType string) bool {
+	return strings.HasPrefix(mediaType, MediaTypeWeightPrefix)
+}
 
 // Model represents the CNCF ModelPack config structure.
 // It provides the `application/vnd.cncf.model.config.v1+json` mediatype when marshalled to JSON.

@@ -87,11 +87,11 @@ type WithLayers interface {
 }
 
 func GGUFPaths(i WithLayers) ([]string, error) {
-	return layerPathsByMediaType(i, types.MediaTypeGGUF)
+	return layerPathsByMediaType(i, types.MediaTypeGGUF, getModelFormat(i))
 }
 
 func MMPROJPath(i WithLayers) (string, error) {
-	paths, err := layerPathsByMediaType(i, types.MediaTypeMultimodalProjector)
+	paths, err := layerPathsByMediaType(i, types.MediaTypeMultimodalProjector, "")
 	if err != nil {
 		return "", fmt.Errorf("get mmproj layer paths: %w", err)
 	}
@@ -106,7 +106,7 @@ func MMPROJPath(i WithLayers) (string, error) {
 }
 
 func ChatTemplatePath(i WithLayers) (string, error) {
-	paths, err := layerPathsByMediaType(i, types.MediaTypeChatTemplate)
+	paths, err := layerPathsByMediaType(i, types.MediaTypeChatTemplate, "")
 	if err != nil {
 		return "", fmt.Errorf("get chat template layer paths: %w", err)
 	}
@@ -121,15 +121,15 @@ func ChatTemplatePath(i WithLayers) (string, error) {
 }
 
 func SafetensorsPaths(i WithLayers) ([]string, error) {
-	return layerPathsByMediaType(i, types.MediaTypeSafetensors)
+	return layerPathsByMediaType(i, types.MediaTypeSafetensors, getModelFormat(i))
 }
 
 func DDUFPaths(i WithLayers) ([]string, error) {
-	return layerPathsByMediaType(i, types.MediaTypeDDUF)
+	return layerPathsByMediaType(i, types.MediaTypeDDUF, "")
 }
 
 func ConfigArchivePath(i WithLayers) (string, error) {
-	paths, err := layerPathsByMediaType(i, types.MediaTypeVLLMConfigArchive)
+	paths, err := layerPathsByMediaType(i, types.MediaTypeVLLMConfigArchive, "")
 	if err != nil {
 		return "", fmt.Errorf("get config archive layer paths: %w", err)
 	}
@@ -143,9 +143,22 @@ func ConfigArchivePath(i WithLayers) (string, error) {
 	return paths[0], err
 }
 
+// getModelFormat reads the model config and returns the format string (e.g., "gguf", "safetensors").
+// This is used to resolve format-agnostic ModelPack weight media types (e.g., .raw, .tar)
+// to specific model formats. Returns empty string if format cannot be determined.
+func getModelFormat(i WithLayers) string {
+	cfg, err := Config(i)
+	if err != nil {
+		return ""
+	}
+	return string(cfg.GetFormat())
+}
+
 // layerPathsByMediaType is a generic helper function that finds a layer by media type and returns its path.
 // Natively supports both Docker and ModelPack media types without any conversion.
-func layerPathsByMediaType(i WithLayers, mediaType oci.MediaType) ([]string, error) {
+// The modelFormat parameter is used to resolve format-agnostic ModelPack weight types (e.g., .raw, .tar)
+// to the correct model format. Pass empty string when not needed.
+func layerPathsByMediaType(i WithLayers, mediaType oci.MediaType, modelFormat string) ([]string, error) {
 	layers, err := i.Layers()
 	if err != nil {
 		return nil, fmt.Errorf("get layers: %w", err)
@@ -156,7 +169,7 @@ func layerPathsByMediaType(i WithLayers, mediaType oci.MediaType) ([]string, err
 		if err != nil {
 			continue
 		}
-		if !matchesMediaType(mt, mediaType) {
+		if !matchesMediaType(mt, mediaType, modelFormat) {
 			continue
 		}
 		layer, ok := l.(*Layer)
@@ -170,25 +183,41 @@ func layerPathsByMediaType(i WithLayers, mediaType oci.MediaType) ([]string, err
 
 // matchesMediaType checks if a layer media type matches the target type.
 // Natively supports both Docker and ModelPack formats without any conversion.
-func matchesMediaType(layerMT, targetMT oci.MediaType) bool {
+// The modelFormat parameter is used to resolve format-agnostic ModelPack weight types
+// (e.g., .raw, .tar) when the format is specified in the model config rather than
+// the layer media type. Pass empty string when not needed.
+func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool {
 	// Exact match
 	if layerMT == targetMT {
 		return true
 	}
 
-	// Native ModelPack support: check equivalent ModelPack types
+	// Native ModelPack support: check format-specific ModelPack types
 	//nolint:exhaustive // Only GGUF and Safetensors need cross-format matching
 	switch targetMT {
 	case types.MediaTypeGGUF:
-		// ModelPack GGUF layers also match Docker GGUF target
-		return layerMT == oci.MediaType(modelpack.MediaTypeWeightGGUF)
+		if layerMT == modelpack.MediaTypeWeightGGUF {
+			return true
+		}
 	case types.MediaTypeSafetensors:
-		// ModelPack safetensors layers also match Docker safetensors target
-		return layerMT == oci.MediaType(modelpack.MediaTypeWeightSafetensors)
-	default:
-		// Other media types have no cross-format equivalents
-		return false
+		if layerMT == modelpack.MediaTypeWeightSafetensors {
+			return true
+		}
 	}
+
+	// ModelPack model-spec support: format-agnostic weight types (.raw, .tar, etc.)
+	// The actual model format is determined from the config (config.format field).
+	if modelFormat != "" && modelpack.IsModelPackWeightMediaType(string(layerMT)) {
+		//nolint:exhaustive // Only GGUF and Safetensors need cross-format matching
+		switch targetMT {
+		case types.MediaTypeGGUF:
+			return modelFormat == string(types.FormatGGUF)
+		case types.MediaTypeSafetensors:
+			return modelFormat == string(types.FormatSafetensors)
+		}
+	}
+
+	return false
 }
 
 // WithConfigMediaType provides access to the config media type version.
