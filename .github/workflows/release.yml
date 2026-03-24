@@ -568,6 +568,9 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
           VENDOR_MODULE=github.com/docker/model-runner@${RELEASE_TAG} make vendor
+          # Remove the second require block added by `go get` — the docs repo
+          # only needs the direct dependency in the first require block.
+          awk '/^require \(/{n++} n==2{if(/^\)/) n=3; next} n!=2' go.mod > go.mod.tmp && mv go.mod.tmp go.mod
 
       - name: Create pull request
         if: steps.check-docs.outputs.changed == 'true'
