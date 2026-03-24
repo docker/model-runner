@@ -526,7 +526,29 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Check if CLI docs changed
+        id: check-docs
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+        run: |
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag — assuming docs changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(gh api repos/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG} \
+            --jq '[.files[].filename | select(startswith("cmd/cli/docs/reference/"))] | length')
+          if [ "$CHANGED" -gt 0 ]; then
+            echo "CLI docs changed ($CHANGED files)"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CLI docs changes between $PREVIOUS_TAG and $RELEASE_TAG — skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout docs
+        if: steps.check-docs.outputs.changed == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: docker/docs
@@ -534,18 +556,21 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
+        if: steps.check-docs.outputs.changed == 'true'
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with:
           go-version: 1.25.8
           cache: true
 
       - name: Vendor model-runner CLI docs
+        if: steps.check-docs.outputs.changed == 'true'
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
           VENDOR_MODULE=github.com/docker/model-runner@${RELEASE_TAG} make vendor
 
       - name: Create pull request
+        if: steps.check-docs.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
         with:
           token: ${{ secrets.DOCKER_DOCS }}
