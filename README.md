@@ -154,6 +154,29 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 - [Model Specification](https://github.com/docker/model-spec/blob/main/spec.md)
 - [Community Slack Channel](https://dockercommunity.slack.com/archives/C09H9P5E57B)
 
+### ModelPack Compatibility
+
+Docker Model Runner supports both Docker model-spec artifacts and CNCF ModelPack artifacts stored in OCI registries.
+
+For ModelPack images, Docker Model Runner accepts:
+
+- config media type: `application/vnd.cncf.model.config.v1+json`
+- weight layer media types, including:
+  - `application/vnd.cncf.model.weight.v1.gguf`
+  - `application/vnd.cncf.model.weight.v1.safetensors`
+
+This means you can pull and run a ModelPack artifact with the same user workflow:
+
+```bash
+# Pull from any OCI-compliant registry
+docker model pull <registry>/<namespace>/<model>:<tag>
+
+# Run the model
+docker model run <registry>/<namespace>/<model>:<tag> "Hello"
+```
+
+If you are publishing artifacts for compatibility across tooling, ensure your image config and layer media types follow the ModelPack spec so downstream clients can detect and use the correct format.
+
 ## Using the Makefile
 
 This project includes a Makefile to simplify common development tasks. Docker targets require Docker Desktop >= 4.41.0.

@@ -16,6 +16,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
@@ -786,7 +787,9 @@ func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, 
 	if err != nil {
 		return err
 	}
-	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 && manifest.Config.MediaType != types.MediaTypeModelConfigV02 {
+	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 &&
+		manifest.Config.MediaType != types.MediaTypeModelConfigV02 &&
+		manifest.Config.MediaType != oci.MediaType(modelpack.MediaTypeModelConfigV1) {
 		return fmt.Errorf("config type %q is unsupported: %w", manifest.Config.MediaType, ErrUnsupportedMediaType)
 	}
 
