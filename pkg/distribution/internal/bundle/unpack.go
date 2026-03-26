@@ -62,7 +62,7 @@ func unpackLegacy(dir string, model types.Model) (*Bundle, error) {
 		if err := unpackSafetensors(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack safetensors files: %w", err)
 		}
-	case types.FormatDiffusers:
+	case types.FormatDiffusers, types.FormatDDUF:
 		if err := unpackDDUF(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack DDUF file: %w", err)
 		}
@@ -124,7 +124,7 @@ func detectModelFormat(model types.Model) types.Format {
 	// Check for DDUF files
 	ddufPaths, err := model.DDUFPaths()
 	if err == nil && len(ddufPaths) > 0 {
-		return types.FormatDiffusers
+		return types.FormatDDUF
 	}
 
 	return ""

@@ -158,6 +158,8 @@ func (m *Model) GetFormat() types.Format {
 		return types.FormatGGUF
 	case "safetensors":
 		return types.FormatSafetensors
+	case "dduf":
+		return types.FormatDDUF
 	case "diffusers":
 		return types.FormatDiffusers
 	default:

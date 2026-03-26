@@ -163,7 +163,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 			weightFiles = append(weightFiles, path)
 		case files.FileTypeDDUF:
 			if detectedFormat == "" {
-				detectedFormat = types.FormatDiffusers
+				detectedFormat = types.FormatDDUF
 			}
 			weightFiles = append(weightFiles, path)
 		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:

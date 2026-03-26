@@ -776,9 +776,9 @@ func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
 
 func GetSupportedFormats() []types.Format {
 	if platform.SupportsVLLM() {
-		return []types.Format{types.FormatGGUF, types.FormatSafetensors, types.FormatDiffusers}
+		return []types.Format{types.FormatGGUF, types.FormatSafetensors, types.FormatDDUF, types.FormatDiffusers}
 	}
-	return []types.Format{types.FormatGGUF, types.FormatDiffusers}
+	return []types.Format{types.FormatGGUF, types.FormatDDUF, types.FormatDiffusers}
 }
 
 func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, progressWriter io.Writer) error {

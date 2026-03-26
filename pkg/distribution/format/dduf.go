@@ -20,7 +20,7 @@ func init() {
 
 // Name returns the format identifier for DDUF.
 func (d *DDUFFormat) Name() types.Format {
-	return types.FormatDiffusers
+	return types.FormatDDUF
 }
 
 // MediaType returns the OCI media type for DDUF layers.
@@ -39,7 +39,7 @@ func (d *DDUFFormat) DiscoverShards(path string) ([]string, error) {
 // DDUF files are zip archives containing model config, so we extract what we can.
 func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 	if len(paths) == 0 {
-		return types.Config{Format: types.FormatDiffusers}, nil
+		return types.Config{Format: types.FormatDDUF}, nil
 	}
 
 	// Calculate total size across all files
@@ -59,7 +59,7 @@ func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 	// In the future, we could extract model_index.json from the DDUF archive
 	// to get architecture details, etc.
 	return types.Config{
-		Format:       types.FormatDiffusers,
+		Format:       types.FormatDDUF,
 		Architecture: "diffusers",
 		Size:         formatSize(totalSize),
 		Diffusers: map[string]string{

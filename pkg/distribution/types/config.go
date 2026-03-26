@@ -50,7 +50,10 @@ const (
 
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")
-	FormatDiffusers   = Format("diffusers")
+	FormatDDUF        = Format("dduf")
+	// FormatDiffusers is kept for backward compatibility with models that have "format": "diffusers" in their config.
+	// New models use FormatDDUF instead.
+	FormatDiffusers = Format("diffusers")
 
 	// OCI Annotation keys for model layers
 	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md

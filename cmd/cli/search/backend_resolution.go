@@ -95,7 +95,7 @@ func backendFromFormat(format disttypes.Format) string {
 		return backendLlamaCpp
 	case disttypes.FormatSafetensors:
 		return backendVLLM
-	case disttypes.FormatDiffusers:
+	case disttypes.FormatDDUF, disttypes.FormatDiffusers:
 		return backendDiffusers
 	default:
 		return backendUnknown
