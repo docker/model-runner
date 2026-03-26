@@ -58,7 +58,7 @@ func handleClientError(err error, message string) error {
 		// The model uses a newer config format than this client supports.
 		var buf bytes.Buffer
 		printNextSteps(&buf, []string{
-			"Upgrade Docker Desktop to the latest version to support this model",
+			"Upgrade Docker Model Runner to the latest version to support this model",
 		})
 		return fmt.Errorf("%s: %w\n%s", message, err, strings.TrimRight(buf.String(), "\n"))
 	}

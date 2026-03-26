@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/distribution/huggingface"
@@ -16,13 +15,13 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	"github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/internal/utils"
 )
 
@@ -774,25 +773,21 @@ func (c *Client) GetBundle(ref string) (types.ModelBundle, error) {
 	return c.store.BundleForModel(normalizedRef)
 }
 
-func GetSupportedFormats() []types.Format {
-	if platform.SupportsVLLM() {
-		return []types.Format{types.FormatGGUF, types.FormatSafetensors, types.FormatDiffusers}
-	}
-	return []types.Format{types.FormatGGUF, types.FormatDiffusers}
-}
-
 func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, progressWriter io.Writer) error {
 	manifest, err := image.Manifest()
 	if err != nil {
 		return err
 	}
-	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 && manifest.Config.MediaType != types.MediaTypeModelConfigV02 {
+	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 &&
+		manifest.Config.MediaType != types.MediaTypeModelConfigV02 &&
+		manifest.Config.MediaType != modelpack.MediaTypeModelConfigV1 {
 		return fmt.Errorf(
-			"config type %q is not supported (supported: %q, %q)"+
+			"config type %q is not supported (supported: %q, %q, %q)"+
 				" - try upgrading: %w",
 			manifest.Config.MediaType,
 			types.MediaTypeModelConfigV01,
 			types.MediaTypeModelConfigV02,
+			modelpack.MediaTypeModelConfigV1,
 			ErrUnsupportedMediaType,
 		)
 	}
@@ -804,14 +799,7 @@ func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, 
 	}
 
 	if config.GetFormat() == "" {
-		log.Warn("Model format field is empty for , unable to verify format compatibility", "model", utils.SanitizeForLog(reference))
-	} else if !slices.Contains(GetSupportedFormats(), config.GetFormat()) {
-		// Write warning but continue with pull
-		log.Warn(warnUnsupportedFormat)
-		if err := progress.WriteWarning(progressWriter, warnUnsupportedFormat, oci.ModePull); err != nil {
-			log.Warn("Failed to write warning message", "error", err)
-		}
-		// Don't return an error - allow the pull to continue
+		log.Warn("Model format field is empty; unable to verify format compatibility", "model", utils.SanitizeForLog(reference))
 	}
 
 	return nil

@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 )
 
 func TestDeleteModel(t *testing.T) {
@@ -17,12 +17,7 @@ func TestDeleteModel(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	// Use the dummy.gguf file from assets directory
-	b, err := builder.FromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
-	mdl := b.Model()
+	mdl := testutil.NewGGUFArtifact(t, testGGUFFile)
 	id, err := mdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)

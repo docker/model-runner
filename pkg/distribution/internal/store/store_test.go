@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
-	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
 	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -461,7 +460,7 @@ func TestWriteRollsBackOnConfigFailure(t *testing.T) {
 	}
 
 	mdl := newTestModel(t)
-	cfgFailModel := configErrorModel{ModelArtifact: mdl}
+	cfgFailModel := testutil.WithRawConfigError(mdl, fmt.Errorf("forced config failure"))
 
 	if err := s.Write(cfgFailModel, []string{"cfg-failure:latest"}, nil); err == nil {
 		t.Fatalf("expected write to fail due to config overwrite")
@@ -526,14 +525,6 @@ func assertStoreClean(t *testing.T, s *store.LocalStore, storePath string, mdl t
 	if strings.Contains(string(content), manifestDigest.Hex) {
 		t.Fatalf("models index still references failed digest %s", manifestDigest.Hex)
 	}
-}
-
-type configErrorModel struct {
-	types.ModelArtifact
-}
-
-func (configErrorModel) RawConfigFile() ([]byte, error) {
-	return nil, fmt.Errorf("forced config failure")
 }
 
 type failingLayer struct {
@@ -760,23 +751,14 @@ func TestStoreWithMultimodalProjector(t *testing.T) {
 }
 
 func newTestModel(t *testing.T) types.ModelArtifact {
-	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
-	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
-	if err != nil {
-		t.Fatalf("failed to create license layer: %v", err)
-	}
-	mdl = mutate.AppendLayers(mdl, licenseLayer)
-	return mdl
+	return testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("testdata", "dummy.gguf"),
+		testutil.Layer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense),
+	)
 }
 
 func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
-	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
-
-	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
-	if err != nil {
-		t.Fatalf("failed to create license layer: %v", err)
-	}
-
 	// Create dummy multimodal projector file for testing
 	mmprojPath := filepath.Join(t.TempDir(), "dummy.mmproj")
 	mmprojContent := []byte("dummy multimodal projector content for testing")
@@ -784,13 +766,12 @@ func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
 		t.Fatalf("failed to create dummy multimodal projector file: %v", err)
 	}
 
-	mmprojLayer, err := partial.NewLayer(mmprojPath, types.MediaTypeMultimodalProjector)
-	if err != nil {
-		t.Fatalf("failed to create multimodal projector layer: %v", err)
-	}
-
-	mdl = mutate.AppendLayers(mdl, licenseLayer, mmprojLayer)
-	return mdl
+	return testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("testdata", "dummy.gguf"),
+		testutil.Layer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense),
+		testutil.Layer(mmprojPath, types.MediaTypeMultimodalProjector),
+	)
 }
 
 // TestWriteLightweight tests the WriteLightweight method
