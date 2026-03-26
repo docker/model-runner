@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/moby/term"
@@ -53,7 +54,7 @@ func handleClientError(err error, message string) error {
 		var buf bytes.Buffer
 		printNextSteps(&buf, []string{enableVLLM})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
-	} else if strings.Contains(err.Error(), "try upgrading") {
+	} else if errors.Is(err, distribution.ErrUnsupportedMediaType) {
 		// The model uses a newer config format than this client supports.
 		var buf bytes.Buffer
 		printNextSteps(&buf, []string{

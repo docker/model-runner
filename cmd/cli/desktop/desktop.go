@@ -151,7 +151,16 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 			} else {
 				bodyStr = strings.TrimSpace(string(body))
 			}
-			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, bodyStr)
+			var err error
+			if resp.StatusCode == http.StatusUnprocessableEntity {
+				// 422 means the model uses a config type this client does not
+				// support. Reattach the sentinel so callers can use errors.Is.
+				err = fmt.Errorf("pulling %s failed with status %s: %w: %s",
+					model, resp.Status, distribution.ErrUnsupportedMediaType, bodyStr)
+			} else {
+				err = fmt.Errorf("pulling %s failed with status %s: %s",
+					model, resp.Status, bodyStr)
+			}
 			// Only retry on gateway/proxy errors (502, 503, 504).
 			// Do not retry 500 (usually deterministic server errors) or
 			// 4xx (client errors including 422 for unsupported media type).
@@ -245,7 +254,7 @@ func (c *Client) withRetries(
 		}
 	}
 
-	return "", progressShown, fmt.Errorf("%w (failed after %d retries)", lastErr, maxRetries)
+	return "", progressShown, fmt.Errorf("%s failed after %d retries: %w", operationName, maxRetries, lastErr)
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {

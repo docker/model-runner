@@ -19,7 +19,9 @@ import (
 // DisplayProgress displays progress messages from a model pull/push operation
 // using Docker-style multi-line progress bars.
 // Returns the final message, whether progress was actually shown, and any error.
-func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, bool, error) {
+func DisplayProgress(
+	body io.Reader, printer standalone.StatusPrinter,
+) (finalMessage string, progressShown bool, retErr error) {
 	fd, isTerminal := printer.GetFdInfo()
 
 	// If not a terminal, fall back to simple line-by-line output
@@ -40,13 +42,22 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 		close(errCh)
 	}()
 
+	// Ensure the pipe is always closed and the display goroutine is always
+	// drained, even on early returns, to prevent goroutine leaks.
+	defer func() {
+		pw.Close()
+		if displayErr := <-errCh; retErr == nil &&
+			displayErr != nil && !errors.Is(displayErr, io.EOF) {
+			retErr = displayErr
+		}
+	}()
+
 	// Convert progress messages to JSONMessage format
 	scanner := bufio.NewScanner(body)
-	var finalMessage string
-	progressShown := false // Track if we actually showed any progress bars
 	// nonJSONBytes collects raw unparseable lines for error reporting,
 	// capped at maxNonJSONBytes to avoid large allocations.
 	var nonJSONBytes []byte
+	var nonJSONTruncated bool
 
 	for scanner.Scan() {
 		progressLine := scanner.Text()
@@ -58,7 +69,7 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
 			// Collect unparseable lines (e.g. HTML error pages from proxies)
 			// so we can surface them if no valid progress arrives.
-			nonJSONBytes = appendNonJSONLine(nonJSONBytes, progressLine)
+			nonJSONBytes, nonJSONTruncated = appendNonJSONLine(nonJSONBytes, progressLine)
 			continue
 		}
 
@@ -66,7 +77,6 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 		case oci.TypeProgress:
 			progressShown = true // We're showing actual progress
 			if err := writeDockerProgress(pw, &progressMsg); err != nil {
-				pw.Close()
 				return "", false, err
 			}
 
@@ -80,13 +90,11 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 			printer.PrintErrf("Warning: %s\n", progressMsg.Message)
 
 		case oci.TypeError:
-			pw.Close()
 			return "", false, fmt.Errorf("%s", progressMsg.Message)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		pw.Close()
 		return "", false, err
 	}
 
@@ -94,17 +102,9 @@ func DisplayProgress(body io.Reader, printer standalone.StatusPrinter) (string, 
 	// surface the raw content as an error. This catches HTML error pages
 	// returned by proxies or CDNs in place of a proper progress stream.
 	if finalMessage == "" && !progressShown {
-		if err := unexpectedProgressDataError(nonJSONBytes); err != nil {
-			pw.Close()
+		if err := unexpectedProgressDataError(nonJSONBytes, nonJSONTruncated); err != nil {
 			return "", false, err
 		}
-	}
-
-	pw.Close()
-
-	// Wait for display to finish
-	if err := <-errCh; err != nil && !errors.Is(err, io.EOF) {
-		return finalMessage, progressShown, err
 	}
 
 	return finalMessage, progressShown, nil
@@ -119,6 +119,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 	progressShown := false // Track if we actually showed any progress
 	// nonJSONBytes collects raw unparseable lines for error reporting.
 	var nonJSONBytes []byte
+	var nonJSONTruncated bool
 
 	for scanner.Scan() {
 		progressLine := scanner.Text()
@@ -129,7 +130,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 		var progressMsg oci.ProgressMessage
 		if err := json.Unmarshal([]byte(html.UnescapeString(progressLine)), &progressMsg); err != nil {
 			// Collect unparseable lines for error reporting.
-			nonJSONBytes = appendNonJSONLine(nonJSONBytes, progressLine)
+			nonJSONBytes, nonJSONTruncated = appendNonJSONLine(nonJSONBytes, progressLine)
 			continue
 		}
 
@@ -167,7 +168,7 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 
 	// Surface unparseable content if no valid progress was received.
 	if finalMessage == "" && !progressShown {
-		if err := unexpectedProgressDataError(nonJSONBytes); err != nil {
+		if err := unexpectedProgressDataError(nonJSONBytes, nonJSONTruncated); err != nil {
 			return "", false, err
 		}
 	}
@@ -289,29 +290,36 @@ func NewSimplePrinter(printFunc func(string)) standalone.StatusPrinter {
 const maxNonJSONBytes = 4096
 
 // appendNonJSONLine appends line (with a newline separator) to dst, enforcing
-// a hard cap of maxNonJSONBytes total to avoid large allocations.
-func appendNonJSONLine(dst []byte, line string) []byte {
+// a hard cap of maxNonJSONBytes total. Returns the updated slice and a boolean
+// indicating whether the line was truncated to fit within the cap.
+func appendNonJSONLine(dst []byte, line string) ([]byte, bool) {
 	if len(dst) >= maxNonJSONBytes {
-		return dst
+		return dst, true
 	}
 	if len(dst) > 0 {
 		dst = append(dst, '\n')
 	}
 	remaining := maxNonJSONBytes - len(dst)
-	if len(line) > remaining {
+	truncated := len(line) > remaining
+	if truncated {
 		line = line[:remaining]
 	}
-	return append(dst, line...)
+	return append(dst, line...), truncated
 }
 
 // unexpectedProgressDataError returns an error describing unexpected non-JSON
-// response data, or nil if nonJSONBytes is empty.
-func unexpectedProgressDataError(nonJSONBytes []byte) error {
+// response data, or nil if nonJSONBytes is empty. If truncated is true, a
+// marker is appended to indicate the response was cut off.
+func unexpectedProgressDataError(nonJSONBytes []byte, truncated bool) error {
 	if len(nonJSONBytes) == 0 {
 		return nil
 	}
+	msg := string(nonJSONBytes)
+	if truncated {
+		msg += "\n...[truncated]"
+	}
 	return fmt.Errorf(
 		"unexpected response from server (not valid progress data): %s",
-		string(nonJSONBytes),
+		msg,
 	)
 }
