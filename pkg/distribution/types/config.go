@@ -51,8 +51,8 @@ const (
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")
 	FormatDDUF        = Format("dduf")
-	// FormatDiffusers is kept for backward compatibility with models that have "format": "diffusers" in their config.
-	// New models use FormatDDUF instead.
+	// Deprecated: FormatDiffusers is kept for backward compatibility with models
+	// that have "format": "diffusers" in their config. Use FormatDDUF instead.
 	FormatDiffusers = Format("diffusers")
 
 	// OCI Annotation keys for model layers

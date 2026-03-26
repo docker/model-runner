@@ -161,7 +161,7 @@ func (m *Model) GetFormat() types.Format {
 	case "dduf":
 		return types.FormatDDUF
 	case "diffusers":
-		return types.FormatDiffusers
+		return types.FormatDiffusers //nolint:staticcheck // FormatDiffusers kept for backward compatibility
 	default:
 		return types.Format(f)
 	}

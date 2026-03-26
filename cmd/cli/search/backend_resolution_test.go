@@ -20,7 +20,8 @@ func TestBackendFromFormat(t *testing.T) {
 	}{
 		{name: "gguf", format: disttypes.FormatGGUF, want: backendLlamaCpp},
 		{name: "safetensors", format: disttypes.FormatSafetensors, want: backendVLLM},
-		{name: "diffusers", format: disttypes.FormatDiffusers, want: backendDiffusers},
+		{name: "dduf", format: disttypes.FormatDDUF, want: backendDiffusers},
+		{name: "diffusers (deprecated)", format: disttypes.FormatDiffusers, want: backendDiffusers}, //nolint:staticcheck // FormatDiffusers kept for backward compatibility
 		{name: "unknown", format: "", want: backendUnknown},
 	}
 
