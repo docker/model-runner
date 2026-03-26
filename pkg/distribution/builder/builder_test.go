@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
-	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -398,8 +398,7 @@ func TestFromModelWithAdditionalLayers(t *testing.T) {
 
 // TestFromModelErrorHandling tests that FromModel properly handles and surfaces errors from mdl.Layers()
 func TestFromModelErrorHandling(t *testing.T) {
-	// Create a mock model that fails when Layers() is called
-	mockModel := &mockFailingModel{}
+	mockModel := testutil.WithLayersError(testutil.NewGGUFArtifact(t, filepath.Join("..", "assets", "dummy.gguf")), fmt.Errorf("simulated layers error"))
 
 	// Attempt to create a builder from the failing model
 	_, err := builder.FromModel(mockModel)
@@ -423,13 +422,4 @@ type fakeTarget struct {
 func (ft *fakeTarget) Write(ctx context.Context, artifact types.ModelArtifact, writer io.Writer) error {
 	ft.artifact = artifact
 	return nil
-}
-
-// mockFailingModel is a mock that fails when Layers() is called
-type mockFailingModel struct {
-	types.ModelArtifact
-}
-
-func (m *mockFailingModel) Layers() ([]oci.Layer, error) {
-	return nil, fmt.Errorf("simulated layers error")
 }

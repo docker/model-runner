@@ -11,6 +11,7 @@
 package modelpack
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	// MediaTypePrefix is the prefix for all CNCF model config media types.
 	MediaTypePrefix = "application/vnd.cncf.model."
 
+	// MediaTypeWeightPrefix is the prefix for all CNCF model weight media types.
+	MediaTypeWeightPrefix = "application/vnd.cncf.model.weight."
+
 	// MediaTypeModelConfigV1 is the CNCF model config v1 media type.
 	MediaTypeModelConfigV1 = "application/vnd.cncf.model.config.v1+json"
 
@@ -30,7 +34,77 @@ const (
 
 	// MediaTypeWeightSafetensors is the CNCF ModelPack media type for safetensors weight layers.
 	MediaTypeWeightSafetensors = "application/vnd.cncf.model.weight.v1.safetensors"
+
+	// MediaTypeWeightRaw is the CNCF model-spec media type for unarchived, uncompressed model weights.
+	// This is the actual type used by modctl and the official model-spec (v0.0.7+).
+	MediaTypeWeightRaw = "application/vnd.cncf.model.weight.v1.raw"
 )
+
+// IsModelPackWeightMediaType checks if the given media type is a CNCF ModelPack weight layer type.
+// This includes both format-specific types (e.g., .gguf, .safetensors) and
+// format-agnostic types from the official model-spec (e.g., .raw, .tar).
+func IsModelPackWeightMediaType(mediaType string) bool {
+	return strings.HasPrefix(mediaType, MediaTypeWeightPrefix)
+}
+
+// IsModelPackGenericWeightMediaType checks if the given media type is a format-agnostic
+// CNCF ModelPack weight layer type (e.g., MediaTypeWeightRaw).
+// Unlike IsModelPackWeightMediaType, this returns false for format-specific types
+// like MediaTypeWeightGGUF or MediaTypeWeightSafetensors, which already encode the
+// format in the media type itself and must not be matched via the model config format.
+// Use this when the actual format must be inferred from the model config rather than
+// the layer media type.
+func IsModelPackGenericWeightMediaType(mediaType string) bool {
+	switch mediaType {
+	case MediaTypeWeightRaw:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsModelPackConfig detects if raw config bytes are in ModelPack format.
+// It parses the JSON structure for precise detection, avoiding false positives from string matching.
+// ModelPack format characteristics: config.paramSize or descriptor.createdAt
+// Docker format uses: config.parameters and descriptor.created
+func IsModelPackConfig(raw []byte) bool {
+	if len(raw) == 0 {
+		return false
+	}
+
+	// Parse as map to check actual JSON structure
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return false
+	}
+
+	// Check for config.paramSize (ModelPack-specific field)
+	if configRaw, ok := parsed["config"]; ok {
+		var config map[string]json.RawMessage
+		if err := json.Unmarshal(configRaw, &config); err == nil {
+			if _, hasParamSize := config["paramSize"]; hasParamSize {
+				return true
+			}
+		}
+	}
+
+	// Check for descriptor.createdAt (ModelPack uses camelCase)
+	if descRaw, ok := parsed["descriptor"]; ok {
+		var desc map[string]json.RawMessage
+		if err := json.Unmarshal(descRaw, &desc); err == nil {
+			if _, hasCreatedAt := desc["createdAt"]; hasCreatedAt {
+				return true
+			}
+		}
+	}
+
+	// Check for modelfs (ModelPack-specific field name)
+	if _, hasModelFS := parsed["modelfs"]; hasModelFS {
+		return true
+	}
+
+	return false
+}
 
 // Model represents the CNCF ModelPack config structure.
 // It provides the `application/vnd.cncf.model.config.v1+json` mediatype when marshalled to JSON.

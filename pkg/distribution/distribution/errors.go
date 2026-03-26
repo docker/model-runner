@@ -18,5 +18,3 @@ var (
 	)
 	ErrConflict = errors.New("resource conflict")
 )
-
-const warnUnsupportedFormat = "vLLM backend currently only implemented for x86_64 NVIDIA platforms"

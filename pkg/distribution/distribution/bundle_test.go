@@ -6,9 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
-	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
-	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
@@ -22,12 +20,7 @@ func TestBundle(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	// Load dummy model from assets directory
-	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
-	mdl := b.Model()
+	mdl := testutil.NewGGUFArtifact(t, filepath.Join("..", "assets", "dummy.gguf"))
 	singleGGUFID, err := mdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -36,12 +29,11 @@ func TestBundle(t *testing.T) {
 		t.Fatalf("Failed to write model to store: %v", err)
 	}
 
-	// Load model with multi-modal projector file
-	mmprojLayer, err := partial.NewLayer(filepath.Join("..", "assets", "dummy.mmproj"), types.MediaTypeMultimodalProjector)
-	if err != nil {
-		t.Fatalf("Failed to create mmproj layer: %v", err)
-	}
-	mmprojMdl := mutate.AppendLayers(mdl, mmprojLayer)
+	mmprojMdl := testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("..", "assets", "dummy.gguf"),
+		testutil.Layer(filepath.Join("..", "assets", "dummy.mmproj"), types.MediaTypeMultimodalProjector),
+	)
 	mmprojMdlID, err := mmprojMdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -50,12 +42,11 @@ func TestBundle(t *testing.T) {
 		t.Fatalf("Failed to write model to store: %v", err)
 	}
 
-	// Load model with template file
-	templateLayer, err := partial.NewLayer(filepath.Join("..", "assets", "template.jinja"), types.MediaTypeChatTemplate)
-	if err != nil {
-		t.Fatalf("Failed to create chat template layer: %v", err)
-	}
-	templateMdl := mutate.AppendLayers(mdl, templateLayer)
+	templateMdl := testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("..", "assets", "dummy.gguf"),
+		testutil.Layer(filepath.Join("..", "assets", "template.jinja"), types.MediaTypeChatTemplate),
+	)
 	templateMdlID, err := templateMdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -64,12 +55,12 @@ func TestBundle(t *testing.T) {
 		t.Fatalf("Failed to write model to store: %v", err)
 	}
 
-	// Load sharded dummy model from asset directory
-	shardedB, err := builder.FromPath(filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"))
-	if err != nil {
-		t.Fatalf("Failed to create model: %v", err)
-	}
-	shardedMdl := shardedB.Model()
+	shardedMdl := testutil.NewDockerArtifact(
+		t,
+		types.Config{Format: types.FormatGGUF},
+		testutil.Layer(filepath.Join("..", "assets", "dummy-00001-of-00002.gguf"), types.MediaTypeGGUF),
+		testutil.Layer(filepath.Join("..", "assets", "dummy-00002-of-00002.gguf"), types.MediaTypeGGUF),
+	)
 	shardedGGUFID, err := shardedMdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
