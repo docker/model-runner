@@ -290,8 +290,11 @@ func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, b
 				bodyStr = strings.TrimSpace(string(body))
 			}
 			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, bodyStr)
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			// Only retry on gateway/proxy errors. Do not retry plain 500
+			// (usually deterministic server errors) or 4xx (client errors).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 
