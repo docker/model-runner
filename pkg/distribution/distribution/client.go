@@ -787,7 +787,14 @@ func checkCompat(image types.ModelArtifact, log *slog.Logger, reference string, 
 		return err
 	}
 	if manifest.Config.MediaType != types.MediaTypeModelConfigV01 && manifest.Config.MediaType != types.MediaTypeModelConfigV02 {
-		return fmt.Errorf("config type %q is unsupported: %w", manifest.Config.MediaType, ErrUnsupportedMediaType)
+		return fmt.Errorf(
+			"config type %q is not supported (supported: %q, %q)"+
+				" - try upgrading: %w",
+			manifest.Config.MediaType,
+			types.MediaTypeModelConfigV01,
+			types.MediaTypeModelConfigV02,
+			ErrUnsupportedMediaType,
+		)
 	}
 
 	// Check if the model format is supported

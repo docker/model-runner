@@ -145,9 +145,13 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, string(body))
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, strings.TrimSpace(string(body)))
+			// Only retry on gateway/proxy errors (502, 503, 504).
+			// Do not retry 500 (usually deterministic server errors) or
+			// 4xx (client errors including 422 for unsupported media type).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 
@@ -235,7 +239,7 @@ func (c *Client) withRetries(
 		}
 	}
 
-	return "", progressShown, fmt.Errorf("failed to %s after %d retries: %w", operationName, maxRetries, lastErr)
+	return "", progressShown, fmt.Errorf("%w (failed after %d retries)", lastErr, maxRetries)
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {

@@ -150,6 +150,11 @@ func (h *HTTPHandler) handleCreateModel(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Model not found", http.StatusNotFound)
 			return
 		}
+		if errors.Is(err, distribution.ErrUnsupportedMediaType) {
+			h.log.Warn("Unsupported model config type", "model", sanitizedFrom, "error", err)
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
 		// Note: ErrUnsupportedFormat is no longer treated as an error - it's a warning
 		// that's sent to the client via the progress stream
 		http.Error(w, err.Error(), http.StatusInternalServerError)
