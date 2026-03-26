@@ -144,8 +144,14 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, strings.TrimSpace(string(body)))
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("failed to read response body: %v", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, bodyStr)
 			// Only retry on gateway/proxy errors (502, 503, 504).
 			// Do not retry 500 (usually deterministic server errors) or
 			// 4xx (client errors including 422 for unsupported media type).
@@ -276,8 +282,14 @@ func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, string(body))
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("(failed to read response body: %v)", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, bodyStr)
 			// Only retry on server errors (5xx), not client errors (4xx)
 			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
 			return "", false, err, shouldRetry
