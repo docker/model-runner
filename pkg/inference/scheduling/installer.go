@@ -153,6 +153,24 @@ func (i *installer) run(ctx context.Context) {
 			close(status.installed)
 		}
 	}
+
+	// Background binary updates for backends that support it.
+	for name, backend := range i.backends {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if updater, ok := backend.(inference.BackendUpdater); ok {
+			i.log.Info("Checking for backend binary update", "backend", name)
+			if err := updater.UpdateBinary(ctx, i.httpClient); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				i.log.Warn("Backend binary update failed", "backend", name, "error", err)
+			}
+		}
+	}
 }
 
 // wait waits for installation of the specified backend to complete or fail.

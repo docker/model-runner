@@ -8,9 +8,7 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 )
 
-func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _ *http.Client,
-	_, vendoredServerStoragePath string,
-) error {
-	l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server"), "", "")
+func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _ *http.Client) error {
+	l.setRunningStatus(log, filepath.Join(l.installDir, "com.docker.llama-server"), "", "")
 	return errLlamaCppUpdateDisabled
 }

@@ -403,6 +403,8 @@ func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.scheduler.log.Info("backend installation succeeded", "backend", req.Backend)
+
 	w.WriteHeader(http.StatusOK)
 }
 
