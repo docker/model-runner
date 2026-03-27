@@ -211,7 +211,7 @@ func TestRunLogsForEnvManualLocalLinuxUsesContainerLogs(t *testing.T) {
 	)
 	defer restoreSeams()
 
-	cmd, stdout, stderr := newTestLogsCommand()
+	cmd, stdout, stderr := newTestLogsCommand(t)
 
 	err := runLogsForEnv(cmd, false, false, "linux", false)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestRunLogsForEnvManualLocalFallsBackToFileLogs(t *testing.T) {
 	)
 	defer restoreSeams()
 
-	cmd, stdout, stderr := newTestLogsCommand()
+	cmd, stdout, stderr := newTestLogsCommand(t)
 
 	err := runLogsForEnv(cmd, false, false, "darwin", false)
 	require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestRunLogsForEnvManualLocalLinuxReturnsPreciseError(t *testing.T) {
 	)
 	defer restoreSeams()
 
-	cmd, _, _ := newTestLogsCommand()
+	cmd, _, _ := newTestLogsCommand(t)
 
 	err := runLogsForEnv(cmd, false, false, "linux", false)
 	require.Error(t, err)
@@ -331,7 +331,7 @@ func TestRunLogsForEnvMobyDoesNotFallBackToFiles(t *testing.T) {
 	)
 	defer restoreSeams()
 
-	cmd, stdout, stderr := newTestLogsCommand()
+	cmd, stdout, stderr := newTestLogsCommand(t)
 
 	err := runLogsForEnv(cmd, false, false, "darwin", false)
 	require.Error(t, err)
@@ -369,7 +369,7 @@ func TestRunLogsForEnvManualRemoteDoesNotTryContainerLogs(t *testing.T) {
 	)
 	defer restoreSeams()
 
-	cmd, stdout, stderr := newTestLogsCommand()
+	cmd, stdout, stderr := newTestLogsCommand(t)
 
 	err := runLogsForEnv(cmd, false, false, "darwin", false)
 	require.NoError(t, err)
@@ -445,11 +445,12 @@ func setTestLogsModelRunner(
 	}
 }
 
-func newTestLogsCommand() (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
+func newTestLogsCommand(t *testing.T) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := &cobra.Command{}
-	cmd.SetContext(context.Background())
+	cmd.SetContext(t.Context())
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	return cmd, stdout, stderr

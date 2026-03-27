@@ -234,6 +234,8 @@ func shouldUseContainerLogs(
 		return true
 	case types.ModelRunnerEngineKindMobyManual:
 		return manualTargetLocal
+	case types.ModelRunnerEngineKindDesktop:
+		return false
 	default:
 		return false
 	}
