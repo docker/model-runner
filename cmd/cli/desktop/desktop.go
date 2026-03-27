@@ -144,10 +144,29 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, string(body))
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("failed to read response body: %v", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			var err error
+			if resp.StatusCode == http.StatusUnprocessableEntity {
+				// 422 means the model uses a config type this client does not
+				// support. Reattach the sentinel so callers can use errors.Is.
+				err = fmt.Errorf("pulling %s failed with status %s: %w: %s",
+					model, resp.Status, distribution.ErrUnsupportedMediaType, bodyStr)
+			} else {
+				err = fmt.Errorf("pulling %s failed with status %s: %s",
+					model, resp.Status, bodyStr)
+			}
+			// Only retry on gateway/proxy errors (502, 503, 504).
+			// Do not retry 500 (usually deterministic server errors) or
+			// 4xx (client errors including 422 for unsupported media type).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 
@@ -235,7 +254,7 @@ func (c *Client) withRetries(
 		}
 	}
 
-	return "", progressShown, fmt.Errorf("failed to %s after %d retries: %w", operationName, maxRetries, lastErr)
+	return "", progressShown, fmt.Errorf("%s failed after %d retries: %w", operationName, maxRetries, lastErr)
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
@@ -272,10 +291,19 @@ func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, string(body))
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("(failed to read response body: %v)", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, bodyStr)
+			// Only retry on gateway/proxy errors. Do not retry plain 500
+			// (usually deterministic server errors) or 4xx (client errors).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 

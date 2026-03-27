@@ -6,13 +6,21 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	mockdesktop "github.com/docker/model-runner/cmd/cli/mocks"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+// errorReadCloser is an io.ReadCloser whose Read always returns an error.
+type errorReadCloser struct{ err error }
+
+func (e *errorReadCloser) Read(_ []byte) (int, error) { return 0, e.err }
+func (e *errorReadCloser) Close() error               { return nil }
 
 func TestPullRetryOnNetworkError(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -59,7 +67,7 @@ func TestPullNoRetryOn4xxError(t *testing.T) {
 	assert.Contains(t, err.Error(), "Model not found")
 }
 
-func TestPullRetryOn5xxError(t *testing.T) {
+func TestPullNoRetryOn500Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -68,21 +76,83 @@ func TestPullRetryOn5xxError(t *testing.T) {
 	mockContext := NewContextForMock(mockClient)
 	client := New(mockContext)
 
-	// First attempt fails with 500, second succeeds
-	gomock.InOrder(
-		mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
-			StatusCode: http.StatusInternalServerError,
-			Body:       io.NopCloser(bytes.NewBufferString("Internal server error")),
-		}, nil),
-		mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewBufferString(`{"type":"success","message":"Model pulled successfully"}`)),
-		}, nil),
-	)
+	// 500 is not retried (deterministic server error), so only 1 call.
+	mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(bytes.NewBufferString("Internal server error")),
+	}, nil).Times(1)
 
 	printer := NewSimplePrinter(func(s string) {})
 	_, _, err := client.Pull(modelName, printer)
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Internal server error")
+}
+
+func TestPullNoRetryOn422Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	modelName := "test-model"
+	mockClient := mockdesktop.NewMockDockerHttpClient(ctrl)
+	mockContext := NewContextForMock(mockClient)
+	client := New(mockContext)
+
+	// 422 (unsupported media type) must not be retried.
+	unsupportedMsg := `error while pulling model: config type "v0.3" is not supported` +
+		` - try upgrading`
+	mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+		StatusCode: http.StatusUnprocessableEntity,
+		Body:       io.NopCloser(bytes.NewBufferString(unsupportedMsg)),
+	}, nil).Times(1)
+
+	printer := NewSimplePrinter(func(s string) {})
+	_, _, err := client.Pull(modelName, printer)
+	require.Error(t, err)
+	// The sentinel must be preserved so callers can use errors.Is.
+	assert.True(t, errors.Is(err, distribution.ErrUnsupportedMediaType))
+}
+
+func TestPullRetriesOnTransientGatewayErrors(t *testing.T) {
+	// 502 and 504 are transient gateway/proxy errors and should be retried.
+	// Note: 503 is intercepted by doRequestWithAuthContext as ErrServiceUnavailable
+	// and is covered separately by TestPullRetryOnServiceUnavailable.
+	transientCodes := []struct {
+		code int
+		name string
+		body string
+	}{
+		{http.StatusBadGateway, "502 Bad Gateway", "Bad Gateway"},
+		{http.StatusGatewayTimeout, "504 Gateway Timeout", "Gateway Timeout"},
+	}
+
+	for _, tc := range transientCodes {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClient := mockdesktop.NewMockDockerHttpClient(ctrl)
+			mockContext := NewContextForMock(mockClient)
+			client := New(mockContext)
+
+			// First attempt fails with the transient error, second succeeds.
+			gomock.InOrder(
+				mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+					StatusCode: tc.code,
+					Body:       io.NopCloser(bytes.NewBufferString(tc.body)),
+				}, nil),
+				mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(bytes.NewBufferString(
+						`{"type":"success","message":"Model pulled successfully"}`,
+					)),
+				}, nil),
+			)
+
+			printer := NewSimplePrinter(func(s string) {})
+			_, _, err := client.Pull("test-model", printer)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestPullRetryOnServiceUnavailable(t *testing.T) {
@@ -127,7 +197,7 @@ func TestPullMaxRetriesExhausted(t *testing.T) {
 	printer := NewSimplePrinter(func(s string) {})
 	_, _, err := client.Pull(modelName, printer)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to download after 3 retries")
+	assert.Contains(t, err.Error(), "download failed after 3 retries")
 }
 
 func TestPushRetryOnNetworkError(t *testing.T) {
@@ -340,4 +410,46 @@ func TestIsTemplateIncompatibleError(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestPullBodyReadFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mockdesktop.NewMockDockerHttpClient(ctrl)
+	mockContext := NewContextForMock(mockClient)
+	client := New(mockContext)
+
+	// Response body read fails. Use a non-retryable 500 status so the test
+	// completes in a single attempt.
+	mockClient.EXPECT().Do(gomock.Any()).Return(&http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       &errorReadCloser{err: errors.New("connection reset")},
+	}, nil).Times(1)
+
+	printer := NewSimplePrinter(func(s string) {})
+	_, _, err := client.Pull("test-model", printer)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read response body")
+}
+
+func TestDisplayProgressNonJSONLines(t *testing.T) {
+	// Simulate a proxy returning an HTML error page instead of a progress stream.
+	htmlBody := "<html><body><h1>502 Bad Gateway</h1></body></html>\n"
+	printer := NewSimplePrinter(func(string) {})
+	_, _, err := DisplayProgress(strings.NewReader(htmlBody), printer)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected response from server")
+	assert.Contains(t, err.Error(), "502 Bad Gateway")
+}
+
+func TestDisplayProgressMixedContent(t *testing.T) {
+	// Valid progress followed by some unparseable lines: the valid progress
+	// should be honoured and no error returned for the stray lines.
+	body := `{"type":"success","message":"Model pulled successfully"}` + "\n" +
+		"<html>some extra garbage</html>\n"
+	printer := NewSimplePrinter(func(string) {})
+	msg, _, err := DisplayProgress(strings.NewReader(body), printer)
+	require.NoError(t, err)
+	assert.Equal(t, "Model pulled successfully", msg)
 }
