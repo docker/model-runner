@@ -252,7 +252,9 @@ func (s *Store) update(mutate func(*contextFile) error) error {
 
 	// Write to a uniquely named temp file then rename atomically.
 	var rndBuf [8]byte
-	_, _ = rand.Read(rndBuf[:])
+	if _, err := rand.Read(rndBuf[:]); err != nil {
+		return fmt.Errorf("unable to generate random bytes for temp file: %w", err)
+	}
 	tmpPath := fmt.Sprintf(
 		"%s.tmp.%d.%x",
 		s.path, os.Getpid(), rndBuf,
