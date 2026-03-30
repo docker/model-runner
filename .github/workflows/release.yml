@@ -161,7 +161,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@3a12dbd0c6cd7dda3d4e05f24f0143c9701456de
+        uses: docker/cagent-action@b4ccf4cc94f5b34d1760709012c40975f6def2d1
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -205,7 +205,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: 1.25.8
           cache: true
@@ -537,7 +537,7 @@ jobs:
 
       - name: Set up Go
         if: steps.check-docs.outputs.changed == 'true'
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: 1.25.8
           cache: true
