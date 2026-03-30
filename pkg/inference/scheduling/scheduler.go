@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
@@ -30,6 +31,7 @@ type PlatformSupport interface {
 	SupportsVLLM() bool
 	SupportsVLLMMetal() bool
 	SupportsSGLang() bool
+	SupportsDiffusers() bool
 }
 
 // defaultPlatformSupport delegates to the platform package.
@@ -39,6 +41,7 @@ func (defaultPlatformSupport) SupportsMLX() bool       { return platform.Support
 func (defaultPlatformSupport) SupportsVLLM() bool      { return platform.SupportsVLLM() }
 func (defaultPlatformSupport) SupportsVLLMMetal() bool { return platform.SupportsVLLMMetal() }
 func (defaultPlatformSupport) SupportsSGLang() bool    { return platform.SupportsSGLang() }
+func (defaultPlatformSupport) SupportsDiffusers() bool { return platform.SupportsDiffusers() }
 
 // Scheduler is used to coordinate inference scheduling across multiple backends
 // and models.
@@ -121,10 +124,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 // selectBackendForModel selects the appropriate backend for a model based on its format.
-// If the model is in safetensors format, it will prefer the best available backend:
-// - vLLM (handles platform dispatch internally: vllm-metal on macOS ARM64, standard vLLM on Linux)
-// - MLX on macOS
-// - SGLang on Linux
+// For safetensors models, it prefers: vLLM > MLX > SGLang.
+// For DDUF/diffusers models, it selects the diffusers backend.
+// For other formats (e.g. GGUF), it returns the provided default backend.
 func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.Backend, modelRef string) inference.Backend {
 	config, err := model.Config()
 	if err != nil {
@@ -132,7 +134,8 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		return backend
 	}
 
-	if config.GetFormat() == types.FormatSafetensors {
+	switch config.GetFormat() {
+	case types.FormatSafetensors:
 		// Prefer vLLM for safetensors models (handles platform dispatch internally)
 		if s.platformSupport.SupportsVLLM() || s.platformSupport.SupportsVLLMMetal() {
 			if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
@@ -151,8 +154,32 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 				return sglangBackend
 			}
 		}
+		backendName := "none"
+		if backend != nil {
+			backendName = backend.Name()
+		}
 		s.log.Warn("Model is in safetensors format but no compatible backend is available",
-			"model", utils.SanitizeForLog(modelRef), "backend", backend.Name())
+			"model", utils.SanitizeForLog(modelRef), "backend", backendName)
+
+	case types.FormatDDUF, types.FormatDiffusers: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
+		// Select the diffusers backend for DDUF and legacy diffusers format models
+		if s.platformSupport.SupportsDiffusers() {
+			if diffusersBackend, ok := s.backends[diffusers.Name]; ok && diffusersBackend != nil {
+				return diffusersBackend
+			}
+		}
+		backendName := "none"
+		if backend != nil {
+			backendName = backend.Name()
+		}
+		s.log.Warn("Model is in DDUF/diffusers format but no compatible backend is available",
+			"model", utils.SanitizeForLog(modelRef), "backend", backendName)
+
+	case types.FormatGGUF:
+		// GGUF models use the default backend (llamacpp)
+
+	default:
+		// Unknown formats use the default backend
 	}
 
 	return backend

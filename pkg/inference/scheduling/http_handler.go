@@ -206,7 +206,7 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		// Non-blocking call to track the model usage.
 		h.scheduler.tracker.TrackModel(model, r.UserAgent(), action)
 
-		// Automatically identify models for vLLM.
+		// Automatically select backend for given model.
 		backend = h.scheduler.selectBackendForModel(model, backend, request.Model)
 	}
 
