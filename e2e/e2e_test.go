@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/pkg/ollama"
 )
@@ -93,7 +95,6 @@ func runNative(m *testing.M, root string) int {
 	fmt.Fprintf(os.Stderr, "e2e: starting model-runner on port %d\n", port)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	server := exec.CommandContext(ctx, serverBin)
 	// TODO: os.Interrupt is not supported on Windows. When Windows e2e
@@ -111,14 +112,29 @@ func runNative(m *testing.M, root string) int {
 
 	if err := server.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "e2e: failed to start server: %v\n", err)
+		cancel()
 		return 1
 	}
-	defer func() {
-		cancel()
-		_ = server.Wait()
-	}()
 
-	return waitAndRunTests(m)
+	code := waitAndRunTests(m)
+
+	// Shut down the server and drain its goroutines before the leak check.
+	cancel()
+	_ = server.Wait()
+
+	// Close idle keep-alive connections so the default HTTP transport does
+	// not leave goroutines that would be false-positive leaks.
+	http.DefaultClient.CloseIdleConnections()
+
+	// Only check for leaks on a successful run; a failing run already
+	// reports errors and extra leak noise adds no value.
+	if code == 0 {
+		if err := goleak.Find(); err != nil {
+			fmt.Fprintf(os.Stderr, "e2e: goroutine leak detected: %v\n", err)
+			code = 1
+		}
+	}
+	return code
 }
 
 // runDocker builds the Docker image and CLI from source, then lets the CLI
@@ -153,7 +169,21 @@ func runDocker(m *testing.M, root string) int {
 	}
 
 	serverURL = "http://localhost:12434"
-	return waitAndRunTests(m)
+	code := waitAndRunTests(m)
+
+	// Close idle keep-alive connections so the default HTTP transport does
+	// not leave goroutines that would be false-positive leaks.
+	http.DefaultClient.CloseIdleConnections()
+
+	// Only check for leaks on a successful run; a failing run already
+	// reports errors and extra leak noise adds no value.
+	if code == 0 {
+		if err := goleak.Find(); err != nil {
+			fmt.Fprintf(os.Stderr, "e2e: goroutine leak detected: %v\n", err)
+			code = 1
+		}
+	}
+	return code
 }
 
 func waitAndRunTests(m *testing.M) int {
