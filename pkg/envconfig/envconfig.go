@@ -159,6 +159,13 @@ func VLLMMetalServerPath() string {
 	return Var("VLLM_METAL_SERVER_PATH")
 }
 
+// LogDir returns the directory containing DMR log files.
+// Configured via MODEL_RUNNER_LOG_DIR; set by Docker Desktop when
+// it manages DMR. When empty, the /logs API endpoint is disabled.
+func LogDir() string {
+	return Var("MODEL_RUNNER_LOG_DIR")
+}
+
 // DisableMetrics is true when DISABLE_METRICS is set to a truthy value (e.g. "1").
 var DisableMetrics = Bool("DISABLE_METRICS")
 

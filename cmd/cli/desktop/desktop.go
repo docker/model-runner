@@ -1187,6 +1187,38 @@ func (c *Client) Purge() error {
 	return nil
 }
 
+// Logs streams the DMR log files from the server's /logs endpoint
+// into out. follow enables real-time tailing; noEngines excludes the
+// engine log.
+//
+// Returns an error if the endpoint is unreachable, returns a
+// non-200 status, or if reading the response body fails.
+func (c *Client) Logs(
+	ctx context.Context,
+	follow bool,
+	noEngines bool,
+	out io.Writer,
+) error {
+	path := "/logs?follow=" + strconv.FormatBool(follow) +
+		"&no-engines=" + strconv.FormatBool(noEngines)
+	resp, err := c.doRequestWithAuthContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return fmt.Errorf("logs request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf(
+			"logs endpoint returned %s: %s",
+			resp.Status, strings.TrimSpace(string(body)),
+		)
+	}
+
+	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
 // doRequest is a helper function that performs HTTP requests and handles 503 responses
 func (c *Client) doRequest(method, path string, body io.Reader) (*http.Response, error) {
 	return c.doRequestWithAuth(method, path, body)
