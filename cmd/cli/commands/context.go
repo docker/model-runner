@@ -87,9 +87,20 @@ func newContextCreateCmd() *cobra.Command {
 			if host == "" {
 				return fmt.Errorf("--host is required")
 			}
-			if _, err := url.Parse(host); err != nil {
+
+			u, err := url.ParseRequestURI(host)
+			if err != nil {
 				return fmt.Errorf("invalid --host URL: %w", err)
 			}
+			if u.Scheme == "" || u.Host == "" {
+				return fmt.Errorf("invalid --host URL: must include scheme and host, e.g. http://192.168.1.100:12434")
+			}
+			if u.Scheme != "http" && u.Scheme != "https" {
+				return fmt.Errorf("invalid --host URL: unsupported scheme %q (must be http or https)", u.Scheme)
+			}
+
+			// Normalise the host string.
+			host = u.String()
 
 			// Validate the CA cert path if provided.
 			tlsCACertAbs := ""

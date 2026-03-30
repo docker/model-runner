@@ -83,6 +83,35 @@ func TestContextCreate_invalidName(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestContextCreate_invalidHostURL verifies that hosts without a proper
+// scheme or host component are rejected early.
+func TestContextCreate_invalidHostURL(t *testing.T) {
+	setupContextTest(t)
+
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{"no scheme", "192.168.1.100:12434", "invalid --host URL"},
+		{"bare word", "localhost", "invalid --host URL"},
+		{"ftp scheme", "ftp://example.com:12434", "unsupported scheme"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newContextCreateCmd()
+			cmd.SetOut(new(bytes.Buffer))
+			cmd.SetErr(new(bytes.Buffer))
+			cmd.SetArgs([]string{"test", "--host", tt.host})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
 // TestContextCreate_reservedName verifies that "default" is rejected.
 func TestContextCreate_reservedName(t *testing.T) {
 	setupContextTest(t)
