@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/connhelper"
 	"github.com/docker/cli/cli/context/docker"
+	"github.com/docker/model-runner/cmd/cli/pkg/modelctx"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
@@ -231,6 +233,16 @@ func wakeUpCloudIfIdle(ctx context.Context, cli *command.DockerCli) error {
 	return nil
 }
 
+// namedContextStore returns a modelctx.Store rooted in the Docker config
+// directory. Errors are non-fatal — callers fall back to auto-detection.
+func namedContextStore(cli *command.DockerCli) (*modelctx.Store, error) {
+	if cli == nil || cli.ConfigFile() == nil {
+		return nil, fmt.Errorf("CLI not initialised")
+	}
+	configDir := filepath.Dir(cli.ConfigFile().Filename)
+	return modelctx.New(configDir)
+}
+
 // DetectContext determines the current Docker Model Runner context.
 func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalone.StatusPrinter) (*ModelRunnerContext, error) {
 	// Check for an explicit endpoint setting.
@@ -240,10 +252,38 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 	// testing purposes.
 	treatDesktopAsMoby := os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") == "1"
 
-	// Check if TLS should be used
-	useTLS := os.Getenv("MODEL_RUNNER_TLS") == "true"
-	tlsSkipVerify := os.Getenv("MODEL_RUNNER_TLS_SKIP_VERIFY") == "true"
-	tlsCACert := os.Getenv("MODEL_RUNNER_TLS_CA_CERT")
+	// Read TLS env vars with LookupEnv so that unset and explicitly-set values
+	// can be distinguished. This lets named-context TLS settings be overridden
+	// field-by-field via environment variables.
+	tlsVal, tlsSet := os.LookupEnv("MODEL_RUNNER_TLS")
+	tlsSkipVerifyVal, tlsSkipVerifySet := os.LookupEnv("MODEL_RUNNER_TLS_SKIP_VERIFY")
+	tlsCACertVal, tlsCACertSet := os.LookupEnv("MODEL_RUNNER_TLS_CA_CERT")
+	useTLS := tlsSet && tlsVal == "true"
+	tlsSkipVerify := tlsSkipVerifySet && tlsSkipVerifyVal == "true"
+	tlsCACert := tlsCACertVal
+
+	// If MODEL_RUNNER_HOST is not set, check whether a named context is active
+	// and use its host and TLS settings as the base configuration. Explicitly
+	// set env vars always win and overlay the stored values.
+	if modelRunnerHost == "" {
+		if store, err := namedContextStore(cli); err == nil {
+			if activeName, err := store.Active(); err == nil &&
+				activeName != modelctx.DefaultContextName {
+				if cfg, err := store.Get(activeName); err == nil {
+					modelRunnerHost = cfg.Host
+					if !tlsSet {
+						useTLS = cfg.TLS.Enabled
+					}
+					if !tlsSkipVerifySet {
+						tlsSkipVerify = cfg.TLS.SkipVerify
+					}
+					if !tlsCACertSet && cfg.TLS.CACert != "" {
+						tlsCACert = cfg.TLS.CACert
+					}
+				}
+			}
+		}
+	}
 
 	// Detect the associated engine type.
 	kind := types.ModelRunnerEngineKindMoby
