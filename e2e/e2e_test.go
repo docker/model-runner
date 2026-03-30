@@ -122,19 +122,7 @@ func runNative(m *testing.M, root string) int {
 	cancel()
 	_ = server.Wait()
 
-	// Close idle keep-alive connections so the default HTTP transport does
-	// not leave goroutines that would be false-positive leaks.
-	http.DefaultClient.CloseIdleConnections()
-
-	// Only check for leaks on a successful run; a failing run already
-	// reports errors and extra leak noise adds no value.
-	if code == 0 {
-		if err := goleak.Find(); err != nil {
-			fmt.Fprintf(os.Stderr, "e2e: goroutine leak detected: %v\n", err)
-			code = 1
-		}
-	}
-	return code
+	return checkLeaks(code)
 }
 
 // runDocker builds the Docker image and CLI from source, then lets the CLI
@@ -169,18 +157,20 @@ func runDocker(m *testing.M, root string) int {
 	}
 
 	serverURL = "http://localhost:12434"
-	code := waitAndRunTests(m)
+	return checkLeaks(waitAndRunTests(m))
+}
 
+// checkLeaks closes idle HTTP connections and checks for goroutine leaks in
+// the test harness. It returns code unchanged when code != 0 — a failing run
+// already reports errors and extra leak noise adds no value.
+func checkLeaks(code int) int {
 	// Close idle keep-alive connections so the default HTTP transport does
 	// not leave goroutines that would be false-positive leaks.
 	http.DefaultClient.CloseIdleConnections()
-
-	// Only check for leaks on a successful run; a failing run already
-	// reports errors and extra leak noise adds no value.
 	if code == 0 {
 		if err := goleak.Find(); err != nil {
 			fmt.Fprintf(os.Stderr, "e2e: goroutine leak detected: %v\n", err)
-			code = 1
+			return 1
 		}
 	}
 	return code
