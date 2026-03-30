@@ -266,10 +266,18 @@ func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalo
 	// and use its host and TLS settings as the base configuration. Explicitly
 	// set env vars always win and overlay the stored values.
 	if modelRunnerHost == "" {
-		if store, err := namedContextStore(cli); err == nil {
-			if activeName, err := store.Active(); err == nil &&
-				activeName != modelctx.DefaultContextName {
-				if cfg, err := store.Get(activeName); err == nil {
+		store, err := namedContextStore(cli)
+		if err != nil {
+			printer.Printf("Warning: unable to open context store: %v\n", err)
+		} else {
+			activeName, err := store.Active()
+			if err != nil {
+				printer.Printf("Warning: unable to determine active context: %v\n", err)
+			} else if activeName != modelctx.DefaultContextName {
+				cfg, err := store.Get(activeName)
+				if err != nil {
+					printer.Printf("Warning: unable to read context %q: %v\n", activeName, err)
+				} else {
 					modelRunnerHost = cfg.Host
 					if !tlsSet {
 						useTLS = cfg.TLS.Enabled
