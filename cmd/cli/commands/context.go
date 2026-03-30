@@ -42,21 +42,28 @@ func newContextCmd(cli *command.DockerCli) *cobra.Command {
 // contextStore opens the context store using the Docker config directory
 // derived from the current CLI configuration.
 func contextStore() (*modelctx.Store, error) {
-	return modelctx.New(dockerConfigDir())
+	dir, err := dockerConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("unable to determine Docker config directory: %w", err)
+	}
+	return modelctx.New(dir)
 }
 
 // dockerConfigDir returns the Docker configuration directory. It honours the
 // DOCKER_CONFIG environment variable and falls back to ~/.docker.
-func dockerConfigDir() string {
+func dockerConfigDir() (string, error) {
 	if dockerCLI != nil && dockerCLI.ConfigFile() != nil {
-		return filepath.Dir(dockerCLI.ConfigFile().Filename)
+		return filepath.Dir(dockerCLI.ConfigFile().Filename), nil
 	}
 	// Fallback used during testing or when CLI is not yet initialised.
 	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
-		return d
+		return d, nil
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".docker")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("unable to determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".docker"), nil
 }
 
 // newContextCreateCmd returns the "context create" command.
