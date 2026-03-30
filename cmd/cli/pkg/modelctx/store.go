@@ -215,15 +215,22 @@ func (s *Store) read() (contextFile, error) {
 func (s *Store) update(mutate func(*contextFile) error) error {
 	lockPath := filepath.Join(filepath.Dir(s.path), "contexts.lock")
 
-	// Acquire an exclusive advisory lock.
-	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	// Open (or create) the lock file, then acquire an exclusive advisory
+	// lock via flock(2) (Unix) or LockFileEx (Windows). The OS-level lock
+	// prevents concurrent processes from entering this critical section at
+	// the same time. The lock is released on close.
+	lf, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return fmt.Errorf("unable to acquire context lock: %w", err)
+		return fmt.Errorf("unable to open context lock file: %w", err)
 	}
 	defer func() {
-		_ = lockFile.Close()
-		_ = os.Remove(lockPath)
+		_ = unlockFile(lf)
+		_ = lf.Close()
 	}()
+
+	if err := lockFile(lf); err != nil {
+		return fmt.Errorf("unable to acquire context lock: %w", err)
+	}
 
 	// Re-read under lock to pick up any changes made since the caller last read.
 	cf, err := s.read()
