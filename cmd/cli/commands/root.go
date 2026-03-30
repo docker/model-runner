@@ -67,8 +67,7 @@ func getDesktopClient() *desktop.Client {
 
 func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 	// Set up the root command.
-	var rootCmd *cobra.Command
-	rootCmd = &cobra.Command{
+	rootCmd := &cobra.Command{
 		Use:   "model",
 		Short: "Docker Model Runner",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

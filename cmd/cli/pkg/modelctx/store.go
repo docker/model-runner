@@ -4,10 +4,10 @@
 package modelctx
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -244,9 +244,11 @@ func (s *Store) update(mutate func(*contextFile) error) error {
 	data = append(data, '\n')
 
 	// Write to a uniquely named temp file then rename atomically.
+	var rndBuf [8]byte
+	_, _ = rand.Read(rndBuf[:])
 	tmpPath := fmt.Sprintf(
-		"%s.tmp.%d.%d",
-		s.path, os.Getpid(), rand.Int64(),
+		"%s.tmp.%d.%x",
+		s.path, os.Getpid(), rndBuf,
 	)
 	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {

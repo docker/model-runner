@@ -26,20 +26,6 @@ func setupContextTest(t *testing.T) *modelctx.Store {
 	return store
 }
 
-// runCmd executes a cobra command and returns stdout, stderr, and the error.
-func runCmd(t *testing.T, cmd interface{ Execute() error }, args ...string) (stdout, stderr string, err error) {
-	t.Helper()
-	outBuf := new(bytes.Buffer)
-	errBuf := new(bytes.Buffer)
-
-	// cobra commands expose SetOut/SetErr through the Command type; the
-	// interface above ensures Execute() is callable, but we need the concrete
-	// type for I/O setup. Each caller creates the command directly.
-	_ = outBuf
-	_ = errBuf
-	return "", "", cmd.Execute()
-}
-
 // TestContextCreate verifies that "context create" writes the context and
 // prints a confirmation message.
 func TestContextCreate(t *testing.T) {
@@ -340,7 +326,7 @@ func TestContextInspect(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 
 	var results []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(out.String()), &results))
+	require.NoError(t, json.Unmarshal(out.Bytes(), &results))
 	require.Len(t, results, 1)
 	assert.Equal(t, "myctx", results[0]["name"])
 	assert.Equal(t, "http://192.168.1.100:12434", results[0]["host"])
@@ -361,7 +347,7 @@ func TestContextInspect_default(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 
 	var results []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(out.String()), &results))
+	require.NoError(t, json.Unmarshal(out.Bytes(), &results))
 	require.Len(t, results, 1)
 	assert.Equal(t, "default", results[0]["name"])
 }
