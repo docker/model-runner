@@ -2,8 +2,10 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/nxadm/tail"
 )
@@ -51,11 +53,15 @@ func Follow(
 	defer st.Cleanup()
 	defer st.Stop() //nolint:errcheck
 
-	// Engine log is optional; a missing file is tolerated.
+	// Engine log is optional; a missing file is tolerated but other
+	// errors (permissions, I/O) are surfaced so they don't go unnoticed.
 	var et *tail.Tail
 	if engineLogPath != "" {
 		et, err = tail.TailFile(engineLogPath, makeCfg(offsets.EngineOffset))
 		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("tail engine log: %w", err)
+			}
 			et = nil
 		} else {
 			defer et.Cleanup()
