@@ -93,6 +93,14 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		// Image generation routes
 		"POST " + inference.InferencePrefix + "/{backend}/v1/images/generations",
 		"POST " + inference.InferencePrefix + "/v1/images/generations",
+		// Moderations routes
+		"POST " + inference.InferencePrefix + "/{backend}/v1/moderations",
+		"POST " + inference.InferencePrefix + "/v1/moderations",
+		// Tokenize/detokenize routes (vLLM extension)
+		"POST " + inference.InferencePrefix + "/{backend}/tokenize",
+		"POST " + inference.InferencePrefix + "/tokenize",
+		"POST " + inference.InferencePrefix + "/{backend}/detokenize",
+		"POST " + inference.InferencePrefix + "/detokenize",
 	}
 
 	// Anthropic Messages API routes
@@ -103,9 +111,24 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 		"POST " + inference.InferencePrefix + "/v1/messages/count_tokens",
 	}
 
+	// Audio routes use multipart/form-data so they require a separate handler
+	// that extracts the model field from the form rather than the JSON body.
+	audioRoutes := []string{
+		"POST " + inference.InferencePrefix + "/{backend}/v1/audio/transcriptions",
+		"POST " + inference.InferencePrefix + "/v1/audio/transcriptions",
+		"POST " + inference.InferencePrefix + "/{backend}/v1/audio/translations",
+		"POST " + inference.InferencePrefix + "/v1/audio/translations",
+		// Speech synthesis uses JSON but is still audio mode
+		"POST " + inference.InferencePrefix + "/{backend}/v1/audio/speech",
+		"POST " + inference.InferencePrefix + "/v1/audio/speech",
+	}
+
 	m := make(map[string]http.HandlerFunc)
 	for _, route := range append(openAIRoutes, anthropicRoutes...) {
 		m[route] = h.handleOpenAIInference
+	}
+	for _, route := range audioRoutes {
+		m[route] = h.handleAudioInference
 	}
 
 	// Register /v1/models routes - these delegate to the model manager
@@ -136,29 +159,10 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 // - POST <inference-prefix>/{backend}/rerank
 // - POST <inference-prefix>/{backend}/score
 func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Request) {
-	// Determine the requested backend and ensure that it's valid.
-	var backend inference.Backend
-	if b := r.PathValue("backend"); b == "" {
-		backend = h.scheduler.defaultBackend
-	} else {
-		backend = h.scheduler.backends[b]
-	}
-	if backend == nil {
-		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
-		return
-	}
-
 	// Read the entire request body. We put some basic size constraints in place
 	// to avoid DoS attacks. We do this early to avoid client write timeouts.
 	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
 	if !ok {
-		return
-	}
-
-	// Determine the backend operation mode.
-	backendMode, ok := backendModeForRequest(r.URL.Path)
-	if !ok {
-		http.Error(w, "unknown request path", http.StatusInternalServerError)
 		return
 	}
 
@@ -179,9 +183,100 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	h.scheduleInference(w, r, request.Model, body, true)
+}
+
+// handleAudioInference handles audio API requests such as:
+// - POST <inference-prefix>/{backend}/v1/audio/transcriptions (multipart/form-data)
+// - POST <inference-prefix>/{backend}/v1/audio/translations (multipart/form-data)
+// - POST <inference-prefix>/{backend}/v1/audio/speech (JSON)
+//
+// Audio transcription and translation use multipart/form-data instead of JSON,
+// so the model name is extracted from the form field rather than the JSON body.
+func (h *HTTPHandler) handleAudioInference(w http.ResponseWriter, r *http.Request) {
+	// Extract model name and buffer the full body.
+	// Audio endpoints may use multipart/form-data (transcriptions, translations)
+	// or JSON (speech synthesis).
+	var modelName string
+	var upstreamBody []byte
+
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Read the entire body for buffering before proxying.
+		body, ok := readRequestBody(w, r, maximumAudioInferenceRequestSize)
+		if !ok {
+			return
+		}
+		upstreamBody = body
+
+		// Parse a clone of the request to extract the model field.
+		// We clean up any temp files immediately after reading the field.
+		r2 := r.Clone(r.Context())
+		r2.Body = io.NopCloser(bytes.NewReader(body))
+		r2.ContentLength = int64(len(body))
+		if err := r2.ParseMultipartForm(maximumAudioInferenceRequestSize); err != nil {
+			http.Error(w, "failed to parse multipart form", http.StatusBadRequest)
+			return
+		}
+		if r2.MultipartForm != nil {
+			defer r2.MultipartForm.RemoveAll() //nolint:errcheck
+		}
+		modelName = r2.FormValue("model")
+	} else {
+		// JSON body (e.g., /v1/audio/speech).
+		body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+		if !ok {
+			return
+		}
+		upstreamBody = body
+
+		var request OpenAIInferenceRequest
+		if err := json.Unmarshal(body, &request); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		modelName = request.Model
+	}
+
+	if modelName == "" {
+		http.Error(w, "model is required", http.StatusBadRequest)
+		return
+	}
+
+	h.scheduleInference(w, r, modelName, upstreamBody, false)
+}
+
+// scheduleInference is the shared scheduling core used by handleOpenAIInference
+// and handleAudioInference. It resolves the backend, looks up the model, tracks
+// usage, streams auto-install progress, waits for installation, loads a runner,
+// and serves the upstream request.
+//
+// recordRequest controls whether the request/response pair is captured in the
+// OpenAI recorder (appropriate for JSON inference requests; not for multipart
+// audio bodies).
+func (h *HTTPHandler) scheduleInference(w http.ResponseWriter, r *http.Request, modelName string, body []byte, recordRequest bool) {
+	// Determine the requested backend and ensure that it's valid.
+	var backend inference.Backend
+	if b := r.PathValue("backend"); b == "" {
+		backend = h.scheduler.defaultBackend
+	} else {
+		backend = h.scheduler.backends[b]
+	}
+	if backend == nil {
+		http.Error(w, ErrBackendNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Determine the backend operation mode.
+	backendMode, ok := backendModeForRequest(r.URL.Path)
+	if !ok {
+		http.Error(w, "unknown request path", http.StatusInternalServerError)
+		return
+	}
+
 	// Check if the shared model manager has the requested model available.
 	if !backend.UsesExternalModelManagement() {
-		model, err := h.scheduler.modelManager.GetLocal(request.Model)
+		model, err := h.scheduler.modelManager.GetLocal(modelName)
 		if err != nil {
 			if errors.Is(err, distribution.ErrModelNotFound) {
 				http.Error(w, err.Error(), http.StatusNotFound)
@@ -190,24 +285,20 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 			}
 			return
 		}
-		// Determine the action for tracking
+
+		// Determine the action for tracking.
+		// Only trust whitelisted origin values to prevent header spoofing.
 		action := "inference/" + backendMode.String()
-		// Check if there's a request origin header to provide more specific tracking
-		// Only trust whitelisted values to prevent header spoofing
 		if origin := r.Header.Get(inference.RequestOriginHeader); origin != "" {
 			switch origin {
 			case inference.OriginOllamaCompletion:
 				action = origin
-				// If an unknown origin is provided, ignore it and use the default action
-				// This prevents untrusted clients from spoofing tracking data
 			}
 		}
-
-		// Non-blocking call to track the model usage.
 		h.scheduler.tracker.TrackModel(model, r.UserAgent(), action)
 
 		// Automatically select backend for given model.
-		backend = h.scheduler.selectBackendForModel(model, backend, request.Model)
+		backend = h.scheduler.selectBackendForModel(model, backend, modelName)
 	}
 
 	// If a deferred backend needs on-demand installation and the request
@@ -258,10 +349,10 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	modelID := h.scheduler.modelManager.ResolveID(request.Model)
+	modelID := h.scheduler.modelManager.ResolveID(modelName)
 
 	// Request a runner to execute the request and defer its release.
-	runner, err := h.scheduler.loader.load(r.Context(), backend.Name(), modelID, request.Model, backendMode)
+	runner, err := h.scheduler.loader.load(r.Context(), backend.Name(), modelID, modelName, backendMode)
 	if err != nil {
 		http.Error(w, fmt.Errorf("unable to load runner: %w", err).Error(), http.StatusInternalServerError)
 		return
@@ -274,13 +365,14 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Record the request in the OpenAI recorder.
-	recordID := h.scheduler.openAIRecorder.RecordRequest(request.Model, r, body)
-	w = h.scheduler.openAIRecorder.NewResponseRecorder(w)
-	defer func() {
-		// Record the response in the OpenAI recorder.
-		h.scheduler.openAIRecorder.RecordResponse(recordID, request.Model, w)
-	}()
+	// Record the request/response in the OpenAI recorder when appropriate.
+	if recordRequest {
+		recordID := h.scheduler.openAIRecorder.RecordRequest(modelName, r, body)
+		w = h.scheduler.openAIRecorder.NewResponseRecorder(w)
+		defer func() {
+			h.scheduler.openAIRecorder.RecordResponse(recordID, modelName, w)
+		}()
+	}
 
 	// Create a request with the body replaced for forwarding upstream.
 	// Set ContentLength explicitly so the backend always receives a Content-Length

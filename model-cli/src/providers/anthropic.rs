@@ -1,4 +1,3 @@
-use axum::http::StatusCode;
 use bytes::Bytes;
 use futures::StreamExt;
 use reqwest::Client;
@@ -11,7 +10,7 @@ use crate::types::{
     ChatMessage, ChunkChoice, EmbeddingRequest, EmbeddingResponse, Usage,
 };
 
-use super::{parse_upstream_error, resolve_api_key, ByteStream, Provider};
+use super::{request_timeout, resolve_api_key, send_and_check, ByteStream, Provider};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -114,6 +113,31 @@ struct AnthropicStreamMessage {
     model: String,
 }
 
+/// Build an `AnthropicRequest` from an OpenAI `ChatCompletionRequest`.
+///
+/// `stream` controls whether the upstream request asks for SSE streaming.
+fn build_anthropic_request(
+    request: &ChatCompletionRequest,
+    actual_model: &str,
+    stream: bool,
+) -> AnthropicRequest {
+    let (system, messages) = convert_messages(&request.messages);
+    let stop_sequences = request.stop.as_ref().map(|s| match s {
+        crate::types::StopSequence::Single(s) => vec![s.clone()],
+        crate::types::StopSequence::Multiple(v) => v.clone(),
+    });
+    AnthropicRequest {
+        model: actual_model.to_string(),
+        messages,
+        max_tokens: request.max_tokens.unwrap_or(4096),
+        system,
+        temperature: request.temperature,
+        top_p: request.top_p,
+        stop_sequences,
+        stream: Some(stream),
+    }
+}
+
 /// Convert OpenAI messages to Anthropic format.
 ///
 /// Returns (system_prompt, user/assistant messages).
@@ -183,51 +207,21 @@ impl Provider for AnthropicProvider {
         let url = format!("{}/messages", base_url);
 
         let (_, actual_model) = crate::config::parse_provider_model(&params.model);
-        let (system, messages) = convert_messages(&request.messages);
-
-        let stop_sequences = request.stop.as_ref().map(|s| match s {
-            crate::types::StopSequence::Single(s) => vec![s.clone()],
-            crate::types::StopSequence::Multiple(v) => v.clone(),
-        });
-
-        let anthropic_req = AnthropicRequest {
-            model: actual_model.to_string(),
-            messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
-            system,
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stop_sequences,
-            stream: Some(false),
-        };
+        let anthropic_req = build_anthropic_request(request, actual_model, false);
 
         let api_key = resolve_api_key("anthropic", params)
             .ok_or_else(|| AppError::Unauthorized("Missing Anthropic API key".to_string()))?;
 
-        let timeout_secs = params.timeout.unwrap_or(600.0);
-        let response = self
+        let req = self
             .client
             .post(&url)
             .header("x-api-key", &api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&anthropic_req)
-            .timeout(std::time::Duration::from_secs_f64(timeout_secs))
-            .send()
-            .await
-            .map_err(|e| AppError::ProviderError {
-                status: StatusCode::BAD_GATEWAY,
-                message: format!("Failed to reach Anthropic: {}", e),
-            })?;
+            .timeout(request_timeout(params));
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(parse_upstream_error(
-                StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
-                &body,
-            ));
-        }
+        let response = send_and_check(req, "Anthropic").await?;
 
         let anthropic_resp: AnthropicResponse = response.json().await.map_err(|e| {
             AppError::Internal(format!("Failed to parse Anthropic response: {}", e))
@@ -243,10 +237,7 @@ impl Provider for AnthropicProvider {
             .collect::<Vec<_>>()
             .join("");
 
-        let created = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created = dmr_common::unix_now_secs();
 
         Ok(ChatCompletionResponse {
             id: format!("chatcmpl-{}", anthropic_resp.id),
@@ -282,60 +273,27 @@ impl Provider for AnthropicProvider {
         let url = format!("{}/messages", base_url);
 
         let (_, actual_model) = crate::config::parse_provider_model(&params.model);
-        let (system, messages) = convert_messages(&request.messages);
-
-        let stop_sequences = request.stop.as_ref().map(|s| match s {
-            crate::types::StopSequence::Single(s) => vec![s.clone()],
-            crate::types::StopSequence::Multiple(v) => v.clone(),
-        });
-
-        let anthropic_req = AnthropicRequest {
-            model: actual_model.to_string(),
-            messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
-            system,
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stop_sequences,
-            stream: Some(true),
-        };
+        let anthropic_req = build_anthropic_request(request, actual_model, true);
 
         let api_key = resolve_api_key("anthropic", params)
             .ok_or_else(|| AppError::Unauthorized("Missing Anthropic API key".to_string()))?;
 
-        let timeout_secs = params.timeout.unwrap_or(600.0);
-        let response = self
+        let req = self
             .client
             .post(&url)
             .header("x-api-key", &api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&anthropic_req)
-            .timeout(std::time::Duration::from_secs_f64(timeout_secs))
-            .send()
-            .await
-            .map_err(|e| AppError::ProviderError {
-                status: StatusCode::BAD_GATEWAY,
-                message: format!("Failed to reach Anthropic: {}", e),
-            })?;
+            .timeout(request_timeout(params));
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(parse_upstream_error(
-                StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
-                &body,
-            ));
-        }
+        let response = send_and_check(req, "Anthropic").await?;
 
         // Translate Anthropic SSE events into OpenAI-compatible SSE events.
         let model = actual_model.to_string();
         let byte_stream = response.bytes_stream();
 
-        let created = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created = dmr_common::unix_now_secs();
 
         let mut buffer = String::new();
         let stream = async_stream::stream! {

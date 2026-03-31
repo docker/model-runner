@@ -84,10 +84,7 @@ impl Router {
 
     /// List models in OpenAI format.
     pub fn list_models(&self) -> ModelListResponse {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = dmr_common::unix_now_secs();
 
         let mut models: Vec<ModelObject> = self
             .deployments

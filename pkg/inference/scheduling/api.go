@@ -14,6 +14,11 @@ const (
 	// DoS attacks.
 	maximumOpenAIInferenceRequestSize = 10 * 1024 * 1024
 
+	// maximumAudioInferenceRequestSize is the maximum size for audio API
+	// requests (transcriptions, translations). Audio files can be large, so
+	// we allow up to 25MB which matches the OpenAI API limit.
+	maximumAudioInferenceRequestSize = 25 * 1024 * 1024
+
 	// modelCLIUserAgentPrefix is the user-agent prefix set by the model CLI.
 	modelCLIUserAgentPrefix = "docker-model-cli/"
 )
@@ -26,6 +31,10 @@ func trimRequestPathToOpenAIRoot(path string) string {
 	} else if index = strings.Index(path, "/rerank"); index != -1 {
 		return path[index:]
 	} else if index = strings.Index(path, "/score"); index != -1 {
+		return path[index:]
+	} else if index = strings.Index(path, "/tokenize"); index != -1 {
+		return path[index:]
+	} else if index = strings.Index(path, "/detokenize"); index != -1 {
 		return path[index:]
 	}
 	return path
@@ -47,6 +56,17 @@ func backendModeForRequest(path string) (inference.BackendMode, bool) {
 	} else if strings.HasSuffix(path, "/v1/images/generations") {
 		// OpenAI Images API - image generation mode
 		return inference.BackendModeImageGeneration, true
+	} else if strings.HasSuffix(path, "/v1/audio/transcriptions") ||
+		strings.HasSuffix(path, "/v1/audio/translations") ||
+		strings.HasSuffix(path, "/v1/audio/speech") {
+		// OpenAI Audio API - audio processing mode
+		return inference.BackendModeAudio, true
+	} else if strings.HasSuffix(path, "/v1/moderations") {
+		// OpenAI Moderations API - treated as completion mode
+		return inference.BackendModeCompletion, true
+	} else if strings.HasSuffix(path, "/tokenize") || strings.HasSuffix(path, "/detokenize") {
+		// vLLM tokenize/detokenize endpoints - treated as completion mode
+		return inference.BackendModeCompletion, true
 	}
 	return inference.BackendMode(0), false
 }

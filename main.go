@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/model-runner/pkg/anthropic"
 	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -24,6 +23,9 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 	dmrlogs "github.com/docker/model-runner/pkg/logs"
 	"github.com/docker/model-runner/pkg/metrics"
+	"github.com/docker/model-runner/pkg/ollama"
+	"github.com/docker/model-runner/pkg/responses"
+	"github.com/docker/model-runner/pkg/router"
 	"github.com/docker/model-runner/pkg/routing"
 	modeltls "github.com/docker/model-runner/pkg/tls"
 )
@@ -42,6 +44,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// sockName is the public-facing socket the Rust router listens on.
 	sockName := envconfig.SocketPath()
 	modelPath, err := envconfig.ModelsPath()
 	if err != nil {
@@ -145,101 +148,99 @@ func main() {
 			"",
 			false,
 		),
-		AllowedOrigins:      envconfig.AllowedOrigins(),
-		IncludeResponsesAPI: true,
-		ExtraRoutes: func(r *routing.NormalizedServeMux, s *routing.Service) {
-			// Root handler – only catches exact "/" requests
-			r.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				if req.URL.Path != "/" {
-					http.NotFound(w, req)
-					return
-				}
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("Docker Model Runner is running"))
-			})
-
-			// Version endpoint
-			r.HandleFunc("/version", func(w http.ResponseWriter, req *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				if err := json.NewEncoder(w).Encode(map[string]string{"version": Version}); err != nil {
-					log.Warn("failed to write version response", "error", err)
-				}
-			})
-
-			// Logs endpoint (Docker Desktop mode only).
-			if logDir := envconfig.LogDir(); logDir != "" {
-				r.HandleFunc(
-					"GET /logs",
-					dmrlogs.NewHTTPHandler(logDir),
-				)
-				log.Info("Logs endpoint enabled at /logs", "dir", logDir)
-			}
-
-			// Metrics endpoint
-			if !envconfig.DisableMetrics() {
-				metricsHandler := metrics.NewAggregatedMetricsHandler(
-					log.With("component", "metrics"),
-					s.SchedulerHTTP,
-				)
-				r.Handle("/metrics", metricsHandler)
-				log.Info("Metrics endpoint enabled at /metrics")
-			} else {
-				log.Info("Metrics endpoint disabled")
-			}
-		},
+		AllowedOrigins: envconfig.AllowedOrigins(),
 	})
 	if err != nil {
 		log.Error("failed to initialize service", "error", err)
 		exitFunc(1)
 	}
 
-	server := &http.Server{
-		Handler:           svc.Router,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	serverErrors := make(chan error, 1)
+	// Build the backend HTTP mux. Routing (path aliasing, CORS, path
+	// normalisation, /version, /) is handled by the Rust dmr-router sidecar
+	// that sits in front of this server. We only need to register the
+	// inference endpoints and the observability endpoints that the Rust router
+	// proxies through.
+	mux := http.NewServeMux()
+	mux.Handle(inference.InferencePrefix+"/", svc.SchedulerHTTP)
+	mux.Handle(inference.ModelsPrefix+"/", svc.ModelHandler)
+	mux.Handle(inference.ModelsPrefix, svc.ModelHandler)
 
-	// TLS server (optional)
+	// Ollama API compatibility layer (/api/).
+	ollamaHandler := ollama.NewHTTPHandler(log, svc.Scheduler, svc.SchedulerHTTP, envconfig.AllowedOrigins(), svc.ModelManager)
+	mux.Handle(ollama.APIPrefix+"/", ollamaHandler)
+
+	// Anthropic Messages API compatibility layer (/anthropic/).
+	anthropicHandler := anthropic.NewHandler(log, svc.SchedulerHTTP, envconfig.AllowedOrigins(), svc.ModelManager)
+	mux.Handle(anthropic.APIPrefix+"/", anthropicHandler)
+
+	// OpenAI Responses API compatibility layer (/responses, /v1/responses, /engines/responses).
+	responsesHandler := responses.NewHTTPHandler(log, svc.SchedulerHTTP, envconfig.AllowedOrigins())
+	mux.Handle(responses.APIPrefix+"/", responsesHandler)
+	mux.Handle(responses.APIPrefix, responsesHandler)
+	mux.Handle("/v1"+responses.APIPrefix+"/", responsesHandler)
+	mux.Handle("/v1"+responses.APIPrefix, responsesHandler)
+	mux.Handle(inference.InferencePrefix+responses.APIPrefix+"/", responsesHandler)
+	mux.Handle(inference.InferencePrefix+responses.APIPrefix, responsesHandler)
+
+	// Logs endpoint (Docker Desktop mode only).
+	if logDir := envconfig.LogDir(); logDir != "" {
+		mux.HandleFunc("GET /logs", dmrlogs.NewHTTPHandler(logDir))
+		log.Info("Logs endpoint enabled at /logs", "dir", logDir)
+	}
+
+	// Metrics endpoint.
+	if !envconfig.DisableMetrics() {
+		metricsHandler := metrics.NewAggregatedMetricsHandler(
+			log.With("component", "metrics"),
+			svc.SchedulerHTTP,
+		)
+		mux.Handle("/metrics", metricsHandler)
+		log.Info("Metrics endpoint enabled at /metrics")
+	} else {
+		log.Info("Metrics endpoint disabled")
+	}
+
+	// ── Register the Go mux as the in-process Rust router backend ────────────
+	// The Rust router calls Go's http.Handler directly via CGo for every
+	// inference request — no second socket needed.  The streaming writer in
+	// handler.go pushes chunks to Rust via dmr_write_chunk() as they are
+	// written, so streaming endpoints like POST /models/create work correctly.
+	handlerFn, handlerCtx := router.RegisterHandler(mux)
+
+	// routerCfg is populated below depending on TCP vs Unix socket mode.
+	routerCfg := router.Config{
+		HandlerFn:      handlerFn,
+		HandlerCtx:     handlerCtx,
+		AllowedOrigins: envconfig.AllowedOrigins(),
+		Version:        Version,
+	}
+
+	serverErrors := make(chan error, 1) // never fires in in-process mode
+
+	// TLS server (optional) — serves the mux directly on a TCP port.
 	var tlsServer *http.Server
 	tlsServerErrors := make(chan error, 1)
 
-	// Check if we should use TCP port instead of Unix socket
 	tcpPort := envconfig.TCPPort()
 	if tcpPort != "" {
-		// Use TCP port
-		addr := ":" + tcpPort
-		log.Info("Listening on TCP port", "port", tcpPort)
-		server.Addr = addr
-		go func() {
-			serverErrors <- server.ListenAndServe()
-		}()
-	} else {
-		// Use Unix socket
-		if err := os.Remove(sockName); err != nil {
-			if !os.IsNotExist(err) {
-				log.Error("Failed to remove existing socket", "error", err)
-				exitFunc(1)
-			}
-		}
-		ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockName, Net: "unix"})
+		backendPort, err := parsePort(tcpPort)
 		if err != nil {
-			log.Error("Failed to listen on socket", "error", err)
+			log.Error("Invalid TCP_PORT", "error", err)
 			exitFunc(1)
 		}
-		go func() {
-			serverErrors <- server.Serve(ln)
-		}()
+		routerCfg.ListenPort = uint16(backendPort)
+		log.Info("Rust router listening on TCP port", "port", backendPort)
+	} else {
+		routerCfg.ListenSock = sockName
+		log.Info("Rust router listening on Unix socket", "path", sockName)
 	}
 
-	// Start TLS server if enabled
+	// ── TLS server (optional) ─────────────────────────────────────────────────
 	if envconfig.TLSEnabled() {
 		tlsPort := envconfig.TLSPort()
-
-		// Get certificate paths
 		certPath := envconfig.TLSCert()
 		keyPath := envconfig.TLSKey()
 
-		// Auto-generate certificates if not provided and auto-cert is not disabled
 		if certPath == "" || keyPath == "" {
 			if envconfig.TLSAutoCert(true) {
 				log.Info("Auto-generating TLS certificates...")
@@ -257,7 +258,6 @@ func main() {
 			}
 		}
 
-		// Load TLS configuration
 		tlsConfig, err := modeltls.LoadTLSConfig(certPath, keyPath)
 		if err != nil {
 			log.Error("Failed to load TLS configuration", "error", err)
@@ -266,14 +266,13 @@ func main() {
 
 		tlsServer = &http.Server{
 			Addr:              ":" + tlsPort,
-			Handler:           svc.Router,
+			Handler:           mux,
 			TLSConfig:         tlsConfig,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 
 		log.Info("Listening on TLS port", "port", tlsPort)
 		go func() {
-			// Use ListenAndServeTLS with empty strings since TLSConfig already has the certs
 			ln, err := tls.Listen("tcp", tlsServer.Addr, tlsConfig)
 			if err != nil {
 				tlsServerErrors <- err
@@ -283,6 +282,13 @@ func main() {
 		}()
 	}
 
+	// ── Rust router ───────────────────────────────────────────────────────────
+	// router.Start launches the axum server in a background goroutine and
+	// returns a StopFunc for graceful shutdown plus an error channel.
+	stopRouter, routerErrors := router.Start(routerCfg)
+	log.Info("Rust router started", "listen", routerCfg.ListenSock)
+
+	// ── Scheduler ─────────────────────────────────────────────────────────────
 	schedulerErrors := make(chan error, 1)
 	go func() {
 		schedulerErrors <- svc.Scheduler.Run(ctx)
@@ -292,25 +298,30 @@ func main() {
 	if envconfig.TLSEnabled() {
 		tlsServerErrorsChan = tlsServerErrors
 	} else {
-		// Use a nil channel which will block forever when TLS is disabled
 		tlsServerErrorsChan = nil
 	}
 
 	select {
-	case err := <-serverErrors:
+	case err := <-routerErrors:
 		if err != nil {
-			log.Error("Server error", "error", err)
+			log.Error("Rust router error", "error", err)
 		}
 	case err := <-tlsServerErrorsChan:
 		if err != nil {
 			log.Error("TLS server error", "error", err)
 		}
+	case err := <-serverErrors:
+		if err != nil {
+			log.Error("Backend server error", "error", err)
+		}
 	case <-ctx.Done():
 		log.Info("Shutdown signal received")
-		log.Info("Shutting down the server")
-		if err := server.Close(); err != nil {
-			log.Error("Server shutdown error", "error", err)
+
+		log.Info("Stopping Rust router")
+		if stopRouter != nil {
+			stopRouter()
 		}
+
 		if tlsServer != nil {
 			log.Info("Shutting down the TLS server")
 			if err := tlsServer.Close(); err != nil {
@@ -323,6 +334,15 @@ func main() {
 		}
 	}
 	log.Info("Docker Model Runner stopped")
+}
+
+// parsePort parses a decimal port string and returns an int.
+func parsePort(s string) (int, error) {
+	var p int
+	if _, err := fmt.Sscanf(s, "%d", &p); err != nil {
+		return 0, fmt.Errorf("invalid port %q: %w", s, err)
+	}
+	return p, nil
 }
 
 // createLlamaCppConfigFromEnv creates a LlamaCppConfig from environment variables.

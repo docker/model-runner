@@ -51,6 +51,8 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		return nil, fmt.Errorf("reranking mode not supported by MLX backend")
 	case inference.BackendModeImageGeneration:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
+	case inference.BackendModeAudio:
+		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}
 
 	// Add max-tokens if specified in model config or backend config
