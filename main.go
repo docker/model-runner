@@ -22,7 +22,6 @@ import (
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/logging"
-	dmrlogs "github.com/docker/model-runner/pkg/logs"
 	"github.com/docker/model-runner/pkg/metrics"
 	"github.com/docker/model-runner/pkg/routing"
 	modeltls "github.com/docker/model-runner/pkg/tls"
@@ -165,15 +164,6 @@ func main() {
 					log.Warn("failed to write version response", "error", err)
 				}
 			})
-
-			// Logs endpoint (Docker Desktop mode only).
-			if logDir := envconfig.LogDir(); logDir != "" {
-				r.HandleFunc(
-					"GET /logs",
-					dmrlogs.NewHTTPHandler(logDir),
-				)
-				log.Info("Logs endpoint enabled at /logs", "dir", logDir)
-			}
 
 			// Metrics endpoint
 			if !envconfig.DisableMetrics() {
