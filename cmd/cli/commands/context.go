@@ -94,13 +94,25 @@ func resolveDefaultContext(ctx context.Context) (host, description string) {
 	kind := desktop.DetectEngineKind(detectCtx, dockerCLI)
 	description = "Model Runner on " + kind.String()
 
+	// Check whether TLS is enabled so the displayed scheme and port match
+	// what DetectContext would actually use at runtime.
+	useTLS := os.Getenv("MODEL_RUNNER_TLS") == "true"
+
 	switch kind {
 	case types.ModelRunnerEngineKindDesktop:
 		host = kind.String()
 	case types.ModelRunnerEngineKindCloud:
-		host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+		if useTLS {
+			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
+		} else {
+			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+		}
 	case types.ModelRunnerEngineKindMoby, types.ModelRunnerEngineKindMobyManual:
-		host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+		if useTLS {
+			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
+		} else {
+			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+		}
 	}
 
 	return host, description
@@ -369,12 +381,18 @@ func newContextInspectCmd() *cobra.Command {
 				return fmt.Errorf("unable to open context store: %w", err)
 			}
 
+			// Resolve the default context info once (lazily) so that
+			// repeated "default" args do not trigger multiple probes.
+			var defaultHost, defaultDescription string
+			defaultResolved := false
+
 			results := make([]namedContextInspect, 0, len(args))
 			for _, name := range args {
 				if name == modelctx.DefaultContextName {
-					// Return a synthetic entry for "default",
-					// resolved from the detected engine kind.
-					defaultHost, defaultDescription := resolveDefaultContext(cmd.Context())
+					if !defaultResolved {
+						defaultHost, defaultDescription = resolveDefaultContext(cmd.Context())
+						defaultResolved = true
+					}
 					results = append(results, namedContextInspect{
 						Name: modelctx.DefaultContextName,
 						ContextConfig: modelctx.ContextConfig{

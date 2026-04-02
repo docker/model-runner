@@ -250,6 +250,17 @@ func namedContextStore(cli *command.DockerCli) (*modelctx.Store, error) {
 // triggering backend initialisation.
 func DetectEngineKind(ctx context.Context, cli *command.DockerCli) types.ModelRunnerEngineKind {
 	if isDesktopContext(ctx, cli) {
+		// On WSL2, a Moby-based controller container may be running
+		// alongside Docker Desktop. Mirror the logic in DetectContext
+		// so that "context ls" reports the same engine kind.
+		if IsDesktopWSLContext(ctx, cli) {
+			if dockerClient, err := DockerClientForContext(cli, cli.CurrentContext()); err == nil {
+				defer dockerClient.Close()
+				if containerID, _, _, findErr := standalone.FindControllerContainer(ctx, dockerClient); findErr == nil && containerID != "" {
+					return types.ModelRunnerEngineKindMoby
+				}
+			}
+		}
 		return types.ModelRunnerEngineKindDesktop
 	}
 	if isCloudContext(cli) {
