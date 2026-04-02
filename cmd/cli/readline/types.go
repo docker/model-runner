@@ -31,6 +31,8 @@ const (
 	CharSpace     = 32
 	CharEscapeEx  = 91
 	CharBackspace = 127
+	CharFHook     = 402
+	CharIntegral  = 8747
 )
 
 const (
