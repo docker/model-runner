@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 )
 
 type Prompt struct {
@@ -218,8 +217,8 @@ func (i *Instance) Readline() (string, error) {
 				break
 			}
 			buf.Replace([]rune(edited))
-		case CharIntegral, CharFHook: // macOS dosen't send ESC sequences for Option+b/f
-			if runtime.GOOS == "darwin" && !i.Pasting {
+		case CharIntegral, CharFHook: // macOS dosen't send ESC sequences for Option+B/F
+			if !i.Pasting {
 				if r == CharIntegral {
 					buf.MoveLeftWord()
 				} else {
