@@ -217,7 +217,11 @@ func (i *Instance) Readline() (string, error) {
 				break
 			}
 			buf.Replace([]rune(edited))
-		case CharIntegral, CharFHook: // macOS dosen't send ESC sequences for Option+B/F
+		case CharIntegral, CharFHook: // macOS doesn't send ESC sequences for Option+B/F
+			if metaDel {
+				metaDel = false
+				continue
+			}
 			if !i.Pasting {
 				if r == CharIntegral {
 					buf.MoveLeftWord()
