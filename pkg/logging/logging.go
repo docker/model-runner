@@ -114,13 +114,15 @@ func (bw *BracketWriter) Write(p []byte) (int, error) {
 		if idx < 0 {
 			break
 		}
-		line := string(bw.buf[:idx])
-		bw.buf = append(bw.buf[:0], bw.buf[idx+1:]...)
+		line := bw.buf[:idx]
 
 		ts := time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z")
 		if _, err := fmt.Fprintf(bw.w, "[%s] %s\n", ts, line); err != nil {
 			return n, err
 		}
+		// Advance the buffer only after a successful write to
+		// avoid losing the line on transient I/O errors.
+		bw.buf = append(bw.buf[:0], bw.buf[idx+1:]...)
 	}
 	return n, nil
 }
