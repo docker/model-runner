@@ -17,6 +17,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/pkg/modelctx"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
+	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -94,21 +95,17 @@ func resolveDefaultContext(ctx context.Context) (host, description string) {
 	kind := desktop.DetectEngineKind(detectCtx, dockerCLI)
 	description = "Model Runner on " + kind.String()
 
-	// Check whether TLS is enabled so the displayed scheme and port match
-	// what DetectContext would actually use at runtime.
-	useTLS := os.Getenv("MODEL_RUNNER_TLS") == "true"
-
 	switch kind {
 	case types.ModelRunnerEngineKindDesktop:
 		host = kind.String()
 	case types.ModelRunnerEngineKindCloud:
-		if useTLS {
+		if envconfig.TLSEnabled() {
 			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
 		} else {
 			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
 		}
 	case types.ModelRunnerEngineKindMoby, types.ModelRunnerEngineKindMobyManual:
-		if useTLS {
+		if envconfig.TLSEnabled() {
 			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
 		} else {
 			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
