@@ -243,6 +243,21 @@ func namedContextStore(cli *command.DockerCli) (*modelctx.Store, error) {
 	return modelctx.New(configDir)
 }
 
+// DetectEngineKind determines the Docker engine kind associated with the
+// current CLI context without performing any side effects (such as waking
+// up Docker Cloud). It is intended for informational commands like
+// "context ls" that need to display the resolved engine kind without
+// triggering backend initialisation.
+func DetectEngineKind(ctx context.Context, cli *command.DockerCli) types.ModelRunnerEngineKind {
+	if isDesktopContext(ctx, cli) {
+		return types.ModelRunnerEngineKindDesktop
+	}
+	if isCloudContext(cli) {
+		return types.ModelRunnerEngineKindCloud
+	}
+	return types.ModelRunnerEngineKindMoby
+}
+
 // DetectContext determines the current Docker Model Runner context.
 func DetectContext(ctx context.Context, cli *command.DockerCli, printer standalone.StatusPrinter) (*ModelRunnerContext, error) {
 	// Check for an explicit endpoint setting.
