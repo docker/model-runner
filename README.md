@@ -157,6 +157,7 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 ## Using the Makefile
 
 This project includes a Makefile to simplify common development tasks. Docker targets require Docker Desktop >= 4.41.0.
+
 Run `make help` for a full list, but the key targets are:
 
 - `build` - Build the Go application
@@ -194,6 +195,8 @@ This will:
 - Start the service on port 8080 (or the specified port)
 - All models downloaded will be stored in the host's `models` directory and will persist between container runs
 
+> NOTE: The [`.versions`](.versions) file is the single source of truth for all version variables (Go, vLLM, SGLang, llama-server, etc.).
+
 ### llama.cpp integration
 
 The Docker image includes the llama.cpp server binary from the `docker/docker-model-backend-llamacpp` image. You can specify the version of the image to use by setting the `LLAMA_SERVER_VERSION` variable. Additionally, you can configure the target OS, architecture, and acceleration type:
@@ -228,7 +231,7 @@ The Docker image also supports vLLM as an alternative inference backend.
 To build a Docker image with vLLM support:
 
 ```sh
-# Build with default settings (vLLM 0.12.0)
+# Build with default settings (vLLM 0.17.0)
 make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
 
 # Build for specific architecture
@@ -237,7 +240,7 @@ docker buildx build \
   --target final-vllm \
   --build-arg BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
-  --build-arg VLLM_VERSION=0.12.0 \
+  --build-arg VLLM_VERSION=0.17.0 \
   -t docker/model-runner:vllm .
 ```
 
@@ -245,7 +248,7 @@ docker buildx build \
 
 The vLLM variant supports the following build arguments:
 
-- **VLLM_VERSION**: The vLLM version to install (default: `0.12.0`)
+- **VLLM_VERSION**: The vLLM version to install (default: `0.17.0`)
 - **VLLM_CUDA_VERSION**: The CUDA version suffix for the wheel (default: `cu130`)
 - **VLLM_PYTHON_TAG**: The Python compatibility tag (default: `cp38-abi3`, compatible with Python 3.8+)
 
@@ -274,8 +277,8 @@ To update to a new vLLM version:
 ```sh
 docker buildx build \
   --target final-vllm \
-  --build-arg VLLM_VERSION=0.11.1 \
-  -t docker/model-runner:vllm-0.11.1 .
+  --build-arg VLLM_VERSION=0.17.0 \
+  -t docker/model-runner:vllm-0.17.0 .
 ```
 
 The vLLM wheels are sourced from the official vLLM GitHub Releases at `https://github.com/vllm-project/vllm/releases`, which provides prebuilt wheels for each release version.

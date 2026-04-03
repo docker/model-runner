@@ -1,11 +1,9 @@
 # Project variables
+include .versions
+
 APP_NAME := model-runner
-GO_VERSION := 1.25.8
-LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
-BASE_IMAGE := ubuntu:26.04
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
-VLLM_VERSION ?= 0.17.0
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
@@ -15,8 +13,10 @@ LLAMA_ARGS ?=
 DOCKER_BUILD_ARGS := \
 	--load \
 	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
+	--build-arg GO_VERSION=$(GO_VERSION) \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
+	--build-arg SGLANG_VERSION=$(SGLANG_VERSION) \
 	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 	--build-arg VLLM_VERSION='$(VLLM_VERSION)' \
 	--target $(DOCKER_TARGET) \
@@ -24,7 +24,7 @@ DOCKER_BUILD_ARGS := \
 
 # Phony targets grouped by category
 .PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
-.PHONY: validate validate-all lint help
+.PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
 .PHONY: test-docker-ce-installation
@@ -107,6 +107,23 @@ validate:
 	find . -type f -name "*.sh" | grep -v "pkg/go-containerregistry\|llamacpp/native/vendor" | xargs shellcheck
 	@echo "✓ Shellcheck validation passed!"
 
+validate-versions:
+	@errors=0; \
+	while IFS='=' read -r key value || [ -n "$$key" ]; do \
+		case "$$key" in ''|\#*) continue ;; esac; \
+		value=$$(echo "$$value" | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$$//'); \
+		dockerfile_val=$$(grep -m1 "^ARG $${key}=" Dockerfile | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$$//'); \
+		[ -z "$$dockerfile_val" ] && continue; \
+		if [ "$$value" != "$$dockerfile_val" ]; then \
+			echo "MISMATCH: $$key — .versions=$$value  Dockerfile=$$dockerfile_val"; \
+			errors=$$((errors + 1)); \
+		else \
+			echo "OK: $$key=$$value"; \
+		fi; \
+	done < .versions; \
+	[ $$errors -eq 0 ] || exit 1
+	@echo "✓ .versions is in sync with Dockerfile ARGs"
+
 lint:
 	@echo "Running golangci-lint..."
 	golangci-lint run ./...
@@ -128,6 +145,9 @@ validate-all:
 	@echo ""
 	@echo "==> Running shellcheck validation..."
 	@$(MAKE) validate
+	@echo ""
+	@echo "==> Validating .versions against Dockerfile ARGs..."
+	@$(MAKE) validate-versions
 	@echo ""
 	@echo "==> All validations passed! ✅"
 
@@ -184,7 +204,6 @@ docker-run-impl:
 
 # vllm-metal (macOS ARM64 only)
 # The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-VLLM_METAL_RELEASE ?= v0.1.0-20260320-122309
 VLLM_METAL_INSTALL_DIR := $(HOME)/.docker/model-runner/vllm-metal
 VLLM_METAL_TARBALL := vllm-metal-macos-arm64-$(VLLM_METAL_RELEASE).tar.gz
 
@@ -237,7 +256,7 @@ vllm-metal-dev:
 	rm -rf "$(VLLM_METAL_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(VLLM_METAL_INSTALL_DIR)"; \
 	. "$(VLLM_METAL_INSTALL_DIR)/bin/activate" && \
-		VLLM_UPSTREAM_VERSION="0.17.1" && \
+		VLLM_UPSTREAM_VERSION=$(VLLM_UPSTREAM_VERSION) && \
 		WORK_DIR=$$(mktemp -d) && \
 		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_UPSTREAM_VERSION/vllm-$$VLLM_UPSTREAM_VERSION.tar.gz" && \
 		tar -xzf "$$WORK_DIR/vllm.tar.gz" -C "$$WORK_DIR" && \
@@ -257,7 +276,6 @@ vllm-metal-clean:
 
 # diffusers (macOS ARM64 and Linux)
 # The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-DIFFUSERS_RELEASE ?= v0.1.0-20260216-000000
 DIFFUSERS_INSTALL_DIR := $(HOME)/.docker/model-runner/diffusers
 DIFFUSERS_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 DIFFUSERS_ARCH := $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')

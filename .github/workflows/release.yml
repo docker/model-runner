@@ -23,17 +23,14 @@ on:
         description: "llama-server version"
         required: false
         type: string
-        default: "latest"
       vllmVersion:
         description: "vLLM version"
         required: false
         type: string
-        default: "0.17.0"
       sglangVersion:
         description: "SGLang version"
         required: false
         type: string
-        default: "0.4.0"
       # This can be removed once we have llama.cpp built for MUSA and CANN.
       buildMusaCann:
         description: "Build MUSA and CANN images"
@@ -204,10 +201,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Run tests
@@ -223,9 +224,9 @@ jobs:
       contents: read
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion || 'latest' }}
+      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion }}
       VLLM_VERSION: ${{ inputs.vllmVersion }}
-      SGLANG_VERSION: ${{ inputs.sglangVersion || '0.4.0' }}
+      SGLANG_VERSION: ${{ inputs.sglangVersion }}
       BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
     steps:
       - name: Checkout repo
@@ -263,6 +264,18 @@ jobs:
           echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
+          
+      - name: Load versions
+        shell: bash
+        run: |
+          VERSIONS_LLAMA=$(grep '^LLAMA_SERVER_VERSION=' .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_VLLM=$(grep  '^VLLM_VERSION='          .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_SGLANG=$(grep '^SGLANG_VERSION='       .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+
+          # Use input value if set, otherwise fallback to .versions 
+          echo "LLAMA_SERVER_VERSION=${LLAMA_SERVER_VERSION:-$VERSIONS_LLAMA}"   >> "$GITHUB_ENV"
+          echo "VLLM_VERSION=${VLLM_VERSION:-$VERSIONS_VLLM}"                   >> "$GITHUB_ENV"
+          echo "SGLANG_VERSION=${SGLANG_VERSION:-$VERSIONS_SGLANG}"             >> "$GITHUB_ENV"
 
       - name: Log in to DockerHub
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
@@ -535,11 +548,15 @@ jobs:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           fetch-depth: 0
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Set up Go
         if: steps.check-docs.outputs.changed == 'true'
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Vendor model-runner CLI docs
