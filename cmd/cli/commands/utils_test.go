@@ -1,9 +1,26 @@
 package commands
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/docker/model-runner/cmd/cli/desktop"
+	mockdesktop "github.com/docker/model-runner/cmd/cli/mocks"
+	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
+	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	dmrm "github.com/docker/model-runner/pkg/inference/models"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestStripDefaultsFromModelName(t *testing.T) {
@@ -110,5 +127,114 @@ func TestHandleClientErrorFormat(t *testing.T) {
 		if !errors.Is(result, originalErr) {
 			t.Error("Error wrapping is not preserved - errors.Is() check failed")
 		}
+	})
+}
+
+func setupDesktopClientStatusMock(t *testing.T, ctrl *gomock.Controller, backendStatus map[string]string) {
+	t.Helper()
+
+	client := mockdesktop.NewMockDockerHttpClient(ctrl)
+	modelRunner = desktop.NewContextForMock(client)
+	desktopClient = desktop.New(modelRunner)
+
+	statusJSON, err := json.Marshal(backendStatus)
+	require.NoError(t, err)
+
+	expectedModelsURL := modelRunner.URL(inference.ModelsPrefix)
+	expectedStatusURL := modelRunner.URL(inference.InferencePrefix + "/status")
+	expectedUserAgent := "docker-model-cli/" + desktop.Version
+
+	client.EXPECT().Do(gomock.Cond(func(req any) bool {
+		r, ok := req.(*http.Request)
+		return ok && r.URL.String() == expectedModelsURL && r.Header.Get("User-Agent") == expectedUserAgent
+	})).Return(&http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil)
+
+	client.EXPECT().Do(gomock.Cond(func(req any) bool {
+		r, ok := req.(*http.Request)
+		return ok && r.URL.String() == expectedStatusURL && r.Header.Get("User-Agent") == expectedUserAgent
+	})).Return(&http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(statusJSON))}, nil)
+}
+
+func TestCheckBackendInstalled(t *testing.T) {
+	t.Run("running status string is treated as installed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		setupDesktopClientStatusMock(t, ctrl, map[string]string{"vllm": "running vllm latest-cuda"})
+
+		installed, err := CheckBackendInstalled(vllm.Name)
+		require.NoError(t, err)
+		require.True(t, installed)
+	})
+
+	t.Run("not running status is treated as missing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		setupDesktopClientStatusMock(t, ctrl, map[string]string{"vllm": "not running"})
+
+		installed, err := CheckBackendInstalled(vllm.Name)
+		require.NoError(t, err)
+		require.False(t, installed)
+	})
+
+	t.Run("error status is treated as missing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		setupDesktopClientStatusMock(t, ctrl, map[string]string{"vllm": "error failed to start"})
+
+		installed, err := CheckBackendInstalled(vllm.Name)
+		require.NoError(t, err)
+		require.False(t, installed)
+	})
+}
+
+func TestPromptInstallBackend(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetIn(strings.NewReader("yes\n"))
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+
+	confirmed, err := PromptInstallBackend(vllm.Name, cmd)
+	require.NoError(t, err)
+	require.True(t, confirmed)
+	require.Contains(t, out.String(), "Backend \"vllm\" is not installed")
+}
+
+func TestEnsureBackendAvailableCancelled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	setupDesktopClientStatusMock(t, ctrl, map[string]string{"vllm": "not running"})
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetIn(strings.NewReader("n\n"))
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+
+	err := EnsureBackendAvailable(vllm.Name, cmd)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errBackendInstallationCancelled)
+	require.Contains(t, out.String(), "docker model install-runner --backend vllm")
+}
+
+func TestGetRequiredBackendFromModelInfo(t *testing.T) {
+	t.Run("safetensors chooses vllm", func(t *testing.T) {
+		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatSafetensors}})
+		require.NoError(t, err)
+		require.Equal(t, vllm.Name, backend)
+	})
+
+	t.Run("gguf chooses llamacpp", func(t *testing.T) {
+		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatGGUF}})
+		require.NoError(t, err)
+		require.Equal(t, llamacpp.Name, backend)
+	})
+
+	t.Run("diffusers chooses diffusers backend", func(t *testing.T) {
+		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatDiffusers}})
+		require.NoError(t, err)
+		require.Equal(t, diffusers.Name, backend)
 	})
 }

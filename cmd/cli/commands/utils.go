@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +14,11 @@ import (
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
+	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/moby/term"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
@@ -42,6 +48,8 @@ func getDefaultRegistry() string {
 }
 
 var errNotRunning = fmt.Errorf("Docker Model Runner is not running. Please start it and try again.\n")
+
+var errBackendInstallationCancelled = errors.New("backend installation cancelled")
 
 func handleClientError(err error, message string) error {
 	if errors.Is(err, desktop.ErrServiceUnavailable) {
@@ -276,6 +284,105 @@ func newTable(w io.Writer) *tablewriter.Table {
 			},
 		}),
 	)
+}
+
+func CheckBackendInstalled(backend string) (bool, error) {
+	status := desktopClient.Status()
+	if status.Error != nil {
+		return false, fmt.Errorf("failed to get backend status: %w", status.Error)
+	}
+
+	var backendStatus map[string]string
+	if err := json.Unmarshal(status.Status, &backendStatus); err != nil {
+		return false, fmt.Errorf("failed to parse backend status: %w", err)
+	}
+
+	backendState, exists := backendStatus[backend]
+	if !exists {
+		return false, nil
+	}
+
+	state := strings.TrimSpace(strings.ToLower(backendState))
+	if strings.HasPrefix(state, "not ") || strings.HasPrefix(state, "error") {
+		return false, nil
+	}
+
+	return strings.HasPrefix(state, "installed") || strings.HasPrefix(state, "running"), nil
+}
+
+func PromptInstallBackend(backend string, cmd *cobra.Command) (bool, error) {
+	fmt.Fprintf(cmd.OutOrStdout(), "Backend %q is not installed. Download and install it now? [Y/n]: ", backend)
+
+	reader := bufio.NewReader(cmd.InOrStdin())
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("failed to read input: %w", err)
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input == "" || input == "y" || input == "yes", nil
+}
+
+func InstallBackend(backend string) error {
+	if err := desktopClient.InstallBackend(backend); err != nil {
+		return fmt.Errorf("failed to install backend %s: %w", backend, err)
+	}
+
+	return nil
+}
+
+func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
+	installed, err := CheckBackendInstalled(backend)
+	if err != nil {
+		return err
+	}
+
+	if installed {
+		return nil
+	}
+
+	confirm, err := PromptInstallBackend(backend, cmd)
+	if err != nil {
+		return err
+	}
+
+	if !confirm {
+		cmd.Printf("Run 'docker model install-runner --backend %s' to install it manually.\n", backend)
+		return errBackendInstallationCancelled
+	}
+
+	if err := InstallBackend(backend); err != nil {
+		return err
+	}
+
+	installed, err = CheckBackendInstalled(backend)
+	if err != nil {
+		return err
+	}
+	if !installed {
+		return fmt.Errorf("backend %q is still not installed; run 'docker model install-runner --backend %s'", backend, backend)
+	}
+
+	cmd.Printf("Backend %q installed successfully.\n", backend)
+	return nil
+}
+
+func GetRequiredBackendFromModelInfo(modelInfo *dmrm.Model) (string, error) {
+	config, ok := modelInfo.Config.(*types.Config)
+	if !ok {
+		return llamacpp.Name, nil
+	}
+
+	switch config.Format {
+	case types.FormatSafetensors:
+		return vllm.Name, nil
+	case types.FormatGGUF:
+		return llamacpp.Name, nil
+	case types.FormatDiffusers:
+		return diffusers.Name, nil
+	default:
+		return llamacpp.Name, nil
+	}
 }
 
 func printNextSteps(out io.Writer, messages []string) {
