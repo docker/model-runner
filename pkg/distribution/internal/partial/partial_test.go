@@ -6,6 +6,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -287,5 +288,105 @@ func TestSafetensorsPaths_NoFalsePositive_GGUFModelPackType(t *testing.T) {
 	// The GGUF-typed layer must NOT be returned as a safetensors path.
 	if len(paths) != 1 {
 		t.Errorf("Expected 1 safetensors path (GGUF layer must not match), got %d", len(paths))
+	}
+}
+
+// TestGGUFPaths_ModelPackRawNoConfigFormat tests that GGUFPaths can find raw
+// ModelPack weight layers even when the model config omits the format field.
+// This exercises the annotation-based format discovery fallback introduced to
+// handle CNCF ModelPack models that do not populate config.format.
+func TestGGUFPaths_ModelPackRawNoConfigFormat(t *testing.T) {
+	// Build a CNCF ModelPack artifact with an empty config format and a raw
+	// weight layer whose filepath annotation ends in ".gguf".
+	mdl := testutil.NewModelPackArtifact(
+		t,
+		modelpack.Model{Config: modelpack.ModelConfig{}}, // format intentionally empty
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.gguf"),
+			RelativePath: "model.gguf",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+	)
+
+	paths, err := partial.GGUFPaths(mdl)
+	if err != nil {
+		t.Fatalf("GGUFPaths() error = %v", err)
+	}
+
+	// Should discover one GGUF path via the ".gguf" extension fallback.
+	if len(paths) != 1 {
+		t.Errorf("Expected 1 GGUF path via annotation fallback, got %d", len(paths))
+	}
+}
+
+// TestSafetensorsPaths_ModelPackRawNoConfigFormat mirrors the GGUF test above
+// for the safetensors format.
+func TestSafetensorsPaths_ModelPackRawNoConfigFormat(t *testing.T) {
+	mdl := testutil.NewModelPackArtifact(
+		t,
+		modelpack.Model{Config: modelpack.ModelConfig{}}, // format intentionally empty
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.gguf"),
+			RelativePath: "model.safetensors",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+	)
+
+	paths, err := partial.SafetensorsPaths(mdl)
+	if err != nil {
+		t.Fatalf("SafetensorsPaths() error = %v", err)
+	}
+
+	// Should discover one safetensors path via the ".safetensors" extension fallback.
+	if len(paths) != 1 {
+		t.Errorf("Expected 1 safetensors path via annotation fallback, got %d", len(paths))
+	}
+}
+
+// TestDDUFPaths_ModelPackRawWithDDUFFormat tests that DDUFPaths can find raw
+// ModelPack weight layers when the model config specifies format as "dduf".
+func TestDDUFPaths_ModelPackRawWithDDUFFormat(t *testing.T) {
+	mdl := testutil.NewModelPackArtifact(
+		t,
+		modelpack.Model{Config: modelpack.ModelConfig{Format: string(types.FormatDDUF)}},
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.gguf"), // reuse dummy file
+			RelativePath: "model.dduf",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+	)
+
+	paths, err := partial.DDUFPaths(mdl)
+	if err != nil {
+		t.Fatalf("DDUFPaths() error = %v", err)
+	}
+
+	if len(paths) != 1 {
+		t.Errorf("Expected 1 DDUF path, got %d", len(paths))
+	}
+}
+
+// TestDDUFPaths_ModelPackRawNoConfigFormat tests that DDUFPaths can find raw
+// ModelPack weight layers even when the config omits the format field, by
+// inferring the format from the ".dduf" extension in the filepath annotation.
+func TestDDUFPaths_ModelPackRawNoConfigFormat(t *testing.T) {
+	mdl := testutil.NewModelPackArtifact(
+		t,
+		modelpack.Model{Config: modelpack.ModelConfig{}}, // format intentionally empty
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.gguf"), // reuse dummy file
+			RelativePath: "model.dduf",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+	)
+
+	paths, err := partial.DDUFPaths(mdl)
+	if err != nil {
+		t.Fatalf("DDUFPaths() error = %v", err)
+	}
+
+	// Should discover one DDUF path via the ".dduf" extension fallback.
+	if len(paths) != 1 {
+		t.Errorf("Expected 1 DDUF path via annotation fallback, got %d", len(paths))
 	}
 }

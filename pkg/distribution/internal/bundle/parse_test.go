@@ -41,7 +41,7 @@ func TestParse_NoModelWeights(t *testing.T) {
 		t.Fatal("Expected error when parsing bundle without model weights, got nil")
 	}
 
-	expectedErrMsg := "no supported model weights found (neither GGUF nor safetensors)"
+	expectedErrMsg := "no supported model weights found (neither GGUF, safetensors, nor DDUF)"
 	if !strings.Contains(err.Error(), expectedErrMsg) {
 		t.Errorf("Expected error message to contain %q, got: %v", expectedErrMsg, err)
 	}
@@ -93,6 +93,63 @@ func TestParse_WithGGUF(t *testing.T) {
 	}
 }
 
+func TestParse_WithNestedGGUF(t *testing.T) {
+	// Create a temporary directory for the test bundle.
+	tempDir := t.TempDir()
+
+	// Create model subdirectory.
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatalf("Failed to create model directory: %v", err)
+	}
+
+	// Create nested directory structure.
+	weightsDir := filepath.Join(modelDir, "nested", "weights")
+	if err := os.MkdirAll(weightsDir, 0755); err != nil {
+		t.Fatalf("Failed to create nested weights directory: %v", err)
+	}
+
+	// Create a GGUF file in the nested directory.
+	nestedGGUFPath := filepath.Join(weightsDir, "model.gguf")
+	if err := os.WriteFile(nestedGGUFPath, []byte("dummy nested gguf"), 0644); err != nil {
+		t.Fatalf("Failed to create nested GGUF file: %v", err)
+	}
+
+	// Create a valid config.json at bundle root.
+	cfg := types.Config{
+		Format: types.FormatGGUF,
+	}
+	configPath := filepath.Join(tempDir, "config.json")
+	f, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create config.json: %v", err)
+	}
+	if err := json.NewEncoder(f).Encode(cfg); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode config: %v", err)
+	}
+	f.Close()
+
+	// Parse the bundle and ensure GGUF discovery falls back to recursion.
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Expected successful parse with nested GGUF, got: %v", err)
+	}
+
+	expectedPath := filepath.Join("nested", "weights", "model.gguf")
+	if bundle.ggufFile != expectedPath {
+		t.Errorf("Expected ggufFile to be %q, got: %s", expectedPath, bundle.ggufFile)
+	}
+
+	fullPath := bundle.GGUFPath()
+	if fullPath == "" {
+		t.Error("Expected GGUFPath() to return a non-empty path")
+	}
+	if !strings.HasSuffix(fullPath, expectedPath) {
+		t.Errorf("Expected GGUFPath() to end with %q, got: %s", expectedPath, fullPath)
+	}
+}
+
 func TestParse_WithSafetensors(t *testing.T) {
 	// Create a temporary directory for the test bundle
 	tempDir := t.TempDir()
@@ -136,6 +193,56 @@ func TestParse_WithSafetensors(t *testing.T) {
 
 	if bundle.ggufFile != "" {
 		t.Errorf("Expected ggufFile to be empty, got: %s", bundle.ggufFile)
+	}
+}
+
+func TestParse_WithDDUF(t *testing.T) {
+	// Create a temporary directory for the test bundle.
+	tempDir := t.TempDir()
+
+	// Create model subdirectory.
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatalf("Failed to create model directory: %v", err)
+	}
+
+	// Create a dummy DDUF file.
+	ddufPath := filepath.Join(modelDir, "model.dduf")
+	if err := os.WriteFile(ddufPath, []byte("dummy dduf content"), 0644); err != nil {
+		t.Fatalf("Failed to create DDUF file: %v", err)
+	}
+
+	// Create a valid config.json at bundle root.
+	cfg := types.Config{
+		Format: types.FormatDDUF,
+	}
+	configPath := filepath.Join(tempDir, "config.json")
+	f, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create config.json: %v", err)
+	}
+	if err := json.NewEncoder(f).Encode(cfg); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode config: %v", err)
+	}
+	f.Close()
+
+	// Parse the bundle and ensure DDUF-only bundles are accepted.
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Expected successful parse with DDUF file, got: %v", err)
+	}
+
+	if bundle.ddufFile != "model.dduf" {
+		t.Errorf("Expected ddufFile to be %q, got: %s", "model.dduf", bundle.ddufFile)
+	}
+
+	fullPath := bundle.DDUFPath()
+	if fullPath == "" {
+		t.Error("Expected DDUFPath() to return a non-empty path")
+	}
+	if !strings.HasSuffix(fullPath, "model.dduf") {
+		t.Errorf("Expected DDUFPath() to end with %q, got: %s", "model.dduf", fullPath)
 	}
 }
 
@@ -195,6 +302,63 @@ func TestParse_WithNestedSafetensors(t *testing.T) {
 	}
 	if !strings.HasSuffix(fullPath, expectedPath) {
 		t.Errorf("Expected SafetensorsPath() to end with %q, got: %s", expectedPath, fullPath)
+	}
+}
+
+func TestParse_WithNestedDDUF(t *testing.T) {
+	// Create a temporary directory for the test bundle.
+	tempDir := t.TempDir()
+
+	// Create model subdirectory.
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatalf("Failed to create model directory: %v", err)
+	}
+
+	// Create nested directory structure.
+	diffusersDir := filepath.Join(modelDir, "sanitized", "diffusers")
+	if err := os.MkdirAll(diffusersDir, 0755); err != nil {
+		t.Fatalf("Failed to create nested diffusers directory: %v", err)
+	}
+
+	// Create a DDUF file in the nested directory.
+	nestedDDUFPath := filepath.Join(diffusersDir, "model.dduf")
+	if err := os.WriteFile(nestedDDUFPath, []byte("dummy nested dduf"), 0644); err != nil {
+		t.Fatalf("Failed to create nested DDUF file: %v", err)
+	}
+
+	// Create a valid config.json at bundle root.
+	cfg := types.Config{
+		Format: types.FormatDDUF,
+	}
+	configPath := filepath.Join(tempDir, "config.json")
+	f, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create config.json: %v", err)
+	}
+	if err := json.NewEncoder(f).Encode(cfg); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode config: %v", err)
+	}
+	f.Close()
+
+	// Parse the bundle and ensure DDUF discovery falls back to recursion.
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Expected successful parse with nested DDUF, got: %v", err)
+	}
+
+	expectedPath := filepath.Join("sanitized", "diffusers", "model.dduf")
+	if bundle.ddufFile != expectedPath {
+		t.Errorf("Expected ddufFile to be %q, got: %s", expectedPath, bundle.ddufFile)
+	}
+
+	fullPath := bundle.DDUFPath()
+	if fullPath == "" {
+		t.Error("Expected DDUFPath() to return a non-empty path")
+	}
+	if !strings.HasSuffix(fullPath, expectedPath) {
+		t.Errorf("Expected DDUFPath() to end with %q, got: %s", expectedPath, fullPath)
 	}
 }
 

@@ -134,7 +134,15 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		return backend
 	}
 
-	switch config.GetFormat() {
+	format := config.GetFormat()
+	// If the config does not specify a format, infer it from the model's
+	// available file paths. This handles CNCF ModelPack models that omit
+	// the optional config.format field.
+	if format == "" {
+		format = inferFormatFromModel(model)
+	}
+
+	switch format {
 	case types.FormatSafetensors:
 		// Prefer vLLM for safetensors models (handles platform dispatch internally)
 		if s.platformSupport.SupportsVLLM() || s.platformSupport.SupportsVLLMMetal() {
@@ -183,6 +191,24 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 	}
 
 	return backend
+}
+
+// inferFormatFromModel detects the model format by checking which file types
+// are present in the model's layers. Used as a fallback when the model config
+// omits the format field (e.g. some CNCF ModelPack models). Order matches
+// detectModelFormat in the distribution bundle package to ensure consistent
+// behavior for malformed or mixed artifacts.
+func inferFormatFromModel(model types.Model) types.Format {
+	if paths, err := model.GGUFPaths(); err == nil && len(paths) > 0 {
+		return types.FormatGGUF
+	}
+	if paths, err := model.SafetensorsPaths(); err == nil && len(paths) > 0 {
+		return types.FormatSafetensors
+	}
+	if paths, err := model.DDUFPaths(); err == nil && len(paths) > 0 {
+		return types.FormatDDUF
+	}
+	return ""
 }
 
 // ResetInstaller resets the backend installer with a new HTTP client.
