@@ -105,13 +105,17 @@ func TCPPort() string {
 	return Var("MODEL_RUNNER_PORT")
 }
 
-// LlamaServerPath returns the path to the llama.cpp server binary.
-// Configured via LLAMA_SERVER_PATH; defaults to the Docker Desktop bundle location.
-func LlamaServerPath() string {
+// LlamaServerPath returns the path to the directory containing the llama.cpp server binary.
+// Configured via LLAMA_SERVER_PATH; defaults to ~/.docker/model-runner/llama.cpp/bin.
+func LlamaServerPath() (string, error) {
 	if s := Var("LLAMA_SERVER_PATH"); s != "" {
-		return s
+		return s, nil
 	}
-	return "/Applications/Docker.app/Contents/Resources/model-runner/bin"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".docker", "model-runner", "llama.cpp", "bin"), nil
 }
 
 // LlamaArgs returns custom arguments to pass to the llama.cpp server.
