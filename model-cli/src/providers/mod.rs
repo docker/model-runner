@@ -10,6 +10,34 @@ use crate::config::ModelParams;
 use crate::error::AppError;
 use crate::types::{ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest, EmbeddingResponse};
 
+/// Send `req`, check the HTTP status, and surface upstream errors as `AppError`.
+///
+/// `provider_label` appears in the network-failure message (e.g. `"provider"`
+/// or `"Anthropic"`).  Returns the raw `reqwest::Response` on success.
+///
+/// Both `OpenAIProvider` and `AnthropicProvider` previously contained
+/// identical copies of this logic as inherent methods.
+pub async fn send_and_check(
+    req: reqwest::RequestBuilder,
+    provider_label: &str,
+) -> Result<reqwest::Response, AppError> {
+    let response = req.send().await.map_err(|e| AppError::ProviderError {
+        status: StatusCode::BAD_GATEWAY,
+        message: format!("Failed to reach {provider_label}: {e}"),
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(parse_upstream_error(
+            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            &body,
+        ));
+    }
+
+    Ok(response)
+}
+
 /// A boxed stream of bytes (SSE chunks) or errors.
 pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, AppError>> + Send>>;
 
@@ -148,6 +176,11 @@ pub fn resolve_api_key(provider_name: &str, params: &ModelParams) -> Option<Stri
     };
 
     std::env::var(env_var).ok()
+}
+
+/// Return the request timeout duration from model params, defaulting to 600 s.
+pub fn request_timeout(params: &ModelParams) -> std::time::Duration {
+    std::time::Duration::from_secs_f64(params.timeout.unwrap_or(600.0))
 }
 
 /// Parse upstream provider error responses into AppError.

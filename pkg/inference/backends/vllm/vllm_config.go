@@ -51,6 +51,9 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		// vLLM does not have a specific flag for reranking
 	case inference.BackendModeImageGeneration:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
+	case inference.BackendModeAudio:
+		// vLLM natively supports audio endpoints (/v1/audio/transcriptions,
+		// /v1/audio/translations, /v1/audio/speech) — no extra flags needed.
 	}
 
 	// Add max-model-len if specified in model config or backend config

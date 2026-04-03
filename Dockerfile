@@ -15,15 +15,17 @@ FROM docker.io/library/golang:${GO_VERSION}-bookworm AS builder
 
 ARG VERSION
 
-# Install git for go mod download if needed
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+# Install git and the Rust toolchain (needed to build libdmr_router.a via CGo).
+RUN apt-get update && apt-get install -y --no-install-recommends git curl && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
 
 # Copy go mod/sum first for better caching
 COPY --link go.mod go.sum ./
 
-# Download dependencies (with cache mounts)
+# Download Go dependencies (with cache mounts)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
@@ -31,9 +33,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy the rest of the source code
 COPY --link . .
 
-# Build the Go binary (static build)
-RUN --mount=type=cache,target=/go/pkg/mod \
+# Build the Rust dmr-router static library, then the Go binary.
+# Both steps share a single RUN so the Rust output is available to the linker.
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    cargo build --release --manifest-path router/Cargo.toml && \
     CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # Build the Go binary for SGLang (without vLLM)

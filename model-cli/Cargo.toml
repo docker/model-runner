@@ -16,6 +16,7 @@ path = "src/lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
+dmr-common = { path = "../dmr-common" }
 axum = { version = "0.8", features = ["macros"] }
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
@@ -28,12 +29,8 @@ subtle = "2"
 tokio-stream = "0.1"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bytes = "1"
 http = "1"
 async-stream = "0.3"
 pin-project-lite = "0.2"
 async-trait = "0.1"
-
-[profile.release]
-lto = true

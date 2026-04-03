@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "dmr-common",
+    "model-cli",
+    "router",
+]
+resolver = "2"
+
+[profile.release]
+lto = true

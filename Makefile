@@ -23,19 +23,24 @@ DOCKER_BUILD_ARGS := \
 	-t $(DOCKER_IMAGE)
 
 # Phony targets grouped by category
-.PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
+.PHONY: build build-cli build-dmr build-llamacpp build-router-lib install-cli run clean test integration-tests e2e
 .PHONY: validate validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
+
 # Default target: build server, CLI plugin, and dmr convenience wrapper
 .DEFAULT_GOAL := build
 
 build: build-server build-cli build-dmr
 
-build-server:
+# Build the Rust dmr-router static library.
+build-router-lib:
+	cargo build --release --manifest-path router/Cargo.toml
+
+build-server: build-router-lib
 	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(APP_NAME) .
 
 build-cli:
@@ -68,6 +73,7 @@ clean:
 	rm -f $(APP_NAME)
 	rm -f dmr
 	rm -f model-runner.sock
+	cargo clean --manifest-path router/Cargo.toml
 
 # Run tests
 test:

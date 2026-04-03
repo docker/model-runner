@@ -23,6 +23,9 @@ const (
 	// BackendModeImageGeneration indicates that the backend should run in
 	// image generation mode.
 	BackendModeImageGeneration
+	// BackendModeAudio indicates that the backend should run in audio
+	// processing mode (transcription, translation, speech synthesis).
+	BackendModeAudio
 )
 
 // Backend status constants for standardized status reporting.
@@ -131,6 +134,8 @@ func (m BackendMode) String() string {
 		return "reranking"
 	case BackendModeImageGeneration:
 		return "image-generation"
+	case BackendModeAudio:
+		return "audio"
 	default:
 		return "unknown"
 	}
@@ -168,6 +173,8 @@ func ParseBackendMode(mode string) (BackendMode, bool) {
 		return BackendModeReranking, true
 	case "image-generation":
 		return BackendModeImageGeneration, true
+	case "audio":
+		return BackendModeAudio, true
 	default:
 		return BackendModeCompletion, false
 	}

@@ -259,6 +259,9 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 		return nil, fmt.Errorf("reranking mode not supported by vllm-metal backend")
 	case inference.BackendModeImageGeneration:
 		return nil, fmt.Errorf("image generation mode not supported by vllm-metal backend")
+	case inference.BackendModeAudio:
+		// vllm-metal natively supports audio endpoints (/v1/audio/transcriptions,
+		// /v1/audio/translations, /v1/audio/speech) — no extra flags needed.
 	}
 
 	// Register model aliases so the model-runner can address the model by its

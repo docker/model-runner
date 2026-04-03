@@ -67,6 +67,11 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, "--embeddings", "--reranking")
 	case inference.BackendModeImageGeneration:
 		return nil, fmt.Errorf("unsupported backend mode %q", mode)
+	case inference.BackendModeAudio:
+		// llama.cpp does not expose a dedicated audio transcription/translation
+		// endpoint. Use the chat completions endpoint with an input_audio content
+		// part instead (see OpenAI multimodal message format).
+		return nil, fmt.Errorf("audio endpoint not supported by llama.cpp; use /v1/chat/completions with an input_audio content part")
 	}
 
 	if budget := GetReasoningBudget(config); budget != nil {
