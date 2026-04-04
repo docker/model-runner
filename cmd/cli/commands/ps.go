@@ -39,7 +39,7 @@ func psTable(ps []desktop.BackendStatus) string {
 		if strings.HasPrefix(modelName, "sha256:") {
 			modelName = modelName[7:19]
 		} else {
-			modelName = stripDefaultsFromModelName(modelName)
+			modelName = stripDefaultsFromModelName(strings.ToLower(modelName))
 		}
 
 		table.Append([]string{

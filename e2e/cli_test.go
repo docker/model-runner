@@ -45,8 +45,7 @@ func TestE2E_CLI(t *testing.T) {
 				if err != nil {
 					t.Fatalf("cli ps failed: %v\noutput: %s", err, out)
 				}
-				// TODO: ps should return lowercased model names like ls does
-				if !strings.Contains(strings.ToLower(out), "smollm2") {
+				if !strings.Contains(out, "smollm2") {
 					t.Errorf("expected model in ps output, got:\n%s", out)
 				}
 				if !strings.Contains(out, bc.name) {
