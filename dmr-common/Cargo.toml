@@ -1,0 +1,8 @@
+[package]
+name = "dmr-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared utilities for Docker Model Runner Rust crates"
+
+[dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -15,3 +15,7 @@ llamacpp/install
 vllm-metal-macos-arm64-*.tar.gz
 
 .DS_Store
+
+# Cargo workspace build output
+/target/
+/Cargo.lock

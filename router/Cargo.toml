@@ -1,0 +1,24 @@
+[package]
+name = "dmr-router"
+version = "0.1.0"
+edition = "2021"
+description = "HTTP routing layer for Docker Model Runner (CGo-linked staticlib)"
+
+[lib]
+name = "dmr_router"
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+
+[dependencies]
+dmr-common = { path = "../dmr-common" }
+axum = { version = "0.8", features = ["http2", "macros"] }
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["normalize-path", "cors", "trace"] }
+anyhow = "1"
+bytes = "1"
+tokio-stream = "0.1"
+tracing = "0.1"

@@ -20,7 +20,7 @@ build-gateway:
 	@echo "Building gateway static library (Rust)..."
 	@mkdir -p $(GATEWAY_LIB_DIR)
 	cargo build --release --manifest-path $(GATEWAY_RUST_DIR)/Cargo.toml
-	@cp $(GATEWAY_RUST_DIR)/target/release/libmodel_cli_gateway.a $(GATEWAY_LIB_DIR)/libgateway.a
+	@cp ../../target/release/libmodel_cli_gateway.a $(GATEWAY_LIB_DIR)/libgateway.a
 	@echo "Gateway library staged at $(GATEWAY_LIB_DIR)/libgateway.a"
 
 build: build-gateway

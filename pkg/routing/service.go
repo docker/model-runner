@@ -24,7 +24,7 @@ type BackendDef struct {
 }
 
 // ServiceConfig holds the parameters needed to build the full inference
-// service stack: model manager, model handler, scheduler, and router.
+// service stack: model manager, model handler, and scheduler.
 type ServiceConfig struct {
 	Log          logging.Logger
 	ClientConfig models.ClientConfig
@@ -51,19 +51,6 @@ type ServiceConfig struct {
 	// AllowedOrigins is forwarded to model, scheduler, Ollama, and
 	// Anthropic handlers for CORS support. It may be nil.
 	AllowedOrigins []string
-
-	// ModelHandlerMiddleware optionally wraps the model handler before
-	// route registration (e.g. for access restrictions).
-	ModelHandlerMiddleware func(http.Handler) http.Handler
-
-	// IncludeResponsesAPI enables the OpenAI Responses API compatibility
-	// layer in the router.
-	IncludeResponsesAPI bool
-
-	// ExtraRoutes is called after the standard routes are registered.
-	// The Service fields (except Router) are fully populated when this
-	// is called, so the callback can reference them.
-	ExtraRoutes func(*NormalizedServeMux, *Service)
 }
 
 // Service is the assembled inference service stack.
@@ -72,7 +59,6 @@ type Service struct {
 	ModelHandler  *models.HTTPHandler
 	Scheduler     *scheduling.Scheduler
 	SchedulerHTTP *scheduling.HTTPHandler
-	Router        *NormalizedServeMux
 	Backends      map[string]inference.Backend
 }
 
@@ -107,21 +93,6 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		Scheduler:     scheduler,
 		SchedulerHTTP: schedulerHTTP,
 		Backends:      backends,
-	}
-
-	svc.Router = NewRouter(RouterConfig{
-		Log:                    cfg.Log,
-		Scheduler:              scheduler,
-		SchedulerHTTP:          schedulerHTTP,
-		ModelHandler:           modelHandler,
-		ModelManager:           modelManager,
-		AllowedOrigins:         cfg.AllowedOrigins,
-		ModelHandlerMiddleware: cfg.ModelHandlerMiddleware,
-		IncludeResponsesAPI:    cfg.IncludeResponsesAPI,
-	})
-
-	if cfg.ExtraRoutes != nil {
-		cfg.ExtraRoutes(svc.Router, svc)
 	}
 
 	return svc, nil
