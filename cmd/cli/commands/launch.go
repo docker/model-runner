@@ -48,7 +48,16 @@ var containerApps = map[string]containerApp{
 		envFn:           anythingllmEnv,
 		extraDockerArgs: []string{"-v", "anythingllm_storage:/app/server/storage"},
 	},
-	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openwebuiEnv},
+	"openwebui": {
+		defaultImage:    "ghcr.io/open-webui/open-webui:latest",
+		defaultHostPort: 3000,
+		containerPort:   8080,
+		envFn:           openwebuiEnv},
+
+	"llmfit": {
+		defaultImage: "ghcr.io/alexsjones/llmfit",
+		envFn:        llmfitEnv,
+	},
 }
 
 // hostApp describes a native CLI app launched on the host.
@@ -86,6 +95,7 @@ var appDescriptions = map[string]string{
 	"openclaw":    "Open Claw AI assistant",
 	"opencode":    "Open Code AI code editor",
 	"openwebui":   "Open WebUI for models",
+	"llmfit":      "Recommend models that run on your system",
 }
 
 func newLaunchCmd() *cobra.Command {
@@ -109,9 +119,11 @@ Supported apps: %s
 Examples:
   docker model launch
   docker model launch opencode
+	docker model launch llmfit
   docker model launch claude -- --help
   docker model launch openwebui --port 3000
-  docker model launch claude --config`, strings.Join(supportedApps, ", ")),
+  docker model launch claude --config
+  docker model launch llmfit -- recommend -n 5`, strings.Join(supportedApps, ", ")),
 		ValidArgs: supportedApps,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// No args - list supported apps
@@ -205,8 +217,12 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		}
 		cmd.Printf("Configuration for %s (container app):\n", app)
 		cmd.Printf("  Image:          %s\n", img)
-		cmd.Printf("  Container port: %d\n", ca.containerPort)
-		cmd.Printf("  Host port:      %d\n", hostPort)
+		if ca.containerPort > 0 {
+			cmd.Printf("  Container port: %d\n", ca.containerPort)
+		}
+		if ca.defaultHostPort > 0 {
+			cmd.Printf("  Host port:      %d\n", hostPort)
+		}
 		if ca.envFn != nil {
 			cmd.Printf("  Environment:\n")
 			for _, e := range ca.envFn(ep.container) {
@@ -295,9 +311,13 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 	if detach {
 		dockerArgs = append(dockerArgs, "-d")
 	}
-	dockerArgs = append(dockerArgs,
-		"-p", fmt.Sprintf("%d:%d", hostPort, ca.containerPort),
-	)
+
+	if ca.containerPort > 0 {
+		dockerArgs = append(dockerArgs,
+			"-p", fmt.Sprintf("%d:%d", hostPort, ca.containerPort),
+		)
+	}
+
 	dockerArgs = append(dockerArgs, ca.extraDockerArgs...)
 	if ca.envFn == nil {
 		return fmt.Errorf("container app requires envFn to be set")
@@ -416,6 +436,12 @@ func anthropicEnv(baseURL string) []string {
 	return []string{
 		"ANTHROPIC_BASE_URL=" + baseURL + "/anthropic",
 		"ANTHROPIC_API_KEY=" + dummyAPIKey,
+	}
+}
+
+func llmfitEnv(baseURL string) []string {
+	return []string{
+		"DOCKER_MODEL_RUNNER_HOST=" + baseURL,
 	}
 }
 
