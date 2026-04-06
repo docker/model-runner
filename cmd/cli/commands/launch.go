@@ -54,7 +54,6 @@ var containerApps = map[string]containerApp{
 		containerPort:   8080,
 		envFn:           openwebuiEnv,
 	},
-
 	"llmfit": {
 		defaultImage: "ghcr.io/alexsjones/llmfit",
 		envFn:        llmfitEnv,
