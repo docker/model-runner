@@ -220,7 +220,7 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		if ca.containerPort > 0 {
 			cmd.Printf("  Container port: %d\n", ca.containerPort)
 		}
-		if ca.defaultHostPort > 0 {
+		if hostPort > 0 {
 			cmd.Printf("  Host port:      %d\n", hostPort)
 		}
 		if ca.envFn != nil {
