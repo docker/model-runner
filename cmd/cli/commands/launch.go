@@ -52,7 +52,8 @@ var containerApps = map[string]containerApp{
 		defaultImage:    "ghcr.io/open-webui/open-webui:latest",
 		defaultHostPort: 3000,
 		containerPort:   8080,
-		envFn:           openwebuiEnv},
+		envFn:           openwebuiEnv,
+	},
 
 	"llmfit": {
 		defaultImage: "ghcr.io/alexsjones/llmfit",
@@ -219,8 +220,6 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		cmd.Printf("  Image:          %s\n", img)
 		if ca.containerPort > 0 {
 			cmd.Printf("  Container port: %d\n", ca.containerPort)
-		}
-		if hostPort > 0 {
 			cmd.Printf("  Host port:      %d\n", hostPort)
 		}
 		if ca.envFn != nil {
