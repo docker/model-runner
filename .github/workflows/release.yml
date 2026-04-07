@@ -477,12 +477,28 @@ jobs:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           fetch-depth: 0
 
-      - name: Bump docker-model version in build.json
+      - name: Fetch latest llamacpp version from Docker Hub
+        id: llamacpp
+        run: |
+          LLAMACPP_VERSION=$(curl -s "https://hub.docker.com/v2/repositories/docker/docker-model-backend-llamacpp/tags?page_size=100&ordering=last_updated" \
+            | jq -r '[.results[].name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+-cpu$"))] | sort_by(split("-")[0] | ltrimstr("v") | split(".") | map(tonumber)) | last | split("-")[0]')
+          if [ -z "$LLAMACPP_VERSION" ] || [ "$LLAMACPP_VERSION" = "null" ]; then
+            echo "::error::Failed to fetch latest llamacpp version from Docker Hub"
+            exit 1
+          fi
+          echo "version=$LLAMACPP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Latest llamacpp version: $LLAMACPP_VERSION"
+
+      - name: Bump docker-model and llamacpp versions in build.json
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          LLAMACPP_VERSION: ${{ steps.llamacpp.outputs.version }}
         run: |
           NEW_VERSION="v${VERSION}"
-          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
+          jq --arg model_v "$NEW_VERSION" --arg llama_v "$LLAMACPP_VERSION" '
+            .["docker-model"].version = $model_v |
+            .["llamacpp"].version = $llama_v
+          ' build.json > build.json.tmp
           mv build.json.tmp build.json
 
       - name: Create pull request
@@ -490,9 +506,9 @@ jobs:
         with:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           base: main
-          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }}"
+          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
           branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
-          title: "Bump docker-model to v${{ needs.prepare.outputs.version }}"
+          title: "Bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
           body: |
             ### Ticket(s)
 
@@ -500,7 +516,8 @@ jobs:
 
             ### What this PR does
 
-            Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+            - Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+            - Bumps llamacpp version to ${{ steps.llamacpp.outputs.version }} in build.json (latest from [Docker Hub](https://hub.docker.com/r/docker/docker-model-backend-llamacpp/tags)).
 
             ### Notes for the reviewer
 
