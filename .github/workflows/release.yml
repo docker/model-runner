@@ -560,6 +560,15 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout model-runner
+        if: steps.check-docs.outputs.changed == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Load GO version
+        if: steps.check-docs.outputs.changed == 'true'
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Checkout docs
         if: steps.check-docs.outputs.changed == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -567,10 +576,6 @@ jobs:
           repository: docker/docs
           token: ${{ secrets.CLI_RELEASE_PAT }}
           fetch-depth: 0
-
-      - name: Load GO version
-        id: versions
-        uses: ./.github/actions/load-go-version
 
       - name: Set up Go
         if: steps.check-docs.outputs.changed == 'true'
