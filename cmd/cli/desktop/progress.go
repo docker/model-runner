@@ -176,6 +176,26 @@ func displayProgressSimple(body io.Reader, printer standalone.StatusPrinter) (st
 	return finalMessage, progressShown, nil
 }
 
+// Status strings used in progress display. All are padded to
+// progressStatusWidth so that progress bars line up at the same column.
+const (
+	progressStatusWaiting      = "Waiting"
+	progressStatusDownloading  = "Downloading"
+	progressStatusPullComplete = "Pull complete"
+	progressStatusUploading    = "Uploading"
+	progressStatusPushComplete = "Push complete"
+
+	// progressStatusWidth is the column width to which all status strings
+	// are left-padded, keeping progress bars horizontally aligned.
+	progressStatusWidth = max(
+		len(progressStatusWaiting),
+		len(progressStatusDownloading),
+		len(progressStatusPullComplete),
+		len(progressStatusUploading),
+		len(progressStatusPushComplete),
+	)
+)
+
 // writeDockerProgress writes a progress update in Docker's JSONMessage format
 func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 	layerID := msg.Layer.ID
@@ -183,20 +203,20 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		return nil
 	}
 
-	// Detect if this is a push operation based on the sentinel layer ID
-	isPush := msg.Mode == "push"
+	// Detect if this is a push operation.
+	isPush := msg.Mode == oci.ModePush
 
-	// Determine status based on progress
+	// Determine status based on progress.
 	var status string
 	var progressDetail *jsonstream.Progress
 
 	if msg.Layer.Current == 0 {
-		status = "Waiting"
+		status = progressStatusWaiting
 	} else if msg.Layer.Current < msg.Layer.Size {
 		if isPush {
-			status = "Uploading"
+			status = progressStatusUploading
 		} else {
-			status = "Downloading"
+			status = progressStatusDownloading
 		}
 		progressDetail = &jsonstream.Progress{
 			Current: int64(msg.Layer.Current),
@@ -204,9 +224,9 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		}
 	} else if msg.Layer.Current >= msg.Layer.Size && msg.Layer.Size > 0 {
 		if isPush {
-			status = "Push complete"
+			status = progressStatusPushComplete
 		} else {
-			status = "Pull complete"
+			status = progressStatusPullComplete
 		}
 		progressDetail = &jsonstream.Progress{
 			Current: int64(msg.Layer.Current),
@@ -218,15 +238,17 @@ func writeDockerProgress(w io.Writer, msg *oci.ProgressMessage) error {
 		return nil
 	}
 
-	// Shorten layer ID for display (similar to Docker)
+	// Shorten layer ID for display (similar to Docker).
 	displayID := strings.TrimPrefix(layerID, "sha256:")
 	if len(displayID) > 12 {
 		displayID = displayID[:12]
 	}
 
 	dockerMsg := jsonstream.Message{
-		ID:       displayID,
-		Status:   status,
+		ID: displayID,
+		// Pad status to a fixed width so all progress bars start at the
+		// same column regardless of status string length.
+		Status:   fmt.Sprintf("%-*s", progressStatusWidth, status),
 		Progress: progressDetail,
 	}
 
