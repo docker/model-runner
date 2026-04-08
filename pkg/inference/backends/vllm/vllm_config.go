@@ -97,7 +97,7 @@ func GetMaxModelLen(modelCfg types.ModelConfig, backendCfg *inference.BackendCon
 	}
 	// Fallback to model config (set at packaging time via docker model package --context-size)
 	if modelCfg != nil {
-		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil {
+		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil && *ctxSize > 0 {
 			return ctxSize
 		}
 	}
