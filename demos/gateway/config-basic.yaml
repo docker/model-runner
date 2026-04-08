@@ -1,0 +1,16 @@
+# Basic gateway config: single Docker Model Runner provider
+#
+# The gateway exposes a unified OpenAI-compatible API on :4000 and
+# forwards requests to Docker Model Runner running on the local engine.
+
+model_list:
+  - model_name: smollm2        # alias clients use in their requests
+    params:
+      model: docker_model_runner/ai/smollm2   # provider/model
+
+  - model_name: gemma3
+    params:
+      model: docker_model_runner/ai/gemma3
+
+general_settings:
+  master_key: demo-secret      # clients must send: Authorization: Bearer demo-secret
