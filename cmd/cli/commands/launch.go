@@ -122,7 +122,7 @@ Supported apps: %s
 Examples:
   docker model launch
   docker model launch opencode
-	docker model launch llmfit
+  docker model launch llmfit
   docker model launch claude -- --help
   docker model launch openwebui --port 3000
   docker model launch claude --config
