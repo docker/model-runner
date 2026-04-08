@@ -10,6 +10,76 @@ import (
 	"strings"
 )
 
+// ConfigurationPython is the sandbox configuration for Python-based inference
+// backends (vLLM, vllm-metal, SGLang, MLX). It mirrors the llama.cpp profile
+// but additionally allows TCP loopback binding (used by vllm-metal and SGLang)
+// and read access to the Python runtime install directory supplied via
+// [UPDATEDBINPATH].
+const ConfigurationPython = `(version 1)
+
+;;; Keep a default allow policy (because encoding things like DYLD support and
+;;; device access is quite difficult), but deny critical exploitation targets.
+;;; Python backends run with the same constraint philosophy as llama.cpp.
+(allow default)
+
+;;; Deny network access except for our IPC sockets.
+;;; Python backends use either a Unix socket or a TCP loopback port.
+;;; Allow Unix socket paths that match the inference socket naming convention
+;;; as well as TCP loopback binding/inbound for backends that use TCP.
+(deny network*)
+(allow network-bind network-inbound
+    (regex #"inference.*-[0-9]+\.sock$")
+    (local tcp "localhost:*"))
+
+;;; Deny access to the camera and microphone.
+(deny device*)
+
+;;; Deny access to NVRAM settings.
+(deny nvram*)
+
+;;; Deny access to system-level privileges.
+(deny system*)
+
+;;; Deny access to job creation.
+(deny job-creation)
+
+;;; Deny access to launchservicesd to prevent sandbox escape via open(1).
+(deny mach-lookup
+    (global-name "com.apple.launchservicesd")
+    (global-name "com.apple.coreservices.launchservicesd"))
+
+;;; Don't allow new executable code to be created in memory at runtime.
+(deny dynamic-code-generation)
+
+;;; Disable access to user preferences.
+(deny user-preference*)
+
+;;; Restrict file access.
+(deny file-map-executable)
+(deny file-write*)
+(deny file-read*
+    (subpath "/Applications")
+    (subpath "/private/etc")
+    (subpath "/Library")
+    (subpath "/Users")
+    (subpath "/Volumes"))
+(allow file-read* file-map-executable
+    (subpath "/usr")
+    (subpath "/System")
+    (regex #"Docker\.app/Contents/Resources/model-runner")
+    (subpath "[UPDATEDBINPATH]")
+    (subpath "[UPDATEDLIBPATH]"))
+(allow file-write*
+    (literal "/dev/null")
+    (subpath "/private/var")
+    (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
+    (subpath "[WORKDIR]"))
+(allow file-read*
+    (subpath "[HOMEDIR]/.docker/models")
+    (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
+    (subpath "[WORKDIR]"))
+`
+
 // ConfigurationLlamaCpp is the sandbox configuration for llama.cpp processes.
 const ConfigurationLlamaCpp = `(version 1)
 
