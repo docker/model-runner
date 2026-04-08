@@ -37,6 +37,7 @@ type containerApp struct {
 	containerPort   int
 	envFn           func(baseURL string) []string
 	extraDockerArgs []string // additional docker run args (e.g., volume mounts)
+	interactive     bool     // attach TTY for interactive/TUI apps
 }
 
 // containerApps are launched via "docker run --rm".
@@ -55,8 +56,10 @@ var containerApps = map[string]containerApp{
 		envFn:           openwebuiEnv,
 	},
 	"llmfit": {
-		defaultImage: "ghcr.io/alexsjones/llmfit",
-		envFn:        llmfitEnv,
+		defaultImage:    "ghcr.io/alexsjones/llmfit",
+		envFn:           llmfitEnv,
+		interactive:     true,
+		extraDockerArgs: []string{"--entrypoint", "llmfit"},
 	},
 }
 
@@ -165,7 +168,7 @@ Examples:
 			}
 
 			if ca, ok := containerApps[app]; ok {
-				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
+				return launchContainerApp(cmd, app, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
 				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
@@ -217,6 +220,7 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		}
 		cmd.Printf("Configuration for %s (container app):\n", app)
 		cmd.Printf("  Image:          %s\n", img)
+		cmd.Printf("  Interactive:    %v\n", ca.interactive)
 		if ca.containerPort > 0 {
 			cmd.Printf("  Container port: %d\n", ca.containerPort)
 			cmd.Printf("  Host port:      %d\n", hostPort)
@@ -295,7 +299,7 @@ func resolveBaseEndpoints(runner *standaloneRunner) (engineEndpoints, error) {
 }
 
 // launchContainerApp launches a container-based app via "docker run".
-func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
+func launchContainerApp(cmd *cobra.Command, appName string, ca containerApp, baseURL string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
 	img := imageOverride
 	if img == "" {
 		img = ca.defaultImage
@@ -308,6 +312,13 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 	dockerArgs := []string{"run", "--rm"}
 	if detach {
 		dockerArgs = append(dockerArgs, "-d")
+	}
+	if ca.interactive {
+		if detach {
+			cmd.Printf("Warning: %s runs in interactive mode, app may not work as expected in detached mode\n", appName)
+		} else {
+			dockerArgs = append(dockerArgs, "-it")
+		}
 	}
 
 	if ca.containerPort > 0 {
