@@ -103,7 +103,7 @@ func TestGetArgs(t *testing.T) {
 			},
 		},
 		{
-			name: "with model context size (takes precedence)",
+			name: "backend config takes precedence over model config",
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model/model.safetensors",
 				runtimeConfig: &types.Config{
@@ -114,6 +114,29 @@ func TestGetArgs(t *testing.T) {
 			config: &inference.BackendConfiguration{
 				ContextSize: int32ptr(8192),
 			},
+			expected: []string{
+				"-m",
+				"sglang.launch_server",
+				"--model-path",
+				"/path/to/model",
+				"--host",
+				"127.0.0.1",
+				"--port",
+				"30000",
+				"--context-length",
+				"8192",
+			},
+		},
+		{
+			name: "model config used when no backend config",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model/model.safetensors",
+				runtimeConfig: &types.Config{
+					ContextSize: int32ptr(16384),
+				},
+			},
+			mode:   inference.BackendModeCompletion,
+			config: nil,
 			expected: []string{
 				"-m",
 				"sglang.launch_server",
@@ -225,14 +248,14 @@ func TestGetContextLength(t *testing.T) {
 			expectedValue: int32ptr(8192),
 		},
 		{
-			name: "model config takes precedence",
+			name: "backend config takes precedence",
 			modelCfg: &types.Config{
 				ContextSize: int32ptr(16384),
 			},
 			backendCfg: &inference.BackendConfiguration{
 				ContextSize: int32ptr(4096),
 			},
-			expectedValue: int32ptr(16384),
+			expectedValue: int32ptr(4096),
 		},
 		{
 			name:     "zero context size in backend config returns nil",

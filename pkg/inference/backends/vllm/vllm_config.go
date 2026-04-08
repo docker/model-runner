@@ -87,19 +87,19 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	return args, nil
 }
 
-// GetMaxModelLen returns the max model length (context size) from model config or backend config.
-// Model config takes precedence over backend config.
+// GetMaxModelLen returns the max model length (context size) from backend config or model config.
+// Backend config takes precedence over model config (runtime configuration).
 // Returns nil if neither is specified (vLLM will auto-derive from model).
 func GetMaxModelLen(modelCfg types.ModelConfig, backendCfg *inference.BackendConfiguration) *int32 {
-	// Model config takes precedence
+	// Backend config takes precedence (runtime configuration via docker model configure / Ollama API num_ctx)
+	if backendCfg != nil && backendCfg.ContextSize != nil && *backendCfg.ContextSize > 0 {
+		return backendCfg.ContextSize
+	}
+	// Fallback to model config (set at packaging time via docker model package --context-size)
 	if modelCfg != nil {
 		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil {
 			return ctxSize
 		}
-	}
-	// Fallback to backend config
-	if backendCfg != nil && backendCfg.ContextSize != nil && *backendCfg.ContextSize > 0 {
-		return backendCfg.ContextSize
 	}
 	// Return nil to let vLLM auto-derive from model config
 	return nil

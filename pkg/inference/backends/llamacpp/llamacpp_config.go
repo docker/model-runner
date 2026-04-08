@@ -95,15 +95,15 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 }
 
 func GetContextSize(modelCfg types.ModelConfig, backendCfg *inference.BackendConfiguration) *int32 {
-	// Model config takes precedence
+	// Backend config takes precedence (runtime configuration via docker model configure / Ollama API num_ctx)
+	if backendCfg != nil && backendCfg.ContextSize != nil && (*backendCfg.ContextSize == UnlimitedContextSize || *backendCfg.ContextSize > 0) {
+		return backendCfg.ContextSize
+	}
+	// Fallback to model config (set at packaging time via docker model package --context-size)
 	if modelCfg != nil {
 		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil && (*ctxSize == UnlimitedContextSize || *ctxSize > 0) {
 			return ctxSize
 		}
-	}
-	// Fallback to backend config
-	if backendCfg != nil && backendCfg.ContextSize != nil && (*backendCfg.ContextSize == UnlimitedContextSize || *backendCfg.ContextSize > 0) {
-		return backendCfg.ContextSize
 	}
 	return nil
 }
