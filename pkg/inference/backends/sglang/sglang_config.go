@@ -72,6 +72,9 @@ func GetContextLength(modelCfg types.ModelConfig, backendCfg *inference.BackendC
 		return backendCfg.ContextSize
 	}
 	// Fallback to model config (set at packaging time via docker model package --context-size)
+	if modelCfg == nil {
+		return nil
+	}
 	if cs := modelCfg.GetContextSize(); cs != nil && *cs > 0 {
 		return cs
 	}

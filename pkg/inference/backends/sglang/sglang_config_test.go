@@ -265,6 +265,18 @@ func TestGetContextLength(t *testing.T) {
 			},
 			expectedValue: nil,
 		},
+		{
+			name:          "nil model config with backend config",
+			modelCfg:      nil,
+			backendCfg:    &inference.BackendConfiguration{ContextSize: int32ptr(4096)},
+			expectedValue: int32ptr(4096),
+		},
+		{
+			name:          "nil model config without backend config",
+			modelCfg:      nil,
+			backendCfg:    nil,
+			expectedValue: nil,
+		},
 	}
 
 	for _, tt := range tests {
