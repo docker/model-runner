@@ -109,7 +109,7 @@ func TestGetArgs(t *testing.T) {
 			},
 		},
 		{
-			name: "with model context size (takes precedence)",
+			name: "backend config takes precedence over model config",
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model",
 				runtimeConfig: &types.Config{
@@ -119,6 +119,24 @@ func TestGetArgs(t *testing.T) {
 			config: &inference.BackendConfiguration{
 				ContextSize: int32ptr(8192),
 			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--max-model-len",
+				"8192",
+			},
+		},
+		{
+			name: "model config used when no backend config",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+				runtimeConfig: &types.Config{
+					ContextSize: int32ptr(16384),
+				},
+			},
+			config: nil,
 			expected: []string{
 				"serve",
 				"/path/to",
@@ -458,14 +476,14 @@ func TestGetMaxModelLen(t *testing.T) {
 			expectedValue: int32ptr(8192),
 		},
 		{
-			name: "model config takes precedence",
+			name: "backend config takes precedence",
 			modelCfg: &types.Config{
 				ContextSize: int32ptr(16384),
 			},
 			backendCfg: &inference.BackendConfiguration{
 				ContextSize: int32ptr(4096),
 			},
-			expectedValue: int32ptr(16384),
+			expectedValue: int32ptr(4096),
 		},
 	}
 
