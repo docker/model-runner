@@ -28,6 +28,20 @@ var limitTokenToGenerator = map[string]func() winjob.Limit{
 	"(WithWriteClipboardLimit)":   winjob.WithWriteClipboardLimit,
 }
 
+// ConfigurationPython is the sandbox configuration for Python-based inference
+// backends (vLLM, SGLang, MLX) on Windows.
+const ConfigurationPython = `(WithDesktopLimit)
+(WithDieOnUnhandledException)
+(WithDisplaySettingsLimit)
+(WithExitWindowsLimit)
+(WithGlobalAtomsLimit)
+(WithHandlesLimit)
+(WithDisableOutgoingNetworking)
+(WithReadClipboardLimit)
+(WithSystemParametersLimit)
+(WithWriteClipboardLimit)
+`
+
 // ConfigurationLlamaCpp is the sandbox configuration for llama.cpp processes.
 const ConfigurationLlamaCpp = `(WithDesktopLimit)
 (WithDieOnUnhandledException)

@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -255,7 +256,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		Socket:           socket,
 		BinaryPath:       d.pythonPath,
 		SandboxPath:      "",
-		SandboxConfig:    "",
+		SandboxConfig:    sandbox.ConfigurationPython,
 		Args:             args,
 		Logger:           d.log,
 		ServerLogWriter:  logging.NewWriter(d.serverLog),

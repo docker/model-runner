@@ -20,6 +20,7 @@ import (
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -216,8 +217,8 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		BackendName:     "vllm-metal",
 		Socket:          socket,
 		BinaryPath:      v.pythonPath,
-		SandboxPath:     "",
-		SandboxConfig:   "",
+		SandboxPath:     v.installDir,
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),

@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -180,7 +181,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		Socket:          socket,
 		BinaryPath:      v.binaryPath(),
 		SandboxPath:     vllmDir,
-		SandboxConfig:   "",
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),

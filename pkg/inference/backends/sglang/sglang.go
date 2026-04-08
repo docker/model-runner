@@ -16,6 +16,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -169,7 +170,7 @@ func (s *sglang) Run(ctx context.Context, socket, model string, modelRef string,
 		Socket:          socket,
 		BinaryPath:      s.pythonPath,
 		SandboxPath:     sandboxPath,
-		SandboxConfig:   "",
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          s.log,
 		ServerLogWriter: logging.NewWriter(s.serverLog),

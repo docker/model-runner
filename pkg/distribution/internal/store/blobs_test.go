@@ -123,11 +123,39 @@ func TestBlobs(t *testing.T) {
 		}
 	})
 
-	t.Run("WriteBlob reuses existing blob", func(t *testing.T) {
-		// simulate existing blob
+	t.Run("WriteBlob rejects blob with wrong digest", func(t *testing.T) {
+		// Use a well-known sha256 hash (of empty string) but supply different content.
 		hash := oci.Hash{
 			Algorithm: "sha256",
 			Hex:       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		}
+		blobPath, err := store.blobPath(hash)
+		if err != nil {
+			t.Fatalf("error getting blob path: %v", err)
+		}
+		// Remove any pre-existing blob so we hit the download path.
+		_ = os.Remove(blobPath)
+		_ = os.Remove(incompletePath(blobPath))
+
+		if err := store.WriteBlob(hash, bytes.NewBufferString("wrong content")); err == nil {
+			t.Fatal("expected digest mismatch error, got nil")
+		}
+
+		// The incomplete file must be cleaned up after a digest mismatch.
+		if _, err := os.Stat(incompletePath(blobPath)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("expected incomplete file to be removed after digest mismatch")
+		}
+		// The final blob must not exist.
+		if _, err := os.Stat(blobPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("expected final blob file not to exist after digest mismatch")
+		}
+	})
+
+	t.Run("WriteBlob reuses existing blob", func(t *testing.T) {
+		// Use the correct hash for "some-data" so digest verification passes.
+		hash, _, err := oci.SHA256(bytes.NewReader([]byte("some-data")))
+		if err != nil {
+			t.Fatalf("error computing hash: %v", err)
 		}
 
 		if err := store.WriteBlob(hash, bytes.NewReader([]byte("some-data"))); err != nil {
