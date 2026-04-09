@@ -229,12 +229,18 @@ func (r *remappedLayer) GetDescriptor() oci.Descriptor {
 	type descriptorProvider interface {
 		GetDescriptor() oci.Descriptor
 	}
+	var desc oci.Descriptor
 	if dp, ok := r.Layer.(descriptorProvider); ok {
-		desc := dp.GetDescriptor()
-		desc.MediaType = r.newMediaType
-		return desc
+		desc = dp.GetDescriptor()
+	} else {
+		// Fall back to basic interface methods if the layer is not a
+		// descriptor provider (e.g. remoteLayer).
+		d, _ := r.Layer.Digest()
+		s, _ := r.Layer.Size()
+		desc = oci.Descriptor{Digest: d, Size: s}
 	}
-	return oci.Descriptor{MediaType: r.newMediaType}
+	desc.MediaType = r.newMediaType
+	return desc
 }
 
 // FromModel returns a *Builder that builds model artifacts from an existing

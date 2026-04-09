@@ -32,14 +32,20 @@ const (
 //  2. Filepath/annotation heuristics for ambiguous media types.
 //  3. Docker media type fallback.
 func ClassifyLayer(dockerMT oci.MediaType, path string) LayerKind {
-	switch dockerMT { //nolint:exhaustive // Only Docker semantic media types are classified; OCI standard types fall through to filepath heuristics.
-	case types.MediaTypeLicense:
+	switch dockerMT { //nolint:exhaustive // Only Docker and CNCF semantic media types are classified; OCI standard types fall through to filepath heuristics.
+	// Docker-format documentation types.
+	case types.MediaTypeLicense, MediaTypeDocRaw:
 		return KindDoc
-	case types.MediaTypeChatTemplate, types.MediaTypeVLLMConfigArchive, types.MediaTypeModelFile:
+	// Docker-format weight config types.
+	case types.MediaTypeChatTemplate, types.MediaTypeVLLMConfigArchive, types.MediaTypeModelFile, MediaTypeWeightConfigRaw:
 		return KindWeightConfig
+	// Docker-format weight types.
 	case types.MediaTypeMultimodalProjector:
 		return KindWeight
 	case types.MediaTypeGGUF, types.MediaTypeSafetensors, types.MediaTypeDDUF:
+		return KindWeight
+	// CNCF model-spec weight types (including legacy typed media types).
+	case MediaTypeWeightRaw, MediaTypeWeightGGUF, MediaTypeWeightSafetensors:
 		return KindWeight
 	}
 
