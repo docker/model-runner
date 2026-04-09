@@ -31,11 +31,6 @@ func (m *CNCFModel) GetManifestOptions() ManifestOptions {
 	}
 }
 
-// GetConfigMediaType implements WithConfigMediaType for backward compatibility.
-func (m *CNCFModel) GetConfigMediaType() oci.MediaType {
-	return modelpack.MediaTypeModelConfigV1
-}
-
 func (m *CNCFModel) Layers() ([]oci.Layer, error) {
 	return m.LayerList, nil
 }

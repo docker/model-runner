@@ -109,8 +109,6 @@ func (m *model) GetManifestOptions() partial.ManifestOptions {
 	var opts partial.ManifestOptions
 	if base, ok := m.base.(partial.WithManifestOptions); ok {
 		opts = base.GetManifestOptions()
-	} else if cmt, ok := m.base.(partial.WithConfigMediaType); ok {
-		opts.ConfigMediaType = cmt.GetConfigMediaType()
 	}
 	// Apply overrides set on this wrapper.
 	if m.configMediaType != "" {

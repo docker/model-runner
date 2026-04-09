@@ -301,12 +301,6 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 	return false
 }
 
-// WithConfigMediaType provides access to the config media type version.
-// Deprecated: prefer WithManifestOptions which also carries the artifact type.
-type WithConfigMediaType interface {
-	GetConfigMediaType() oci.MediaType
-}
-
 // ManifestOptions holds the manifest-level metadata for an artifact.
 type ManifestOptions struct {
 	// ConfigMediaType is the media type of the config blob.
@@ -317,29 +311,23 @@ type ManifestOptions struct {
 	ArtifactType string
 }
 
-// WithManifestOptions provides manifest assembly options. It takes precedence
-// over WithConfigMediaType when both are implemented.
+// WithManifestOptions provides manifest assembly options.
 type WithManifestOptions interface {
 	GetManifestOptions() ManifestOptions
 }
 
-// resolveManifestOptions extracts manifest options from the given object,
-// checking WithManifestOptions first and falling back to WithConfigMediaType.
+// resolveManifestOptions extracts manifest options from the given object
+// via the WithManifestOptions interface.
 func resolveManifestOptions(i interface{}) ManifestOptions {
 	if mof, ok := i.(WithManifestOptions); ok {
 		return mof.GetManifestOptions()
-	}
-	if cmt, ok := i.(WithConfigMediaType); ok {
-		if mt := cmt.GetConfigMediaType(); mt != "" {
-			return ManifestOptions{ConfigMediaType: mt}
-		}
 	}
 	return ManifestOptions{}
 }
 
 // ManifestForLayers assembles an OCI manifest for the given model. The
 // config media type and optional artifact type are read from the model via
-// the WithManifestOptions interface (or the legacy WithConfigMediaType).
+// the WithManifestOptions interface.
 func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 	raw, err := i.RawConfigFile()
 	if err != nil {

@@ -7,14 +7,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/opencontainers/go-digest"
-
 	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/opencontainers/go-digest"
 )
 
 // BuildFormat specifies the output artifact format.
