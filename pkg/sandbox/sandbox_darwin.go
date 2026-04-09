@@ -26,10 +26,14 @@ const ConfigurationPython = `(version 1)
 ;;; Python backends use either a Unix socket or a TCP loopback port.
 ;;; Allow Unix socket paths that match the inference socket naming convention
 ;;; as well as TCP loopback binding/inbound for backends that use TCP.
+;;; Also allow Unix domain socket binding in the system temp directory
+;;; (/private/var/folders) which vllm-metal uses for internal ZMQ IPC sockets.
 (deny network*)
 (allow network-bind network-inbound
     (regex #"inference.*-[0-9]+\.sock$")
     (local tcp "localhost:*"))
+(allow network-bind
+    (regex #"^/private/var/folders/"))
 
 ;;; Deny access to the camera and microphone.
 (deny device*)
