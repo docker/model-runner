@@ -1054,6 +1054,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		opts := packageOptions{
 			ggufPath: absPath,
 			tag:      targetTag,
+			format:   "docker",
 		}
 
 		// Execute the package command using the helper function with test client
@@ -1089,6 +1090,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 			ggufPath:    absPath,
 			tag:         targetTag,
 			contextSize: 4096,
+			format:      "docker",
 		}
 
 		// Create a command for context
@@ -1121,6 +1123,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		opts := packageOptions{
 			ggufPath: absPath,
 			tag:      targetTag,
+			format:   "docker",
 		}
 
 		// Create a command for context
