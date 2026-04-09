@@ -269,7 +269,8 @@ func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextS
 
 	// Set context size if specified
 	if contextSize != nil {
-		pkg = pkg.WithContextSize(*contextSize)
+		pkg, err = pkg.WithContextSize(*contextSize)
+		require.NoError(t, err)
 	}
 
 	// Construct the full reference with the local registry host for pushing from test host

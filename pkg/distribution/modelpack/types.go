@@ -17,6 +17,8 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/opencontainers/go-digest"
+
+	specv1 "github.com/modelpack/model-spec/specs-go/v1"
 )
 
 const (
@@ -27,17 +29,35 @@ const (
 	MediaTypeWeightPrefix = "application/vnd.cncf.model.weight."
 
 	// MediaTypeModelConfigV1 is the CNCF model config v1 media type.
-	MediaTypeModelConfigV1 = "application/vnd.cncf.model.config.v1+json"
+	MediaTypeModelConfigV1 = specv1.MediaTypeModelConfig
 
-	// MediaTypeWeightGGUF is the CNCF ModelPack media type for GGUF weight layers.
+	// ArtifactTypeModelManifest is the CNCF model manifest artifact type.
+	// Required on the manifest when producing model-spec artifacts.
+	ArtifactTypeModelManifest = specv1.ArtifactTypeModelManifest
+
+	// MediaTypeWeightRaw is the CNCF model-spec media type for unarchived,
+	// uncompressed model weights. This is the type used by modctl and the
+	// official model-spec (v0.0.7+).
+	MediaTypeWeightRaw = specv1.MediaTypeModelWeightRaw
+
+	// MediaTypeWeightConfigRaw is the CNCF model-spec media type for
+	// unarchived, uncompressed weight config files (tokenizer.json,
+	// config.json, chat templates, etc.).
+	MediaTypeWeightConfigRaw = specv1.MediaTypeModelWeightConfigRaw
+
+	// MediaTypeDocRaw is the CNCF model-spec media type for unarchived,
+	// uncompressed documentation files (README.md, LICENSE, etc.).
+	MediaTypeDocRaw = specv1.MediaTypeModelDocRaw
+
+	// MediaTypeWeightGGUF is the CNCF ModelPack media type for GGUF weight
+	// layers. This is a DMR extension not in the official model-spec; kept
+	// for read-compatibility with artifacts produced by older DMR versions.
 	MediaTypeWeightGGUF = "application/vnd.cncf.model.weight.v1.gguf"
 
-	// MediaTypeWeightSafetensors is the CNCF ModelPack media type for safetensors weight layers.
+	// MediaTypeWeightSafetensors is the CNCF ModelPack media type for
+	// safetensors weight layers. This is a DMR extension not in the official
+	// model-spec; kept for read-compatibility with older DMR artifacts.
 	MediaTypeWeightSafetensors = "application/vnd.cncf.model.weight.v1.safetensors"
-
-	// MediaTypeWeightRaw is the CNCF model-spec media type for unarchived, uncompressed model weights.
-	// This is the actual type used by modctl and the official model-spec (v0.0.7+).
-	MediaTypeWeightRaw = "application/vnd.cncf.model.weight.v1.raw"
 )
 
 // IsModelPackWeightMediaType checks if the given media type is a CNCF ModelPack weight layer type.
@@ -266,4 +286,11 @@ func (m *Model) GetParameters() string {
 // GetQuantization returns the quantization method.
 func (m *Model) GetQuantization() string {
 	return m.Config.Quantization
+}
+
+// HashToDigest converts a hash string (in "algorithm:hex" form) to a
+// digest.Digest. This allows callers to pass oci.Hash.String() values
+// without importing the oci package from modelpack.
+func HashToDigest(hashStr string) digest.Digest {
+	return digest.Digest(hashStr)
 }

@@ -208,6 +208,8 @@ Packaging behavior:
 	c.Flags().StringVar(&opts.mmprojPath, "mmproj", "", "absolute path to multimodal projector file")
 	c.Flags().BoolVar(&opts.push, "push", false, "push to registry (if not set, the model is loaded into the Model Runner content store)")
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
+	c.Flags().StringVar(&opts.format, "format", "docker",
+		"output artifact format: \"docker\" (default) or \"cncf\" (CNCF ModelPack spec)")
 	return c
 }
 
@@ -222,21 +224,30 @@ type packageOptions struct {
 	mmprojPath       string
 	push             bool
 	tag              string
+	format           string // "docker" (default) or "cncf"
 }
 
-// builderInitResult contains the result of initializing a builder from various sources
+// builderInitResult contains the result of initializing a builder from
+// various sources.
 type builderInitResult struct {
 	builder     *builder.Builder
-	distClient  *distribution.Client // Only set when building from existing model
-	cleanupFunc func()               // Optional cleanup function for temporary files
+	distClient  *distribution.Client // Only set when building from existing model.
+	cleanupFunc func()               // Optional cleanup function for temporary files.
 }
 
-// initializeBuilder creates a package builder from GGUF, Safetensors, DDUF, or existing model
+// initializeBuilder creates a package builder from GGUF, Safetensors, DDUF,
+// or existing model.
 func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) (*builderInitResult, error) {
 	result := &builderInitResult{}
 
+	// Map the CLI format string to a BuildFormat constant.
+	buildFmt := builder.BuildFormatDocker
+	if opts.format == "cncf" {
+		buildFmt = builder.BuildFormatCNCF
+	}
+
 	if opts.fromModel != "" {
-		// Get the model store path
+		// Get the model store path.
 		userHomeDir, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("get user home directory: %w", err)
@@ -246,14 +257,14 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 			modelStorePath = envPath
 		}
 
-		// Create a distribution client to access the model store
+		// Create a distribution client to access the model store.
 		distClient, err := distribution.NewClient(distribution.WithStoreRootPath(modelStorePath))
 		if err != nil {
 			return nil, fmt.Errorf("create distribution client: %w", err)
 		}
 		result.distClient = distClient
 
-		// Package from existing model
+		// Package from existing model.
 		cmd.PrintErrf("Reading model from store: %q\n", opts.fromModel)
 
 		mdl, err := distClient.GetModel(opts.fromModel)
@@ -266,35 +277,36 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 			}
 		}
 
-		// Type assert to ModelArtifact - the Model from store implements both interfaces
+		// Type assert to ModelArtifact.
 		modelArtifact, ok := mdl.(types.ModelArtifact)
 		if !ok {
 			return nil, fmt.Errorf("model does not implement ModelArtifact interface")
 		}
 
 		cmd.PrintErrf("Creating builder from existing model\n")
-		result.builder, err = builder.FromModel(modelArtifact)
+		result.builder, err = builder.FromModel(modelArtifact, builder.WithFormat(buildFmt))
 		if err != nil {
 			return nil, fmt.Errorf("create builder from model: %w", err)
 		}
 	} else if opts.ggufPath != "" {
 		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
-		pkg, err := builder.FromPath(opts.ggufPath)
+		pkg, err := builder.FromPath(opts.ggufPath, builder.WithFormat(buildFmt))
 		if err != nil {
 			return nil, fmt.Errorf("add gguf file: %w", err)
 		}
 		result.builder = pkg
 	} else if opts.ddufPath != "" {
 		cmd.PrintErrf("Adding DDUF file from %q\n", opts.ddufPath)
-		pkg, err := builder.FromPath(opts.ddufPath)
+		pkg, err := builder.FromPath(opts.ddufPath, builder.WithFormat(buildFmt))
 		if err != nil {
 			return nil, fmt.Errorf("add dduf file: %w", err)
 		}
 		result.builder = pkg
 	} else if opts.safetensorsDir != "" {
-		// Safetensors model from directory — uses V0.2 layer-per-file packaging
+		// Safetensors model from directory — uses V0.2 layer-per-file packaging.
 		cmd.PrintErrf("Scanning directory %q for safetensors model...\n", opts.safetensorsDir)
-		pkg, err := builder.FromDirectory(opts.safetensorsDir)
+		pkg, err := builder.FromDirectory(opts.safetensorsDir,
+			builder.WithOutputFormat(buildFmt))
 		if err != nil {
 			return nil, fmt.Errorf("create safetensors model from directory: %w", err)
 		}
@@ -344,9 +356,17 @@ func fetchModelFromDaemon(ctx context.Context, cmd *cobra.Command, client *deskt
 }
 
 func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) error {
-	// Use daemon-side repackaging for simple config-only changes (no new layers)
+	// Validate format flag.
+	if opts.format != "docker" && opts.format != "cncf" {
+		return fmt.Errorf("invalid --format value %q: must be \"docker\" or \"cncf\"", opts.format)
+	}
+
+	// Use daemon-side repackaging for simple config-only changes (no new
+	// layers). Disabled for CNCF format because the daemon produces
+	// Docker-format artifacts.
 	canUseDaemonRepackage := opts.fromModel != "" &&
 		!opts.push &&
+		opts.format != "cncf" &&
 		len(opts.licensePaths) == 0 &&
 		opts.chatTemplatePath == "" &&
 		opts.mmprojPath == "" &&
@@ -408,7 +428,10 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 	// Set context size
 	if cmd.Flags().Changed("context-size") {
 		cmd.PrintErrf("Setting context size %d\n", opts.contextSize)
-		pkg = pkg.WithContextSize(int32(opts.contextSize))
+		pkg, err = pkg.WithContextSize(int32(opts.contextSize))
+		if err != nil {
+			return err
+		}
 	}
 
 	// Add license files

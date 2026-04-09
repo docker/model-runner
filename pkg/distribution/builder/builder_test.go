@@ -190,7 +190,10 @@ func TestWithMultimodalProjectorChaining(t *testing.T) {
 		t.Fatalf("Failed to add multimodal projector: %v", err)
 	}
 
-	b = b.WithContextSize(4096)
+	b, err = b.WithContextSize(4096)
+	if err != nil {
+		t.Fatalf("Failed to set context size: %v", err)
+	}
 
 	// Build the model
 	target := &fakeTarget{}
@@ -256,7 +259,10 @@ func TestFromModel(t *testing.T) {
 	}
 
 	// Set initial context size
-	initialBuilder = initialBuilder.WithContextSize(2048)
+	initialBuilder, err = initialBuilder.WithContextSize(2048)
+	if err != nil {
+		t.Fatalf("Failed to set context size: %v", err)
+	}
 
 	// Build the initial model
 	initialTarget := &fakeTarget{}
@@ -280,7 +286,10 @@ func TestFromModel(t *testing.T) {
 	}
 
 	// Step 3: Modify the context size to 4096
-	repackagedBuilder = repackagedBuilder.WithContextSize(4096)
+	repackagedBuilder, err = repackagedBuilder.WithContextSize(4096)
+	if err != nil {
+		t.Fatalf("Failed to set context size: %v", err)
+	}
 
 	// Step 4: Build the repackaged model
 	repackagedTarget := &fakeTarget{}

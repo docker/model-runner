@@ -22,6 +22,7 @@ require (
 	github.com/moby/moby/api v1.54.1
 	github.com/moby/moby/client v0.4.0
 	github.com/moby/term v0.5.2
+	github.com/modelpack/model-spec v0.0.7
 	github.com/muesli/termenv v0.16.0
 	github.com/nxadm/tail v1.4.11
 	github.com/olekukonko/tablewriter v1.1.4

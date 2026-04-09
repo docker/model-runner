@@ -8,10 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opencontainers/go-digest"
+
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -32,6 +35,9 @@ type DirectoryOptions struct {
 	// When set, it overrides the default behavior of using time.Now().
 	// This is useful for producing deterministic OCI digests.
 	Created *time.Time
+
+	// Format is the output artifact format. Defaults to BuildFormatDocker.
+	Format BuildFormat
 }
 
 // DirectoryOption is a functional option for configuring FromDirectory.
@@ -59,6 +65,13 @@ func WithExclusions(patterns ...string) DirectoryOption {
 func WithCreatedTime(t time.Time) DirectoryOption {
 	return func(opts *DirectoryOptions) {
 		opts.Created = &t
+	}
+}
+
+// WithOutputFormat sets the output artifact format for the directory builder.
+func WithOutputFormat(f BuildFormat) DirectoryOption {
+	return func(opts *DirectoryOptions) {
+		opts.Format = f
 	}
 }
 
@@ -232,7 +245,31 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 		created = time.Now()
 	}
 
-	// Build the model with V0.2 config (layer-per-file with annotations)
+	if options.Format == BuildFormatCNCF {
+		// Remap layer media types and convert config to CNCF format.
+		cncfLayers := make([]oci.Layer, len(layers))
+		cncfDiffIDs := make([]digest.Digest, len(diffIDs))
+		for i, l := range layers {
+			mt, err := l.MediaType()
+			if err != nil {
+				return nil, fmt.Errorf("get layer media type: %w", err)
+			}
+			fp := layerFilePath(l)
+			cncfLayers[i] = &remappedLayer{Layer: l, newMediaType: modelpack.MapLayerMediaType(mt, fp)}
+			cncfDiffIDs[i] = digest.Digest(diffIDs[i].String())
+		}
+		mp := modelpack.DockerConfigToModelPack(
+			config,
+			types.Descriptor{Created: &created},
+			cncfDiffIDs,
+		)
+		return &Builder{
+			model:        &partial.CNCFModel{ModelPackConfig: mp, LayerList: cncfLayers},
+			outputFormat: BuildFormatCNCF,
+		}, nil
+	}
+
+	// Build the Docker-format model with V0.2 config (layer-per-file with annotations).
 	mdl := &partial.BaseModel{
 		ModelConfigFile: types.ConfigFile{
 			Config: config,
@@ -249,7 +286,8 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 	}
 
 	return &Builder{
-		model: mdl,
+		model:        mdl,
+		outputFormat: BuildFormatDocker,
 	}, nil
 }
 
