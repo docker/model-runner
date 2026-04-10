@@ -54,7 +54,14 @@ func ClassifyLayer(dockerMT oci.MediaType, path string) LayerKind {
 		return classifyByPath(path)
 	}
 
-	// Safe default: treat as weight config.
+	// Default: treat unknown media types (without filepath hints) as weight
+	// config. This is intentional for the directory-based packaging flow
+	// where ambiguous files (tokenizer.json, config.json, etc.) are common
+	// and typically carry configuration rather than model weights. All known
+	// weight media types — both Docker (MediaTypeGGUF, MediaTypeSafetensors,
+	// etc.) and CNCF (MediaTypeWeightRaw, etc.) — are handled explicitly in
+	// the switch above, so this fallback only triggers for truly unrecognized
+	// media types.
 	return KindWeightConfig
 }
 

@@ -68,6 +68,8 @@ func WithCreatedTime(t time.Time) DirectoryOption {
 }
 
 // WithOutputFormat sets the output artifact format for the directory builder.
+// Defaults to BuildFormatDocker if not specified.
+// This is the DirectoryOption equivalent of WithFormat (BuildOption).
 func WithOutputFormat(f BuildFormat) DirectoryOption {
 	return func(opts *DirectoryOptions) {
 		opts.Format = f

@@ -1146,6 +1146,34 @@ func TestIntegration_PackageModel(t *testing.T) {
 		require.NoError(t, err, "Failed to remove model")
 	})
 
+	// Test case 4: Package with CNCF format
+	t.Run("package GGUF with CNCF format", func(t *testing.T) {
+		targetTag := "ai/packaged-cncf:latest"
+
+		// Create package options with CNCF format
+		opts := packageOptions{
+			ggufPath: absPath,
+			tag:      targetTag,
+			format:   "cncf",
+		}
+
+		// Execute the package command using the helper function with test client
+		t.Logf("Packaging GGUF file as CNCF format %s", targetTag)
+		err := packageModel(env.ctx, newPackagedCmd(), env.client, opts)
+		require.NoError(t, err, "Failed to package GGUF model with CNCF format")
+
+		// Verify the model was loaded and tagged
+		model, err := env.client.Inspect(targetTag, false)
+		require.NoError(t, err, "Failed to inspect CNCF packaged model")
+		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
+
+		t.Logf("✓ Successfully packaged model with CNCF format: %s (ID: %s)", targetTag, model.ID[7:19])
+
+		// Cleanup
+		err = removeModel(env.client, model.ID, true)
+		require.NoError(t, err, "Failed to remove model")
+	})
+
 	// Verify all models are cleaned up
 	models, err = listModels(false, env.client, true, false, "")
 	require.NoError(t, err)
