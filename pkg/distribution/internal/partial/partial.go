@@ -357,6 +357,10 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 		return nil, fmt.Errorf("get layers: %w", err)
 	}
 
+	type descriptorProvider interface {
+		GetDescriptor() oci.Descriptor
+	}
+
 	var layers []oci.Descriptor
 	for _, l := range ls {
 		// Check if this is our Layer type which embeds the full descriptor
@@ -364,6 +368,10 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 		if layer, ok := l.(*Layer); ok {
 			// Use the embedded descriptor directly to preserve annotations.
 			layers = append(layers, layer.Descriptor)
+		} else if dp, ok := l.(descriptorProvider); ok {
+			// Use GetDescriptor() to preserve annotations from wrapper
+			// types like remappedLayer.
+			layers = append(layers, dp.GetDescriptor())
 		} else {
 			// Fall back to computing descriptor for other layer types.
 			mt, err := l.MediaType()

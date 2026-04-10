@@ -235,11 +235,13 @@ func TestIsCNCFModel(t *testing.T) {
 	tests := []struct {
 		name            string
 		configMediaType oci.MediaType
+		artifactType    string
 		expected        bool
 	}{
 		{
 			name:            "CNCF ModelPack config V1",
 			configMediaType: modelpack.MediaTypeModelConfigV1,
+			artifactType:    modelpack.ArtifactTypeModelManifest,
 			expected:        true,
 		},
 		{
@@ -256,9 +258,10 @@ func TestIsCNCFModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a minimal artifact with the given config media type
+			// Create a minimal artifact with the given config media type and artifact type
 			artifact := &testArtifactWithConfigMediaType{
 				configMediaType: tt.configMediaType,
+				artifactType:    tt.artifactType,
 			}
 			result := isCNCFModel(artifact)
 			if result != tt.expected {
@@ -271,10 +274,12 @@ func TestIsCNCFModel(t *testing.T) {
 // testArtifactWithConfigMediaType is a minimal ModelArtifact for testing isCNCFModel/isV02Model.
 type testArtifactWithConfigMediaType struct {
 	configMediaType oci.MediaType
+	artifactType    string
 }
 
 func (a *testArtifactWithConfigMediaType) Manifest() (*oci.Manifest, error) {
 	return &oci.Manifest{
+		ArtifactType: a.artifactType,
 		Config: oci.Descriptor{
 			MediaType: a.configMediaType,
 		},

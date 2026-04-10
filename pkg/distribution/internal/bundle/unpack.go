@@ -40,6 +40,8 @@ func isV02Model(model types.ModelArtifact) bool {
 }
 
 // isCNCFModel checks if the model was packaged using the CNCF ModelPack format.
+// Detection uses the manifest's artifactType field, which is required by the
+// CNCF model-spec ("application/vnd.cncf.model.manifest.v1+json").
 // CNCF ModelPack uses a layer-per-file approach with filepath annotations,
 // similar to V0.2, so it can be unpacked using UnpackFromLayers.
 func isCNCFModel(model types.ModelArtifact) bool {
@@ -47,7 +49,7 @@ func isCNCFModel(model types.ModelArtifact) bool {
 	if err != nil {
 		return false
 	}
-	return manifest.Config.MediaType == modelpack.MediaTypeModelConfigV1
+	return manifest.ArtifactType == modelpack.ArtifactTypeModelManifest
 }
 
 // unpackLegacy is the original V0.1 unpacking logic that uses model.GGUFPaths(), model.SafetensorsPaths(), etc.
