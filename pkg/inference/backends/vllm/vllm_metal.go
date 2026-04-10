@@ -222,6 +222,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),
+		Env:             []string{"VLLM_HOST_IP=127.0.0.1"},
 	})
 }
 

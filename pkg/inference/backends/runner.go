@@ -42,6 +42,10 @@ type RunnerConfig struct {
 	// ErrorTransformer is an optional function to transform error output
 	// into a more user-friendly message. If nil, the raw output is used.
 	ErrorTransformer ErrorTransformer
+	// Env is an optional list of extra environment variables for the backend
+	// process, each in "KEY=VALUE" form. These are appended to the current
+	// process environment. If nil, the backend inherits the parent env as-is.
+	Env []string
 }
 
 // Logger interface for backend logging
@@ -88,6 +92,9 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 			}
 			command.Stdout = config.ServerLogWriter
 			command.Stderr = out
+			if len(config.Env) > 0 {
+				command.Env = append(os.Environ(), config.Env...)
+			}
 		},
 		config.SandboxPath,
 		config.BinaryPath,
