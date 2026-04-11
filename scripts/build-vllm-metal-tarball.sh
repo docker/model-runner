@@ -20,7 +20,8 @@ WORK_DIR=$(mktemp -d)
 # Convert tarball path to absolute before we cd elsewhere
 TARBALL="$(cd "$(dirname "$TARBALL_ARG")" && pwd)/$(basename "$TARBALL_ARG")"
 
-VLLM_VERSION="0.17.1"
+VLLM_VERSION=$(grep '^VLLM_UPSTREAM_VERSION=' "$(cd "$(dirname "$0")/.." && pwd)/.versions" | cut -d= -f2 | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+
 # Extract wheel version from release tag (e.g., v0.1.0-20260126-121650 -> 0.1.0)
 VLLM_METAL_WHEEL_VERSION=$(echo "$VLLM_METAL_RELEASE" | sed 's/^v//' | cut -d'-' -f1)
 VLLM_METAL_WHEEL_URL="https://github.com/vllm-project/vllm-metal/releases/download/${VLLM_METAL_RELEASE}/vllm_metal-${VLLM_METAL_WHEEL_VERSION}-cp312-cp312-macosx_11_0_arm64.whl"
@@ -57,7 +58,10 @@ curl -fsSL -O "https://github.com/vllm-project/vllm/releases/download/v$VLLM_VER
 tar xf "vllm-$VLLM_VERSION.tar.gz"
 cd "vllm-$VLLM_VERSION"
 uv pip install --python "$PYTHON_DIR/bin/python3" --system -r requirements/cpu.txt --index-strategy unsafe-best-match
-uv pip install --python "$PYTHON_DIR/bin/python3" --system .
+# TODO: remove -Wno-parentheses once vllm-project/vllm#38801 is in a release and VLLM_VERSION is bumped past it.
+# Apple Clang 21 (Xcode 26+) promotes -Wparentheses to an error for chained comparisons like `0 < M <= 8` in
+# vllm's CPU attention headers. Clang 17 (Xcode 16.x, used in CI) only warns.
+CXXFLAGS="-Wno-parentheses" uv pip install --python "$PYTHON_DIR/bin/python3" --system .
 cd "$WORK_DIR"
 rm -rf "vllm-$VLLM_VERSION" "vllm-$VLLM_VERSION.tar.gz"
 

@@ -37,7 +37,7 @@ RUN echo "-B build \
     -GNinja \
     -S ." > cmake-flags
 RUN cmake $(cat cmake-flags)
-RUN cmake --build build --config Release
+RUN cmake --build build --config Release -j$(nproc --ignore=2)
 RUN cmake --install build --config Release --prefix install
 
 RUN rm install/bin/*.py

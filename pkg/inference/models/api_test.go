@@ -312,6 +312,172 @@ func TestModelUnmarshalJSONInvalidData(t *testing.T) {
 	}
 }
 
+// mockModel implements types.Model for testing ToOpenAI.
+type mockModel struct {
+	id     string
+	tags   []string
+	config types.ModelConfig
+	desc   types.Descriptor
+}
+
+func (m *mockModel) ID() (string, error)                   { return m.id, nil }
+func (m *mockModel) Tags() []string                        { return m.tags }
+func (m *mockModel) Config() (types.ModelConfig, error)    { return m.config, nil }
+func (m *mockModel) Descriptor() (types.Descriptor, error) { return m.desc, nil }
+func (m *mockModel) GGUFPaths() ([]string, error)          { return nil, nil }
+func (m *mockModel) SafetensorsPaths() ([]string, error)   { return nil, nil }
+func (m *mockModel) DDUFPaths() ([]string, error)          { return nil, nil }
+func (m *mockModel) ConfigArchivePath() (string, error)    { return "", nil }
+func (m *mockModel) MMPROJPath() (string, error)           { return "", nil }
+func (m *mockModel) ChatTemplatePath() (string, error)     { return "", nil }
+
+func TestToOpenAIWithFullConfig(t *testing.T) {
+	m := &mockModel{
+		id:   "sha256:abc123",
+		tags: []string{"ai/smollm2:latest"},
+		config: &types.Config{
+			Format:       "gguf",
+			Quantization: "Q4_K_M",
+			Parameters:   "1.7B",
+			Architecture: "llama",
+			Size:         "1.7B",
+			ContextSize:  int32Ptr(8192),
+		},
+		desc: types.Descriptor{},
+	}
+
+	result, err := ToOpenAI(m)
+	require.NoError(t, err)
+
+	assert.Equal(t, "ai/smollm2:latest", result.ID)
+	assert.Equal(t, "model", result.Object)
+	assert.Equal(t, "docker", result.OwnedBy)
+
+	require.NotNil(t, result.DMR)
+	require.NotNil(t, result.DMR.ContextWindow)
+	assert.Equal(t, int32(8192), *result.DMR.ContextWindow)
+	assert.Equal(t, "llama", result.DMR.Architecture)
+	assert.Equal(t, "1.7B", result.DMR.Parameters)
+	assert.Equal(t, "Q4_K_M", result.DMR.Quantization)
+	assert.Equal(t, "1.7B", result.DMR.Size)
+}
+
+func TestToOpenAIWithNilConfig(t *testing.T) {
+	m := &mockModel{
+		id:   "sha256:abc123",
+		tags: []string{"ai/model:latest"},
+		desc: types.Descriptor{},
+	}
+
+	result, err := ToOpenAI(m)
+	require.NoError(t, err)
+
+	assert.Equal(t, "ai/model:latest", result.ID)
+	assert.Equal(t, "model", result.Object)
+	assert.Equal(t, "docker", result.OwnedBy)
+	assert.Nil(t, result.DMR)
+}
+
+func TestToOpenAIWithoutTags(t *testing.T) {
+	m := &mockModel{
+		id:   "sha256:abc123",
+		desc: types.Descriptor{},
+		config: &types.Config{
+			Architecture: "mistral",
+		},
+	}
+
+	result, err := ToOpenAI(m)
+	require.NoError(t, err)
+
+	assert.Equal(t, "sha256:abc123", result.ID)
+	require.NotNil(t, result.DMR)
+	assert.Equal(t, "mistral", result.DMR.Architecture)
+}
+
+func TestToOpenAIDMROmittedWhenNilConfig(t *testing.T) {
+	m := &mockModel{
+		id:   "sha256:abc123",
+		tags: []string{"ai/model:latest"},
+		desc: types.Descriptor{},
+	}
+
+	result, err := ToOpenAI(m)
+	require.NoError(t, err)
+
+	data, err := json.Marshal(result)
+	require.NoError(t, err)
+
+	var raw map[string]interface{}
+	err = json.Unmarshal(data, &raw)
+	require.NoError(t, err)
+
+	_, hasDMR := raw["dmr"]
+	assert.False(t, hasDMR, "dmr field should be omitted when config is nil")
+}
+
+func TestToOpenAIContextWindowOmittedWhenNil(t *testing.T) {
+	m := &mockModel{
+		id:   "sha256:abc123",
+		tags: []string{"ai/model:latest"},
+		desc: types.Descriptor{},
+		config: &types.Config{
+			Architecture: "llama",
+		},
+	}
+
+	result, err := ToOpenAI(m)
+	require.NoError(t, err)
+
+	require.NotNil(t, result.DMR)
+	assert.Nil(t, result.DMR.ContextWindow)
+
+	data, err := json.Marshal(result)
+	require.NoError(t, err)
+
+	var raw map[string]interface{}
+	err = json.Unmarshal(data, &raw)
+	require.NoError(t, err)
+
+	dmr, ok := raw["dmr"].(map[string]interface{})
+	require.True(t, ok)
+	_, hasCtxWindow := dmr["context_window"]
+	assert.False(t, hasCtxWindow, "context_window should be omitted when nil")
+}
+
+func TestToOpenAIList(t *testing.T) {
+	models := []types.Model{
+		&mockModel{
+			id:   "sha256:aaa",
+			tags: []string{"ai/model1:latest"},
+			desc: types.Descriptor{},
+			config: &types.Config{
+				Architecture: "llama",
+				Parameters:   "7B",
+			},
+		},
+		&mockModel{
+			id:   "sha256:bbb",
+			tags: []string{"ai/model2:latest"},
+			desc: types.Descriptor{},
+		},
+	}
+
+	result, err := ToOpenAIList(models)
+	require.NoError(t, err)
+
+	assert.Equal(t, "list", result.Object)
+	require.Len(t, result.Data, 2)
+
+	assert.Equal(t, "ai/model1:latest", result.Data[0].ID)
+	require.NotNil(t, result.Data[0].DMR)
+	assert.Equal(t, "llama", result.Data[0].DMR.Architecture)
+	assert.Equal(t, "7B", result.Data[0].DMR.Parameters)
+
+	assert.Equal(t, "ai/model2:latest", result.Data[1].ID)
+	assert.Nil(t, result.Data[1].DMR)
+}
+
 // Helper function to create int32 pointers
 func int32Ptr(i int32) *int32 {
 	return &i

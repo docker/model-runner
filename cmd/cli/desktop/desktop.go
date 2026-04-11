@@ -24,10 +24,23 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+const (
+	// maxToolCallIterations caps the number of agentic tool-call rounds to
+	// prevent infinite loops when a model repeatedly requests tool calls.
+	maxToolCallIterations = 10
+)
+
 var (
 	ErrNotFound           = errors.New("model not found")
 	ErrServiceUnavailable = errors.New("service unavailable")
 )
+
+// ClientTool is a tool that can be registered with the chat client.
+type ClientTool interface {
+	Name() string
+	Schema() Tool
+	Execute(ctx context.Context, args map[string]any) (string, error)
+}
 
 type otelErrorSilencer struct{}
 
@@ -131,10 +144,29 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pulling %s failed with status %s: %s", model, resp.Status, string(body))
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("failed to read response body: %v", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			var err error
+			if resp.StatusCode == http.StatusUnprocessableEntity {
+				// 422 means the model uses a config type this client does not
+				// support. Reattach the sentinel so callers can use errors.Is.
+				err = fmt.Errorf("pulling %s failed with status %s: %w: %s",
+					model, resp.Status, distribution.ErrUnsupportedMediaType, bodyStr)
+			} else {
+				err = fmt.Errorf("pulling %s failed with status %s: %s",
+					model, resp.Status, bodyStr)
+			}
+			// Only retry on gateway/proxy errors (502, 503, 504).
+			// Do not retry 500 (usually deterministic server errors) or
+			// 4xx (client errors including 422 for unsupported media type).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 
@@ -222,7 +254,7 @@ func (c *Client) withRetries(
 		}
 	}
 
-	return "", progressShown, fmt.Errorf("failed to %s after %d retries: %w", operationName, maxRetries, lastErr)
+	return "", progressShown, fmt.Errorf("%s failed after %d retries: %w", operationName, maxRetries, lastErr)
 }
 
 func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, bool, error) {
@@ -259,10 +291,19 @@ func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, b
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, string(body))
-			// Only retry on server errors (5xx), not client errors (4xx)
-			shouldRetry := resp.StatusCode >= 500 && resp.StatusCode < 600
+			body, readErr := io.ReadAll(resp.Body)
+			var bodyStr string
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("(failed to read response body: %v)", readErr)
+			} else {
+				bodyStr = strings.TrimSpace(string(body))
+			}
+			err := fmt.Errorf("pushing %s failed with status %s: %s", model, resp.Status, bodyStr)
+			// Only retry on gateway/proxy errors. Do not retry plain 500
+			// (usually deterministic server errors) or 4xx (client errors).
+			shouldRetry := resp.StatusCode == http.StatusBadGateway ||
+				resp.StatusCode == http.StatusServiceUnavailable ||
+				resp.StatusCode == http.StatusGatewayTimeout
 			return "", false, err, shouldRetry
 		}
 
@@ -368,6 +409,13 @@ func (c *Client) Chat(model, prompt string, imageURLs []string, outputFunc func(
 	return c.ChatWithContext(context.Background(), model, prompt, imageURLs, outputFunc, shouldUseMarkdown)
 }
 
+// accumulatedToolCall collects streamed tool call fragments into a complete call.
+type accumulatedToolCall struct {
+	id        string
+	name      string
+	arguments strings.Builder
+}
+
 // Preload loads a model into memory without running inference.
 // The model stays loaded for the idle timeout period.
 func (c *Client) Preload(ctx context.Context, model string) error {
@@ -409,7 +457,9 @@ func (c *Client) Preload(ctx context.Context, model string) error {
 
 // ChatWithMessagesContext performs a chat request with conversation history and returns the assistant's response.
 // This allows maintaining conversation context across multiple exchanges.
-func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conversationHistory []OpenAIChatMessage, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool) (string, error) {
+// When tools are provided, the function implements an agentic loop: if the model requests a tool call,
+// the tool is executed and the result is sent back until the model produces a final response.
+func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conversationHistory []OpenAIChatMessage, prompt string, imageURLs []string, outputFunc func(string), shouldUseMarkdown bool, tools ...ClientTool) (string, error) {
 	// Build the current user message content - either simple string or multimodal array
 	var messageContent interface{}
 	if len(imageURLs) > 0 {
@@ -448,34 +498,21 @@ func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conv
 		Content: messageContent,
 	})
 
-	reqBody := OpenAIChatRequest{
-		Model:    model,
-		Messages: messages,
-		Stream:   true,
+	// initialMessages captures the messages before any tool calls so we can
+	// fall back to them if the model's chat template doesn't support tool roles.
+	initialMessages := messages
+
+	// Build tool schemas and lookup map
+	var toolSchemas []Tool
+	toolMap := make(map[string]ClientTool, len(tools))
+	for _, t := range tools {
+		toolSchemas = append(toolSchemas, t.Schema())
+		toolMap[t.Name()] = t
 	}
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("error marshaling request: %w", err)
-	}
-
-	completionsPath := c.modelRunner.OpenAIPathPrefix() + "/chat/completions"
-
-	resp, err := c.doRequestWithAuthContext(
-		ctx,
-		http.MethodPost,
-		completionsPath,
-		bytes.NewReader(jsonData),
-	)
-	if err != nil {
-		return "", c.handleQueryError(err, completionsPath)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("error response: status=%d body=%s", resp.StatusCode, body)
-	}
+	// toolsSupported is cleared if the model returns a Jinja template error,
+	// indicating its chat template doesn't support tool calling.
+	toolsSupported := len(toolSchemas) > 0
 
 	type chatPrinterState int
 	const (
@@ -484,162 +521,324 @@ func (c *Client) ChatWithMessagesContext(ctx context.Context, model string, conv
 		chatPrinterContent
 	)
 
-	printerState := chatPrinterNone
 	reasoningFmt := color.New().Add(color.Italic)
 	if !shouldUseMarkdown {
 		reasoningFmt.DisableColor()
 	}
 
-	var assistantResponse strings.Builder
 	var finalUsage *struct {
 		CompletionTokens int `json:"completion_tokens"`
 		PromptTokens     int `json:"prompt_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	}
 
-	// Use a buffered reader so we can consume server-sent progress
-	// lines (e.g. "Installing vllm-metal backend...") that arrive
-	// before the actual SSE or JSON inference response.
-	br := bufio.NewReader(resp.Body)
+	completionsPath := c.modelRunner.OpenAIPathPrefix() + "/chat/completions"
 
-	// Consume any plain-text progress lines that precede the real
-	// response. We peek ahead: if the next non-empty content starts
-	// with '{' (JSON) or "data:" / ":" (SSE), the progress section
-	// is over and we fall through to normal processing.
+	var assistantResponse strings.Builder
+
+	// Agentic loop: iterate until the model produces a stop response (no more tool calls).
+	// toolCallIterations counts rounds where the model requested tool calls; it is capped
+	// at maxToolCallIterations to prevent infinite loops with poorly-behaved models.
+	toolCallIterations := 0
 	for {
-		peek, err := br.Peek(1)
+		reqBody := OpenAIChatRequest{
+			Model:    model,
+			Messages: messages,
+			Stream:   true,
+			Tools:    toolSchemas,
+		}
+
+		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
-			break
+			return assistantResponse.String(), fmt.Errorf("error marshaling request: %w", err)
 		}
-		// JSON object or SSE stream — stop consuming progress lines.
-		if peek[0] == '{' || peek[0] == ':' {
-			break
-		}
-		line, err := br.ReadString('\n')
-		if err != nil && line == "" {
-			break
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			continue
-		}
-		// SSE data line — stop, let the normal SSE parser handle it.
-		if strings.HasPrefix(line, "data:") {
-			// Put the line back by chaining a reader with the rest.
-			br = bufio.NewReader(io.MultiReader(
-				strings.NewReader(line+"\n"),
-				br,
-			))
-			break
-		}
-		// Progress message — print to stderr.
-		fmt.Fprintln(os.Stderr, line)
-	}
 
-	// Detect streaming vs non-streaming response. Because server-sent
-	// progress lines may have been flushed before the Content-Type was
-	// set, we also peek at the body content to detect SSE.
-	isStreaming := strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")
-	if !isStreaming {
-		if peek, err := br.Peek(5); err == nil {
-			isStreaming = strings.HasPrefix(string(peek), "data:")
-		}
-	}
-
-	if !isStreaming {
-		// Non-streaming JSON response
-		body, err := io.ReadAll(br)
+		resp, err := c.doRequestWithAuthContext(
+			ctx,
+			http.MethodPost,
+			completionsPath,
+			bytes.NewReader(jsonData),
+		)
 		if err != nil {
-			return assistantResponse.String(), fmt.Errorf("error reading response body: %w", err)
+			return assistantResponse.String(), c.handleQueryError(err, completionsPath)
 		}
 
-		var nonStreamResp OpenAIChatResponse
-		if err := json.Unmarshal(body, &nonStreamResp); err != nil {
-			return assistantResponse.String(), fmt.Errorf("error parsing response: %w", err)
-		}
-
-		// Extract content from non-streaming response
-		if len(nonStreamResp.Choices) > 0 && nonStreamResp.Choices[0].Message.Content != "" {
-			content := nonStreamResp.Choices[0].Message.Content
-			outputFunc(content)
-			assistantResponse.WriteString(content)
-		}
-
-		if nonStreamResp.Usage != nil {
-			finalUsage = nonStreamResp.Usage
-		}
-	} else {
-		// SSE streaming response - process line by line
-		scanner := bufio.NewScanner(br)
-
-		for scanner.Scan() {
-			// Check if context was cancelled
-			select {
-			case <-ctx.Done():
-				return assistantResponse.String(), ctx.Err()
-			default:
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			// If the model doesn't support tool calling (e.g., its chat template throws a
+			// Jinja exception when tools are present), retry the request without tools.
+			// Only do this before any tool calls have been executed to avoid corrupting
+			// the message history.
+			// If the model's chat template doesn't support tool calling (Jinja exception),
+			// fall back to retrying with the original messages and no tools.
+			// This handles both cases:
+			//   - Error before any tool calls: the tools parameter in the request itself
+			//     breaks the template (e.g. injects an incompatible system message).
+			//   - Error after tool calls: the tool/assistant(tool_calls) messages in the
+			//     history use roles the template doesn't understand.
+			// In both cases we reset to the initial user messages and disable tools so the
+			// model can answer from its training data.
+			//
+			// Note: This detection relies on string matching because the model runner does
+			// not provide a structured error code for template incompatibility. The check
+			// looks for "Jinja" (the templating engine used by many models) or
+			// "template" in the error body. If this proves too brittle in practice,
+			// consider adding a specific error code or flag to the model runner API.
+			if toolsSupported && isTemplateIncompatibleError(body) {
+				toolSchemas = nil
+				toolMap = nil
+				toolsSupported = false
+				messages = initialMessages
+				assistantResponse.Reset()
+				continue
 			}
+			return assistantResponse.String(), fmt.Errorf("error response: status=%d body=%s", resp.StatusCode, body)
+		}
 
-			line := scanner.Text()
+		printerState := chatPrinterNone
+
+		// Accumulated tool calls for this iteration, keyed by index.
+		pendingToolCalls := make(map[int]*accumulatedToolCall)
+		var finishReason string
+
+		// Use a buffered reader so we can consume server-sent progress
+		// lines (e.g. "Installing vllm-metal backend...") that arrive
+		// before the actual SSE or JSON inference response.
+		br := bufio.NewReader(resp.Body)
+
+		// Consume any plain-text progress lines that precede the real
+		// response. We peek ahead: if the next non-empty content starts
+		// with '{' (JSON) or "data:" / ":" (SSE), the progress section
+		// is over and we fall through to normal processing.
+		for {
+			peek, err := br.Peek(1)
+			if err != nil {
+				break
+			}
+			// JSON object or SSE stream — stop consuming progress lines.
+			if peek[0] == '{' || peek[0] == ':' {
+				break
+			}
+			line, err := br.ReadString('\n')
+			if err != nil && line == "" {
+				break
+			}
+			line = strings.TrimRight(line, "\r\n")
 			if line == "" {
 				continue
 			}
-
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-
-			data := strings.TrimPrefix(line, "data: ")
-
-			if data == "[DONE]" {
+			// SSE data line — stop, let the normal SSE parser handle it.
+			if strings.HasPrefix(line, "data:") {
+				// Put the line back by chaining a reader with the rest.
+				br = bufio.NewReader(io.MultiReader(
+					strings.NewReader(line+"\n"),
+					br,
+				))
 				break
 			}
+			// Progress message — print to stderr.
+			fmt.Fprintln(os.Stderr, line)
+		}
 
-			var streamResp OpenAIChatResponse
-			if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
-				return assistantResponse.String(), fmt.Errorf("error parsing stream response: %w", err)
+		// Detect streaming vs non-streaming response. Because server-sent
+		// progress lines may have been flushed before the Content-Type was
+		// set, we also peek at the body content to detect SSE.
+		isStreaming := strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")
+		if !isStreaming {
+			if peek, err := br.Peek(5); err == nil {
+				isStreaming = strings.HasPrefix(string(peek), "data:")
+			}
+		}
+
+		if !isStreaming {
+			// Non-streaming JSON response
+			body, err := io.ReadAll(br)
+			resp.Body.Close()
+			if err != nil {
+				return assistantResponse.String(), fmt.Errorf("error reading response body: %w", err)
 			}
 
-			if streamResp.Usage != nil {
-				finalUsage = streamResp.Usage
+			var nonStreamResp OpenAIChatResponse
+			if err := json.Unmarshal(body, &nonStreamResp); err != nil {
+				return assistantResponse.String(), fmt.Errorf("error parsing response: %w", err)
 			}
 
-			if len(streamResp.Choices) > 0 {
-				if streamResp.Choices[0].Delta.ReasoningContent != "" {
-					chunk := streamResp.Choices[0].Delta.ReasoningContent
-					if printerState == chatPrinterContent {
-						outputFunc("\n\n")
+			// Extract content from non-streaming response
+			if len(nonStreamResp.Choices) > 0 {
+				if nonStreamResp.Choices[0].Message.Content != "" {
+					content := nonStreamResp.Choices[0].Message.Content
+					outputFunc(content)
+					assistantResponse.WriteString(content)
+				}
+				finishReason = nonStreamResp.Choices[0].FinishReason
+				for _, tc := range nonStreamResp.Choices[0].Message.ToolCalls {
+					atc := &accumulatedToolCall{id: tc.ID, name: tc.Function.Name}
+					atc.arguments.WriteString(tc.Function.Arguments)
+					pendingToolCalls[tc.Index] = atc
+				}
+			}
+
+			if nonStreamResp.Usage != nil {
+				finalUsage = nonStreamResp.Usage
+			}
+		} else {
+			// SSE streaming response - process line by line
+			scanner := bufio.NewScanner(br)
+
+			for scanner.Scan() {
+				// Check if context was cancelled
+				select {
+				case <-ctx.Done():
+					resp.Body.Close()
+					return assistantResponse.String(), ctx.Err()
+				default:
+				}
+
+				line := scanner.Text()
+				if line == "" {
+					continue
+				}
+
+				if !strings.HasPrefix(line, "data: ") {
+					continue
+				}
+
+				data := strings.TrimPrefix(line, "data: ")
+
+				if data == "[DONE]" {
+					break
+				}
+
+				var streamResp OpenAIChatResponse
+				if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
+					resp.Body.Close()
+					return assistantResponse.String(), fmt.Errorf("error parsing stream response: %w", err)
+				}
+
+				if streamResp.Usage != nil {
+					finalUsage = streamResp.Usage
+				}
+
+				if len(streamResp.Choices) > 0 {
+					choice := streamResp.Choices[0]
+
+					if choice.FinishReason != "" {
+						finishReason = choice.FinishReason
 					}
-					if printerState != chatPrinterReasoning {
-						const thinkingHeader = "Thinking:\n"
+
+					// Accumulate tool call fragments.
+					for _, tc := range choice.Delta.ToolCalls {
+						atc, ok := pendingToolCalls[tc.Index]
+						if !ok {
+							atc = &accumulatedToolCall{}
+							pendingToolCalls[tc.Index] = atc
+						}
+						if tc.ID != "" {
+							atc.id = tc.ID
+						}
+						if tc.Function.Name != "" {
+							atc.name = tc.Function.Name
+						}
+						atc.arguments.WriteString(tc.Function.Arguments)
+					}
+
+					if choice.Delta.ReasoningContent != "" {
+						chunk := choice.Delta.ReasoningContent
+						if printerState == chatPrinterContent {
+							outputFunc("\n\n")
+						}
+						if printerState != chatPrinterReasoning {
+							const thinkingHeader = "Thinking:\n"
+							if reasoningFmt != nil {
+								reasoningFmt.Print(thinkingHeader)
+							} else {
+								outputFunc(thinkingHeader)
+							}
+						}
+						printerState = chatPrinterReasoning
 						if reasoningFmt != nil {
-							reasoningFmt.Print(thinkingHeader)
+							reasoningFmt.Print(chunk)
 						} else {
-							outputFunc(thinkingHeader)
+							outputFunc(chunk)
 						}
 					}
-					printerState = chatPrinterReasoning
-					if reasoningFmt != nil {
-						reasoningFmt.Print(chunk)
-					} else {
+					if choice.Delta.Content != "" {
+						chunk := choice.Delta.Content
+						if printerState == chatPrinterReasoning {
+							outputFunc("\n\n--\n\n")
+						}
+						printerState = chatPrinterContent
 						outputFunc(chunk)
+						assistantResponse.WriteString(chunk)
 					}
 				}
-				if streamResp.Choices[0].Delta.Content != "" {
-					chunk := streamResp.Choices[0].Delta.Content
-					if printerState == chatPrinterReasoning {
-						outputFunc("\n\n--\n\n")
-					}
-					printerState = chatPrinterContent
-					outputFunc(chunk)
-					assistantResponse.WriteString(chunk)
-				}
+			}
+
+			resp.Body.Close()
+			if err := scanner.Err(); err != nil {
+				return assistantResponse.String(), fmt.Errorf("error reading response stream: %w", err)
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
-			return assistantResponse.String(), fmt.Errorf("error reading response stream: %w", err)
+		// If the model requested tool calls, execute them and loop.
+		if finishReason == "tool_calls" && len(pendingToolCalls) > 0 {
+			toolCallIterations++
+			if toolCallIterations >= maxToolCallIterations {
+				return assistantResponse.String(), fmt.Errorf("tool call loop exceeded %d iterations", maxToolCallIterations)
+			}
+			// Build assistant message with the tool calls.
+			toolCallSlice := make([]ToolCall, 0, len(pendingToolCalls))
+			for idx := 0; idx < len(pendingToolCalls); idx++ {
+				atc, ok := pendingToolCalls[idx]
+				if !ok {
+					continue
+				}
+				toolCallSlice = append(toolCallSlice, ToolCall{
+					ID:   atc.id,
+					Type: "function",
+					Function: ToolCallFunction{
+						Name:      atc.name,
+						Arguments: atc.arguments.String(),
+					},
+				})
+			}
+			messages = append(messages, OpenAIChatMessage{
+				Role:      "assistant",
+				ToolCalls: toolCallSlice,
+			})
+
+			// Execute each tool and append results.
+			for _, tc := range toolCallSlice {
+				var result string
+				if tool, ok := toolMap[tc.Function.Name]; ok {
+					var args map[string]any
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+						result = fmt.Sprintf("error parsing tool arguments: %v", err)
+					} else {
+						fmt.Fprintf(os.Stderr, "[tool] calling %s with args: %s\n", tc.Function.Name, tc.Function.Arguments)
+						var execErr error
+						result, execErr = tool.Execute(ctx, args)
+						if execErr != nil {
+							result = fmt.Sprintf("tool execution error: %v", execErr)
+						}
+					}
+				} else {
+					result = fmt.Sprintf("unknown tool: %s", tc.Function.Name)
+				}
+				messages = append(messages, OpenAIChatMessage{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    result,
+				})
+			}
+			// Reset for next iteration
+			assistantResponse.Reset()
+			continue
 		}
+
+		// Normal stop — we're done.
+		break
 	}
 
 	if finalUsage != nil {
@@ -1016,6 +1215,38 @@ func (c *Client) Purge() error {
 	return nil
 }
 
+// Logs streams the DMR log files from the server's /logs endpoint
+// into out. follow enables real-time tailing; noEngines excludes the
+// engine log.
+//
+// Returns an error if the endpoint is unreachable, returns a
+// non-200 status, or if reading the response body fails.
+func (c *Client) Logs(
+	ctx context.Context,
+	follow bool,
+	noEngines bool,
+	out io.Writer,
+) error {
+	path := "/logs?follow=" + strconv.FormatBool(follow) +
+		"&no-engines=" + strconv.FormatBool(noEngines)
+	resp, err := c.doRequestWithAuthContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return fmt.Errorf("logs request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf(
+			"logs endpoint returned %s: %s",
+			resp.Status, strings.TrimSpace(string(body)),
+		)
+	}
+
+	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
 // doRequest is a helper function that performs HTTP requests and handles 503 responses
 func (c *Client) doRequest(method, path string, body io.Reader) (*http.Response, error) {
 	return c.doRequestWithAuth(method, path, body)
@@ -1166,4 +1397,21 @@ func (c *Client) RepackageModel(ctx context.Context, source, target string, opts
 	}
 
 	return nil
+}
+
+// isTemplateIncompatibleError checks if the error body indicates a chat template
+// incompatibility issue. This is used to detect when a model does not support
+// tool-specific chat templates (e.g., Jinja template errors).
+//
+// The function checks for multiple common patterns (case-insensitive):
+//   - "jinja": the templating engine used by many Hugging Face models
+//   - "template": generic template-related errors
+//
+// This string-based detection is necessary because the model runner does not
+// provide structured error codes for template incompatibility. If you encounter
+// models that fail with template errors but are not detected by this function,
+// consider adding additional patterns here.
+func isTemplateIncompatibleError(body []byte) bool {
+	bodyStr := strings.ToLower(string(body))
+	return strings.Contains(bodyStr, "jinja") || strings.Contains(bodyStr, "template")
 }

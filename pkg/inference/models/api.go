@@ -82,12 +82,38 @@ func ToOpenAI(m types.Model) (*OpenAIModel, error) {
 		id = tags[0]
 	}
 
-	return &OpenAIModel{
+	model := &OpenAIModel{
 		ID:      id,
 		Object:  "model",
 		Created: created,
 		OwnedBy: "docker",
-	}, nil
+	}
+
+	config, err := m.Config()
+	if err != nil {
+		return nil, fmt.Errorf("get config: %w", err)
+	}
+
+	if config != nil {
+		model.DMR = &DMRMetadata{
+			ContextWindow: config.GetContextSize(),
+			Architecture:  config.GetArchitecture(),
+			Parameters:    config.GetParameters(),
+			Quantization:  config.GetQuantization(),
+			Size:          config.GetSize(),
+		}
+	}
+
+	return model, nil
+}
+
+// DMRMetadata contains Docker Model Runner-specific metadata about a model.
+type DMRMetadata struct {
+	ContextWindow *int32 `json:"context_window,omitempty"`
+	Architecture  string `json:"architecture,omitempty"`
+	Parameters    string `json:"parameters,omitempty"`
+	Quantization  string `json:"quantization,omitempty"`
+	Size          string `json:"size,omitempty"`
 }
 
 // OpenAIModel represents a locally stored model using OpenAI conventions.
@@ -100,6 +126,8 @@ type OpenAIModel struct {
 	Created int64 `json:"created"`
 	// OwnedBy is the model owner. At the moment, it is always "docker".
 	OwnedBy string `json:"owned_by"`
+	// DMR contains Docker Model Runner-specific metadata.
+	DMR *DMRMetadata `json:"dmr,omitempty"`
 }
 
 // OpenAIModelList represents a list of models using OpenAI conventions.

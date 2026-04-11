@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/files"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
@@ -19,7 +21,7 @@ import (
 //   - V0.1 (legacy): Uses the original unpacking logic based on GGUFPaths(), SafetensorsPaths(), etc.
 func Unpack(dir string, model types.Model) (*Bundle, error) {
 	artifact, isArtifact := model.(types.ModelArtifact)
-	if isArtifact && isV02Model(artifact) {
+	if isArtifact && (isV02Model(artifact) || isCNCFModel(artifact)) {
 		return UnpackFromLayers(dir, artifact)
 	}
 
@@ -35,6 +37,17 @@ func isV02Model(model types.ModelArtifact) bool {
 		return false
 	}
 	return manifest.Config.MediaType == types.MediaTypeModelConfigV02
+}
+
+// isCNCFModel checks if the model was packaged using the CNCF ModelPack format.
+// CNCF ModelPack uses a layer-per-file approach with filepath annotations,
+// similar to V0.2, so it can be unpacked using UnpackFromLayers.
+func isCNCFModel(model types.ModelArtifact) bool {
+	manifest, err := model.Manifest()
+	if err != nil {
+		return false
+	}
+	return manifest.Config.MediaType == modelpack.MediaTypeModelConfigV1
 }
 
 // unpackLegacy is the original V0.1 unpacking logic that uses model.GGUFPaths(), model.SafetensorsPaths(), etc.
@@ -62,7 +75,7 @@ func unpackLegacy(dir string, model types.Model) (*Bundle, error) {
 		if err := unpackSafetensors(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack safetensors files: %w", err)
 		}
-	case types.FormatDiffusers:
+	case types.FormatDiffusers, types.FormatDDUF: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
 		if err := unpackDDUF(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack DDUF file: %w", err)
 		}
@@ -124,7 +137,7 @@ func detectModelFormat(model types.Model) types.Format {
 	// Check for DDUF files
 	ddufPaths, err := model.DDUFPaths()
 	if err == nil && len(ddufPaths) > 0 {
-		return types.FormatDiffusers
+		return types.FormatDDUF
 	}
 
 	return ""
@@ -511,6 +524,30 @@ func validatePathWithinDirectory(baseDir, targetPath string) error {
 	return nil
 }
 
+// sanitizeRelativePath strips leading ".." segments from a path while
+// preserving the remaining directory structure. For example:
+//
+//	"../../home/user/text_encoder/model.safetensors" → "home/user/text_encoder/model.safetensors"
+//	"../model.gguf" → "model.gguf"
+//
+// This is safer than filepath.Base which would flatten the entire path,
+// losing nested directory structure and causing silent collisions.
+func sanitizeRelativePath(p string) string {
+	// Normalize to forward slashes and clean
+	cleaned := filepath.ToSlash(filepath.Clean(p))
+
+	// Strip leading "../" segments
+	for strings.HasPrefix(cleaned, "../") {
+		cleaned = cleaned[len("../"):]
+	}
+	// Handle the case where the entire path is ".."
+	if cleaned == ".." {
+		return ""
+	}
+
+	return cleaned
+}
+
 func extractTarArchiveFromReader(r io.Reader, destDir string) error {
 	// Get absolute path of destination directory for security checks
 	absDestDir, err := filepath.Abs(destDir)
@@ -634,10 +671,27 @@ func UnpackFromLayers(dir string, model types.ModelArtifact) (*Bundle, error) {
 		return nil, fmt.Errorf("get model layers: %w", err)
 	}
 
+	// Determine the model format from config for resolving format-agnostic
+	// CNCF weight types (e.g., MediaTypeWeightRaw).
+	var modelFormat string
+	if cfg, err := model.Config(); err == nil {
+		modelFormat = string(cfg.GetFormat())
+	}
+	// When the config omits the format field, infer it from filepath
+	// annotations on weight layers (e.g., ".gguf" → FormatGGUF).
+	if modelFormat == "" {
+		modelFormat = inferFormatFromLayerAnnotations(layers)
+	}
+
 	// Define the interface for getting descriptor with annotations
 	type descriptorProvider interface {
 		GetDescriptor() oci.Descriptor
 	}
+
+	// Track destination paths to detect collisions from sanitization.
+	// Maps a resolved destination path to the original raw annotation so the
+	// collision error can point to the conflicting source paths.
+	destPaths := make(map[string]string)
 
 	// Iterate through all layers and unpack using annotations
 	for _, layer := range layers {
@@ -657,17 +711,48 @@ func UnpackFromLayers(dir string, model types.ModelArtifact) (*Bundle, error) {
 		if !exists || relPath == "" {
 			continue
 		}
+		rawAnnotation := relPath
 
-		// Validate the path to prevent directory traversal
+		// Validate the path to prevent directory traversal.
+		// Some packaging tools (e.g., modctl) may produce annotations with
+		// ".." components when the model was packaged using an absolute path.
+		// In that case, strip leading ".." segments while preserving the
+		// remaining directory structure to avoid flattening nested layouts.
 		if err := validatePathWithinDirectory(modelDir, relPath); err != nil {
-			return nil, fmt.Errorf("invalid filepath annotation %q: %w", relPath, err)
+			sanitizedPath := sanitizeRelativePath(relPath)
+			// Re-validate the sanitized path to ensure it's safe.
+			if err2 := validatePathWithinDirectory(modelDir, sanitizedPath); err2 != nil {
+				return nil, fmt.Errorf(
+					"invalid filepath annotation %q (sanitized as %q): original error: %w, sanitized error: %w",
+					relPath,
+					sanitizedPath,
+					err,
+					err2,
+				)
+			}
+			relPath = sanitizedPath
 		}
 
 		// Convert forward slashes to OS-specific separator
 		relPath = filepath.FromSlash(relPath)
 		destPath := filepath.Join(modelDir, relPath)
 
-		// Skip if file already exists
+		// Detect collisions: two different annotations mapping to the same destination
+		if origAnnotation, exists := destPaths[destPath]; exists {
+			if origAnnotation != rawAnnotation {
+				return nil, fmt.Errorf(
+					"filepath collision: annotations %q and %q both resolve to %q",
+					origAnnotation,
+					rawAnnotation,
+					destPath,
+				)
+			}
+			// Same annotation seen twice (duplicate layer); skip silently.
+			continue
+		}
+		destPaths[destPath] = rawAnnotation
+
+		// Skip if file already exists on disk (from a previous unpack)
 		if _, err := os.Stat(destPath); err == nil {
 			continue
 		}
@@ -683,7 +768,7 @@ func UnpackFromLayers(dir string, model types.ModelArtifact) (*Bundle, error) {
 		}
 
 		// Update bundle tracking fields
-		updateBundleFieldsFromLayer(bundle, mediaType, relPath)
+		updateBundleFieldsFromLayer(bundle, mediaType, relPath, modelFormat)
 	}
 
 	// Create the runtime config
@@ -709,15 +794,53 @@ func unpackLayerToFile(destPath string, layer oci.Layer) error {
 	return fmt.Errorf("layer is not a path provider")
 }
 
+// inferFormatFromLayerAnnotations inspects filepath annotations on weight
+// layers to determine the model format when config.format is not set. This
+// handles CNCF ModelPack models that use MediaTypeWeightRaw but omit the
+// format field.
+func inferFormatFromLayerAnnotations(layers []oci.Layer) string {
+	type descriptorProvider interface {
+		GetDescriptor() oci.Descriptor
+	}
+	for _, l := range layers {
+		mt, err := l.MediaType()
+		if err != nil || !modelpack.IsModelPackWeightMediaType(string(mt)) {
+			continue
+		}
+		dp, ok := l.(descriptorProvider)
+		if !ok {
+			continue
+		}
+		fp, exists := dp.GetDescriptor().Annotations[types.AnnotationFilePath]
+		if !exists || fp == "" {
+			continue
+		}
+		// Use file classification to detect format from extension.
+		switch files.Classify(fp) {
+		case files.FileTypeGGUF:
+			return string(types.FormatGGUF)
+		case files.FileTypeSafetensors:
+			return string(types.FormatSafetensors)
+		case files.FileTypeDDUF:
+			return string(types.FormatDDUF)
+		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
+			// Not a weight file; skip.
+		}
+	}
+	return ""
+}
+
 // updateBundleFieldsFromLayer updates the bundle tracking fields based on the unpacked layer.
-func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPath string) {
+// modelFormat is used to resolve format-agnostic CNCF weight types (e.g., MediaTypeWeightRaw)
+// to the correct bundle field. Pass empty string when the model format is unknown.
+func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPath string, modelFormat string) {
 	//nolint:exhaustive // only tracking specific model-related media types
 	switch mediaType {
-	case types.MediaTypeGGUF:
+	case types.MediaTypeGGUF, modelpack.MediaTypeWeightGGUF:
 		if bundle.ggufFile == "" {
 			bundle.ggufFile = relPath
 		}
-	case types.MediaTypeSafetensors:
+	case types.MediaTypeSafetensors, modelpack.MediaTypeWeightSafetensors:
 		if bundle.safetensorsFile == "" {
 			bundle.safetensorsFile = relPath
 		}
@@ -732,6 +855,24 @@ func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPat
 	case types.MediaTypeChatTemplate:
 		if bundle.chatTemplatePath == "" {
 			bundle.chatTemplatePath = relPath
+		}
+	default:
+		// Handle format-agnostic CNCF weight types (e.g., .raw) by checking the model config format.
+		if modelpack.IsModelPackGenericWeightMediaType(string(mediaType)) {
+			switch types.Format(modelFormat) {
+			case types.FormatGGUF:
+				if bundle.ggufFile == "" {
+					bundle.ggufFile = relPath
+				}
+			case types.FormatSafetensors:
+				if bundle.safetensorsFile == "" {
+					bundle.safetensorsFile = relPath
+				}
+			case types.FormatDDUF, types.FormatDiffusers: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
+				if bundle.ddufFile == "" {
+					bundle.ddufFile = relPath
+				}
+			}
 		}
 	}
 }

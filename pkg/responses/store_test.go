@@ -7,6 +7,7 @@ import (
 
 func TestStore_SaveAndGet(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	resp := NewResponse("resp_test123", "gpt-4")
 	resp.Status = StatusCompleted
@@ -29,6 +30,7 @@ func TestStore_SaveAndGet(t *testing.T) {
 
 func TestStore_GetNotFound(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	_, ok := store.Get("nonexistent")
 	if ok {
@@ -38,6 +40,7 @@ func TestStore_GetNotFound(t *testing.T) {
 
 func TestStore_Delete(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	resp := NewResponse("resp_test123", "gpt-4")
 	store.Save(resp)
@@ -61,6 +64,7 @@ func TestStore_Delete(t *testing.T) {
 
 func TestStore_Update(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	resp := NewResponse("resp_test123", "gpt-4")
 	resp.Status = StatusInProgress
@@ -90,6 +94,7 @@ func TestStore_Update(t *testing.T) {
 
 func TestStore_UpdateNotFound(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	ok := store.Update("nonexistent", func(r *Response) {
 		r.Status = StatusCompleted
@@ -101,6 +106,7 @@ func TestStore_UpdateNotFound(t *testing.T) {
 
 func TestStore_Count(t *testing.T) {
 	store := NewStore(1 * time.Hour)
+	t.Cleanup(store.Close)
 
 	if store.Count() != 0 {
 		t.Errorf("expected count 0, got %d", store.Count())

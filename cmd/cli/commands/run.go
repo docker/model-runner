@@ -16,6 +16,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/readline"
+	"github.com/docker/model-runner/cmd/cli/tools"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/fatih/color"
@@ -23,6 +24,18 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// getActiveTools returns the tools to use for a session based on command flags.
+func getActiveTools(cmd *cobra.Command) ([]desktop.ClientTool, error) {
+	websearch, err := cmd.Flags().GetBool("websearch")
+	if err != nil {
+		return nil, fmt.Errorf("could not get websearch flag: %w", err)
+	}
+	if websearch {
+		return []desktop.ClientTool{&tools.WebSearchTool{}}, nil
+	}
+	return nil, nil
+}
 
 // readMultilineInput reads input from stdin, supporting both single-line and multiline input.
 // For multiline input, it detects triple-quoted strings and shows continuation prompts.
@@ -119,6 +132,7 @@ func generateInteractiveWithReadline(cmd *cobra.Command, desktopClient *desktop.
 		fmt.Fprintln(os.Stderr, "  Ctrl + w            Delete the word before the cursor")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  Ctrl + l            Clear the screen")
+		fmt.Fprintln(os.Stderr, "  Ctrl + x            Open prompt in your default text editor")
 		fmt.Fprintln(os.Stderr, "  Ctrl + c            Stop the model from responding")
 		fmt.Fprintln(os.Stderr, "  Ctrl + d            Exit (/bye)")
 		fmt.Fprintln(os.Stderr, "")
@@ -632,11 +646,16 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 	// This reflects exactly what the model receives.
 	processedUserMessage = buildUserMessage(prompt, imageURLs)
 
+	activeTools, err := getActiveTools(cmd)
+	if err != nil {
+		return "", desktop.OpenAIChatMessage{}, err
+	}
+
 	if !useMarkdown {
 		// Simple case: just stream as plain text
 		assistantResponse, err = client.ChatWithMessagesContext(ctx, model, conversationHistory, prompt, imageURLs, func(content string) {
 			cmd.Print(content)
-		}, false)
+		}, false, activeTools...)
 		return assistantResponse, processedUserMessage, err
 	}
 
@@ -655,7 +674,7 @@ func chatWithMarkdownContext(ctx context.Context, cmd *cobra.Command, client *de
 		} else if rendered != "" {
 			cmd.Print(rendered)
 		}
-	}, true)
+	}, true, activeTools...)
 	if err != nil {
 		return assistantResponse, processedUserMessage, err
 	}
@@ -888,6 +907,7 @@ func newRunCmd() *cobra.Command {
 	c.Flags().StringVar(&colorMode, "color", "no", "Use colored output (auto|yes|no)")
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 	c.Flags().StringVar(&openaiURL, "openaiurl", "", "OpenAI-compatible API endpoint URL to chat with")
+	c.Flags().Bool("websearch", false, "Enable web search tool during chat")
 
 	return c
 }

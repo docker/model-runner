@@ -90,7 +90,9 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "", "pull")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir, createdTime)
+	model, err := buildModelFromFiles(
+		result.LocalPaths, weightFiles, configFiles, mmprojFile, tempDir, createdTime,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -103,14 +105,20 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 // which preserves directory structure and adds each file as an individual layer with
 // filepath annotations. For GGUF models, it uses the V0.1 packaging (FromPaths)
 // for backward compatibility.
-func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+func buildModelFromFiles(
+	localPaths map[string]string,
+	weightFiles, configFiles []RepoFile,
+	mmprojFile *RepoFile,
+	tempDir string,
+	createdTime *time.Time,
+) (types.ModelArtifact, error) {
 	// Check if this is a safetensors model - use V0.2 packaging
 	if isSafetensorsModel(weightFiles) {
 		return buildSafetensorsModelV02(tempDir, createdTime)
 	}
 
 	// For GGUF models, use V0.1 packaging (backward compatible)
-	return buildGGUFModelV01(localPaths, weightFiles, configFiles, createdTime)
+	return buildGGUFModelV01(localPaths, weightFiles, configFiles, mmprojFile, createdTime)
 }
 
 // buildSafetensorsModelV02 builds a safetensors model using V0.2 layer-per-file packaging.
@@ -133,7 +141,12 @@ func buildSafetensorsModelV02(tempDir string, createdTime *time.Time) (types.Mod
 }
 
 // buildGGUFModelV01 builds a GGUF model using V0.1 packaging (backward compatible).
-func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []RepoFile, createdTime *time.Time) (types.ModelArtifact, error) {
+func buildGGUFModelV01(
+	localPaths map[string]string,
+	weightFiles, configFiles []RepoFile,
+	mmprojFile *RepoFile,
+	createdTime *time.Time,
+) (types.ModelArtifact, error) {
 	// Collect weight file paths (sorted for reproducibility)
 	var weightPaths []string
 	for _, f := range weightFiles {
@@ -157,7 +170,19 @@ func buildGGUFModelV01(localPaths map[string]string, weightFiles, configFiles []
 		return nil, fmt.Errorf("create builder: %w", err)
 	}
 
-	// Check for chat template and add it
+	// Add multimodal projector if present (F16 preferred, selected upstream).
+	if mmprojFile != nil {
+		localPath, ok := localPaths[mmprojFile.Path]
+		if !ok {
+			return nil, fmt.Errorf("missing local path for mmproj %s", mmprojFile.Path)
+		}
+		b, err = b.WithMultimodalProjector(localPath)
+		if err != nil {
+			return nil, fmt.Errorf("add mmproj: %w", err)
+		}
+	}
+
+	// Check for chat template and add it.
 	for _, f := range configFiles {
 		if isChatTemplate(f.Path) {
 			localPath := localPaths[f.Path]

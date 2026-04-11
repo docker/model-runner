@@ -96,60 +96,40 @@ Before building from source, ensure you have the following installed:
 
 ### Building the Complete Stack
 
-#### Step 1: Clone and Build model-runner (Server/Daemon)
+After cloning, a single `make` builds everything — the server, CLI plugin, and a `dmr` convenience wrapper:
 
 ```bash
-# Clone the model-runner repository
-git clone https://github.com/docker/model-runner.git
-cd model-runner
-
-# Build the model-runner binary
-make build
-
-# Or build with specific backend arguments
-make run LLAMA_ARGS="--verbose --jinja -ngl 999 --ctx-size 2048"
-
-# Run tests to verify the build
-make test
+make
 ```
 
-The `model-runner` binary will be created in the current directory. This is the backend server that manages models.
-
-#### Step 2: Build model-cli (Client)
+`dmr` starts the server on a free port, waits for it to be ready, runs your CLI command, then shuts the server down:
 
 ```bash
-# From the root directory, navigate to the model-cli directory
-cd cmd/cli
-
-# Build the CLI binary
-make build
-
-# The binary will be named 'model-cli'
-# Optionally, install it as a Docker CLI plugin
-make install  # This will link it to ~/.docker/cli-plugins/docker-model
+./dmr run ai/smollm2 "Hello, how are you?"
+./dmr ls
+./dmr run qwen3:0.6B-Q4_0 tell me today's news
 ```
+
+These components can also be built, run, and tested separately using the Makefile.
 
 ### Testing the Complete Stack End-to-End
 
 > **Note:** We use port 13434 in these examples to avoid conflicts with Docker Desktop's built-in Model Runner, which typically runs on port 12434.
 
-#### Option 1: Local Development (Recommended for Contributors)
+#### Option 1: Manual two-terminal setup
 
 1. **Start model-runner in one terminal:**
 ```bash
-cd model-runner
 MODEL_RUNNER_PORT=13434 ./model-runner
-# The server will start on port 13434
 ```
 
 2. **Use model-cli in another terminal:**
 ```bash
-cd cmd/cli
-# List available models (connecting to port 13434)
-MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
+# List available models
+MODEL_RUNNER_HOST=http://localhost:13434 ./cmd/cli/model-cli list
 
 # Pull and run a model
-MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli run ai/smollm2 "Hello, how are you?"
+MODEL_RUNNER_HOST=http://localhost:13434 ./cmd/cli/model-cli run ai/smollm2 "Hello, how are you?"
 ```
 
 #### Option 2: Using Docker
@@ -177,6 +157,7 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 ## Using the Makefile
 
 This project includes a Makefile to simplify common development tasks. Docker targets require Docker Desktop >= 4.41.0.
+
 Run `make help` for a full list, but the key targets are:
 
 - `build` - Build the Go application
@@ -214,6 +195,8 @@ This will:
 - Start the service on port 8080 (or the specified port)
 - All models downloaded will be stored in the host's `models` directory and will persist between container runs
 
+> NOTE: The [`.versions`](.versions) file is the single source of truth for all version variables (Go, vLLM, SGLang, llama-server, etc.).
+
 ### llama.cpp integration
 
 The Docker image includes the llama.cpp server binary from the `docker/docker-model-backend-llamacpp` image. You can specify the version of the image to use by setting the `LLAMA_SERVER_VERSION` variable. Additionally, you can configure the target OS, architecture, and acceleration type:
@@ -248,7 +231,7 @@ The Docker image also supports vLLM as an alternative inference backend.
 To build a Docker image with vLLM support:
 
 ```sh
-# Build with default settings (vLLM 0.12.0)
+# Build with default settings (vLLM 0.17.0)
 make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
 
 # Build for specific architecture
@@ -257,7 +240,7 @@ docker buildx build \
   --target final-vllm \
   --build-arg BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
-  --build-arg VLLM_VERSION=0.12.0 \
+  --build-arg VLLM_VERSION=0.17.0 \
   -t docker/model-runner:vllm .
 ```
 
@@ -265,7 +248,7 @@ docker buildx build \
 
 The vLLM variant supports the following build arguments:
 
-- **VLLM_VERSION**: The vLLM version to install (default: `0.12.0`)
+- **VLLM_VERSION**: The vLLM version to install (default: `0.17.0`)
 - **VLLM_CUDA_VERSION**: The CUDA version suffix for the wheel (default: `cu130`)
 - **VLLM_PYTHON_TAG**: The Python compatibility tag (default: `cp38-abi3`, compatible with Python 3.8+)
 
@@ -294,8 +277,8 @@ To update to a new vLLM version:
 ```sh
 docker buildx build \
   --target final-vllm \
-  --build-arg VLLM_VERSION=0.11.1 \
-  -t docker/model-runner:vllm-0.11.1 .
+  --build-arg VLLM_VERSION=0.17.0 \
+  -t docker/model-runner:vllm-0.17.0 .
 ```
 
 The vLLM wheels are sourced from the official vLLM GitHub Releases at `https://github.com/vllm-project/vllm/releases`, which provides prebuilt wheels for each release version.
@@ -421,6 +404,28 @@ in the form of [a Helm chart and static YAML](charts/docker-model-runner/README.
 
 If you are interested in a specific Kubernetes use-case, please start a
 discussion on the issue tracker.
+
+## dmrlet: Container Orchestrator for AI Inference
+
+dmrlet is a purpose-built container orchestrator for AI inference workloads. Unlike Kubernetes, it focuses exclusively on running stateless inference containers with zero configuration overhead. Multi-GPU mapping "just works" without YAML, device plugins, or node selectors.
+
+### Building dmrlet
+
+```bash
+# Build the dmrlet binary
+go build -o dmrlet ./cmd/dmrlet
+
+# Verify it works
+./dmrlet --help
+```
+
+### Usage
+
+**Serve a model:**
+```bash
+# Auto-detect backend and GPUs
+dmrlet serve gemma3
+```
 
 ## Community
 

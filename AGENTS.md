@@ -23,6 +23,34 @@ If any step fails, fix the issue and re-run before committing.
 - **golangci-lint v2.7.2+** — [Install instructions](https://golangci-lint.run/welcome/install/)
 - **ShellCheck** — `brew install shellcheck` (macOS) or `apt-get install shellcheck` (Linux)
 
+## Testing
+
+When adding a new Go package that contains tests, include a
+`testmain_test.go` file in the package directory to enable automatic
+goroutine leak detection via `go.uber.org/goleak`. Match the `package`
+declaration to the existing test files in that directory (use the external
+`package foo_test` form if that is what the other test files use).
+
+```go
+package <pkg> // or <pkg>_test — match the existing test files
+
+import (
+	"testing"
+
+	"go.uber.org/goleak"
+)
+
+// TestMain runs goleak after the test suite to detect goroutine leaks.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+```
+
+If the package already has a `TestMain` that does non-trivial setup (e.g.
+starting a server), integrate goleak manually using the
+setup → `m.Run()` → teardown → `goleak.Find` → `os.Exit` pattern instead
+of calling `goleak.VerifyTestMain`.
+
 ## Project documentation
 
 - [README.md](./README.md) — project overview, building from source, API examples, and Makefile usage

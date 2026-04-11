@@ -2,7 +2,6 @@ name: Release
 run-name: >-
   Release
   ${{ inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
-  ${{ inputs.pushLatest && ' + latest' || '' }}
 
 on:
   workflow_dispatch:
@@ -20,26 +19,18 @@ on:
         description: "Explicit release tag — overrides auto-bump (e.g., v1.2.3)"
         required: false
         type: string
-      pushLatest:
-        description: "Tag images produced by this job as latest"
-        required: false
-        type: boolean
-        default: false
       llamaServerVersion:
         description: "llama-server version"
         required: false
         type: string
-        default: "latest"
       vllmVersion:
         description: "vLLM version"
         required: false
         type: string
-        default: "0.17.0"
       sglangVersion:
         description: "SGLang version"
         required: false
         type: string
-        default: "0.4.0"
       # This can be removed once we have llama.cpp built for MUSA and CANN.
       buildMusaCann:
         description: "Build MUSA and CANN images"
@@ -47,7 +38,7 @@ on:
         type: boolean
         default: false
       imagesOnly:
-        description: "Only build and push Docker images (skip CLI releases, pinata bump, and CE packaging)"
+        description: "Only build and push Docker images (skip CLI releases, pinata bump, docs update, and CE packaging)"
         required: false
         type: boolean
         default: false
@@ -167,7 +158,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@b6e1c73e1bb475e840842b1f43a4647fcb16b495
+        uses: docker/cagent-action@b4ccf4cc94f5b34d1760709012c40975f6def2d1
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -210,10 +201,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Run tests
@@ -229,10 +224,9 @@ jobs:
       contents: read
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion || 'latest' }}
+      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion }}
       VLLM_VERSION: ${{ inputs.vllmVersion }}
-      SGLANG_VERSION: ${{ inputs.sglangVersion || '0.4.0' }}
-      PUSH_LATEST: ${{ inputs.pushLatest || 'false' }}
+      SGLANG_VERSION: ${{ inputs.sglangVersion }}
       BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
     steps:
       - name: Checkout repo
@@ -244,49 +238,47 @@ jobs:
         run: |
           echo "cpu<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "vllm-cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-vllm-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "sglang-cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-sglang-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "musa<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "cann<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
+          
+      - name: Load versions
+        shell: bash
+        run: |
+          VERSIONS_LLAMA=$(grep '^LLAMA_SERVER_VERSION=' .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_VLLM=$(grep  '^VLLM_VERSION='          .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_SGLANG=$(grep '^SGLANG_VERSION='       .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+
+          # Use input value if set, otherwise fallback to .versions 
+          echo "LLAMA_SERVER_VERSION=${LLAMA_SERVER_VERSION:-$VERSIONS_LLAMA}"   >> "$GITHUB_ENV"
+          echo "VLLM_VERSION=${VLLM_VERSION:-$VERSIONS_VLLM}"                   >> "$GITHUB_ENV"
+          echo "SGLANG_VERSION=${SGLANG_VERSION:-$VERSIONS_SGLANG}"             >> "$GITHUB_ENV"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
@@ -485,12 +477,31 @@ jobs:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           fetch-depth: 0
 
-      - name: Bump docker-model version in build.json
+      - name: Fetch latest llamacpp version from Docker Hub
+        id: llamacpp
+        run: |
+          TAGS_JSON=$(curl -s "https://hub.docker.com/v2/repositories/docker/docker-model-backend-llamacpp/tags?page_size=25&ordering=last_updated")
+          LLAMACPP_VERSION=$(echo "$TAGS_JSON" | jq -r '
+            (.results[] | select(.name == "latest-cpu") | .digest) as $d |
+            .results[] | select(.name != "latest-cpu" and (.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-cpu$")) and .digest == $d) | .name | split("-")[0]
+          ')
+          if [ -z "$LLAMACPP_VERSION" ] || [ "$LLAMACPP_VERSION" = "null" ]; then
+            echo "::error::Failed to fetch latest llamacpp version from Docker Hub"
+            exit 1
+          fi
+          echo "version=$LLAMACPP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Latest llamacpp version: $LLAMACPP_VERSION"
+
+      - name: Bump docker-model and llamacpp versions in build.json
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          LLAMACPP_VERSION: ${{ steps.llamacpp.outputs.version }}
         run: |
           NEW_VERSION="v${VERSION}"
-          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
+          jq --arg model_v "$NEW_VERSION" --arg llama_v "$LLAMACPP_VERSION" '
+            .["docker-model"].version = $model_v |
+            .["llamacpp"].version = $llama_v
+          ' build.json > build.json.tmp
           mv build.json.tmp build.json
 
       - name: Create pull request
@@ -498,9 +509,9 @@ jobs:
         with:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           base: main
-          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }}"
+          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
           branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
-          title: "Bump docker-model to v${{ needs.prepare.outputs.version }}"
+          title: "Bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
           body: |
             ### Ticket(s)
 
@@ -508,12 +519,113 @@ jobs:
 
             ### What this PR does
 
-            Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+            - Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
+            - Bumps llamacpp version to ${{ steps.llamacpp.outputs.version }} in build.json (latest from [Docker Hub](https://hub.docker.com/r/docker/docker-model-backend-llamacpp/tags)).
 
             ### Notes for the reviewer
 
             Automated PR created by the model-runner release workflow.
 
+          draft: true
+
+  # ---------------------------------------------------------------------------
+  # Update CLI reference docs in docker/docs
+  # ---------------------------------------------------------------------------
+  update-docs:
+    if: ${{ !inputs.imagesOnly }}
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check if CLI docs changed
+        id: check-docs
+        env:
+          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+        run: |
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag — assuming docs changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(gh api repos/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG} \
+            --jq '[.files[].filename | select(startswith("cmd/cli/docs/reference/"))] | length')
+          if [ "$CHANGED" -gt 0 ]; then
+            echo "CLI docs changed ($CHANGED files)"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CLI docs changes between $PREVIOUS_TAG and $RELEASE_TAG — skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout model-runner
+        if: steps.check-docs.outputs.changed == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Load GO version
+        if: steps.check-docs.outputs.changed == 'true'
+        id: versions
+        uses: ./.github/actions/load-go-version
+
+      - name: Checkout docs
+        if: steps.check-docs.outputs.changed == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: docker/docs
+          token: ${{ secrets.CLI_RELEASE_PAT }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        if: steps.check-docs.outputs.changed == 'true'
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version: ${{ steps.versions.outputs.go-version }}
+          cache: true
+
+      - name: Vendor model-runner CLI docs
+        if: steps.check-docs.outputs.changed == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          VENDOR_MODULE=github.com/docker/model-runner@${RELEASE_TAG} make vendor
+          # Remove the second require block added by `go get` — the docs repo
+          # only needs the direct dependency in the first require block.
+          awk '/^require \(/{n++} n==2{if(/^\)/) n=3; next} n!=2' go.mod > go.mod.tmp && mv go.mod.tmp go.mod
+          cat -s go.mod > go.mod.tmp && mv go.mod.tmp go.mod
+
+      - name: Create pull request
+        if: steps.check-docs.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
+        with:
+          token: ${{ secrets.DOCKER_DOCS }}
+          base: main
+          push-to-fork: ilopezluna/docs
+          commit-message: |
+            vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}
+
+            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
+          branch: update-model-runner-${{ needs.prepare.outputs.release_tag }}
+          title: "vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}"
+          body: |
+            ## Description
+
+            Update Model Runner CLI docs.
+            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
+
+            ```
+            VENDOR_MODULE=github.com/docker/model-runner@${{ needs.prepare.outputs.release_tag }} make vendor
+            ```
+
+            ## Reviews
+
+            <!-- Notes for reviewers here -->
+            <!-- List applicable reviews (optionally @tag reviewers) -->
+
+            - [ ] Technical review
+            - [ ] Editorial review
+            - [ ] Product review
           draft: true
 
   # ---------------------------------------------------------------------------
@@ -631,7 +743,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, verify-docker-ce]
+    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, update-docs, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
@@ -653,3 +765,67 @@ jobs:
             --repo docker/model-runner \
             --title "Docker Model Runner $RELEASE_TAG" \
             --notes-file release-notes.md
+
+      - name: Send Slack notification
+        if: success()
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RELEASE_URL="https://github.com/docker/model-runner/releases/tag/${RELEASE_TAG}"
+
+          SLACK_MESSAGE=$(cat <<EOF
+          {
+            "text": "🚀 Docker Model Runner ${RELEASE_TAG} has been released!",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚀 Docker Model Runner Released"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Version:*\n${RELEASE_TAG}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\ndocker/model-runner"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Release"
+                    },
+                    "url": "${RELEASE_URL}",
+                    "style": "primary"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Build"
+                    },
+                    "url": "${BUILD_URL}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "${SLACK_MESSAGE}" \
+            "${SLACK_WEBHOOK_URL}"

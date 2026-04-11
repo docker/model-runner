@@ -186,8 +186,13 @@ func withStandaloneRunner(cmd *cobra.Command) *cobra.Command {
 	}
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
-			return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+		// Skip standalone runner initialization when --openaiurl is provided,
+		// since those commands talk directly to an external endpoint and don't
+		// need (or have) a local Docker daemon.
+		if f := cmd.Flag("openaiurl"); f == nil || f.Value.String() == "" {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
+				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
+			}
 		}
 		return originalRunE(cmd, args)
 	}

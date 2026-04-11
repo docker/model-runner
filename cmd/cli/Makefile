@@ -1,4 +1,4 @@
-.PHONY: all build clean link mock unit-tests docs
+.PHONY: all build build-gateway clean link mock unit-tests docs
 
 BINARY_NAME=model-cli
 
@@ -10,11 +10,22 @@ VERSION ?=
 MACOS_MIN_VERSION := 14.0
 MACOS_MIN_VERSION_LDFLAG := -mmacosx-version-min=$(MACOS_MIN_VERSION)
 
+GATEWAY_RUST_DIR := ../../model-cli
+# The static library produced by cargo and consumed by CGo.
+GATEWAY_LIB_DIR := commands/gateway_lib
+
 all: build
 
-build:
+build-gateway:
+	@echo "Building gateway static library (Rust)..."
+	@mkdir -p $(GATEWAY_LIB_DIR)
+	cargo build --release --manifest-path $(GATEWAY_RUST_DIR)/Cargo.toml
+	@cp $(GATEWAY_RUST_DIR)/target/release/libmodel_cli_gateway.a $(GATEWAY_LIB_DIR)/libgateway.a
+	@echo "Gateway library staged at $(GATEWAY_LIB_DIR)/libgateway.a"
+
+build: build-gateway
 	@echo "Building $(BINARY_NAME)..."
-	go build -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(BINARY_NAME) .
+	CGO_ENABLED=1 go build -tags gateway -ldflags="-s -w -X github.com/docker/model-runner/cmd/cli/desktop.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(BINARY_NAME) .
 
 link:
 	@if [ ! -f $(BINARY_NAME) ]; then \
@@ -69,6 +80,7 @@ unit-tests:
 clean:
 	@echo "Cleaning up..."
 	@rm -f $(BINARY_NAME)
+	@rm -rf $(GATEWAY_LIB_DIR)
 	@echo "Cleaned!"
 
 docs:

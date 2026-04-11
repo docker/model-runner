@@ -51,6 +51,12 @@ func NewHTTPHandler(log logging.Logger, schedulerHTTP http.Handler, allowedOrigi
 	return h
 }
 
+// Close releases resources held by the handler, including the background
+// store cleanup goroutine. It should be called when the handler is shut down.
+func (h *HTTPHandler) Close() {
+	h.store.Close()
+}
+
 // ServeHTTP implements http.Handler.
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cleanPath := strings.ReplaceAll(r.URL.Path, "\n", "")

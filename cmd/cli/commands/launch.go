@@ -48,7 +48,7 @@ var containerApps = map[string]containerApp{
 		envFn:           anythingllmEnv,
 		extraDockerArgs: []string{"-v", "anythingllm_storage:/app/server/storage"},
 	},
-	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openaiEnv(openaiPathSuffix)},
+	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openwebuiEnv},
 }
 
 // hostApp describes a native CLI app launched on the host.
@@ -395,6 +395,11 @@ func openaiEnv(suffix string) func(string) []string {
 			"OPEN_AI_KEY=" + dummyAPIKey, // AnythingLLM uses this
 		}
 	}
+}
+
+// openwebuiEnv returns environment variables for Open WebUI with Docker Model Runner.
+func openwebuiEnv(baseURL string) []string {
+	return append(openaiEnv(openaiPathSuffix)(baseURL), "WEBUI_AUTH=false")
 }
 
 // anythingllmEnv returns environment variables for AnythingLLM with Docker Model Runner provider.

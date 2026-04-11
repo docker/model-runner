@@ -14,8 +14,9 @@ func newUnloadCmd() *cobra.Command {
 
 	const cmdArgs = "(MODEL [MODEL ...] [--backend BACKEND] | --all)"
 	c := &cobra.Command{
-		Use:   "unload " + cmdArgs,
-		Short: "Unload running models",
+		Use:     "unload " + cmdArgs,
+		Aliases: []string{"stop"},
+		Short:   "Unload running models",
 		RunE: func(cmd *cobra.Command, modelArgs []string) error {
 			unloadResp, err := desktopClient.Unload(desktop.UnloadRequest{All: all, Backend: backend, Models: modelArgs})
 			if err != nil {
