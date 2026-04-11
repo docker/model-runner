@@ -142,6 +142,10 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		format = inferFormatFromModel(model)
 	}
 
+	return s.selectBackendForFormat(format, backend, modelRef)
+}
+
+func (s *Scheduler) selectBackendForFormat(format types.Format, backend inference.Backend, modelRef string) inference.Backend {
 	switch format {
 	case types.FormatSafetensors:
 		// Prefer vLLM for safetensors models (handles platform dispatch internally)
@@ -209,6 +213,28 @@ func inferFormatFromModel(model types.Model) types.Format {
 		return types.FormatDDUF
 	}
 	return ""
+}
+
+// ResolveBackendForModel resolves the backend that should be used for a model reference.
+// It prefers local model metadata and falls back to remote metadata when needed.
+func (s *Scheduler) ResolveBackendForModel(ctx context.Context, modelRef string) (inference.Backend, error) {
+	backend := s.defaultBackend
+
+	if model, err := s.modelManager.GetLocal(modelRef); err == nil {
+		return s.selectBackendForModel(model, backend, modelRef), nil
+	}
+
+	artifact, err := s.modelManager.GetRemote(ctx, modelRef)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := artifact.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.selectBackendForFormat(config.GetFormat(), backend, modelRef), nil
 }
 
 // ResetInstaller resets the backend installer with a new HTTP client.

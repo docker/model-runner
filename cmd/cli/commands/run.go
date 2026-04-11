@@ -828,22 +828,15 @@ func newRunCmd() *cobra.Command {
 				return nil
 			}
 
-			modelInfo, err := desktopClient.Inspect(model, false)
+			_, err := desktopClient.Inspect(model, false)
 			modelFoundLocally := err == nil
 			if err != nil && !errors.Is(err, desktop.ErrNotFound) {
 				return handleClientError(err, "Failed to inspect model")
 			}
 
-			if !modelFoundLocally {
-				remoteInfo, remoteErr := desktopClient.Inspect(model, true)
-				if remoteErr == nil {
-					modelInfo = remoteInfo
-				}
-			}
-
 			backend := ""
-			if modelInfo.ID != "" {
-				backend, _ = GetRequiredBackendFromModelInfo(&modelInfo)
+			if resolvedBackend, resolveErr := ResolveRequiredBackend(model); resolveErr == nil {
+				backend = resolvedBackend
 			}
 
 			if backend != "" {

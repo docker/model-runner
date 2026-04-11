@@ -7,17 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	mockdesktop "github.com/docker/model-runner/cmd/cli/mocks"
-	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
-	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	dmrm "github.com/docker/model-runner/pkg/inference/models"
+	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -219,22 +217,28 @@ func TestEnsureBackendAvailableCancelled(t *testing.T) {
 	require.Contains(t, out.String(), "docker model install-runner --backend vllm")
 }
 
-func TestGetRequiredBackendFromModelInfo(t *testing.T) {
-	t.Run("safetensors chooses vllm", func(t *testing.T) {
-		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatSafetensors}})
-		require.NoError(t, err)
-		require.Equal(t, vllm.Name, backend)
-	})
+func TestResolveRequiredBackend(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	t.Run("gguf chooses llamacpp", func(t *testing.T) {
-		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatGGUF}})
-		require.NoError(t, err)
-		require.Equal(t, llamacpp.Name, backend)
-	})
+	client := mockdesktop.NewMockDockerHttpClient(ctrl)
+	modelRunner = desktop.NewContextForMock(client)
+	desktopClient = desktop.New(modelRunner)
 
-	t.Run("diffusers chooses diffusers backend", func(t *testing.T) {
-		backend, err := GetRequiredBackendFromModelInfo(&dmrm.Model{Config: &types.Config{Format: types.FormatDiffusers}})
-		require.NoError(t, err)
-		require.Equal(t, diffusers.Name, backend)
-	})
+	model := "ai/functiongemma-vllm:270M"
+	selection := scheduling.ModelBackendSelection{Backend: vllm.Name, Installed: false}
+	body, err := json.Marshal(selection)
+	require.NoError(t, err)
+
+	expectedResolveURL := modelRunner.URL(inference.ModelsPrefix + "/backend?model=" + url.QueryEscape(model))
+	expectedUserAgent := "docker-model-cli/" + desktop.Version
+
+	client.EXPECT().Do(gomock.Cond(func(req any) bool {
+		r, ok := req.(*http.Request)
+		return ok && r.URL.String() == expectedResolveURL && r.Header.Get("User-Agent") == expectedUserAgent
+	})).Return(&http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body))}, nil)
+
+	backend, err := ResolveRequiredBackend(model)
+	require.NoError(t, err)
+	require.Equal(t, vllm.Name, backend)
 }

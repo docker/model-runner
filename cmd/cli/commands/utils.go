@@ -14,11 +14,7 @@ import (
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
-	"github.com/docker/model-runner/pkg/distribution/types"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
-	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
-	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/moby/term"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
@@ -367,22 +363,13 @@ func EnsureBackendAvailable(backend string, cmd *cobra.Command) error {
 	return nil
 }
 
-func GetRequiredBackendFromModelInfo(modelInfo *dmrm.Model) (string, error) {
-	config, ok := modelInfo.Config.(*types.Config)
-	if !ok {
-		return llamacpp.Name, nil
+func ResolveRequiredBackend(model string) (string, error) {
+	selection, err := desktopClient.ResolveModelBackend(model)
+	if err != nil {
+		return "", err
 	}
 
-	switch config.Format {
-	case types.FormatSafetensors:
-		return vllm.Name, nil
-	case types.FormatGGUF:
-		return llamacpp.Name, nil
-	case types.FormatDiffusers:
-		return diffusers.Name, nil
-	default:
-		return llamacpp.Name, nil
-	}
+	return selection.Backend, nil
 }
 
 func printNextSteps(out io.Writer, messages []string) {
