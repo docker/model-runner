@@ -126,7 +126,7 @@ func DockerConfigToModelPack(
 		Config: ModelConfig{
 			Architecture: cfg.Architecture,
 			Format:       string(cfg.Format),
-			ParamSize:    normalizeParamSize(cfg.Parameters),
+			ParamSize:    cfg.Parameters,
 			Quantization: cfg.Quantization,
 		},
 		ModelFS: ModelFS{
@@ -134,14 +134,4 @@ func DockerConfigToModelPack(
 			DiffIDs: diffIDs,
 		},
 	}
-}
-
-// normalizeParamSize lowercases a Docker-format parameters string for use
-// as the model-spec paramSize field (e.g. "8.03B" → "8.03b", "70B" → "70b").
-// Returns empty string if s is empty.
-func normalizeParamSize(s string) string {
-	if s == "" {
-		return ""
-	}
-	return strings.ToLower(s)
 }
