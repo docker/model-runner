@@ -240,10 +240,16 @@ type builderInitResult struct {
 func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) (*builderInitResult, error) {
 	result := &builderInitResult{}
 
-	// Map the CLI format string to a BuildFormat constant.
-	buildFmt := builder.BuildFormatDocker
-	if opts.format == "cncf" {
-		buildFmt = builder.BuildFormatCNCF
+	// Only pass format option to the builder if the --format flag was
+	// explicitly set by the user. When omitted, the builder inherits
+	// the source model's format automatically (see builder.FromModel).
+	var buildOpts []builder.BuildOption
+	if cmd.Flags().Changed("format") {
+		buildFmt := builder.BuildFormatDocker
+		if opts.format == "cncf" {
+			buildFmt = builder.BuildFormatCNCF
+		}
+		buildOpts = append(buildOpts, builder.WithFormat(buildFmt))
 	}
 
 	if opts.fromModel != "" {
@@ -284,20 +290,20 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 		}
 
 		cmd.PrintErrf("Creating builder from existing model\n")
-		result.builder, err = builder.FromModel(modelArtifact, builder.WithFormat(buildFmt))
+		result.builder, err = builder.FromModel(modelArtifact, buildOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("create builder from model: %w", err)
 		}
 	} else if opts.ggufPath != "" {
 		cmd.PrintErrf("Adding GGUF file from %q\n", opts.ggufPath)
-		pkg, err := builder.FromPath(opts.ggufPath, builder.WithFormat(buildFmt))
+		pkg, err := builder.FromPath(opts.ggufPath, buildOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("add gguf file: %w", err)
 		}
 		result.builder = pkg
 	} else if opts.ddufPath != "" {
 		cmd.PrintErrf("Adding DDUF file from %q\n", opts.ddufPath)
-		pkg, err := builder.FromPath(opts.ddufPath, builder.WithFormat(buildFmt))
+		pkg, err := builder.FromPath(opts.ddufPath, buildOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("add dduf file: %w", err)
 		}
@@ -305,8 +311,16 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 	} else if opts.safetensorsDir != "" {
 		// Safetensors model from directory — uses V0.2 layer-per-file packaging.
 		cmd.PrintErrf("Scanning directory %q for safetensors model...\n", opts.safetensorsDir)
+		var dirOpts []builder.DirectoryOption
+		if cmd.Flags().Changed("format") {
+			dirFmt := builder.BuildFormatDocker
+			if opts.format == "cncf" {
+				dirFmt = builder.BuildFormatCNCF
+			}
+			dirOpts = append(dirOpts, builder.WithOutputFormat(dirFmt))
+		}
 		pkg, err := builder.FromDirectory(opts.safetensorsDir,
-			builder.WithOutputFormat(buildFmt))
+			dirOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("create safetensors model from directory: %w", err)
 		}

@@ -185,7 +185,11 @@ func fromFormatCNCF(
 		}
 		fp := layerFilePath(l)
 		cncfMT := modelpack.MapLayerMediaType(mt, fp)
-		cncfLayers[i] = &remappedLayer{Layer: l, newMediaType: cncfMT}
+		rl, err := newRemappedLayer(l, cncfMT)
+		if err != nil {
+			return nil, fmt.Errorf("remap layer %d: %w", i, err)
+		}
+		cncfLayers[i] = rl
 	}
 
 	mp := modelpack.DockerConfigToModelPack(config, desc, cncfDiffIDs)
@@ -213,9 +217,33 @@ func layerFilePath(l oci.Layer) string {
 }
 
 // remappedLayer wraps an existing layer and overrides its media type.
+// Digest and size are pre-computed at construction time so that
+// GetDescriptor never silently swallows errors.
 type remappedLayer struct {
 	oci.Layer
 	newMediaType oci.MediaType
+	cachedDigest oci.Hash
+	cachedSize   int64
+}
+
+// newRemappedLayer creates a remappedLayer, eagerly resolving digest and size
+// so that any error (e.g. network failure on a remote layer) surfaces at
+// build time rather than producing an invalid OCI descriptor later.
+func newRemappedLayer(l oci.Layer, mt oci.MediaType) (*remappedLayer, error) {
+	d, err := l.Digest()
+	if err != nil {
+		return nil, fmt.Errorf("get layer digest: %w", err)
+	}
+	s, err := l.Size()
+	if err != nil {
+		return nil, fmt.Errorf("get layer size: %w", err)
+	}
+	return &remappedLayer{
+		Layer:        l,
+		newMediaType: mt,
+		cachedDigest: d,
+		cachedSize:   s,
+	}, nil
 }
 
 // MediaType returns the remapped media type.
@@ -233,19 +261,21 @@ func (r *remappedLayer) GetDescriptor() oci.Descriptor {
 	if dp, ok := r.Layer.(descriptorProvider); ok {
 		desc = dp.GetDescriptor()
 	} else {
-		// Fall back to basic interface methods if the layer is not a
-		// descriptor provider (e.g. remoteLayer).
-		d, _ := r.Layer.Digest()
-		s, _ := r.Layer.Size()
-		desc = oci.Descriptor{Digest: d, Size: s}
+		// Use pre-computed values for layers that are not descriptor
+		// providers (e.g. remoteLayer). Errors were already checked in
+		// newRemappedLayer.
+		desc = oci.Descriptor{Digest: r.cachedDigest, Size: r.cachedSize}
 	}
 	desc.MediaType = r.newMediaType
 	return desc
 }
 
 // FromModel returns a *Builder that builds model artifacts from an existing
-// model artifact. Pass WithFormat(BuildFormatCNCF) to convert the artifact
-// to CNCF ModelPack format on output.
+// model artifact. When WithFormat is provided, the output uses that format.
+// When no format is specified, the builder inherits the source model's format
+// (auto-detecting CNCF ModelPack via the config). This prevents accidentally
+// producing inconsistent artifacts when repackaging a CNCF model without an
+// explicit --format flag.
 func FromModel(mdl types.ModelArtifact, opts ...BuildOption) (*Builder, error) {
 	options := &buildOptions{}
 	for _, opt := range opts {
@@ -258,7 +288,21 @@ func FromModel(mdl types.ModelArtifact, opts ...BuildOption) (*Builder, error) {
 		return nil, fmt.Errorf("getting model layers: %w", err)
 	}
 
-	if options.format == BuildFormatCNCF {
+	// Determine output format. If not explicitly set, detect from the model.
+	outFmt := options.format
+	if outFmt == "" {
+		rawCfg, err := mdl.RawConfigFile()
+		if err != nil {
+			return nil, fmt.Errorf("get raw config for format detection: %w", err)
+		}
+		if modelpack.IsModelPackConfig(rawCfg) {
+			outFmt = BuildFormatCNCF
+		} else {
+			outFmt = BuildFormatDocker
+		}
+	}
+
+	if outFmt == BuildFormatCNCF {
 		// Convert the source artifact eagerly to CNCF format. This is
 		// necessary because mutations (WithLicense, etc.) and lightweight
 		// repackaging both operate on the builder state before Build().
@@ -304,7 +348,11 @@ func convertToCNCF(mdl types.ModelArtifact) (*partial.CNCFModel, error) {
 		}
 		fp := layerFilePath(l)
 		cncfMT := modelpack.MapLayerMediaType(mt, fp)
-		cncfLayers[i] = &remappedLayer{Layer: l, newMediaType: cncfMT}
+		rl, err := newRemappedLayer(l, cncfMT)
+		if err != nil {
+			return nil, fmt.Errorf("remap layer %d: %w", i, err)
+		}
+		cncfLayers[i] = rl
 
 		diffID, err := l.DiffID()
 		if err != nil {
