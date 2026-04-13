@@ -69,11 +69,13 @@ type ShowRequest struct {
 
 // ShowResponse is the response for /api/show
 type ShowResponse struct {
-	License    string       `json:"license,omitempty"`
-	Modelfile  string       `json:"modelfile,omitempty"`
-	Parameters string       `json:"parameters,omitempty"`
-	Template   string       `json:"template,omitempty"`
-	Details    ModelDetails `json:"details,omitempty"`
+	License      string                 `json:"license,omitempty"`
+	Modelfile    string                 `json:"modelfile,omitempty"`
+	Parameters   string                 `json:"parameters,omitempty"`
+	Template     string                 `json:"template,omitempty"`
+	Details      ModelDetails           `json:"details,omitempty"`
+	Capabilities []string               `json:"capabilities,omitempty"`
+	ModelInfo    map[string]interface{} `json:"model_info,omitempty"`
 }
 
 // ChatRequest is the request for /api/chat

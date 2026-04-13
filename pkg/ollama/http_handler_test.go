@@ -2,6 +2,8 @@ package ollama
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -197,6 +199,122 @@ func TestEnsureDataURIPrefix(t *testing.T) {
 				t.Errorf("ensureDataURIPrefix() = %v, want %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestHandleVersion(t *testing.T) {
+	// Verify version is >= 0.6.4 (minimum required by VSCode Copilot Chat)
+	version := ollamaCompatVersion
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		t.Fatalf("Expected semver format, got %s", version)
+	}
+
+	major := 0
+	minor := 0
+	patch := 0
+	fmt.Sscanf(parts[0], "%d", &major)
+	fmt.Sscanf(parts[1], "%d", &minor)
+	fmt.Sscanf(parts[2], "%d", &patch)
+
+	// Must be >= 0.6.4
+	versionNum := major*10000 + minor*100 + patch
+	minimumNum := 0*10000 + 6*100 + 4
+	if versionNum < minimumNum {
+		t.Errorf("ollamaCompatVersion %s is below minimum 0.6.4 required by VSCode Copilot Chat", version)
+	}
+}
+
+func TestShowResponseHasRequiredFields(t *testing.T) {
+	// Verify ShowResponse struct can marshal the fields required by VSCode Copilot Chat
+	response := ShowResponse{
+		Details: ModelDetails{
+			Format:            "gguf",
+			Family:            "llama",
+			Families:          []string{"llama"},
+			ParameterSize:     "8B",
+			QuantizationLevel: "Q4_K_M",
+		},
+		Template:     "{{ .System }}\n{{ .Prompt }}",
+		Capabilities: []string{"completion", "tools"},
+		ModelInfo: map[string]interface{}{
+			"general.architecture":   "llama",
+			"general.basename":       "ai/test-model:latest",
+			"llama.context_length":   4096,
+			"llama.embedding_length": 2048,
+		},
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("Failed to marshal ShowResponse: %v", err)
+	}
+
+	// Verify all expected fields are present in JSON
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	// Check capabilities field exists and is an array
+	caps, ok := parsed["capabilities"]
+	if !ok {
+		t.Error("capabilities field missing from ShowResponse JSON")
+	}
+	capsArr, ok := caps.([]interface{})
+	if !ok {
+		t.Error("capabilities should be an array")
+	}
+	if len(capsArr) != 2 {
+		t.Errorf("Expected 2 capabilities, got %d", len(capsArr))
+	}
+
+	// Check model_info field exists and has required keys
+	modelInfo, ok := parsed["model_info"]
+	if !ok {
+		t.Error("model_info field missing from ShowResponse JSON")
+	}
+	infoMap, ok := modelInfo.(map[string]interface{})
+	if !ok {
+		t.Error("model_info should be a map")
+	}
+	if _, ok := infoMap["general.architecture"]; !ok {
+		t.Error("model_info missing general.architecture")
+	}
+	if _, ok := infoMap["general.basename"]; !ok {
+		t.Error("model_info missing general.basename")
+	}
+
+	// Check template field exists
+	if _, ok := parsed["template"]; !ok {
+		t.Error("template field missing from ShowResponse JSON")
+	}
+
+	// Check details.family field exists (required by VSCode Copilot)
+	details, ok := parsed["details"].(map[string]interface{})
+	if !ok {
+		t.Error("details should be a map")
+	}
+	if _, ok := details["family"]; !ok {
+		t.Error("details.family missing from ShowResponse JSON")
+	}
+}
+
+func TestContainsString(t *testing.T) {
+	tests := []struct {
+		slice    []string
+		s        string
+		expected bool
+	}{
+		{[]string{"a", "b", "c"}, "b", true},
+		{[]string{"a", "b", "c"}, "d", false},
+		{[]string{}, "a", false},
+		{[]string{"completion", "tools", "vision"}, "vision", true},
+	}
+	for _, tt := range tests {
+		if got := containsString(tt.slice, tt.s); got != tt.expected {
+			t.Errorf("containsString(%v, %q) = %v, want %v", tt.slice, tt.s, got, tt.expected)
+		}
 	}
 }
 
