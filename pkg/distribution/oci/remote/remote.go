@@ -652,19 +652,62 @@ func (l *remoteLayer) Digest() (oci.Hash, error) {
 
 // DiffID returns the uncompressed layer digest.
 // For remote layers, we look up the diff ID from the image config.
+// Supports both Docker format (rootfs.diff_ids) and CNCF ModelPack format
+// (modelfs.diffIds).
 func (l *remoteLayer) DiffID() (oci.Hash, error) {
-	// Get the config file to look up the diff ID
-	config, err := l.image.ConfigFile()
+	raw, err := l.image.RawConfigFile()
 	if err != nil {
-		return oci.Hash{}, fmt.Errorf("getting config file for diff ID lookup: %w", err)
+		return oci.Hash{}, fmt.Errorf("getting raw config for diff ID lookup: %w", err)
 	}
 
-	// Check if the layer index is within bounds of the diff IDs
-	if l.index < 0 || l.index >= len(config.RootFS.DiffIDs) {
-		return l.desc.Digest, nil // Fallback to digest if diff ID not available
+	// Try to extract diffIds from the raw config generically, so we support
+	// both Docker format (rootfs.diff_ids) and CNCF ModelPack (modelfs.diffIds).
+	diffIDs, err := extractDiffIDs(raw, l.index)
+	if err != nil || diffIDs == (oci.Hash{}) {
+		// Fall back to the descriptor digest (works for uncompressed layers).
+		return l.desc.Digest, nil
+	}
+	return diffIDs, nil
+}
+
+// extractDiffIDs parses a raw config blob and returns the DiffID at the given
+// layer index. It tries Docker format (rootfs.diff_ids) first, then CNCF
+// ModelPack format (modelfs.diffIds).
+func extractDiffIDs(raw []byte, index int) (oci.Hash, error) {
+	// Parse as a generic map to support both config formats.
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return oci.Hash{}, err
 	}
 
-	return config.RootFS.DiffIDs[l.index], nil
+	// Try Docker format: rootfs.diff_ids
+	if rootfsRaw, ok := parsed["rootfs"]; ok {
+		var rootfs struct {
+			DiffIDs []oci.Hash `json:"diff_ids"`
+		}
+		if err := json.Unmarshal(rootfsRaw, &rootfs); err == nil {
+			if index >= 0 && index < len(rootfs.DiffIDs) {
+				return rootfs.DiffIDs[index], nil
+			}
+		}
+	}
+
+	// Try CNCF ModelPack format: modelfs.diffIds
+	if modelfsRaw, ok := parsed["modelfs"]; ok {
+		var modelfs struct {
+			DiffIDs []string `json:"diffIds"`
+		}
+		if err := json.Unmarshal(modelfsRaw, &modelfs); err == nil {
+			if index >= 0 && index < len(modelfs.DiffIDs) {
+				h, err := oci.NewHash(modelfs.DiffIDs[index])
+				if err == nil {
+					return h, nil
+				}
+			}
+		}
+	}
+
+	return oci.Hash{}, nil
 }
 
 // Compressed returns the compressed layer contents.
@@ -880,8 +923,15 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		return fmt.Errorf("getting config name: %w", err)
 	}
 
+	// Use the config media type from the manifest rather than a hardcoded value,
+	// so that both Docker-format and CNCF ModelPack artifacts are pushed
+	// with the correct media type.
+	pushManifest, err := img.Manifest()
+	if err != nil {
+		return fmt.Errorf("getting manifest for config media type: %w", err)
+	}
 	configDesc := v1.Descriptor{
-		MediaType: "application/vnd.docker.container.image.v1+json",
+		MediaType: string(pushManifest.Config.MediaType),
 		Digest:    godigest.Digest(configName.String()),
 		Size:      int64(len(rawConfig)),
 	}
