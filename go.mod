@@ -8,7 +8,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.4
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.3.1+incompatible
+	github.com/docker/cli v29.4.0+incompatible
 	github.com/docker/cli-docs-tool v0.11.0
 	github.com/docker/docker-credential-helpers v0.9.5
 	github.com/docker/go-units v0.5.0
@@ -17,7 +17,7 @@ require (
 	github.com/gpustack/gguf-parser-go v0.24.0
 	github.com/jaypipes/ghw v0.24.0
 	github.com/kolesnikovae/go-winjob v1.0.0
-	github.com/mattn/go-runewidth v0.0.22
+	github.com/mattn/go-runewidth v0.0.23
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/moby/moby/api v1.54.1
 	github.com/moby/moby/client v0.4.0
@@ -33,14 +33,14 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	github.com/testcontainers/testcontainers-go v0.41.0
-	github.com/testcontainers/testcontainers-go/modules/registry v0.41.0
+	github.com/testcontainers/testcontainers-go v0.42.0
+	github.com/testcontainers/testcontainers-go/modules/registry v0.42.0
 	go.opentelemetry.io/otel v1.43.0
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.42.0
-	golang.org/x/term v0.41.0
+	golang.org/x/sys v0.43.0
+	golang.org/x/term v0.42.0
 )
 
 require (
@@ -69,7 +69,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -87,7 +86,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jaypipes/pcidb v1.1.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.4 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
@@ -97,7 +96,7 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
-	github.com/moby/patternmatcher v0.6.0 // indirect
+	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
@@ -114,8 +113,8 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.2 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smallnest/ringbuffer v0.0.0-20241116012123-461381446e3d // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
