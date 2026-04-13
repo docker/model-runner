@@ -29,10 +29,10 @@ const ConfigurationPython = `(version 1)
 ;;; Also allow Unix domain socket binding in the system temp directory
 ;;; (/private/var/folders) which vllm-metal uses for internal ZMQ IPC sockets.
 (deny network*)
-(allow network-bind network-inbound
+(allow network-bind network-inbound network-outbound
     (regex #"inference.*-[0-9]+\.sock$")
     (local tcp "localhost:*"))
-(allow network-bind
+(allow network-bind network-inbound network-outbound
     (regex #"^/private/var/folders/"))
 
 ;;; Deny access to the camera and microphone.
@@ -76,12 +76,16 @@ const ConfigurationPython = `(version 1)
 (allow file-write*
     (literal "/dev/null")
     (subpath "/private/var")
+    (subpath "/private/tmp")
     (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
-    (subpath "[WORKDIR]"))
+    (subpath "[WORKDIR]")
+    (subpath "[HOMEDIR]/.cache/vllm"))
 (allow file-read*
     (subpath "[HOMEDIR]/.docker/models")
     (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
-    (subpath "[WORKDIR]"))
+    (subpath "[WORKDIR]")
+    (subpath "[HOMEDIR]/.cache/vllm")
+    (subpath "/private/tmp"))
 `
 
 // ConfigurationLlamaCpp is the sandbox configuration for llama.cpp processes.
