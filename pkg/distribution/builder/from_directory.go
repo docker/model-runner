@@ -256,7 +256,11 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 				return nil, fmt.Errorf("get layer media type: %w", err)
 			}
 			fp := layerFilePath(l)
-			cncfLayers[i] = &remappedLayer{Layer: l, newMediaType: modelpack.MapLayerMediaType(mt, fp)}
+			rl, err := newRemappedLayer(l, modelpack.MapLayerMediaType(mt, fp))
+			if err != nil {
+				return nil, fmt.Errorf("remap layer %d: %w", i, err)
+			}
+			cncfLayers[i] = rl
 			cncfDiffIDs[i] = digest.Digest(diffIDs[i].String())
 		}
 		mp := modelpack.DockerConfigToModelPack(
