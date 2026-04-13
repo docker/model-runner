@@ -3,7 +3,6 @@ package modelpack
 import (
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -115,14 +114,12 @@ func DockerConfigToModelPack(
 	desc types.Descriptor,
 	diffIDs []digest.Digest,
 ) Model {
-	now := time.Now()
-	createdAt := desc.Created
-	if createdAt == nil {
-		createdAt = &now
-	}
+	// Preserve determinism by propagating desc.Created directly.
+	// Callers that require a concrete timestamp should set desc.Created
+	// explicitly before calling this function.
 	return Model{
 		Descriptor: ModelDescriptor{
-			CreatedAt: createdAt,
+			CreatedAt: desc.Created,
 			// Map architecture to family as the closest available field.
 			Family: cfg.Architecture,
 		},
@@ -139,8 +136,8 @@ func DockerConfigToModelPack(
 	}
 }
 
-// normalizeParamSize converts a Docker-format parameters string (e.g.
-// "8.03B", "70B") to a model-spec paramSize string (e.g. "8b", "70b").
+// normalizeParamSize lowercases a Docker-format parameters string for use
+// as the model-spec paramSize field (e.g. "8.03B" → "8.03b", "70B" → "70b").
 // Returns empty string if s is empty.
 func normalizeParamSize(s string) string {
 	if s == "" {
