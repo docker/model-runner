@@ -362,6 +362,95 @@ func TestParse_WithNestedDDUF(t *testing.T) {
 	}
 }
 
+func TestParse_WithCNCFMMProjGGUF(t *testing.T) {
+	// Simulate a cached CNCF ModelPack bundle where the mmproj file has a
+	// .gguf extension (e.g., "mmproj-BF16.gguf") instead of .mmproj.
+	tempDir := t.TempDir()
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatalf("Failed to create model directory: %v", err)
+	}
+
+	// Create the main GGUF weight and the mmproj .gguf file
+	if err := os.WriteFile(filepath.Join(modelDir, "gemma-4-E2B-it-UD-Q4_K_XL.gguf"), []byte("main model"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "mmproj-BF16.gguf"), []byte("mmproj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid config.json
+	cfg := types.Config{Format: types.FormatGGUF}
+	cfgBytes, marshalErr := json.Marshal(cfg)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "config.json"), cfgBytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// The main GGUF file should NOT be the mmproj
+	if bundle.ggufFile == "" {
+		t.Fatal("Expected ggufFile to be set")
+	}
+	if isMMProjFilePath(bundle.ggufFile) {
+		t.Errorf("ggufFile should not be an mmproj file, got: %s", bundle.ggufFile)
+	}
+
+	// The mmproj should be detected from mmproj-BF16.gguf
+	if bundle.mmprojPath == "" {
+		t.Fatal("Expected mmprojPath to be set for CNCF mmproj .gguf file")
+	}
+	if bundle.mmprojPath != "mmproj-BF16.gguf" {
+		t.Errorf("mmprojPath = %q, want %q", bundle.mmprojPath, "mmproj-BF16.gguf")
+	}
+	if bundle.MMPROJPath() == "" {
+		t.Fatal("Expected MMPROJPath() to return non-empty path")
+	}
+}
+
+func TestParse_WithTraditionalMMProj(t *testing.T) {
+	// Ensure traditional .mmproj files still work
+	tempDir := t.TempDir()
+	modelDir := filepath.Join(tempDir, ModelSubdir)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(modelDir, "model.gguf"), []byte("main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "model.mmproj"), []byte("mmproj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := types.Config{Format: types.FormatGGUF}
+	cfgBytes, marshalErr := json.Marshal(cfg)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "config.json"), cfgBytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := Parse(tempDir)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if bundle.mmprojPath != "model.mmproj" {
+		t.Errorf("mmprojPath = %q, want %q", bundle.mmprojPath, "model.mmproj")
+	}
+	if bundle.ggufFile != "model.gguf" {
+		t.Errorf("ggufFile = %q, want %q", bundle.ggufFile, "model.gguf")
+	}
+}
+
 func TestParse_WithBothFormats(t *testing.T) {
 	// Create a temporary directory for the test bundle
 	tempDir := t.TempDir()

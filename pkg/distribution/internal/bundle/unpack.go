@@ -40,6 +40,8 @@ func isV02Model(model types.ModelArtifact) bool {
 }
 
 // isCNCFModel checks if the model was packaged using the CNCF ModelPack format.
+// Detection uses the manifest's artifactType field, which is required by the
+// CNCF model-spec ("application/vnd.cncf.model.manifest.v1+json").
 // CNCF ModelPack uses a layer-per-file approach with filepath annotations,
 // similar to V0.2, so it can be unpacked using UnpackFromLayers.
 func isCNCFModel(model types.ModelArtifact) bool {
@@ -47,7 +49,7 @@ func isCNCFModel(model types.ModelArtifact) bool {
 	if err != nil {
 		return false
 	}
-	return manifest.Config.MediaType == modelpack.MediaTypeModelConfigV1
+	return manifest.ArtifactType == modelpack.ArtifactTypeModelManifest
 }
 
 // unpackLegacy is the original V0.1 unpacking logic that uses model.GGUFPaths(), model.SafetensorsPaths(), etc.
@@ -859,6 +861,17 @@ func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPat
 	default:
 		// Handle format-agnostic CNCF weight types (e.g., .raw) by checking the model config format.
 		if modelpack.IsModelPackGenericWeightMediaType(string(mediaType)) {
+			// Detect mmproj files by filepath annotation before treating as
+			// regular weight. In CNCF format, mmproj files share the same
+			// generic weight media type as model weights and can only be
+			// distinguished by their filename (same heuristic used by
+			// huggingface.isMMProjFile).
+			if isMMProjFilePath(relPath) {
+				if bundle.mmprojPath == "" {
+					bundle.mmprojPath = relPath
+				}
+				return
+			}
 			switch types.Format(modelFormat) {
 			case types.FormatGGUF:
 				if bundle.ggufFile == "" {
@@ -875,6 +888,13 @@ func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPat
 			}
 		}
 	}
+}
+
+// isMMProjFilePath checks if a filepath refers to a multimodal projector file
+// by looking for "mmproj" in the filename (case-insensitive). This is the same
+// heuristic used by huggingface.isMMProjFile.
+func isMMProjFilePath(path string) bool {
+	return strings.Contains(strings.ToLower(filepath.Base(path)), "mmproj")
 }
 
 // unpackGenericFileLayers unpacks layers with MediaTypeModelFile using their filepath annotation.

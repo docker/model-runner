@@ -101,13 +101,25 @@ func parseRuntimeConfig(rootDir string) (types.ModelConfig, error) {
 // top-level match in modelDir and falls back to a recursive search when needed.
 // Hidden files are ignored.
 func findModelFile(modelDir, ext string) (string, error) {
+	return findModelFileExcluding(modelDir, ext, nil)
+}
+
+// findModelFileExcluding finds a supported model file by extension, skipping
+// any file for which the exclude function returns true. It prefers a top-level
+// match in modelDir and falls back to a recursive search when needed. Hidden
+// files are ignored.
+func findModelFileExcluding(modelDir, ext string, exclude func(string) bool) (string, error) {
 	pattern := filepath.Join(modelDir, "[^.]*"+ext)
 	paths, err := filepath.Glob(pattern)
 	if err != nil {
 		return "", fmt.Errorf("find %s files: %w", ext, err)
 	}
-	if len(paths) > 0 {
-		return filepath.Base(paths[0]), nil
+	for _, p := range paths {
+		name := filepath.Base(p)
+		if exclude != nil && exclude(name) {
+			continue
+		}
+		return name, nil
 	}
 
 	var firstFound string
@@ -124,6 +136,9 @@ func findModelFile(modelDir, ext string) (string, error) {
 			}
 			if filepath.Ext(path) != ext ||
 				strings.HasPrefix(info.Name(), ".") {
+				return nil
+			}
+			if exclude != nil && exclude(info.Name()) {
 				return nil
 			}
 
@@ -146,8 +161,10 @@ func findModelFile(modelDir, ext string) (string, error) {
 }
 
 func findGGUFFile(modelDir string) (string, error) {
-	// GGUF files are optional.
-	return findModelFile(modelDir, ".gguf")
+	// GGUF files are optional. Use findModelFileExcluding to skip mmproj
+	// files that also carry a .gguf extension (common in CNCF ModelPack
+	// format where mmproj files are named e.g. "mmproj-BF16.gguf").
+	return findModelFileExcluding(modelDir, ".gguf", isMMProjFilePath)
 }
 
 func findSafetensorsFile(modelDir string) (string, error) {
@@ -161,17 +178,39 @@ func findDDUFFile(modelDir string) (string, error) {
 }
 
 func findMultiModalProjectorFile(modelDir string) (string, error) {
+	// First, look for files with the traditional .mmproj extension.
 	mmprojPaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.mmproj"))
 	if err != nil {
 		return "", err
 	}
-	if len(mmprojPaths) == 0 {
-		return "", nil
-	}
 	if len(mmprojPaths) > 1 {
 		return "", fmt.Errorf("found multiple .mmproj files, but only 1 is supported")
 	}
-	return filepath.Base(mmprojPaths[0]), nil
+	if len(mmprojPaths) == 1 {
+		return filepath.Base(mmprojPaths[0]), nil
+	}
+
+	// Fall back to detecting mmproj files with a .gguf extension.
+	// CNCF ModelPack format packages mmproj files as generic weight layers,
+	// preserving their original filename (e.g., "mmproj-BF16.gguf").
+	ggufPaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.gguf"))
+	if err != nil {
+		return "", err
+	}
+	var mmprojGGUF []string
+	for _, p := range ggufPaths {
+		if isMMProjFilePath(p) {
+			mmprojGGUF = append(mmprojGGUF, p)
+		}
+	}
+	if len(mmprojGGUF) > 1 {
+		return "", fmt.Errorf("found multiple mmproj .gguf files, but only 1 is supported")
+	}
+	if len(mmprojGGUF) == 1 {
+		return filepath.Base(mmprojGGUF[0]), nil
+	}
+
+	return "", nil
 }
 
 func findChatTemplateFile(modelDir string) (string, error) {
