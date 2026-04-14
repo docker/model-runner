@@ -21,9 +21,8 @@ type BackendsConfig struct {
 	ServerLogFactory func(backendName string) logging.Logger
 
 	// LlamaCpp settings (always included).
-	LlamaCppVendoredPath string
-	LlamaCppUpdatedPath  string
-	LlamaCppConfig       config.BackendConfig
+	LlamaCppPath   string
+	LlamaCppConfig config.BackendConfig
 
 	// Optional backends and their custom server paths.
 	IncludeMLX bool
@@ -49,8 +48,8 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 	}
 
 	defs := []BackendDef{
-		{Name: llamacpp.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppVendoredPath, cfg.LlamaCppUpdatedPath, cfg.LlamaCppConfig)
+		{Name: llamacpp.Name, Deferred: llamacpp.NeedsDeferredInstall(), Init: func(mm *models.Manager) (inference.Backend, error) {
+			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig)
 		}},
 	}
 

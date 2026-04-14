@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -38,13 +39,11 @@ type llamaCpp struct {
 	// modelManager is the shared model manager.
 	modelManager *models.Manager
 	// serverLog is the logger to use for the llama.cpp server process.
-	serverLog       logging.Logger
-	updatedLlamaCpp bool
-	// vendoredServerStoragePath is the parent path of the vendored version of com.docker.llama-server.
-	vendoredServerStoragePath string
-	// updatedServerStoragePath is the parent path of the updated version of com.docker.llama-server.
-	// It is also where updates will be stored when downloaded.
-	updatedServerStoragePath string
+	serverLog logging.Logger
+	// installDir is the directory containing the llama.cpp binary.
+	// On macOS/Windows this is ~/.docker/model-runner/llama.cpp/bin (downloaded on demand).
+	// On Linux this is the vendored bin path inside the container (e.g. /app/bin).
+	installDir string
 	// status is the state in which the llama.cpp backend is in.
 	status string
 	// config is the configuration for the llama.cpp backend.
@@ -58,8 +57,7 @@ func New(
 	log logging.Logger,
 	modelManager *models.Manager,
 	serverLog logging.Logger,
-	vendoredServerStoragePath string,
-	updatedServerStoragePath string,
+	installDir string,
 	conf config.BackendConfig,
 ) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
@@ -68,12 +66,11 @@ func New(
 	}
 
 	return &llamaCpp{
-		log:                       log,
-		modelManager:              modelManager,
-		serverLog:                 serverLog,
-		vendoredServerStoragePath: vendoredServerStoragePath,
-		updatedServerStoragePath:  updatedServerStoragePath,
-		config:                    conf,
+		log:          log,
+		modelManager: modelManager,
+		serverLog:    serverLog,
+		installDir:   installDir,
+		config:       conf,
 	}, nil
 }
 
@@ -95,8 +92,6 @@ func (l *llamaCpp) UsesTCP() bool {
 
 // Install implements inference.Backend.Install.
 func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
-	l.updatedLlamaCpp = false
-
 	// We don't currently support this backend on Windows. We'll likely
 	// never support it on Intel Macs.
 	if (runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") ||
@@ -104,31 +99,55 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 		return errors.New("platform not supported")
 	}
 
-	llamaServerBin := "com.docker.llama-server"
-	if runtime.GOOS == "windows" {
-		llamaServerBin = "com.docker.llama-server.exe"
-	}
+	llamaServerBin := l.binaryName()
 
-	// Temporary workaround for dynamically downloading llama.cpp from Docker Hub.
-	// Internet access and an available docker/docker-model-backend-llamacpp:latest on Docker Hub are required.
-	// Even if docker/docker-model-backend-llamacpp:latest has been downloaded before, we still require its
-	// digest to be equal to the one on Docker Hub.
-	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
-	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
-		l.log.Info("Failed to ensure latest llama.cpp", "error", err)
-		if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
-			l.status = inference.FormatError(fmt.Sprintf("failed to install llama.cpp: %v", err))
-		}
-		if errors.Is(err, context.Canceled) {
-			return err
+	if NeedsDeferredInstall() {
+		binPath := filepath.Join(l.installDir, llamaServerBin)
+		if _, err := os.Stat(binPath); err == nil {
+			l.setRunningStatus(l.log, binPath, "", "")
+		} else {
+			if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient); err != nil {
+				l.log.Info("Failed to download llama.cpp", "error", err)
+				if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
+					l.status = inference.FormatError(fmt.Sprintf("failed to install llama.cpp: %v", err))
+				}
+				if errors.Is(err, context.Canceled) {
+					return err
+				}
+			}
 		}
 	} else {
-		l.updatedLlamaCpp = true
+		if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient); err != nil {
+			l.log.Info("Failed to ensure latest llama.cpp", "error", err)
+			if !errors.Is(err, errLlamaCppUpToDate) && !errors.Is(err, errLlamaCppUpdateDisabled) {
+				l.status = inference.FormatError(fmt.Sprintf("failed to install llama.cpp: %v", err))
+			}
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
+		}
 	}
 
 	l.gpuSupported = l.checkGPUSupport(ctx)
 	l.log.Info("installed llama-server", "gpuSupport", l.gpuSupported)
 
+	return nil
+}
+
+// UpdateBinary implements inference.BackendUpdater.
+func (l *llamaCpp) UpdateBinary(ctx context.Context, httpClient *http.Client) error {
+	versionFile := filepath.Join(l.installDir, ".llamacpp_version")
+	if _, err := os.Stat(versionFile); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient); err != nil {
+		if errors.Is(err, errLlamaCppUpToDate) || errors.Is(err, errLlamaCppUpdateDisabled) {
+			return nil
+		}
+		return err
+	}
+	l.gpuSupported = l.checkGPUSupport(ctx)
 	return nil
 }
 
@@ -145,11 +164,6 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		if err != nil {
 			return fmt.Errorf("failed to get draft model: %w", err)
 		}
-	}
-
-	binPath := l.vendoredServerStoragePath
-	if l.updatedLlamaCpp {
-		binPath = l.updatedServerStoragePath
 	}
 
 	args, err := l.config.GetArgs(bundle, socket, mode, config)
@@ -173,8 +187,8 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 	return backends.RunBackend(ctx, backends.RunnerConfig{
 		BackendName:      "llama.cpp",
 		Socket:           socket,
-		BinaryPath:       filepath.Join(binPath, "com.docker.llama-server"),
-		SandboxPath:      binPath,
+		BinaryPath:       filepath.Join(l.installDir, "com.docker.llama-server"),
+		SandboxPath:      l.installDir,
 		SandboxConfig:    sandbox.ConfigurationLlamaCpp,
 		Args:             args,
 		Logger:           l.log,
@@ -193,7 +207,7 @@ func (l *llamaCpp) Status() string {
 }
 
 func (l *llamaCpp) GetDiskUsage() (int64, error) {
-	size, err := diskusage.Size(l.updatedServerStoragePath)
+	size, err := diskusage.Size(l.installDir)
 	if err != nil {
 		return 0, fmt.Errorf("error while getting store size: %w", err)
 	}
@@ -337,11 +351,14 @@ func getGGUFLayers(layers []oci.Layer) []oci.Layer {
 	return filtered
 }
 
-func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
-	binPath := l.vendoredServerStoragePath
-	if l.updatedLlamaCpp {
-		binPath = l.updatedServerStoragePath
+func (l *llamaCpp) binaryName() string {
+	if runtime.GOOS == "windows" {
+		return "com.docker.llama-server.exe"
 	}
+	return "com.docker.llama-server"
+}
+
+func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 	var output bytes.Buffer
 	llamaCppSandbox, err := sandbox.Create(
 		ctx,
@@ -350,8 +367,8 @@ func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 			command.Stdout = &output
 			command.Stderr = &output
 		},
-		binPath,
-		filepath.Join(binPath, "com.docker.llama-server"),
+		l.installDir,
+		filepath.Join(l.installDir, "com.docker.llama-server"),
 		"--list-devices",
 	)
 	if err != nil {

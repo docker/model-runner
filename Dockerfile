@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # --- Get llama.cpp binary ---
-FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
+FROM docker/model-runner:llamacpp-${LLAMA_SERVER_VARIANT}-${LLAMA_SERVER_VERSION} AS llama-server
 
 # --- Final image ---
 FROM docker.io/${BASE_IMAGE} AS llamacpp
