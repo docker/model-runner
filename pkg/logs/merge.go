@@ -1,6 +1,6 @@
 // Package logs provides shared log file reading, merging, and
 // following utilities for the Docker Model Runner service log and
-// engine log files created by Docker Desktop.
+// engine log files.
 package logs
 
 import (

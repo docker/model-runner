@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -93,6 +94,54 @@ func main() {
 		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
 	}
 
+	// Determine log directory. When MODEL_RUNNER_LOG_DIR is set,
+	// use it. Otherwise auto-create a default directory so that the
+	// /logs API endpoint is available in all deployment modes.
+	logDir := envconfig.LogDir()
+	if logDir == "" {
+		logDir = filepath.Join(os.TempDir(), "model-runner-logs")
+		if mkdirErr := os.MkdirAll(logDir, 0o755); mkdirErr != nil {
+			log.Warn("failed to create default log directory, /logs endpoint will be disabled",
+				"dir", logDir, "error", mkdirErr)
+			logDir = ""
+		}
+	}
+
+	// When a log directory is available, set up file-backed logging
+	// using tee writers (stderr + bracket-timestamped files) so that
+	// both `docker logs` and the /logs API work.
+	var engineLogFile *os.File
+	if logDir != "" {
+		serviceLogFile, openErr := os.OpenFile(
+			filepath.Join(logDir, dmrlogs.ServiceLogName),
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644,
+		)
+		if openErr != nil {
+			log.Warn("failed to open service log file, /logs endpoint will be disabled", "error", openErr)
+			logDir = ""
+		} else {
+			defer serviceLogFile.Close()
+			bracketW := logging.NewBracketWriter(serviceLogFile)
+			log = slog.New(slog.NewTextHandler(
+				io.MultiWriter(os.Stderr, bracketW),
+				&slog.HandlerOptions{Level: envconfig.LogLevel()},
+			))
+		}
+
+		if logDir != "" {
+			var openErr error
+			engineLogFile, openErr = os.OpenFile(
+				filepath.Join(logDir, dmrlogs.EngineLogName),
+				os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644,
+			)
+			if openErr != nil {
+				log.Warn("failed to open engine log file", "error", openErr)
+			} else {
+				defer engineLogFile.Close()
+			}
+		}
+	}
+
 	// Create llama.cpp configuration from environment variables
 	llamaCppConfig, err := createLlamaCppConfigFromEnv()
 	if err != nil {
@@ -117,7 +166,17 @@ func main() {
 		},
 		Backends: append(
 			routing.DefaultBackendDefs(routing.BackendsConfig{
-				Log:                  log,
+				Log: log,
+				ServerLogFactory: func(_ string) logging.Logger {
+					if engineLogFile == nil {
+						return log
+					}
+					bracketW := logging.NewBracketWriter(engineLogFile)
+					return slog.New(slog.NewTextHandler(
+						io.MultiWriter(os.Stderr, bracketW),
+						&slog.HandlerOptions{Level: envconfig.LogLevel()},
+					))
+				},
 				LlamaCppVendoredPath: llamaServerPath,
 				LlamaCppUpdatedPath:  updatedServerPath,
 				LlamaCppConfig:       llamaCppConfig,
@@ -166,8 +225,9 @@ func main() {
 				}
 			})
 
-			// Logs endpoint (Docker Desktop mode only).
-			if logDir := envconfig.LogDir(); logDir != "" {
+			// Logs endpoint — available in both Docker Desktop and
+			// standalone (Docker CE) modes when a log directory exists.
+			if logDir != "" {
 				r.HandleFunc(
 					"GET /logs",
 					dmrlogs.NewHTTPHandler(logDir),
