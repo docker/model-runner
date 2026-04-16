@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/docker/model-runner/pkg/distribution/oci"
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
@@ -179,10 +180,15 @@ func (w *ollamaProgressWriter) Flush() {
 	}
 }
 
+// ollamaCompatVersion is the Ollama API compatibility version reported by Docker Model Runner.
+// This must be >= the minimum version required by clients (e.g., VSCode Copilot Chat requires >= 0.6.4).
+// Bump this when adding support for features introduced in newer Ollama versions.
+const ollamaCompatVersion = "0.6.4"
+
 // handleVersion handles GET /api/version
 func (h *HTTPHandler) handleVersion(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{
-		"version": "0.1.0",
+		"version": ollamaCompatVersion,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -337,21 +343,90 @@ func (h *HTTPHandler) handleShowModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	architecture := config.GetArchitecture()
+
 	// Build response
 	response := ShowResponse{
 		Details: ModelDetails{
 			Format:            "gguf",
-			Family:            config.GetArchitecture(),
-			Families:          []string{config.GetArchitecture()},
+			Family:            architecture,
+			Families:          []string{architecture},
 			ParameterSize:     config.GetParameters(),
 			QuantizationLevel: config.GetQuantization(),
 		},
+	}
+
+	// Build capabilities list and model_info for Ollama API compatibility
+	// (required by clients like VSCode Copilot Chat)
+	response.Capabilities, response.ModelInfo = h.buildShowModelMetadata(model, config, architecture)
+
+	// Try to read the chat template
+	if templatePath, err := model.ChatTemplatePath(); err == nil && templatePath != "" {
+		response.Template = templatePath
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.log.Error("Failed to encode response", "error", err)
 	}
+}
+
+// buildShowModelMetadata extracts capabilities and model_info from model config.
+// This provides the metadata that Ollama clients (e.g., VSCode Copilot Chat) need
+// to discover model features like vision support, tool calling, and context window.
+func (h *HTTPHandler) buildShowModelMetadata(model types.Model, config types.ModelConfig, architecture string) ([]string, map[string]interface{}) {
+	capabilities := []string{"completion"}
+
+	// Check for vision support via multimodal projector
+	if mmprojPath, err := model.MMPROJPath(); err == nil && mmprojPath != "" {
+		capabilities = append(capabilities, "vision")
+	}
+
+	// Check for tool support - we advertise tool calling for all chat models
+	// since llama.cpp supports tool calling through chat templates
+	capabilities = append(capabilities, "tools")
+
+	// Build model_info map (Ollama format used by VSCode Copilot Chat)
+	modelInfo := map[string]interface{}{
+		"general.architecture": architecture,
+		"general.basename":     modelName(model),
+	}
+
+	// Add context length from GGUF metadata or config
+	if ctxSize := config.GetContextSize(); ctxSize != nil {
+		modelInfo[architecture+".context_length"] = *ctxSize
+	} else if typedConfig, ok := config.(*types.Config); ok && typedConfig.GGUF != nil {
+		if ctxLen, found := typedConfig.GGUF[architecture+".context_length"]; found {
+			modelInfo[architecture+".context_length"] = ctxLen
+		}
+		if embLen, found := typedConfig.GGUF[architecture+".embedding_length"]; found {
+			modelInfo[architecture+".embedding_length"] = embLen
+		}
+	}
+
+	return capabilities, modelInfo
+}
+
+// modelName extracts a human-readable name from a model's tags.
+func modelName(model types.Model) string {
+	tags := model.Tags()
+	if len(tags) > 0 {
+		return tags[0]
+	}
+	if id, err := model.ID(); err == nil {
+		return id
+	}
+	return ""
+}
+
+// containsString checks if a slice contains a given string.
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }
 
 // handleChat handles POST /api/chat
