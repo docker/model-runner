@@ -119,3 +119,9 @@ type ModelConfigEntry struct {
 	Mode    inference.BackendMode
 	Config  inference.BackendConfiguration
 }
+
+// ModelBackendSelection describes the backend selected by the scheduler for a model.
+type ModelBackendSelection struct {
+	Backend   string `json:"backend"`
+	Installed bool   `json:"installed"`
+}
