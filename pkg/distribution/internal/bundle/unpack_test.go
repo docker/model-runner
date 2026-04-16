@@ -231,15 +231,102 @@ func TestUpdateBundleFieldsFromLayer_CNCFMediaTypes(t *testing.T) {
 	}
 }
 
+func TestUpdateBundleFieldsFromLayer_CNCFMMProj(t *testing.T) {
+	tests := []struct {
+		name         string
+		mediaType    oci.MediaType
+		relPath      string
+		modelFormat  string
+		expectMMProj string
+		expectGGUF   string
+	}{
+		{
+			name:         "CNCF generic weight raw with mmproj filename",
+			mediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+			relPath:      "mmproj-BF16.gguf",
+			modelFormat:  string(types.FormatGGUF),
+			expectMMProj: "mmproj-BF16.gguf",
+			expectGGUF:   "",
+		},
+		{
+			name:         "CNCF generic weight raw with mmproj in path (case-insensitive)",
+			mediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+			relPath:      "MMProj-model-f16.gguf",
+			modelFormat:  string(types.FormatGGUF),
+			expectMMProj: "MMProj-model-f16.gguf",
+			expectGGUF:   "",
+		},
+		{
+			name:         "CNCF generic weight raw with regular GGUF (not mmproj)",
+			mediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+			relPath:      "model-Q4_K_XL.gguf",
+			modelFormat:  string(types.FormatGGUF),
+			expectMMProj: "",
+			expectGGUF:   "model-Q4_K_XL.gguf",
+		},
+		{
+			name:         "Docker mmproj media type still works",
+			mediaType:    types.MediaTypeMultimodalProjector,
+			relPath:      "model.mmproj",
+			modelFormat:  "",
+			expectMMProj: "model.mmproj",
+			expectGGUF:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle := &Bundle{}
+			updateBundleFieldsFromLayer(bundle, tt.mediaType, tt.relPath, tt.modelFormat)
+
+			if bundle.mmprojPath != tt.expectMMProj {
+				t.Errorf("mmprojPath = %q, want %q", bundle.mmprojPath, tt.expectMMProj)
+			}
+			if bundle.ggufFile != tt.expectGGUF {
+				t.Errorf("ggufFile = %q, want %q", bundle.ggufFile, tt.expectGGUF)
+			}
+		})
+	}
+}
+
+func TestIsMMProjFilePath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"mmproj-BF16.gguf", true},
+		{"mmproj-model-f16.gguf", true},
+		{"mmproj-model-f32.gguf", true},
+		{"MMProj-model.gguf", true},
+		{"MMPROJ-model.gguf", true},
+		{"some/path/mmproj-BF16.gguf", true},
+		{"model-Q4_K_XL.gguf", false},
+		{"model.gguf", false},
+		{"model.safetensors", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isMMProjFilePath(tt.path)
+			if got != tt.expected {
+				t.Errorf("isMMProjFilePath(%q) = %v, want %v", tt.path, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestIsCNCFModel(t *testing.T) {
 	tests := []struct {
 		name            string
 		configMediaType oci.MediaType
+		artifactType    string
 		expected        bool
 	}{
 		{
 			name:            "CNCF ModelPack config V1",
 			configMediaType: modelpack.MediaTypeModelConfigV1,
+			artifactType:    modelpack.ArtifactTypeModelManifest,
 			expected:        true,
 		},
 		{
@@ -256,9 +343,10 @@ func TestIsCNCFModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a minimal artifact with the given config media type
+			// Create a minimal artifact with the given config media type and artifact type
 			artifact := &testArtifactWithConfigMediaType{
 				configMediaType: tt.configMediaType,
+				artifactType:    tt.artifactType,
 			}
 			result := isCNCFModel(artifact)
 			if result != tt.expected {
@@ -271,10 +359,12 @@ func TestIsCNCFModel(t *testing.T) {
 // testArtifactWithConfigMediaType is a minimal ModelArtifact for testing isCNCFModel/isV02Model.
 type testArtifactWithConfigMediaType struct {
 	configMediaType oci.MediaType
+	artifactType    string
 }
 
 func (a *testArtifactWithConfigMediaType) Manifest() (*oci.Manifest, error) {
 	return &oci.Manifest{
+		ArtifactType: a.artifactType,
 		Config: oci.Descriptor{
 			MediaType: a.configMediaType,
 		},
@@ -578,6 +668,54 @@ func TestUnpackFromLayers_PathSanitizationRejectsCollapsedPath(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("Expected no files to be written for rejected annotation, got %d entries", len(entries))
+	}
+}
+
+func TestUnpackFromLayers_CNCFModelWithMMProj(t *testing.T) {
+	// Simulate the exact scenario from the bug: a CNCF ModelPack model with
+	// two layers using MediaTypeWeightRaw — one is the main GGUF weight and
+	// the other is the mmproj file. Both share the same media type; mmproj
+	// detection relies on the filepath annotation containing "mmproj".
+	artifact := testutil.NewModelPackArtifact(
+		t,
+		modelpack.Model{
+			Config: modelpack.ModelConfig{Format: string(types.FormatGGUF)},
+		},
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.gguf"),
+			RelativePath: "gemma-4-E2B-it-UD-Q4_K_XL.gguf",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+		testutil.LayerSpec{
+			Path:         filepath.Join("..", "..", "assets", "dummy.mmproj"),
+			RelativePath: "mmproj-BF16.gguf",
+			MediaType:    oci.MediaType(modelpack.MediaTypeWeightRaw),
+		},
+	)
+
+	bundleRoot := t.TempDir()
+	bundle, err := UnpackFromLayers(bundleRoot, artifact)
+	if err != nil {
+		t.Fatalf("UnpackFromLayers failed: %v", err)
+	}
+
+	// The main weight file should be tracked as ggufFile.
+	if bundle.ggufFile != "gemma-4-E2B-it-UD-Q4_K_XL.gguf" {
+		t.Errorf("ggufFile = %q, want %q", bundle.ggufFile, "gemma-4-E2B-it-UD-Q4_K_XL.gguf")
+	}
+	if _, err := os.Stat(bundle.GGUFPath()); err != nil {
+		t.Fatalf("Expected GGUF file to exist at %s, got: %v", bundle.GGUFPath(), err)
+	}
+
+	// The mmproj file should be tracked as mmprojPath.
+	if bundle.mmprojPath != "mmproj-BF16.gguf" {
+		t.Errorf("mmprojPath = %q, want %q", bundle.mmprojPath, "mmproj-BF16.gguf")
+	}
+	if bundle.MMPROJPath() == "" {
+		t.Fatal("Expected MMPROJPath() to return non-empty path")
+	}
+	if _, err := os.Stat(bundle.MMPROJPath()); err != nil {
+		t.Fatalf("Expected mmproj file to exist at %s, got: %v", bundle.MMPROJPath(), err)
 	}
 }
 

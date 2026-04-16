@@ -237,7 +237,7 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 		return true
 	}
 
-	// Native ModelPack support: check format-specific ModelPack types
+	// Native ModelPack support: check format-specific and category types.
 	switch targetMT {
 	case types.MediaTypeGGUF:
 		if layerMT == modelpack.MediaTypeWeightGGUF {
@@ -247,15 +247,28 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 		if layerMT == modelpack.MediaTypeWeightSafetensors {
 			return true
 		}
-	case types.MediaTypeDDUF, types.MediaTypeLicense, types.MediaTypeMultimodalProjector,
-		types.MediaTypeChatTemplate, types.MediaTypeModelFile, types.MediaTypeVLLMConfigArchive,
-		types.MediaTypeDirTar, types.MediaTypeModelConfigV01, types.MediaTypeModelConfigV02,
+	case types.MediaTypeLicense:
+		// CNCF doc layers may carry license files.
+		if layerMT == modelpack.MediaTypeDocRaw {
+			return true
+		}
+	case types.MediaTypeChatTemplate, types.MediaTypeModelFile, types.MediaTypeVLLMConfigArchive:
+		// CNCF weight config layers carry config/tokenizer/template files.
+		if layerMT == modelpack.MediaTypeWeightConfigRaw {
+			return true
+		}
+	case types.MediaTypeMultimodalProjector:
+		// mmproj files are packaged as generic weights in CNCF format.
+		// Cannot distinguish from other weight files by media type alone;
+		// rely on filepath annotation during unpack.
+	case types.MediaTypeDDUF, types.MediaTypeDirTar, types.MediaTypeModelConfigV01,
+		types.MediaTypeModelConfigV02,
 		oci.OCIManifestSchema1, oci.OCIImageIndex, oci.OCIConfigJSON,
 		oci.OCILayer, oci.OCILayerGzip, oci.OCILayerZstd,
 		oci.OCIContentDescriptor, oci.OCIArtifactManifest, oci.OCIEmptyJSON,
 		oci.DockerManifestSchema2, oci.DockerManifestList, oci.DockerConfigJSON,
 		oci.DockerLayer, oci.DockerForeignLayer, oci.DockerUncompressedLayer:
-		// No format-specific ModelPack mapping for these media types
+		// No format-specific ModelPack mapping for these media types.
 	}
 
 	// ModelPack model-spec support: format-agnostic weight types (.raw, .tar, etc.)
@@ -263,6 +276,8 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 	// (e.g., MediaTypeWeightGGUF, MediaTypeWeightSafetensors) already encode the format
 	// in their media type and are handled above; applying this fallback to them would
 	// cause cross-format false positives (e.g., safetensors layer matching as GGUF).
+	// MediaTypeWeightConfigRaw and MediaTypeDocRaw are also excluded because they carry
+	// non-weight content.
 	if modelFormat != "" && modelpack.IsModelPackGenericWeightMediaType(string(layerMT)) {
 		switch targetMT {
 		case types.MediaTypeGGUF:
@@ -279,18 +294,40 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 			oci.OCIContentDescriptor, oci.OCIArtifactManifest, oci.OCIEmptyJSON,
 			oci.DockerManifestSchema2, oci.DockerManifestList, oci.DockerConfigJSON,
 			oci.DockerLayer, oci.DockerForeignLayer, oci.DockerUncompressedLayer:
-			// No generic weight resolution for these media types
+			// No generic weight resolution for these media types.
 		}
 	}
 
 	return false
 }
 
-// WithConfigMediaType provides access to the config media type version.
-type WithConfigMediaType interface {
-	GetConfigMediaType() oci.MediaType
+// ManifestOptions holds the manifest-level metadata for an artifact.
+type ManifestOptions struct {
+	// ConfigMediaType is the media type of the config blob.
+	ConfigMediaType oci.MediaType
+	// ArtifactType is the OCI artifact type of the manifest (optional).
+	// The CNCF ModelPack spec requires
+	// "application/vnd.cncf.model.manifest.v1+json".
+	ArtifactType string
 }
 
+// WithManifestOptions provides manifest assembly options.
+type WithManifestOptions interface {
+	GetManifestOptions() ManifestOptions
+}
+
+// resolveManifestOptions extracts manifest options from the given object
+// via the WithManifestOptions interface.
+func resolveManifestOptions(i interface{}) ManifestOptions {
+	if mof, ok := i.(WithManifestOptions); ok {
+		return mof.GetManifestOptions()
+	}
+	return ManifestOptions{}
+}
+
+// ManifestForLayers assembles an OCI manifest for the given model. The
+// config media type and optional artifact type are read from the model via
+// the WithManifestOptions interface.
 func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 	raw, err := i.RawConfigFile()
 	if err != nil {
@@ -301,12 +338,12 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 		return nil, fmt.Errorf("compute config hash: %w", err)
 	}
 
-	// Use the config media type from the model if available, otherwise default to V0.1
-	configMediaType := types.MediaTypeModelConfigV01
-	if cmt, ok := i.(WithConfigMediaType); ok {
-		if mt := cmt.GetConfigMediaType(); mt != "" {
-			configMediaType = mt
-		}
+	// Resolve config media type and artifact type from the model.
+	opts := resolveManifestOptions(i)
+	configMediaType := opts.ConfigMediaType
+	if configMediaType == "" {
+		// Default to Docker format V01 for backward compatibility.
+		configMediaType = types.MediaTypeModelConfigV01
 	}
 
 	cfgDsc := oci.Descriptor{
@@ -320,14 +357,23 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 		return nil, fmt.Errorf("get layers: %w", err)
 	}
 
+	type descriptorProvider interface {
+		GetDescriptor() oci.Descriptor
+	}
+
 	var layers []oci.Descriptor
 	for _, l := range ls {
-		// Check if this is our Layer type which embeds the full descriptor with annotations
+		// Check if this is our Layer type which embeds the full descriptor
+		// with annotations.
 		if layer, ok := l.(*Layer); ok {
-			// Use the embedded descriptor directly to preserve annotations
+			// Use the embedded descriptor directly to preserve annotations.
 			layers = append(layers, layer.Descriptor)
+		} else if dp, ok := l.(descriptorProvider); ok {
+			// Use GetDescriptor() to preserve annotations from wrapper
+			// types like remappedLayer.
+			layers = append(layers, dp.GetDescriptor())
 		} else {
-			// Fall back to computing descriptor for other layer types
+			// Fall back to computing descriptor for other layer types.
 			mt, err := l.MediaType()
 			if err != nil {
 				return nil, fmt.Errorf("get layer media type: %w", err)
@@ -351,6 +397,7 @@ func ManifestForLayers(i WithLayers) (*oci.Manifest, error) {
 	return &oci.Manifest{
 		SchemaVersion: 2,
 		MediaType:     oci.OCIManifestSchema1,
+		ArtifactType:  opts.ArtifactType,
 		Config:        cfgDsc,
 		Layers:        layers,
 	}, nil

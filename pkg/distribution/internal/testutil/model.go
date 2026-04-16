@@ -143,10 +143,13 @@ func NewModelPackArtifact(t *testing.T, model modelpack.Model, layers ...LayerSp
 	return NewArtifact(rawConfig, modelpack.MediaTypeModelConfigV1, builtLayers...)
 }
 
-// GetConfigMediaType implements partial.WithConfigMediaType so that ManifestForLayers
-// uses the correct config media type when building the OCI manifest.
-func (a *Artifact) GetConfigMediaType() oci.MediaType {
-	return a.configMediaType
+// GetManifestOptions implements partial.WithManifestOptions so that
+// ManifestForLayers uses the correct config media type when building the
+// OCI manifest.
+func (a *Artifact) GetManifestOptions() partial.ManifestOptions {
+	return partial.ManifestOptions{
+		ConfigMediaType: a.configMediaType,
+	}
 }
 
 // ID implements types.ModelArtifact.
