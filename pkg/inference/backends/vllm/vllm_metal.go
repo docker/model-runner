@@ -217,7 +217,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		BackendName:     "vllm-metal",
 		Socket:          socket,
 		BinaryPath:      v.pythonPath,
-		SandboxPath:     v.installDir,
+		SandboxPath:     filepath.Join(v.installDir, "bin"),
 		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          v.log,

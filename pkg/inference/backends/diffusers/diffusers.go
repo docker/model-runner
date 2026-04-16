@@ -255,7 +255,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		BackendName:      "Diffusers",
 		Socket:           socket,
 		BinaryPath:       d.pythonPath,
-		SandboxPath:      "",
+		SandboxPath:      filepath.Dir(d.pythonPath),
 		SandboxConfig:    sandbox.ConfigurationPython,
 		Args:             args,
 		Logger:           d.log,

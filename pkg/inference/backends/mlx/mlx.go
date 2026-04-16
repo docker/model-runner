@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/model-runner/pkg/inference"
@@ -140,7 +141,7 @@ func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mo
 		BackendName:     "MLX",
 		Socket:          socket,
 		BinaryPath:      m.pythonPath,
-		SandboxPath:     "",
+		SandboxPath:     filepath.Dir(m.pythonPath),
 		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          m.log,
