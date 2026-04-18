@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -115,14 +116,62 @@ func (s *SafetensorsFormat) ExtractConfig(paths []string) (types.Config, error) 
 		architecture = fmt.Sprintf("%v", arch)
 	}
 
-	return types.Config{
+	cfg := types.Config{
 		Format:       types.FormatSafetensors,
 		Parameters:   formatParameters(params),
 		Quantization: header.getQuantization(),
 		Size:         formatSize(totalSize),
 		Architecture: architecture,
 		Safetensors:  header.extractMetadata(),
-	}, nil
+	}
+
+	if ctx := readContextSizeFromConfigJSON(filepath.Dir(paths[0])); ctx != nil {
+		cfg.ContextSize = ctx
+	}
+
+	return cfg, nil
+}
+
+// contextSizeConfigKeys lists the HuggingFace config.json keys that may hold
+// the model's maximum context length, in priority order. This mirrors
+// llama.cpp's convert_hf_to_gguf.py (TextModel.set_gguf_parameters), which is
+// the canonical HuggingFace-to-GGUF converter.
+var contextSizeConfigKeys = []string{
+	"max_position_embeddings",
+	"n_ctx",
+	"n_positions",
+	"max_length",
+	"max_sequence_length",
+	"model_max_length",
+}
+
+func readContextSizeFromConfigJSON(dir string) *int32 {
+	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		return nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+
+	for _, key := range contextSizeConfigKeys {
+		v, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var n int64
+		if err := json.Unmarshal(v, &n); err != nil {
+			continue
+		}
+		if n <= 0 || n > math.MaxInt32 {
+			continue
+		}
+		ctx := int32(n)
+		return &ctx
+	}
+	return nil
 }
 
 const (
