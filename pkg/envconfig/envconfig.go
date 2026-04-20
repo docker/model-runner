@@ -17,13 +17,6 @@ func Var(key string) string {
 	return strings.Trim(strings.TrimSpace(os.Getenv(key)), "\"'")
 }
 
-// String returns a lazy string accessor for the given environment variable.
-func String(key string) func() string {
-	return func() string {
-		return Var(key)
-	}
-}
-
 // BoolWithDefault returns a lazy bool accessor for the given environment variable,
 // allowing a caller-specified default. If the variable is set but cannot be parsed
 // as a bool, the defaultValue is returned.

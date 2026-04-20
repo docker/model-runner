@@ -74,17 +74,6 @@ func WithUserAgent(userAgent string) ClientOption {
 	}
 }
 
-func WithAuthConfig(username, password string) ClientOption {
-	return func(c *Client) {
-		if username != "" && password != "" {
-			c.auth = &authn.Basic{
-				Username: username,
-				Password: password,
-			}
-		}
-	}
-}
-
 // WithAuth sets a custom authenticator.
 func WithAuth(auth authn.Authenticator) ClientOption {
 	return func(c *Client) {

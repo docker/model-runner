@@ -19,19 +19,6 @@ type Reader struct {
 	done        bool
 }
 
-type Blob struct {
-	diffID oci.Hash
-	rc     io.ReadCloser
-}
-
-func (b Blob) DiffID() (oci.Hash, error) {
-	return b.diffID, nil
-}
-
-func (b Blob) Uncompressed() (io.ReadCloser, error) {
-	return b.rc, nil
-}
-
 func (r *Reader) Next() (oci.Hash, error) {
 	for {
 		hdr, err := r.tr.Next()

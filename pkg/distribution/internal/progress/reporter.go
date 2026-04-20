@@ -142,15 +142,6 @@ func WriteError(w io.Writer, message string, mode oci.Mode) error {
 	})
 }
 
-// WriteWarning writes a warning message
-func WriteWarning(w io.Writer, message string, mode oci.Mode) error {
-	return write(w, oci.ProgressMessage{
-		Type:    oci.TypeWarning,
-		Message: message,
-		Mode:    mode,
-	})
-}
-
 // write writes a JSON-formatted progress message to the writer
 func write(w io.Writer, msg oci.ProgressMessage) error {
 	if w == nil {

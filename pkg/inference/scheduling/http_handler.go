@@ -555,12 +555,6 @@ func (h *HTTPHandler) RebuildRoutes(allowedOrigins []string) {
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 }
 
-// GetLlamaCppSocket delegates to the scheduler's business logic.
-// Required by metrics.SchedulerInterface.
-func (h *HTTPHandler) GetLlamaCppSocket() (string, error) {
-	return h.scheduler.GetLlamaCppSocket()
-}
-
 // GetAllActiveRunners delegates to the scheduler's business logic.
 // Required by metrics.SchedulerInterface.
 func (h *HTTPHandler) GetAllActiveRunners() []metrics.ActiveRunner {

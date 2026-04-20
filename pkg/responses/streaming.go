@@ -1,12 +1,10 @@
 package responses
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // StreamingResponseWriter transforms chat completion SSE events to Responses API SSE events.
@@ -528,53 +526,4 @@ func (c *NonStreamingResponseCapture) Write(data []byte) (int, error) {
 // WriteHeader sets the status code.
 func (c *NonStreamingResponseCapture) WriteHeader(statusCode int) {
 	c.StatusCode = statusCode
-}
-
-// ProcessSSEStream reads an SSE stream from a reader and processes it.
-func ProcessSSEStream(reader *bufio.Reader, handler func(event, data string)) error {
-	var currentEvent string
-	var currentData strings.Builder
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			// Process any remaining data
-			if currentData.Len() > 0 {
-				handler(currentEvent, currentData.String())
-			}
-			return err
-		}
-
-		line = strings.TrimRight(line, "\r\n")
-
-		if line == "" {
-			// Empty line signals end of event
-			if currentData.Len() > 0 {
-				handler(currentEvent, currentData.String())
-				currentEvent = ""
-				currentData.Reset()
-			}
-			continue
-		}
-
-		if strings.HasPrefix(line, "event:") {
-			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-		} else if strings.HasPrefix(line, "data:") {
-			data := strings.TrimPrefix(line, "data:")
-			data = strings.TrimPrefix(data, " ")
-			currentData.WriteString(data)
-		}
-	}
-}
-
-// CreateErrorResponse creates an error response.
-func CreateErrorResponse(respID, model, code, message string) *Response {
-	resp := NewResponse(respID, model)
-	resp.Status = StatusFailed
-	resp.CreatedAt = float64(time.Now().Unix())
-	resp.Error = &ErrorDetail{
-		Code:    code,
-		Message: message,
-	}
-	return resp
 }

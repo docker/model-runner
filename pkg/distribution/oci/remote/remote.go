@@ -46,7 +46,6 @@ type options struct {
 	userAgent string
 	auth      authn.Authenticator
 	keychain  authn.Keychain
-	progress  chan<- oci.Update
 	plainHTTP bool
 }
 
@@ -82,13 +81,6 @@ func WithAuth(auth authn.Authenticator) Option {
 func WithAuthFromKeychain(kc authn.Keychain) Option {
 	return func(o *options) {
 		o.keychain = kc
-	}
-}
-
-// WithProgress sets a channel for receiving progress updates.
-func WithProgress(ch chan<- oci.Update) Option {
-	return func(o *options) {
-		o.progress = ch
 	}
 }
 

@@ -455,33 +455,6 @@ func (b *Builder) WithChatTemplateFile(path string) (*Builder, error) {
 	}, nil
 }
 
-// WithConfigArchive adds a config archive (tar) file to the artifact.
-func (b *Builder) WithConfigArchive(path string) (*Builder, error) {
-	// Check if config archive already exists.
-	layers, err := b.model.Layers()
-	if err != nil {
-		return nil, fmt.Errorf("get model layers: %w", err)
-	}
-
-	for _, layer := range layers {
-		mediaType, mediaTypeErr := layer.MediaType()
-		if mediaTypeErr == nil && mediaType == types.MediaTypeVLLMConfigArchive {
-			return nil, fmt.Errorf("model already has a config archive layer")
-		}
-	}
-
-	mt := b.resolveLayerMediaType(types.MediaTypeVLLMConfigArchive)
-	configLayer, err := partial.NewLayer(path, mt)
-	if err != nil {
-		return nil, fmt.Errorf("config archive layer from %q: %w", path, err)
-	}
-	return &Builder{
-		model:          mutate.AppendLayers(b.model, configLayer),
-		originalLayers: b.originalLayers,
-		outputFormat:   b.outputFormat,
-	}, nil
-}
-
 // Target represents a build target
 type Target interface {
 	Write(context.Context, types.ModelArtifact, io.Writer) error
