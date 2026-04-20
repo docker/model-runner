@@ -13,6 +13,24 @@ import (
 	"github.com/docker/model-runner/pkg/responses"
 )
 
+// RouterResult is the output of NewRouter, bundling the mux with any
+// resources that require cleanup.
+type RouterResult struct {
+	Mux *NormalizedServeMux
+	// closers collects io.Closer values that must be closed when the
+	// router is no longer needed (e.g. the responses Store goroutine).
+	closers []func()
+}
+
+// Close releases resources held by handlers registered on this router.
+// It must be called when the router is no longer needed to avoid
+// goroutine leaks.
+func (rr *RouterResult) Close() {
+	for _, fn := range rr.closers {
+		fn()
+	}
+}
+
 // RouterConfig holds the dependencies needed to build the standard
 // model-runner HTTP route structure.
 type RouterConfig struct {
@@ -41,8 +59,12 @@ type RouterConfig struct {
 // route structure: models endpoints, scheduler/inference endpoints,
 // path aliases (/v1/, /rerank, /score), Ollama compatibility, and
 // Anthropic compatibility.
-func NewRouter(cfg RouterConfig) *NormalizedServeMux {
+//
+// The returned RouterResult must be closed when the router is no longer
+// needed to stop background goroutines (e.g. the responses Store cleanup).
+func NewRouter(cfg RouterConfig) *RouterResult {
 	router := NewNormalizedServeMux()
+	result := &RouterResult{Mux: router}
 
 	// Models endpoints – optionally wrapped by middleware.
 	var modelEndpoint http.Handler = cfg.ModelHandler
@@ -78,7 +100,8 @@ func NewRouter(cfg RouterConfig) *NormalizedServeMux {
 		router.Handle("/v1"+responses.APIPrefix, responsesHandler)
 		router.Handle(inference.InferencePrefix+responses.APIPrefix+"/", responsesHandler)
 		router.Handle(inference.InferencePrefix+responses.APIPrefix, responsesHandler)
+		result.closers = append(result.closers, responsesHandler.Close)
 	}
 
-	return router
+	return result
 }

@@ -74,6 +74,17 @@ type Service struct {
 	SchedulerHTTP *scheduling.HTTPHandler
 	Router        *NormalizedServeMux
 	Backends      map[string]inference.Backend
+	// routerResult holds the RouterResult so we can close it on shutdown.
+	routerResult *RouterResult
+}
+
+// Close releases resources held by the service (e.g. the responses
+// Store cleanup goroutine). It should be called when the service is
+// shut down.
+func (s *Service) Close() {
+	if s.routerResult != nil {
+		s.routerResult.Close()
+	}
 }
 
 // NewService wires up the full inference service stack from the given
@@ -109,7 +120,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		Backends:      backends,
 	}
 
-	svc.Router = NewRouter(RouterConfig{
+	routerResult := NewRouter(RouterConfig{
 		Log:                    cfg.Log,
 		Scheduler:              scheduler,
 		SchedulerHTTP:          schedulerHTTP,
@@ -119,6 +130,8 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		ModelHandlerMiddleware: cfg.ModelHandlerMiddleware,
 		IncludeResponsesAPI:    cfg.IncludeResponsesAPI,
 	})
+	svc.Router = routerResult.Mux
+	svc.routerResult = routerResult
 
 	if cfg.ExtraRoutes != nil {
 		cfg.ExtraRoutes(svc.Router, svc)
