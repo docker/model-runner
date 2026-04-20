@@ -46,7 +46,6 @@ type options struct {
 	userAgent string
 	auth      authn.Authenticator
 	keychain  authn.Keychain
-	progress  chan<- oci.Update
 	plainHTTP bool
 }
 
