@@ -27,8 +27,6 @@ const (
 )
 
 var (
-	ShouldUseGPUVariant       bool
-	ShouldUseGPUVariantLock   sync.Mutex
 	ShouldUpdateServer        = true
 	ShouldUpdateServerLock    sync.Mutex
 	DesiredServerVersion      = "latest"
