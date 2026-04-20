@@ -72,15 +72,6 @@ func WithToken(token string) ClientOption {
 	}
 }
 
-// WithTransport sets the HTTP transport for the client
-func WithTransport(transport http.RoundTripper) ClientOption {
-	return func(c *Client) {
-		if transport != nil {
-			c.httpClient.Transport = transport
-		}
-	}
-}
-
 // WithUserAgent sets the User-Agent header for requests
 func WithUserAgent(userAgent string) ClientOption {
 	return func(c *Client) {

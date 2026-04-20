@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
@@ -341,10 +340,4 @@ func (h *HTTPHandler) GetStore() *Store {
 // SetMaxRequestBodyBytes sets the maximum request body size in bytes.
 func (h *HTTPHandler) SetMaxRequestBodyBytes(bytes int64) {
 	h.maxRequestBodyBytes = bytes
-}
-
-// ResponseWithTimestamp adds a timestamp helper.
-func ResponseWithTimestamp(resp *Response) *Response {
-	resp.CreatedAt = float64(time.Now().Unix())
-	return resp
 }

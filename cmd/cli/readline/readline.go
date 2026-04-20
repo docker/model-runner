@@ -241,10 +241,6 @@ func (i *Instance) Readline() (string, error) {
 	}
 }
 
-func (i *Instance) HistoryEnable() {
-	i.History.Enabled = true
-}
-
 func (i *Instance) HistoryDisable() {
 	i.History.Enabled = false
 }

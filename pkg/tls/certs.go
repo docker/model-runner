@@ -333,17 +333,3 @@ func LoadClientTLSConfig(caCertPath string, skipVerify bool) (*tls.Config, error
 		MinVersion: tls.VersionTLS12,
 	}, nil
 }
-
-// GetCACertPath returns the path to the CA certificate file.
-// Returns the custom path if provided, otherwise returns the default path.
-func GetCACertPath(customPath string) (string, error) {
-	if customPath != "" {
-		return customPath, nil
-	}
-
-	paths, err := DefaultCertPaths()
-	if err != nil {
-		return "", err
-	}
-	return paths.CACert, nil
-}

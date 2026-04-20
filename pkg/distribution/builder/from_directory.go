@@ -10,7 +10,6 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/format"
-	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -381,22 +380,4 @@ func fileTypeToMediaType(ft files.FileType) oci.MediaType {
 	default:
 		return types.MediaTypeModelFile
 	}
-}
-
-// WithFileLayer adds an individual file layer with a relative path annotation.
-// This is useful for adding files that should be extracted to a specific path.
-func (b *Builder) WithFileLayer(absPath, relPath string) (*Builder, error) {
-	// Classify the file to determine media type
-	fileType := files.Classify(absPath)
-	mediaType := fileTypeToMediaType(fileType)
-
-	layer, err := partial.NewLayerWithRelativePath(absPath, relPath, mediaType)
-	if err != nil {
-		return nil, fmt.Errorf("file layer from %q: %w", absPath, err)
-	}
-
-	return &Builder{
-		model:          mutate.AppendLayers(b.model, layer),
-		originalLayers: b.originalLayers,
-	}, nil
 }

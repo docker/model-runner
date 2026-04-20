@@ -85,13 +85,6 @@ func WithAuthFromKeychain(kc authn.Keychain) Option {
 	}
 }
 
-// WithProgress sets a channel for receiving progress updates.
-func WithProgress(ch chan<- oci.Update) Option {
-	return func(o *options) {
-		o.progress = ch
-	}
-}
-
 // WithPlainHTTP allows connecting to registries using plain HTTP instead of HTTPS.
 func WithPlainHTTP(plain bool) Option {
 	return func(o *options) {

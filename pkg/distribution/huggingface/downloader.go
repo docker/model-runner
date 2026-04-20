@@ -214,8 +214,3 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	}
 	return n, err
 }
-
-// DownloadSingleFile downloads a single file and returns its local path
-func (d *Downloader) DownloadSingleFile(ctx context.Context, file RepoFile) (string, error) {
-	return d.downloadFileWithProgress(ctx, file, uint64(file.ActualSize()), nil)
-}

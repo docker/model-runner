@@ -27,21 +27,6 @@ type ModelPushRequest struct {
 	BearerToken string `json:"bearer-token,omitempty"`
 }
 
-// SimpleModel is a wrapper that allows creating a model with modified configuration
-type SimpleModel struct {
-	types.Model
-	ConfigValue     types.ModelConfig
-	DescriptorValue types.Descriptor
-}
-
-func (s *SimpleModel) Config() (types.ModelConfig, error) {
-	return s.ConfigValue, nil
-}
-
-func (s *SimpleModel) Descriptor() (types.Descriptor, error) {
-	return s.DescriptorValue, nil
-}
-
 // ToOpenAIList converts the model list to its OpenAI API representation. This function never
 // returns a nil slice (though it may return an empty slice).
 func ToOpenAIList(l []types.Model) (*OpenAIModelList, error) {
