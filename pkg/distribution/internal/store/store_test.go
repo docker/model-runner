@@ -424,14 +424,19 @@ func TestWriteRollsBackOnTagFailure(t *testing.T) {
 		t.Fatalf("expected config blob to be cleaned up, stat error: %v", err)
 	}
 
+	// Layer blobs are content-addressed and are intentionally retained even
+	// after a failed write. They may be reused by a subsequent pull of the
+	// same or another model, and they allow the download to resume rather
+	// than restart from byte 0. Only the manifest, config, and index are
+	// rolled back to leave the store in a consistent (non-indexed) state.
 	for _, digestStr := range diffIDs {
 		parts := strings.SplitN(digestStr, ":", 2)
 		if len(parts) != 2 {
 			t.Fatalf("unexpected diffID format: %q", digestStr)
 		}
 		layerPath := filepath.Join(storePath, "blobs", parts[0], parts[1])
-		if _, err := os.Stat(layerPath); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("expected layer blob %q to be cleaned up, stat error: %v", layerPath, err)
+		if _, err := os.Stat(layerPath); err != nil {
+			t.Fatalf("expected layer blob %q to be retained for future resume, stat error: %v", layerPath, err)
 		}
 	}
 

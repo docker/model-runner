@@ -197,22 +197,46 @@ func (t *rangeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	// If we requested a Range, record success only if the server accepted the range request
-	// Servers should return 206 (Partial Content) for successful range requests,
-	// but some may return 200 with the partial content, so we record success for both
-	if requestedOffset > 0 {
-		if resp.StatusCode == http.StatusPartialContent || resp.StatusCode == http.StatusOK {
-			// Record in RangeSuccess tracker so WriteBlob can check it
+	// If we requested a Range, record success only when the server honoured it
+	// with 206 Partial Content and a matching Content-Range start offset. A 200
+	// response means the server ignored the Range header and is sending the full
+	// file from byte 0; appending that stream to the existing partial file would
+	// produce a corrupt blob. We also validate the Content-Range start offset to
+	// guard against a misbehaving server that returns 206 with a different range.
+	if requestedOffset > 0 && resp.StatusCode == http.StatusPartialContent {
+		if rangeStartMatchesOffset(resp.Header.Get("Content-Range"), requestedOffset) {
 			if rs := GetRangeSuccess(req.Context()); rs != nil {
 				rs.Add(digest, requestedOffset)
 			}
 		}
-		// If range request was not successful (e.g., 416 Range Not Satisfiable),
-		// don't record in RangeSuccess, which will cause WriteBlob to start fresh
-		// (no explicit action needed in the else case)
 	}
 
 	return resp, nil
+}
+
+// rangeStartMatchesOffset parses the Content-Range response header and reports
+// whether its start byte equals the given offset. The format is defined by
+// RFC 9110: "bytes START-END/TOTAL" (TOTAL may be "*"). We fail closed: if the
+// header is absent or cannot be parsed we return false so that the caller does
+// not treat an ambiguous response as a successful range request.
+func rangeStartMatchesOffset(contentRange string, offset int64) bool {
+	if contentRange == "" {
+		return false
+	}
+	// Trim the unit prefix "bytes " and split on "-"
+	after, ok := strings.CutPrefix(contentRange, "bytes ")
+	if !ok {
+		return false
+	}
+	dashIdx := strings.Index(after, "-")
+	if dashIdx < 0 {
+		return false
+	}
+	var start int64
+	if _, err := fmt.Sscanf(after[:dashIdx], "%d", &start); err != nil {
+		return false
+	}
+	return start == offset
 }
 
 // extractDigestAndOffset extracts the blob digest from the request URL and returns
