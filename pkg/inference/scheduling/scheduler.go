@@ -2,7 +2,6 @@ package scheduling
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -11,7 +10,6 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
-	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -315,36 +313,6 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 	}
 
 	return activeRunners
-}
-
-// GetLlamaCppSocket returns the Unix socket path for an active llama.cpp runner
-func (s *Scheduler) GetLlamaCppSocket() (string, error) {
-	runningBackends := s.getLoaderStatus(context.Background())
-
-	if !s.loader.lock(context.Background()) {
-		return "", errors.New("failed to acquire loader lock")
-	}
-	defer s.loader.unlock()
-
-	// Look for an active llama.cpp backend
-	for _, backend := range runningBackends {
-		if backend.BackendName == llamacpp.Name {
-			mode, ok := inference.ParseBackendMode(backend.Mode)
-			if !ok {
-				s.log.Warn("Unknown backend mode, defaulting to completion", "mode", backend.Mode)
-			}
-			// Find the runner slot for this backend/model combination
-			// We iterate through all runners since we don't know the draftModelID
-			for key, runnerInfo := range s.loader.runners {
-				if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
-					// Use the RunnerSocketPath function to get the socket path
-					return RunnerSocketPath(runnerInfo.slot)
-				}
-			}
-		}
-	}
-
-	return "", errors.New("no active llama.cpp backend found")
 }
 
 // ConfigureRunner configures a runner for a specific model and backend.
