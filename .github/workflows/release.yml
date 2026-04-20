@@ -158,7 +158,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f
+        uses: docker/cagent-action@d98096f432f2aea5091c811852c4da804e60623a
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
