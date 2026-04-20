@@ -26,7 +26,7 @@ import (
 const (
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
-	vllmMetalVersion = "v0.1.0-20260320-122309"
+	vllmMetalVersion = "v0.2.0-20260420-142150"
 )
 
 var (
