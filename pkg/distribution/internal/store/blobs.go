@@ -1,10 +1,8 @@
 package store
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -199,11 +197,10 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 		buf := make([]byte, 1)
 		n, readErr := r.Read(buf)
 		if readErr != nil && readErr != io.EOF {
-			// Clean up the incomplete file on read error (unless it's a context cancellation
-			// which should preserve the file for future resume attempts)
-			if !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, context.DeadlineExceeded) {
-				_ = os.Remove(incompletePath)
-			}
+			// Preserve the incomplete file on all errors so that the next
+			// attempt can resume from where this one left off. Stale
+			// incomplete files are cleaned up by CleanupStaleIncompleteFiles
+			// during store initialisation (default: files older than 7 days).
 			return fmt.Errorf("read first byte: %w", readErr)
 		}
 

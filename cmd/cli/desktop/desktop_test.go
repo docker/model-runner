@@ -191,13 +191,13 @@ func TestPullMaxRetriesExhausted(t *testing.T) {
 	mockContext := NewContextForMock(mockClient)
 	client := New(mockContext)
 
-	// All 4 attempts (1 initial + 3 retries) fail with network error
-	mockClient.EXPECT().Do(gomock.Any()).Return(nil, io.EOF).Times(4)
+	// All 5 attempts (1 initial + 4 retries) fail with network error
+	mockClient.EXPECT().Do(gomock.Any()).Return(nil, io.EOF).Times(5)
 
 	printer := NewSimplePrinter(func(s string) {})
 	_, _, err := client.Pull(modelName, printer)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "download failed after 3 retries")
+	assert.Contains(t, err.Error(), "download failed after 4 retries")
 }
 
 func TestPushRetryOnNetworkError(t *testing.T) {

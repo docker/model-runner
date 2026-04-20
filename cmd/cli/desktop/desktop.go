@@ -117,7 +117,7 @@ func (c *Client) Pull(model string, printer standalone.StatusPrinter) (string, b
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 
-	return c.withRetries("download", 3, printer, func(attempt int) (string, bool, error, bool) {
+	return c.withRetries("download", 4, printer, func(attempt int) (string, bool, error, bool) {
 		jsonData, err := json.Marshal(dmrm.ModelCreateRequest{
 			From:        model,
 			BearerToken: hfToken,
@@ -237,6 +237,11 @@ func (c *Client) withRetries(
 		if attempt > 0 {
 			// Calculate exponential backoff: 2^(attempt-1) seconds (1s, 2s, 4s)
 			backoffDuration := time.Duration(1<<uint(attempt-1)) * time.Second
+			// Print a blank line to stdout so that any progress bars drawn during
+			// the previous attempt are visually separated from the retry attempt.
+			// This prevents the new progress bars from overwriting the old ones
+			// when the terminal display is reset on each retry.
+			printer.Println("")
 			printer.PrintErrf("Retrying %s (attempt %d/%d) in %v...\n", operationName, attempt, maxRetries, backoffDuration)
 			time.Sleep(backoffDuration)
 		}
@@ -263,7 +268,7 @@ func (c *Client) Push(model string, printer standalone.StatusPrinter) (string, b
 		hfToken = os.Getenv("HF_TOKEN")
 	}
 
-	return c.withRetries("push", 3, printer, func(attempt int) (string, bool, error, bool) {
+	return c.withRetries("push", 4, printer, func(attempt int) (string, bool, error, bool) {
 		pushPath := inference.ModelsPrefix + "/" + model + "/push"
 		var body io.Reader
 		if hfToken != "" {
