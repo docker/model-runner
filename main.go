@@ -382,6 +382,7 @@ func main() {
 			log.Error("Scheduler error", "error", err)
 		}
 	}
+	svc.Close()
 	log.Info("Docker Model Runner stopped")
 }
 
