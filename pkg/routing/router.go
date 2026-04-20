@@ -17,18 +17,19 @@ import (
 // resources that require cleanup.
 type RouterResult struct {
 	Mux *NormalizedServeMux
-	// closers collects io.Closer values that must be closed when the
-	// router is no longer needed (e.g. the responses Store goroutine).
+	// closers holds cleanup functions that must be called when the
+	// router is no longer needed (e.g. to stop the responses Store
+	// background goroutine).
 	closers []func()
 }
 
 // Close releases resources held by handlers registered on this router.
-// It must be called when the router is no longer needed to avoid
-// goroutine leaks.
+// It is idempotent and safe to call multiple times.
 func (rr *RouterResult) Close() {
 	for _, fn := range rr.closers {
 		fn()
 	}
+	rr.closers = nil
 }
 
 // RouterConfig holds the dependencies needed to build the standard

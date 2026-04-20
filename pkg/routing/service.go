@@ -79,12 +79,14 @@ type Service struct {
 }
 
 // Close releases resources held by the service (e.g. the responses
-// Store cleanup goroutine). It should be called when the service is
-// shut down.
+// Store cleanup goroutine). It is safe to call on a nil receiver and
+// idempotent — subsequent calls are no-ops.
 func (s *Service) Close() {
-	if s.routerResult != nil {
-		s.routerResult.Close()
+	if s == nil || s.routerResult == nil {
+		return
 	}
+	s.routerResult.Close()
+	s.routerResult = nil
 }
 
 // NewService wires up the full inference service stack from the given

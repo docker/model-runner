@@ -252,6 +252,7 @@ func main() {
 		log.Error("failed to initialize service", "error", err)
 		exitFunc(1)
 	}
+	defer svc.Close()
 
 	server := &http.Server{
 		Handler:           svc.Router,
@@ -382,7 +383,6 @@ func main() {
 			log.Error("Scheduler error", "error", err)
 		}
 	}
-	svc.Close()
 	log.Info("Docker Model Runner stopped")
 }
 
