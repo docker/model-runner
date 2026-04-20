@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
-	github.com/containerd/containerd/v2 v2.2.2
+	github.com/containerd/containerd/v2 v2.2.3
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.4
 	github.com/distribution/reference v0.6.0
@@ -18,7 +18,7 @@ require (
 	github.com/jaypipes/ghw v0.24.0
 	github.com/kolesnikovae/go-winjob v1.0.0
 	github.com/mattn/go-runewidth v0.0.23
-	github.com/mattn/go-shellwords v1.0.12
+	github.com/mattn/go-shellwords v1.0.13
 	github.com/moby/moby/api v1.54.1
 	github.com/moby/moby/client v0.4.0
 	github.com/moby/term v0.5.2
