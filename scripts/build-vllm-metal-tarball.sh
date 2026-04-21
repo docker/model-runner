@@ -70,10 +70,18 @@ curl -fsSL -O "$VLLM_METAL_WHEEL_URL"
 uv pip install --python "$PYTHON_DIR/bin/python3" --system vllm_metal-*.whl
 rm -f vllm_metal-*.whl
 
+# Pre-compile the paged_ops Metal kernel extension so users don't need Xcode CLT
+# at runtime (the macOS sandbox blocks clang++ invocations).  build.py caches the
+# compiled .so under ~/.cache/vllm-metal/; we redirect $HOME so the artefact
+# lands in a known temp location we can bundle into the tarball.
+echo "Pre-compiling vllm-metal paged_ops extension..."
+HOME="$WORK_DIR" "$PYTHON_DIR/bin/python3" -c "from vllm_metal.metal.build import build; build()"
+mkdir -p "$PYTHON_DIR/prebuilt"
+cp "$WORK_DIR/.cache/vllm-metal/"*_paged_ops* "$PYTHON_DIR/prebuilt/"
+
 # Strip files not needed at runtime to reduce tarball size
 echo "Stripping unnecessary files..."
-# Keep include/python3.12 (needed by vllm-metal to compile Metal kernels at runtime)
-find "$PYTHON_DIR/include" -mindepth 1 -maxdepth 1 ! -name 'python3.12' -exec rm -rf {} + 2>/dev/null || true
+rm -rf "$PYTHON_DIR/include"
 rm -rf "$PYTHON_DIR/share"
 PYLIB="$PYTHON_DIR/lib/python3.12"
 rm -rf "$PYLIB/test" "$PYLIB/tests"
