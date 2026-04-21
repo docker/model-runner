@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -476,6 +477,100 @@ func TestToOpenAIList(t *testing.T) {
 
 	assert.Equal(t, "ai/model2:latest", result.Data[1].ID)
 	assert.Nil(t, result.Data[1].DMR)
+}
+
+func TestNormalizeConfigModelPack(t *testing.T) {
+	// Test that normalizeConfig converts ModelPack config to Docker format.
+	// This simulates what happens in ToModel() when the server normalizes
+	// CNCF configs before serializing the API response.
+	mp := &modelpack.Model{
+		Descriptor: modelpack.ModelDescriptor{
+			Family: "qwen3",
+		},
+		Config: modelpack.ModelConfig{
+			Architecture: "qwen3",
+			Format:       "safetensors",
+			ParamSize:    "0.6B",
+			Quantization: "F16",
+		},
+		ModelFS: modelpack.ModelFS{
+			Type: "layers",
+		},
+	}
+
+	normalized := normalizeConfig(mp)
+	require.NotNil(t, normalized)
+
+	// Should be converted to *types.Config
+	dockerCfg, ok := normalized.(*types.Config)
+	require.True(t, ok, "Normalized config should be *types.Config")
+	assert.Equal(t, types.FormatSafetensors, dockerCfg.Format)
+	assert.Equal(t, "0.6B", dockerCfg.Parameters)
+	assert.Equal(t, "F16", dockerCfg.Quantization)
+	assert.Equal(t, "qwen3", dockerCfg.Architecture)
+	assert.Equal(t, "0.6B", dockerCfg.Size)
+}
+
+func TestNormalizeConfigDocker(t *testing.T) {
+	// Docker format configs should pass through unchanged.
+	dockerCfg := &types.Config{
+		Format:       "gguf",
+		Parameters:   "7B",
+		Quantization: "Q4_K_M",
+		Architecture: "llama",
+		Size:         "7B",
+	}
+
+	normalized := normalizeConfig(dockerCfg)
+	assert.Equal(t, dockerCfg, normalized, "Docker config should pass through unchanged")
+}
+
+func TestNormalizeConfigNil(t *testing.T) {
+	assert.Nil(t, normalizeConfig(nil), "nil config should return nil")
+}
+
+func TestToModelWithModelPackConfig(t *testing.T) {
+	// Test that ToModel properly normalizes a ModelPack config and
+	// the resulting JSON is always in Docker format.
+	mp := &modelpack.Model{
+		Config: modelpack.ModelConfig{
+			Architecture: "qwen3",
+			Format:       "gguf",
+			ParamSize:    "0.6B",
+			Quantization: "Q8_0",
+		},
+	}
+
+	m := &mockModel{
+		id:     "sha256:cncf123456789012",
+		tags:   []string{"aistaging/qwen3-cncf:0.6B"},
+		config: mp,
+		desc:   types.Descriptor{},
+	}
+
+	apiModel, err := ToModel(m)
+	require.NoError(t, err)
+
+	// Config should be normalized to *types.Config
+	dockerCfg, ok := apiModel.Config.(*types.Config)
+	require.True(t, ok, "Config should be normalized to *types.Config")
+	assert.Equal(t, types.FormatGGUF, dockerCfg.Format)
+	assert.Equal(t, "0.6B", dockerCfg.Parameters)
+	assert.Equal(t, "Q8_0", dockerCfg.Quantization)
+	assert.Equal(t, "qwen3", dockerCfg.Architecture)
+	assert.Equal(t, "0.6B", dockerCfg.Size)
+
+	// Verify the JSON output is always Docker format (flat structure)
+	jsonData, err := json.Marshal(apiModel)
+	require.NoError(t, err)
+
+	var unmarshaled Model
+	err = json.Unmarshal(jsonData, &unmarshaled)
+	require.NoError(t, err)
+
+	assert.Equal(t, "0.6B", unmarshaled.Config.GetParameters())
+	assert.Equal(t, "Q8_0", unmarshaled.Config.GetQuantization())
+	assert.Equal(t, "qwen3", unmarshaled.Config.GetArchitecture())
 }
 
 // Helper function to create int32 pointers

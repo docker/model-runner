@@ -56,10 +56,29 @@ func ConfigFile(i WithRawConfigFile) (*types.ConfigFile, error) {
 }
 
 // Descriptor returns the types.Descriptor for the model.
+// Supports both Docker format (where created is in descriptor.created)
+// and CNCF ModelPack format (where created is in descriptor.createdAt).
 func Descriptor(i WithRawConfigFile) (types.Descriptor, error) {
-	cf, err := ConfigFile(i)
+	raw, err := i.RawConfigFile()
 	if err != nil {
-		return types.Descriptor{}, fmt.Errorf("config file: %w", err)
+		return types.Descriptor{}, fmt.Errorf("get raw config file: %w", err)
+	}
+
+	// ModelPack format: extract createdAt from the ModelPack descriptor.
+	// Docker's types.Descriptor uses "created" (snake_case) while ModelPack
+	// uses "createdAt" (camelCase), so we must parse them separately.
+	if modelpack.IsModelPackConfig(raw) {
+		var mp modelpack.Model
+		if err := json.Unmarshal(raw, &mp); err != nil {
+			return types.Descriptor{}, fmt.Errorf("unmarshal modelpack config: %w", err)
+		}
+		return types.Descriptor{Created: mp.Descriptor.CreatedAt}, nil
+	}
+
+	// Docker format
+	var cf types.ConfigFile
+	if err := json.Unmarshal(raw, &cf); err != nil {
+		return types.Descriptor{}, fmt.Errorf("unmarshal config: %w", err)
 	}
 	return cf.Descriptor, nil
 }
