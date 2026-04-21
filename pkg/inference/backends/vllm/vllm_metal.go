@@ -26,7 +26,7 @@ import (
 const (
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
-	vllmMetalVersion = "v0.1.0-20260320-122309"
+	vllmMetalVersion = "v0.2.0-20260420-142150"
 )
 
 var (
@@ -174,6 +174,29 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 	// Restore the execute bit on the bundled Python binary.
 	if err := os.Chmod(filepath.Join(v.installDir, "bin", "python3"), 0755); err != nil {
 		return fmt.Errorf("failed to make python3 executable: %w", err)
+	}
+
+	// Copy pre-built Metal kernel extension to the user's cache directory
+	// so vllm-metal skips JIT compilation at runtime (the macOS sandbox
+	// blocks clang++ invocations needed by the JIT compiler).
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		cacheDir := filepath.Join(homeDir, ".cache", "vllm-metal")
+		prebuiltDir := filepath.Join(v.installDir, "prebuilt")
+		if entries, readErr := os.ReadDir(prebuiltDir); readErr == nil {
+			if mkErr := os.MkdirAll(cacheDir, 0755); mkErr == nil {
+				for _, entry := range entries {
+					src := filepath.Join(prebuiltDir, entry.Name())
+					dst := filepath.Join(cacheDir, entry.Name())
+					if data, cpErr := os.ReadFile(src); cpErr == nil {
+						if wErr := os.WriteFile(dst, data, 0755); wErr != nil {
+							v.log.Warn("failed to copy prebuilt extension", "file", entry.Name(), "error", wErr)
+						}
+					}
+				}
+				v.log.Info("Copied pre-built Metal kernel extension to cache", "cacheDir", cacheDir)
+			}
+		}
 	}
 
 	v.log.Info("vllm-metal installed successfully", "version", vllmMetalVersion)

@@ -79,13 +79,18 @@ const ConfigurationPython = `(version 1)
     (subpath "/private/tmp")
     (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
     (subpath "[WORKDIR]")
-    (subpath "[HOMEDIR]/.cache/vllm"))
+    (subpath "[HOMEDIR]/.cache/vllm")
+    (subpath "[HOMEDIR]/.cache/vllm-metal"))
 (allow file-read*
     (subpath "[HOMEDIR]/.docker/models")
     (subpath "[HOMEDIR]/Library/Containers/com.docker.docker/Data")
     (subpath "[WORKDIR]")
     (subpath "[HOMEDIR]/.cache/vllm")
+    (subpath "[HOMEDIR]/.cache/vllm-metal")
     (subpath "/private/tmp"))
+;;; Allow loading pre-compiled Metal kernel extensions from the vllm-metal cache.
+(allow file-map-executable
+    (subpath "[HOMEDIR]/.cache/vllm-metal"))
 `
 
 // ConfigurationLlamaCpp is the sandbox configuration for llama.cpp processes.
