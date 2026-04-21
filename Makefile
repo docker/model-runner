@@ -3,6 +3,9 @@ include .versions
 
 APP_NAME := model-runner
 LLAMA_SERVER_VARIANT := cpu
+LLAMA_UPSTREAM_IMAGE ?= $(shell \
+	bash scripts/resolve-llama-upstream-image.sh \
+	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
@@ -10,12 +13,20 @@ DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
-DOCKER_BUILD_ARGS := \
-	--load \
-	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
+
+ifeq ($(LLAMA_SERVER_VARIANT),rocm)
+DOCKER_BUILD_PLATFORMS := linux/amd64
+else
+DOCKER_BUILD_PLATFORMS := linux/amd64,linux/arm64
+endif
+
+LOCAL_DOCKER_PLATFORM ?= linux/$(shell docker version --format '{{.Server.Arch}}')
+
+DOCKER_BUILD_COMMON_ARGS = \
 	--build-arg GO_VERSION=$(GO_VERSION) \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
+	--build-arg LLAMA_UPSTREAM_IMAGE=$(LLAMA_UPSTREAM_IMAGE) \
 	--build-arg SGLANG_VERSION=$(SGLANG_VERSION) \
 	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 	--build-arg VLLM_VERSION='$(VLLM_VERSION)' \
@@ -106,6 +117,8 @@ test-docker-ce-installation:
 validate:
 	find . -type f -name "*.sh" | grep -v "pkg/go-containerregistry\|llamacpp/native/vendor" | xargs shellcheck
 	@echo "✓ Shellcheck validation passed!"
+	@bash scripts/test-resolve-llama-upstream-image.sh
+	@echo "✓ llama.cpp image resolver validation passed!"
 
 validate-versions:
 	@errors=0; \
@@ -153,11 +166,11 @@ validate-all:
 
 # Build Docker image
 docker-build:
-	docker buildx build $(DOCKER_BUILD_ARGS) .
+	docker buildx build --load --platform $(LOCAL_DOCKER_PLATFORM) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Build multi-platform Docker image
 docker-build-multiplatform:
-	docker buildx build --platform linux/amd64,linux/arm64 $(DOCKER_BUILD_ARGS) .
+	docker buildx build --platform $(DOCKER_BUILD_PLATFORMS) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build
@@ -378,6 +391,9 @@ help:
 	@echo ""
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
+	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest or bNNNN)"
+	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, or rocm)"
+	@echo "  LLAMA_UPSTREAM_IMAGE - Override the resolved upstream image directly"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"
 	@echo ""
 	@echo "Example usage:"

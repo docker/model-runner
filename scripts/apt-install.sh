@@ -42,7 +42,7 @@ main() {
 
   apt-get update
   local packages=("ca-certificates")
-  if [ "$LLAMA_SERVER_VARIANT" = "generic" ] || [ "$LLAMA_SERVER_VARIANT" = "cpu" ]; then
+  if [ "$LLAMA_SERVER_VARIANT" = "cpu" ]; then
     packages+=("libvulkan1")
     if [ "$(uname -m)" = "aarch64" ]; then
       rebuild_and_install_mesa
@@ -56,4 +56,3 @@ main() {
 }
 
 main "$@"
-

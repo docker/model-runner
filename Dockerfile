@@ -3,10 +3,10 @@
 ARG GO_VERSION=1.25
 ARG LLAMA_SERVER_VERSION=latest
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan
 
-# only 26.04 for cpu variant for max hardware support with vulkan
-# use 22.04 for gpu variants to match ROCm/CUDA base images
+# Use 26.04 for the default Vulkan-backed Linux image.
+# GPU variants should pair this with a compatible runtime base image.
 ARG BASE_IMAGE=ubuntu:26.04
 
 ARG VERSION=dev
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # --- Get llama.cpp binary ---
-FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
+FROM ${LLAMA_UPSTREAM_IMAGE} AS llama-server
 
 # --- Final image ---
 FROM docker.io/${BASE_IMAGE} AS llamacpp
@@ -63,14 +63,24 @@ RUN /scripts/apt-install.sh && rm -rf /scripts
 WORKDIR /app
 
 # Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /models && \
+RUN mkdir -p /var/run/model-runner /app/bin /app/lib /models /tmp/llama-upstream && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
 
-# Copy the llama.cpp binary from the llama-server stage
-ARG LLAMA_BINARY_PATH
-COPY --from=llama-server ${LLAMA_BINARY_PATH}/ /app/.
-RUN chmod +x /app/bin/com.docker.llama-server
+# Normalize the upstream /app layout to the model-runner layout.
+COPY --from=llama-server /app/ /tmp/llama-upstream/
+RUN set -eux; \
+    if [ ! -x /tmp/llama-upstream/llama-server ]; then \
+        echo "Expected /app/llama-server in upstream image" >&2; \
+        find /tmp/llama-upstream -maxdepth 2 -mindepth 1 -print >&2; \
+        exit 1; \
+    fi; \
+    cp -a /tmp/llama-upstream/llama-server /app/bin/com.docker.llama-server; \
+    find /tmp/llama-upstream -mindepth 1 \( -type f -o -type l \) \
+        ! -name 'llama-server' \
+        -exec cp -a -t /app/lib/ {} +; \
+    rm -rf /tmp/llama-upstream; \
+    chmod 755 /app/bin/com.docker.llama-server
 
 USER modelrunner
 

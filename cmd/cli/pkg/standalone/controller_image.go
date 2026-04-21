@@ -38,10 +38,10 @@ func controllerImageVariant(detectedGPU gpupkg.GPUSupport, backend string) strin
 		return "cuda"
 	case gpupkg.GPUSupportROCm:
 		return "rocm"
-	case gpupkg.GPUSupportMUSA:
-		return "musa"
-	case gpupkg.GPUSupportCANN:
-		return "cann"
+	case gpupkg.GPUSupportMUSA, gpupkg.GPUSupportCANN:
+		// Official upstream llama.cpp Linux images do not publish dedicated
+		// MUSA or CANN variants yet, so fall back to the default image tag.
+		return ""
 	case gpupkg.GPUSupportNone:
 		return ""
 	default:
