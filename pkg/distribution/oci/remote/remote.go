@@ -157,8 +157,35 @@ type rangeTransport struct {
 	userAgent string
 }
 
+// maxRangeRedirects is the maximum number of HTTP redirects that
+// rangeTransport will follow when a Range header is set. This prevents
+// infinite redirect loops while still supporting the common pattern where
+// registries redirect blob downloads to a CDN.
+const maxRangeRedirects = 10
+
+// isRedirect reports whether the HTTP status code is a redirect that should
+// be followed when preserving a Range header.
+func isRedirect(statusCode int) bool {
+	switch statusCode {
+	case http.StatusMovedPermanently, // 301
+		http.StatusFound,             // 302
+		http.StatusSeeOther,          // 303
+		http.StatusTemporaryRedirect, // 307
+		http.StatusPermanentRedirect: // 308
+		return true
+	}
+	return false
+}
+
 // RoundTrip implements http.RoundTripper, adding Range headers when resume offsets are present
 // and User-Agent header when configured.
+//
+// When a Range header is set for a resumable download, this method also follows
+// HTTP redirects at the transport level (up to maxRangeRedirects hops). This is
+// necessary because Go's http.Client clones headers in makeHeadersCopier before
+// RoundTrip is called, so any headers set here are invisible to the client's
+// redirect handling. By following redirects at the transport level, we ensure
+// the Range header is preserved across redirects to CDNs.
 func (t *rangeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	offsets := getResumeOffsets(req.Context())
 	var requestedOffset int64
@@ -187,6 +214,59 @@ func (t *rangeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := base.RoundTrip(req)
 	if err != nil {
 		return resp, err
+	}
+
+	// When we added a Range header, follow redirects at the transport level
+	// to ensure the header is preserved. Go's http.Client clones request
+	// headers in makeHeadersCopier *before* calling RoundTrip, so headers
+	// we set here are not visible to the client's redirect handling. The CDN
+	// would receive a request without a Range header, return the full blob
+	// from byte 0, and the incomplete file would be discarded.
+	if requestedOffset > 0 {
+		for redirects := 0; redirects < maxRangeRedirects && isRedirect(resp.StatusCode); redirects++ {
+			location := resp.Header.Get("Location")
+			if location == "" {
+				break
+			}
+			// Drain and close the redirect response body to reuse the connection.
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			redirectURL, parseErr := req.URL.Parse(location)
+			if parseErr != nil {
+				return nil, fmt.Errorf("parse redirect URL: %w", parseErr)
+			}
+
+			redirectReq := req.Clone(req.Context())
+			redirectReq.URL = redirectURL
+			redirectReq.Host = redirectURL.Host
+
+			// Strip sensitive headers on cross-domain redirects and scheme
+			// downgrades to match Go's http.Client security policy.
+			stripSensitive := req.URL.Host != redirectURL.Host ||
+				(req.URL.Scheme == "https" && redirectURL.Scheme == "http")
+			if stripSensitive {
+				redirectReq.Header.Del("Authorization")
+				redirectReq.Header.Del("Cookie")
+				redirectReq.Header.Del("Cookie2")
+				redirectReq.Header.Del("Proxy-Authorization")
+			}
+
+			req = redirectReq
+			resp, err = base.RoundTrip(redirectReq)
+			if err != nil {
+				return resp, err
+			}
+		}
+
+		// If we exhausted the redirect limit and still have a redirect
+		// response, return an explicit error instead of silently passing
+		// the 3xx to the caller.
+		if isRedirect(resp.StatusCode) {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("stopped after %d redirects", maxRangeRedirects)
+		}
 	}
 
 	// If we requested a Range, record success only when the server honoured it
