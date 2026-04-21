@@ -72,7 +72,8 @@ rm -f vllm_metal-*.whl
 
 # Strip files not needed at runtime to reduce tarball size
 echo "Stripping unnecessary files..."
-rm -rf "$PYTHON_DIR/include"
+# Keep include/python3.12 (needed by vllm-metal to compile Metal kernels at runtime)
+find "$PYTHON_DIR/include" -mindepth 1 -maxdepth 1 ! -name 'python3.12' -exec rm -rf {} + 2>/dev/null || true
 rm -rf "$PYTHON_DIR/share"
 PYLIB="$PYTHON_DIR/lib/python3.12"
 rm -rf "$PYLIB/test" "$PYLIB/tests"
