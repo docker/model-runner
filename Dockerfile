@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION=1.25
-ARG LLAMA_SERVER_VERSION=latest
+ARG LLAMA_SERVER_VERSION=b8882
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b8882
 
 # Use 26.04 for the default Vulkan-backed Linux image.
 # GPU variants should pair this with a compatible runtime base image.
@@ -76,7 +76,7 @@ RUN --mount=type=bind,from=llama-server,source=/app,target=/tmp/llama-upstream \
         exit 1; \
     fi; \
     cp -a /tmp/llama-upstream/llama-server /app/bin/com.docker.llama-server; \
-    find /tmp/llama-upstream -mindepth 1 \( -type f -o -type l \) \
+    find /tmp/llama-upstream -maxdepth 1 -mindepth 1 \( -type f -o -type l \) \
         ! -name 'llama-server' \
         -exec cp -a -t /app/lib/ {} +; \
     chmod 755 /app/bin/com.docker.llama-server

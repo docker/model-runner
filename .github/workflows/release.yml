@@ -292,6 +292,28 @@ jobs:
           echo "cuda=$CUDA_IMAGE" >> "$GITHUB_OUTPUT"
           echo "rocm=$ROCM_IMAGE" >> "$GITHUB_OUTPUT"
 
+      - name: Verify upstream images exist
+        shell: bash
+        run: |
+          fail=0
+          for img in \
+            "${{ steps.llama-images.outputs.cpu }}" \
+            "${{ steps.llama-images.outputs.cuda }}" \
+            "${{ steps.llama-images.outputs.rocm }}"; do
+            echo "Checking $img ..."
+            if ! docker manifest inspect "$img" > /dev/null 2>&1; then
+              echo "::error::Upstream image not found: $img"
+              fail=1
+            fi
+          done
+          if [ "$fail" -eq 1 ]; then
+            echo "::error::One or more upstream llama.cpp images are missing."
+            echo "::error::Images are published daily (~04:12 UTC) and only"
+            echo "::error::a subset of bNNNN releases have published images."
+            echo "::error::Pick a version that has been published to GHCR."
+            exit 1
+          fi
+
       - name: Log in to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:

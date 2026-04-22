@@ -3,12 +3,10 @@ include .versions
 
 APP_NAME := model-runner
 LLAMA_SERVER_VARIANT := cpu
+# Resolved lazily — only evaluated when a Docker target references it.
 LLAMA_UPSTREAM_IMAGE ?= $(shell \
 	bash scripts/resolve-llama-upstream-image.sh \
 	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
-ifeq ($(LLAMA_UPSTREAM_IMAGE),)
-$(error Failed to resolve llama.cpp upstream image. Please check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT, or provide LLAMA_UPSTREAM_IMAGE directly.)
-endif
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
@@ -16,6 +14,10 @@ DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
+
+define check-llama-image
+$(if $(LLAMA_UPSTREAM_IMAGE),,$(error Failed to resolve llama.cpp upstream image. Check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT or set LLAMA_UPSTREAM_IMAGE directly.))
+endef
 
 ifeq ($(LLAMA_SERVER_VARIANT),rocm)
 DOCKER_BUILD_PLATFORMS := linux/amd64
@@ -169,10 +171,12 @@ validate-all:
 
 # Build Docker image
 docker-build:
+	$(call check-llama-image)
 	docker buildx build --load --platform $(LOCAL_DOCKER_PLATFORM) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Build multi-platform Docker image
 docker-build-multiplatform:
+	$(call check-llama-image)
 	docker buildx build --platform $(DOCKER_BUILD_PLATFORMS) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Run in Docker container with TCP port access and mounted model storage
