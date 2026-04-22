@@ -477,6 +477,12 @@ jobs:
           token: ${{ secrets.CLI_RELEASE_PAT }}
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
       - name: Fetch latest llamacpp version from Docker Hub
         id: llamacpp
         run: |
@@ -504,6 +510,14 @@ jobs:
           ' build.json > build.json.tmp
           mv build.json.tmp build.json
 
+      - name: Bump model-runner Go dependency
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          go get github.com/docker/model-runner@v${VERSION}
+          go mod tidy
+          go mod vendor
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
@@ -521,6 +535,7 @@ jobs:
 
             - Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
             - Bumps llamacpp version to ${{ steps.llamacpp.outputs.version }} in build.json (latest from [Docker Hub](https://hub.docker.com/r/docker/docker-model-backend-llamacpp/tags)).
+            - Updates `github.com/docker/model-runner` Go module to v${{ needs.prepare.outputs.version }} (go get + go mod tidy + go mod vendor).
 
             ### Notes for the reviewer
 
