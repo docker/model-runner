@@ -40,6 +40,13 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	// Add socket arguments
 	args = append(args, "--uds", socket)
 
+	// Add chat template if available in the model bundle.
+	// Since transformers v4.44, vLLM no longer provides a default chat
+	// template so we must supply one when the tokenizer omits it.
+	if path := bundle.ChatTemplatePath(); path != "" {
+		args = append(args, "--chat-template", path)
+	}
+
 	// Add mode-specific arguments
 	switch mode {
 	case inference.BackendModeCompletion:

@@ -8,8 +8,9 @@ import (
 )
 
 type mockModelBundle struct {
-	safetensorsPath string
-	runtimeConfig   *types.Config
+	safetensorsPath  string
+	chatTemplatePath string
+	runtimeConfig    *types.Config
 }
 
 func (m *mockModelBundle) GGUFPath() string {
@@ -21,7 +22,7 @@ func (m *mockModelBundle) SafetensorsPath() string {
 }
 
 func (m *mockModelBundle) ChatTemplatePath() string {
-	return ""
+	return m.chatTemplatePath
 }
 
 func (m *mockModelBundle) MMPROJPath() string {
@@ -65,6 +66,36 @@ func TestGetArgs(t *testing.T) {
 			name: "basic args without context size",
 			bundle: &mockModelBundle{
 				safetensorsPath: "/path/to/model",
+			},
+			config: nil,
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+			},
+		},
+		{
+			name: "with chat template",
+			bundle: &mockModelBundle{
+				safetensorsPath:  "/path/to/model",
+				chatTemplatePath: "/path/to/bundle/template.jinja",
+			},
+			config: nil,
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--chat-template",
+				"/path/to/bundle/template.jinja",
+			},
+		},
+		{
+			name: "without chat template omits flag",
+			bundle: &mockModelBundle{
+				safetensorsPath:  "/path/to/model",
+				chatTemplatePath: "",
 			},
 			config: nil,
 			expected: []string{
@@ -494,6 +525,158 @@ func TestGetMaxModelLen(t *testing.T) {
 				t.Errorf("expected nil=%v, got nil=%v", tt.expectedValue == nil, result == nil)
 			} else if result != nil && *result != *tt.expectedValue {
 				t.Errorf("expected %d, got %d", *tt.expectedValue, *result)
+			}
+		})
+	}
+}
+
+func TestBuildArgs(t *testing.T) {
+	tests := []struct {
+		name        string
+		bundle      *mockModelBundle
+		socket      string
+		model       string
+		modelRef    string
+		mode        inference.BackendMode
+		config      *inference.BackendConfiguration
+		expected    []string
+		expectError bool
+	}{
+		{
+			name: "basic completion mode",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/models/bundle/model/safetensors",
+			},
+			socket:   "127.0.0.1:30000",
+			model:    "sha256:abc123",
+			modelRef: "ai/test-model:latest",
+			mode:     inference.BackendModeCompletion,
+			expected: []string{
+				"-m", "vllm.entrypoints.openai.api_server",
+				"--model", "/models/bundle/model",
+				"--host", "127.0.0.1",
+				"--port", "30000",
+				"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+				"--served-model-name", "sha256:abc123", "ai/test-model:latest",
+			},
+		},
+		{
+			name: "with chat template",
+			bundle: &mockModelBundle{
+				safetensorsPath:  "/models/bundle/model/safetensors",
+				chatTemplatePath: "/models/bundle/template.jinja",
+			},
+			socket:   "127.0.0.1:30000",
+			model:    "sha256:abc123",
+			modelRef: "ai/test-model:latest",
+			mode:     inference.BackendModeCompletion,
+			expected: []string{
+				"-m", "vllm.entrypoints.openai.api_server",
+				"--model", "/models/bundle/model",
+				"--host", "127.0.0.1",
+				"--port", "30000",
+				"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+				"--chat-template", "/models/bundle/template.jinja",
+				"--served-model-name", "sha256:abc123", "ai/test-model:latest",
+			},
+		},
+		{
+			name: "without chat template",
+			bundle: &mockModelBundle{
+				safetensorsPath:  "/models/bundle/model/safetensors",
+				chatTemplatePath: "",
+			},
+			socket:   "127.0.0.1:30000",
+			model:    "sha256:abc123",
+			modelRef: "ai/test-model:latest",
+			mode:     inference.BackendModeCompletion,
+			expected: []string{
+				"-m", "vllm.entrypoints.openai.api_server",
+				"--model", "/models/bundle/model",
+				"--host", "127.0.0.1",
+				"--port", "30000",
+				"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+				"--served-model-name", "sha256:abc123", "ai/test-model:latest",
+			},
+		},
+		{
+			name: "empty safetensors path should error",
+			bundle: &mockModelBundle{
+				safetensorsPath: "",
+			},
+			socket:      "127.0.0.1:30000",
+			model:       "sha256:abc123",
+			modelRef:    "ai/test-model:latest",
+			mode:        inference.BackendModeCompletion,
+			expectError: true,
+		},
+		{
+			name: "embedding mode",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/models/bundle/model/safetensors",
+			},
+			socket:   "127.0.0.1:30000",
+			model:    "sha256:abc123",
+			modelRef: "ai/test-model:latest",
+			mode:     inference.BackendModeEmbedding,
+			expected: []string{
+				"-m", "vllm.entrypoints.openai.api_server",
+				"--model", "/models/bundle/model",
+				"--host", "127.0.0.1",
+				"--port", "30000",
+				"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+				"--runner", "pooling",
+				"--served-model-name", "sha256:abc123", "ai/test-model:latest",
+			},
+		},
+		{
+			name: "with context size",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/models/bundle/model/safetensors",
+			},
+			socket:   "127.0.0.1:30000",
+			model:    "sha256:abc123",
+			modelRef: "ai/test-model:latest",
+			mode:     inference.BackendModeCompletion,
+			config: &inference.BackendConfiguration{
+				ContextSize: int32ptr(4096),
+			},
+			expected: []string{
+				"-m", "vllm.entrypoints.openai.api_server",
+				"--model", "/models/bundle/model",
+				"--host", "127.0.0.1",
+				"--port", "30000",
+				"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+				"--served-model-name", "sha256:abc123", "ai/test-model:latest",
+				"--max-model-len", "4096",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := &vllmMetal{}
+			args, err := v.buildArgs(tt.bundle, tt.socket, tt.model, tt.modelRef, tt.mode, tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(args) != len(tt.expected) {
+				t.Fatalf("expected %d args, got %d\nexpected: %v\ngot: %v", len(tt.expected), len(args), tt.expected, args)
+			}
+
+			for i, arg := range args {
+				if arg != tt.expected[i] {
+					t.Errorf("arg[%d]: expected %q, got %q", i, tt.expected[i], arg)
+				}
 			}
 		})
 	}

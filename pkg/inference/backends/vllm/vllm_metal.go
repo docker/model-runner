@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -252,7 +253,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 // buildArgs builds the command line arguments for vllm-metal server.
 // vllm-metal is a vLLM platform plugin, so we launch vLLM's OpenAI-compatible
 // API server directly; the Metal plugin is auto-discovered via entry points.
-func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, socket, model, modelRef string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
+func (v *vllmMetal) buildArgs(bundle types.ModelBundle, socket, model, modelRef string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
 	// Parse host:port from socket (vllm-metal uses TCP)
 	host, port, err := net.SplitHostPort(socket)
 	if err != nil {
@@ -272,6 +273,13 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 		"--host", host,
 		"--port", port,
 		"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+	}
+
+	// Add chat template if available in the model bundle.
+	// Since transformers v4.44, vLLM no longer provides a default chat
+	// template so we must supply one when the tokenizer omits it.
+	if path := bundle.ChatTemplatePath(); path != "" {
+		args = append(args, "--chat-template", path)
 	}
 
 	// Add mode-specific arguments
