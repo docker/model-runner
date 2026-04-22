@@ -63,13 +63,13 @@ RUN /scripts/apt-install.sh && rm -rf /scripts
 WORKDIR /app
 
 # Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /app/lib /models /tmp/llama-upstream && \
+RUN mkdir -p /var/run/model-runner /app/bin /app/lib /models && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
 
 # Normalize the upstream /app layout to the model-runner layout.
-COPY --from=llama-server /app/ /tmp/llama-upstream/
-RUN set -eux; \
+RUN --mount=type=bind,from=llama-server,source=/app,target=/tmp/llama-upstream \
+    set -eux; \
     if [ ! -x /tmp/llama-upstream/llama-server ]; then \
         echo "Expected /app/llama-server in upstream image" >&2; \
         find /tmp/llama-upstream -maxdepth 2 -mindepth 1 -print >&2; \
@@ -79,7 +79,6 @@ RUN set -eux; \
     find /tmp/llama-upstream -mindepth 1 \( -type f -o -type l \) \
         ! -name 'llama-server' \
         -exec cp -a -t /app/lib/ {} +; \
-    rm -rf /tmp/llama-upstream; \
     chmod 755 /app/bin/com.docker.llama-server
 
 USER modelrunner

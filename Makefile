@@ -6,6 +6,9 @@ LLAMA_SERVER_VARIANT := cpu
 LLAMA_UPSTREAM_IMAGE ?= $(shell \
 	bash scripts/resolve-llama-upstream-image.sh \
 	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
+ifeq ($(LLAMA_UPSTREAM_IMAGE),)
+$(error Failed to resolve llama.cpp upstream image. Please check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT, or provide LLAMA_UPSTREAM_IMAGE directly.)
+endif
 VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
