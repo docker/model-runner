@@ -62,34 +62,31 @@ RUN /scripts/apt-install.sh && rm -rf /scripts
 
 WORKDIR /app
 
-# Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /app/lib /models && \
+# Create directories for the socket file and set proper permissions
+RUN mkdir -p /var/run/model-runner /models && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
 
-# Normalize the upstream /app layout to the model-runner layout.
-RUN --mount=type=bind,from=llama-server,source=/app,target=/tmp/llama-upstream \
-    set -eux; \
-    if [ ! -x /tmp/llama-upstream/llama-server ]; then \
-        echo "Expected /app/llama-server in upstream image" >&2; \
-        find /tmp/llama-upstream -maxdepth 2 -mindepth 1 -print >&2; \
-        exit 1; \
-    fi; \
-    cp -a /tmp/llama-upstream/llama-server /app/bin/com.docker.llama-server; \
-    find /tmp/llama-upstream -maxdepth 1 -mindepth 1 \( -type f -o -type l \) \
-        ! -name 'llama-server' \
-        -exec cp -a -t /app/lib/ {} +; \
-    chmod 755 /app/bin/com.docker.llama-server
+# Copy the upstream llama.cpp /app layout as-is.  The Go binary-resolver
+# (resolveLlamaServerBin) discovers "llama-server" automatically when the
+# Docker-convention "com.docker.llama-server" is absent.
+COPY --from=llama-server /app/ /app/
 
 USER modelrunner
 
-# Set the environment variable for the socket path and LLaMA server binary path
+# Set the environment variable for the socket path and LLamA server binary path.
+# LLAMA_SERVER_PATH points at the directory containing the llama-server binary
+# and its ggml backend plugins — keeping them together lets llama.cpp discover
+# backends via its default search path (relative to the binary).
 ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
 ENV MODEL_RUNNER_PORT=12434
-ENV LLAMA_SERVER_PATH=/app/bin
+ENV LLAMA_SERVER_PATH=/app
+# LD_LIBRARY_PATH is required so that backend plugins loaded via dlopen()
+# (e.g. libggml-cpu-*.so, libggml-vulkan.so) can resolve their transitive
+# dependencies on libggml-base.so and other shared libraries in /app.
+ENV LD_LIBRARY_PATH=/app
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"

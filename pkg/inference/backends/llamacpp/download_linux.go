@@ -11,6 +11,6 @@ import (
 func (l *llamaCpp) ensureLatestLlamaCpp(_ context.Context, log logging.Logger, _ *http.Client,
 	_, vendoredServerStoragePath string,
 ) error {
-	l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server"), "", "")
+	l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, resolveLlamaServerBin(vendoredServerStoragePath)), "", "")
 	return errLlamaCppUpdateDisabled
 }
