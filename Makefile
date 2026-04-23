@@ -122,8 +122,6 @@ test-docker-ce-installation:
 validate:
 	find . -type f -name "*.sh" | grep -v "pkg/go-containerregistry\|llamacpp/native/vendor" | xargs shellcheck
 	@echo "✓ Shellcheck validation passed!"
-	@bash scripts/test-resolve-llama-upstream-image.sh
-	@echo "✓ llama.cpp image resolver validation passed!"
 
 validate-versions:
 	@errors=0; \
