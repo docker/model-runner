@@ -72,6 +72,24 @@ RUN mkdir -p /var/run/model-runner /models && \
 # Docker-convention "com.docker.llama-server" is absent.
 COPY --from=llama-server /app/ /app/
 
+# Verify that every shared library copied from the upstream image can resolve
+# its runtime dependencies.  This catches missing system packages (e.g.
+# libgomp1) at build time instead of letting them surface as cryptic
+# "no CPU backend found" errors at runtime.
+RUN set -e; missing=""; \
+    export LD_LIBRARY_PATH=/app; \
+    for f in /app/llama-server /app/*.so; do \
+      out=$(ldd "$f" 2>&1) || true; \
+      not_found=$(echo "$out" | grep "not found" || true); \
+      if [ -n "$not_found" ]; then \
+        missing="$missing\n$f:\n$not_found"; \
+      fi; \
+    done; \
+    if [ -n "$missing" ]; then \
+      printf "ERROR: unresolved shared-library dependencies:\n%b\n" "$missing" >&2; \
+      exit 1; \
+    fi
+
 USER modelrunner
 
 # Set the environment variable for the socket path and LLamA server binary path.
