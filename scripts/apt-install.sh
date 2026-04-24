@@ -41,8 +41,10 @@ main() {
   set -eux -o pipefail
 
   apt-get update
-  local packages=("ca-certificates")
-  if [ "$LLAMA_SERVER_VARIANT" = "generic" ] || [ "$LLAMA_SERVER_VARIANT" = "cpu" ]; then
+  # libgomp1 is the OpenMP runtime required by the upstream llama.cpp CPU
+  # backend plugins (libggml-cpu-*.so) which are compiled with -fopenmp.
+  local packages=("ca-certificates" "libgomp1")
+  if [ "$LLAMA_SERVER_VARIANT" = "cpu" ]; then
     packages+=("libvulkan1")
     if [ "$(uname -m)" = "aarch64" ]; then
       rebuild_and_install_mesa
@@ -56,4 +58,3 @@ main() {
 }
 
 main "$@"
-

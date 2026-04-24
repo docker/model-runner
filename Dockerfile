@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION=1.25
-ARG LLAMA_SERVER_VERSION=latest
+ARG LLAMA_SERVER_VERSION=b8882
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b8882
 
-# only 26.04 for cpu variant for max hardware support with vulkan
-# use 22.04 for gpu variants to match ROCm/CUDA base images
+# Use 26.04 for the default Vulkan-backed Linux image.
+# GPU variants should pair this with a compatible runtime base image.
 ARG BASE_IMAGE=ubuntu:26.04
 
 ARG VERSION=dev
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
 # --- Get llama.cpp binary ---
-FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
+FROM ${LLAMA_UPSTREAM_IMAGE} AS llama-server
 
 # --- Final image ---
 FROM docker.io/${BASE_IMAGE} AS llamacpp
@@ -62,25 +62,49 @@ RUN /scripts/apt-install.sh && rm -rf /scripts
 
 WORKDIR /app
 
-# Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /models && \
+# Create directories for the socket file and set proper permissions
+RUN mkdir -p /var/run/model-runner /models && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
 
-# Copy the llama.cpp binary from the llama-server stage
-ARG LLAMA_BINARY_PATH
-COPY --from=llama-server ${LLAMA_BINARY_PATH}/ /app/.
-RUN chmod +x /app/bin/com.docker.llama-server
+# Copy the upstream llama.cpp /app layout as-is.  The Go binary-resolver
+# (resolveLlamaServerBin) discovers "llama-server" automatically when the
+# Docker-convention "com.docker.llama-server" is absent.
+COPY --from=llama-server /app/ /app/
+
+# Verify that every shared library copied from the upstream image can resolve
+# its runtime dependencies.  This catches missing system packages (e.g.
+# libgomp1) at build time instead of letting them surface as cryptic
+# "no CPU backend found" errors at runtime.
+RUN set -e; missing=""; \
+    export LD_LIBRARY_PATH=/app; \
+    for f in /app/llama-server /app/*.so; do \
+      out=$(ldd "$f" 2>&1) || true; \
+      not_found=$(echo "$out" | grep "not found" || true); \
+      if [ -n "$not_found" ]; then \
+        missing="$missing\n$f:\n$not_found"; \
+      fi; \
+    done; \
+    if [ -n "$missing" ]; then \
+      printf "ERROR: unresolved shared-library dependencies:\n%b\n" "$missing" >&2; \
+      exit 1; \
+    fi
 
 USER modelrunner
 
-# Set the environment variable for the socket path and LLaMA server binary path
+# Set the environment variable for the socket path and LLamA server binary path.
+# LLAMA_SERVER_PATH points at the directory containing the llama-server binary
+# and its ggml backend plugins — keeping them together lets llama.cpp discover
+# backends via its default search path (relative to the binary).
 ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
 ENV MODEL_RUNNER_PORT=12434
-ENV LLAMA_SERVER_PATH=/app/bin
+ENV LLAMA_SERVER_PATH=/app
+# LD_LIBRARY_PATH is required so that backend plugins loaded via dlopen()
+# (e.g. libggml-cpu-*.so, libggml-vulkan.so) can resolve their transitive
+# dependencies on libggml-base.so and other shared libraries in /app.
+ENV LD_LIBRARY_PATH=/app
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"

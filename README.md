@@ -199,14 +199,21 @@ This will:
 
 ### llama.cpp integration
 
-The Docker image includes the llama.cpp server binary from the `docker/docker-model-backend-llamacpp` image. You can specify the version of the image to use by setting the `LLAMA_SERVER_VERSION` variable. Additionally, you can configure the target OS, architecture, and acceleration type:
+The Docker image vendors the Linux `llama-server` binary from the official
+`ghcr.io/ggml-org/llama.cpp` container images. The build keeps the existing
+model-runner runtime layout by normalizing the upstream `/app/llama-server`
+binary and shared libraries into `/app/bin/com.docker.llama-server` and
+`/app/lib`.
+
+You can select the upstream build by setting `LLAMA_SERVER_VERSION` and
+`LLAMA_SERVER_VARIANT`:
 
 ```sh
 # Build with a specific llama.cpp server version
-make docker-build LLAMA_SERVER_VERSION=v0.0.4
+make docker-build LLAMA_SERVER_VERSION=b8840
 
 # Specify all parameters
-make docker-build LLAMA_SERVER_VERSION=v0.0.4 LLAMA_SERVER_VARIANT=cpu
+make docker-build LLAMA_SERVER_VERSION=b8840 LLAMA_SERVER_VARIANT=cpu
 ```
 
 Default values:
@@ -214,13 +221,42 @@ Default values:
 - `LLAMA_SERVER_VARIANT`: cpu
 
 Available variants:
-- `cpu`: CPU-optimized version
-- `cuda`: CUDA-accelerated version for NVIDIA GPUs
+- `cpu`: Default Linux image, backed by the upstream Vulkan build
+- `cuda`: CUDA 13-accelerated version for NVIDIA GPUs
 - `rocm`: ROCm-accelerated version for AMD GPUs
-- `musa`: MUSA-accelerated version for MTHREADS GPUs
-- `cann`: CANN-accelerated version for Ascend NPUs
 
-The binary path in the image follows this pattern: `/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}`
+Supported `LLAMA_SERVER_VERSION` values:
+- `latest`
+- `bNNNN`
+
+The resolved upstream image tags are:
+- `cpu` -> `ghcr.io/ggml-org/llama.cpp:server-vulkan`
+- `cuda` -> `ghcr.io/ggml-org/llama.cpp:server-cuda13`
+- `rocm` -> `ghcr.io/ggml-org/llama.cpp:server-rocm`
+
+For direct `docker buildx build` usage, pass the fully resolved image through
+`LLAMA_UPSTREAM_IMAGE`:
+
+```sh
+docker buildx build \
+  --target final-llamacpp \
+  --build-arg LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b8840 \
+  -t docker/model-runner:llama-b8840 .
+```
+
+GPU variants still require a matching runtime base image. For example:
+
+```sh
+# CUDA-backed Linux image
+make docker-build \
+  LLAMA_SERVER_VARIANT=cuda \
+  BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04
+
+# ROCm-backed Linux image
+make docker-build \
+  LLAMA_SERVER_VARIANT=rocm \
+  BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.1-complete
+```
 
 ### vLLM integration
 
@@ -231,7 +267,7 @@ The Docker image also supports vLLM as an alternative inference backend.
 To build a Docker image with vLLM support:
 
 ```sh
-# Build with default settings (vLLM 0.17.0)
+# Build with default settings (vLLM 0.19.1)
 make docker-build DOCKER_TARGET=final-vllm BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 LLAMA_SERVER_VARIANT=cuda
 
 # Build for specific architecture
@@ -240,7 +276,7 @@ docker buildx build \
   --target final-vllm \
   --build-arg BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
-  --build-arg VLLM_VERSION=0.17.0 \
+  --build-arg VLLM_VERSION=0.19.1 \
   -t docker/model-runner:vllm .
 ```
 
@@ -248,7 +284,7 @@ docker buildx build \
 
 The vLLM variant supports the following build arguments:
 
-- **VLLM_VERSION**: The vLLM version to install (default: `0.17.0`)
+- **VLLM_VERSION**: The vLLM version to install (default: `0.19.1`)
 - **VLLM_CUDA_VERSION**: The CUDA version suffix for the wheel (default: `cu130`)
 - **VLLM_PYTHON_TAG**: The Python compatibility tag (default: `cp38-abi3`, compatible with Python 3.8+)
 
@@ -265,7 +301,7 @@ To build for multiple architectures:
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --target final-vllm \
-  --build-arg BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04 \
+  --build-arg BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04 \
   --build-arg LLAMA_SERVER_VARIANT=cuda \
   -t docker/model-runner:vllm .
 ```
@@ -277,7 +313,7 @@ To update to a new vLLM version:
 ```sh
 docker buildx build \
   --target final-vllm \
-  --build-arg VLLM_VERSION=0.17.0 \
+  --build-arg VLLM_VERSION=0.19.1 \
   -t docker/model-runner:vllm-0.17.0 .
 ```
 

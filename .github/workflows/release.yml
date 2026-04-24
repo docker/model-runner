@@ -31,12 +31,6 @@ on:
         description: "SGLang version"
         required: false
         type: string
-      # This can be removed once we have llama.cpp built for MUSA and CANN.
-      buildMusaCann:
-        description: "Build MUSA and CANN images"
-        required: false
-        type: boolean
-        default: false
       imagesOnly:
         description: "Only build and push Docker images (skip CLI releases, pinata bump, docs update, and CE packaging)"
         required: false
@@ -227,7 +221,6 @@ jobs:
       LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion }}
       VLLM_VERSION: ${{ inputs.vllmVersion }}
       SGLANG_VERSION: ${{ inputs.sglangVersion }}
-      BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -256,15 +249,7 @@ jobs:
           echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "musa<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cann<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          
+
       - name: Load versions
         shell: bash
         run: |
@@ -276,6 +261,21 @@ jobs:
           echo "LLAMA_SERVER_VERSION=${LLAMA_SERVER_VERSION:-$VERSIONS_LLAMA}"   >> "$GITHUB_ENV"
           echo "VLLM_VERSION=${VLLM_VERSION:-$VERSIONS_VLLM}"                   >> "$GITHUB_ENV"
           echo "SGLANG_VERSION=${SGLANG_VERSION:-$VERSIONS_SGLANG}"             >> "$GITHUB_ENV"
+
+      - name: Resolve llama.cpp upstream images
+        id: llama-images
+        shell: bash
+        run: |
+          CPU_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cpu)
+          CUDA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cuda)
+          ROCM_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" rocm)
+
+          echo "cpu=$CPU_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "cuda=$CUDA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "rocm=$ROCM_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
@@ -299,6 +299,7 @@ jobs:
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cpu }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -314,7 +315,8 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
+            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -330,6 +332,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "VLLM_VERSION=${{ env.VLLM_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
@@ -347,7 +350,8 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
+            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
             "SGLANG_VERSION=${{ env.SGLANG_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
@@ -364,46 +368,13 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=rocm"
-            "BASE_IMAGE=rocm/dev-ubuntu-22.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.rocm }}"
+            "BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.1-complete"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
-
-      - name: Build MUSA image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
-        with:
-          file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/amd64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
-            "LLAMA_SERVER_VARIANT=musa"
-            "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
-            "VERSION=${{ env.RELEASE_TAG }}"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.musa }}
-
-      - name: Build CANN image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
-        with:
-          file: Dockerfile
-          target: final-llamacpp
-          platforms: linux/arm64, linux/amd64
-          build-args: |
-            "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
-            "LLAMA_SERVER_VARIANT=cann"
-            "BASE_IMAGE=ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
-            "VERSION=${{ env.RELEASE_TAG }}"
-          push: true
-          sbom: true
-          provenance: mode=max
-          tags: ${{ steps.tags.outputs.cann }}
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
