@@ -367,6 +367,36 @@ func (c *Client) Inspect(model string, remote bool) (dmrm.Model, error) {
 	return modelInspect, nil
 }
 
+func (c *Client) ResolveModelBackend(model string) (scheduling.ModelBackendSelection, error) {
+	resolvePath := fmt.Sprintf("%s/backend?model=%s", inference.ModelsPrefix, url.QueryEscape(model))
+
+	resp, err := c.doRequest(http.MethodGet, resolvePath, nil)
+	if err != nil {
+		return scheduling.ModelBackendSelection{}, c.handleQueryError(err, resolvePath)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return scheduling.ModelBackendSelection{}, errors.Wrap(ErrNotFound, model)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return scheduling.ModelBackendSelection{}, fmt.Errorf("failed to resolve model backend: %s: %s", resp.Status, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return scheduling.ModelBackendSelection{}, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var selection scheduling.ModelBackendSelection
+	if err := json.Unmarshal(body, &selection); err != nil {
+		return scheduling.ModelBackendSelection{}, fmt.Errorf("failed to unmarshal response body: %w", err)
+	}
+
+	return selection, nil
+}
+
 func (c *Client) InspectOpenAI(model string) (dmrm.OpenAIModel, error) {
 	modelsRoute := c.modelRunner.OpenAIPathPrefix() + "/models"
 	rawResponse, err := c.listRaw(fmt.Sprintf("%s/%s", modelsRoute, model), model)

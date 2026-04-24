@@ -119,6 +119,7 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	m["GET "+inference.InferencePrefix+"/status"] = h.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = h.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = h.GetDiskUsage
+	m["GET "+inference.ModelsPrefix+"/backend"] = h.GetModelBackend
 	m["POST "+inference.InferencePrefix+"/unload"] = h.Unload
 	m["POST "+inference.InferencePrefix+"/{backend}/_configure"] = h.Configure
 	m["POST "+inference.InferencePrefix+"/_configure"] = h.Configure
@@ -535,6 +536,30 @@ func (h *HTTPHandler) GetModelConfigs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(configs); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// GetModelBackend resolves the backend selected by the scheduler for the provided model.
+func (h *HTTPHandler) GetModelBackend(w http.ResponseWriter, r *http.Request) {
+	modelRef := r.URL.Query().Get("model")
+	if modelRef == "" {
+		http.Error(w, "model is required", http.StatusBadRequest)
+		return
+	}
+
+	backend, err := h.scheduler.ResolveBackendForModel(r.Context(), modelRef)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to resolve backend: %v", err), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(ModelBackendSelection{
+		Backend:   backend.Name(),
+		Installed: h.scheduler.installer.isInstalled(backend.Name()),
+	}); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
