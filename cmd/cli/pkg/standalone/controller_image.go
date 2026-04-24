@@ -39,8 +39,9 @@ func controllerImageVariant(detectedGPU gpupkg.GPUSupport, backend string) strin
 	case gpupkg.GPUSupportROCm:
 		return "rocm"
 	case gpupkg.GPUSupportMUSA, gpupkg.GPUSupportCANN:
-		// Official upstream llama.cpp Linux images do not publish dedicated
-		// MUSA or CANN variants yet, so fall back to the default image tag.
+		// Upstream llama.cpp publishes MUSA (server-musa) and OpenVINO
+		// (server-openvino) images, but we haven't integrated them yet.
+		// TODO: add MUSA and OpenVINO/CANN variant support.
 		return ""
 	case gpupkg.GPUSupportNone:
 		return ""
