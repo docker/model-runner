@@ -8,9 +8,9 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.4
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.4.0+incompatible
+	github.com/docker/cli v29.4.1+incompatible
 	github.com/docker/cli-docs-tool v0.11.0
-	github.com/docker/docker-credential-helpers v0.9.5
+	github.com/docker/docker-credential-helpers v0.9.6
 	github.com/docker/go-units v0.5.0
 	github.com/emirpasic/gods/v2 v2.0.0-alpha
 	github.com/fatih/color v1.19.0
@@ -19,8 +19,8 @@ require (
 	github.com/kolesnikovae/go-winjob v1.0.0
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/mattn/go-shellwords v1.0.13
-	github.com/moby/moby/api v1.54.1
-	github.com/moby/moby/client v0.4.0
+	github.com/moby/moby/api v1.54.2
+	github.com/moby/moby/client v0.4.1
 	github.com/moby/term v0.5.2
 	github.com/modelpack/model-spec v0.0.7
 	github.com/muesli/termenv v0.16.0
@@ -70,7 +70,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/go-connections v0.6.0 // indirect
+	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
