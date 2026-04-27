@@ -35,11 +35,12 @@ func TestParseSafetensorsHeader_TruncatedFile(t *testing.T) {
 	}
 }
 
-func TestReadContextSizeFromConfigJSON(t *testing.T) {
+func TestReadContextSizeConfig(t *testing.T) {
 	tests := []struct {
-		name     string
-		contents string
-		expected *int32
+		name      string
+		contents  string
+		expected  *int32
+		expectErr bool
 	}{
 		{
 			name:     "max_position_embeddings",
@@ -107,9 +108,10 @@ func TestReadContextSizeFromConfigJSON(t *testing.T) {
 			expected: int32Ptr(512),
 		},
 		{
-			name:     "malformed json",
-			contents: `{not json}`,
-			expected: nil,
+			name:      "malformed json surfaces error",
+			contents:  `{not json}`,
+			expected:  nil,
+			expectErr: true,
 		},
 	}
 
@@ -120,7 +122,17 @@ func TestReadContextSizeFromConfigJSON(t *testing.T) {
 				t.Fatalf("failed to write config.json: %v", err)
 			}
 
-			got := readContextSizeFromConfigJSON(tmpDir)
+			paths := []string{filepath.Join(tmpDir, "model.safetensors")}
+			got, err := readContextSizeConfig(paths)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if (got == nil) != (tt.expected == nil) {
 				t.Fatalf("expected nil=%v, got nil=%v (got value: %v)", tt.expected == nil, got == nil, got)
 			}
@@ -131,10 +143,35 @@ func TestReadContextSizeFromConfigJSON(t *testing.T) {
 	}
 }
 
-func TestReadContextSizeFromConfigJSON_MissingFile(t *testing.T) {
+func TestReadContextSizeConfig_MissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	if got := readContextSizeFromConfigJSON(tmpDir); got != nil {
+	paths := []string{filepath.Join(tmpDir, "model.safetensors")}
+	got, err := readContextSizeConfig(paths)
+	if err != nil {
+		t.Fatalf("expected no error for missing config.json, got %v", err)
+	}
+	if got != nil {
 		t.Errorf("expected nil for missing config.json, got %d", *got)
+	}
+}
+
+func TestReadContextSizeConfig_SearchesAllDirs(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dirB, "config.json"), []byte(`{"n_ctx": 4096}`), 0o644); err != nil {
+		t.Fatalf("failed to write config.json: %v", err)
+	}
+
+	paths := []string{
+		filepath.Join(dirA, "shard-00001.safetensors"),
+		filepath.Join(dirB, "shard-00002.safetensors"),
+	}
+	got, err := readContextSizeConfig(paths)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || *got != 4096 {
+		t.Errorf("expected 4096, got %v", got)
 	}
 }
 
