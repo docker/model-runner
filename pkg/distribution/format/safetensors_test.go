@@ -39,78 +39,73 @@ func TestReadContextSizeConfig(t *testing.T) {
 	tests := []struct {
 		name      string
 		contents  string
-		expected  *int32
+		expected  int32
 		expectErr bool
 	}{
 		{
 			name:     "max_position_embeddings",
 			contents: `{"max_position_embeddings": 4096}`,
-			expected: int32Ptr(4096),
+			expected: 4096,
 		},
 		{
 			name:     "n_ctx fallback",
 			contents: `{"n_ctx": 8192}`,
-			expected: int32Ptr(8192),
+			expected: 8192,
 		},
 		{
 			name:     "n_positions fallback",
 			contents: `{"n_positions": 2048}`,
-			expected: int32Ptr(2048),
+			expected: 2048,
 		},
 		{
 			name:     "max_length fallback",
 			contents: `{"max_length": 1024}`,
-			expected: int32Ptr(1024),
+			expected: 1024,
 		},
 		{
 			name:     "max_sequence_length fallback",
 			contents: `{"max_sequence_length": 512}`,
-			expected: int32Ptr(512),
+			expected: 512,
 		},
 		{
 			name:     "model_max_length fallback",
 			contents: `{"model_max_length": 256}`,
-			expected: int32Ptr(256),
+			expected: 256,
 		},
 		{
 			name:     "max_position_embeddings preferred over fallbacks",
 			contents: `{"max_position_embeddings": 4096, "n_positions": 2048, "n_ctx": 1024}`,
-			expected: int32Ptr(4096),
+			expected: 4096,
 		},
 		{
 			name:     "n_ctx preferred over n_positions",
 			contents: `{"n_ctx": 8192, "n_positions": 2048}`,
-			expected: int32Ptr(8192),
+			expected: 8192,
 		},
 		{
 			name:     "no recognized key",
 			contents: `{"hidden_size": 768}`,
-			expected: nil,
 		},
 		{
 			name:     "zero value ignored",
 			contents: `{"max_position_embeddings": 0}`,
-			expected: nil,
 		},
 		{
 			name:     "negative value ignored",
 			contents: `{"max_position_embeddings": -1}`,
-			expected: nil,
 		},
 		{
 			name:     "value exceeding int32 ignored",
 			contents: `{"max_position_embeddings": 9999999999}`,
-			expected: nil,
 		},
 		{
 			name:     "non-numeric value falls through",
 			contents: `{"max_position_embeddings": "not-a-number", "n_positions": 512}`,
-			expected: int32Ptr(512),
+			expected: 512,
 		},
 		{
 			name:      "malformed json surfaces error",
 			contents:  `{not json}`,
-			expected:  nil,
 			expectErr: true,
 		},
 	}
@@ -133,11 +128,17 @@ func TestReadContextSizeConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if (got == nil) != (tt.expected == nil) {
-				t.Fatalf("expected nil=%v, got nil=%v (got value: %v)", tt.expected == nil, got == nil, got)
+			if tt.expected == 0 {
+				if got != nil {
+					t.Errorf("expected nil, got %d", *got)
+				}
+				return
 			}
-			if got != nil && *got != *tt.expected {
-				t.Errorf("expected %d, got %d", *tt.expected, *got)
+			if got == nil {
+				t.Fatalf("expected %d, got nil", tt.expected)
+			}
+			if *got != tt.expected {
+				t.Errorf("expected %d, got %d", tt.expected, *got)
 			}
 		})
 	}
@@ -175,6 +176,40 @@ func TestReadContextSizeConfig_SearchesAllDirs(t *testing.T) {
 	}
 }
 
-func int32Ptr(v int32) *int32 {
-	return &v
+func TestReadContextSizeConfig_SizeLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	f, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("create config.json: %v", err)
+	}
+	if _, err := f.WriteString(`{"max_position_embeddings": 4096, "padding": "`); err != nil {
+		f.Close()
+		t.Fatalf("write prefix: %v", err)
+	}
+	chunk := make([]byte, 1024*1024)
+	for i := range chunk {
+		chunk[i] = 'x'
+	}
+	for written := 0; written <= maxFormatJSONSize; written += len(chunk) {
+		if _, err := f.Write(chunk); err != nil {
+			f.Close()
+			t.Fatalf("pad: %v", err)
+		}
+	}
+	if _, err := f.WriteString(`"}`); err != nil {
+		f.Close()
+		t.Fatalf("write suffix: %v", err)
+	}
+	f.Close()
+
+	paths := []string{filepath.Join(tmpDir, "model.safetensors")}
+	got, err := readContextSizeConfig(paths)
+	if err == nil {
+		t.Fatalf("expected size-limit error, got nil (value: %v)", got)
+	}
+	if got != nil {
+		t.Errorf("expected nil value on size error, got %d", *got)
+	}
 }
