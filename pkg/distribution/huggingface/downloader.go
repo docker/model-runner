@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
+	"github.com/docker/model-runner/pkg/internal/archive"
 )
 
 // Downloader manages file downloads from HuggingFace repositories
@@ -142,8 +143,11 @@ func (d *Downloader) DownloadAll(ctx context.Context, files []RepoFile, progress
 
 // downloadFileWithProgress downloads a single file with progress reporting
 func (d *Downloader) downloadFileWithProgress(ctx context.Context, file RepoFile, totalImageSize uint64, progressWriter io.Writer) (string, error) {
-	// Create local file path (preserve directory structure)
-	localPath := filepath.Join(d.tempDir, file.Path)
+	// Validate file path to prevent directory traversal attacks
+	localPath, err := archive.CheckRelative(d.tempDir, file.Path)
+	if err != nil {
+		return "", fmt.Errorf("invalid file path %q: %w", file.Path, err)
+	}
 
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
