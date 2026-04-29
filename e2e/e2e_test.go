@@ -316,13 +316,17 @@ func readSSE(t *testing.T, resp *http.Response) (content string, chunks int, got
 }
 
 // chatCompletion sends a non-streaming chat request and returns the response.
+// A small max_tokens cap is applied to prevent runaway generation from
+// causing test timeouts.
 func chatCompletion(t *testing.T, model, prompt string) desktop.OpenAIChatResponse {
 	t.Helper()
+	maxTokens := 64
 	status, body := doJSON(t, http.MethodPost, serverURL+"/engines/v1/chat/completions",
 		desktop.OpenAIChatRequest{
-			Model:    model,
-			Messages: []desktop.OpenAIChatMessage{{Role: "user", Content: prompt}},
-			Stream:   false,
+			Model:     model,
+			Messages:  []desktop.OpenAIChatMessage{{Role: "user", Content: prompt}},
+			Stream:    false,
+			MaxTokens: &maxTokens,
 		})
 	if status != http.StatusOK {
 		t.Fatalf("chat completion failed: status=%d body=%s", status, body)
@@ -335,12 +339,16 @@ func chatCompletion(t *testing.T, model, prompt string) desktop.OpenAIChatRespon
 }
 
 // streamingChatCompletion sends a streaming chat request and validates the SSE response.
+// A small max_tokens cap is applied to prevent runaway generation from
+// causing test timeouts.
 func streamingChatCompletion(t *testing.T, model, prompt string) string {
 	t.Helper()
+	maxTokens := 64
 	data, err := json.Marshal(desktop.OpenAIChatRequest{
-		Model:    model,
-		Messages: []desktop.OpenAIChatMessage{{Role: "user", Content: prompt}},
-		Stream:   true,
+		Model:     model,
+		Messages:  []desktop.OpenAIChatMessage{{Role: "user", Content: prompt}},
+		Stream:    true,
+		MaxTokens: &maxTokens,
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
