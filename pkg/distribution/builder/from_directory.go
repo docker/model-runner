@@ -233,6 +233,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 				config.GGUF = extracted.GGUF
 				config.Safetensors = extracted.Safetensors
 				config.Diffusers = extracted.Diffusers
+				config.ContextSize = extracted.ContextSize
 			}
 		}
 	}
