@@ -34,6 +34,8 @@ Supported versions:
 Supported variants:
   - cpu
   - cuda
+  - musa
+  - openvino
   - rocm
 EOF
   exit 1
@@ -49,6 +51,12 @@ resolve_tag_base() {
       ;;
     cuda)
       printf '%s\n' 'server-cuda13'
+      ;;
+    musa)
+      printf '%s\n' 'server-musa'
+      ;;
+    openvino)
+      printf '%s\n' 'server-openvino'
       ;;
     rocm)
       printf '%s\n' 'server-rocm'
