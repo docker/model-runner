@@ -258,6 +258,14 @@ jobs:
           echo "docker/model-runner:$RELEASE_TAG-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
+          echo "musa<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+          echo "openvino<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-openvino" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-openvino" >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
@@ -285,10 +293,16 @@ jobs:
             "$LLAMA_SERVER_VERSION" cuda)
           ROCM_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
             "$LLAMA_SERVER_VERSION" rocm)
+          MUSA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" musa)
+          OPENVINO_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" openvino)
 
           echo "cpu=$CPU_IMAGE" >> "$GITHUB_OUTPUT"
           echo "cuda=$CUDA_IMAGE" >> "$GITHUB_OUTPUT"
           echo "rocm=$ROCM_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "musa=$MUSA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
@@ -385,6 +399,38 @@ jobs:
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
+      - name: Build MUSA image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          file: Dockerfile
+          target: final-llamacpp
+          platforms: linux/amd64
+          build-args: |
+            "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
+            "LLAMA_SERVER_VARIANT=musa"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.musa }}"
+            "VERSION=${{ env.RELEASE_TAG }}"
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.musa }}
+
+      - name: Build OpenVINO image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          file: Dockerfile
+          target: final-llamacpp
+          platforms: linux/amd64
+          build-args: |
+            "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
+            "LLAMA_SERVER_VARIANT=openvino"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.openvino }}"
+            "VERSION=${{ env.RELEASE_TAG }}"
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.openvino }}
+
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image

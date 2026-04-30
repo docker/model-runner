@@ -10,6 +10,8 @@ LLAMA_UPSTREAM_IMAGE ?= $(shell \
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
+DOCKER_IMAGE_MUSA := docker/model-runner:latest-musa
+DOCKER_IMAGE_OPENVINO := docker/model-runner:latest-openvino
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
@@ -19,7 +21,7 @@ define check-llama-image
 $(if $(LLAMA_UPSTREAM_IMAGE),,$(error Failed to resolve llama.cpp upstream image. Check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT or set LLAMA_UPSTREAM_IMAGE directly.))
 endef
 
-ifeq ($(LLAMA_SERVER_VARIANT),rocm)
+ifneq (,$(filter $(LLAMA_SERVER_VARIANT),rocm musa openvino))
 DOCKER_BUILD_PLATFORMS := linux/amd64
 else
 DOCKER_BUILD_PLATFORMS := linux/amd64,linux/arm64
@@ -42,6 +44,7 @@ DOCKER_BUILD_COMMON_ARGS = \
 .PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-musa docker-run-musa docker-build-openvino docker-run-openvino
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
@@ -201,6 +204,28 @@ docker-build-sglang:
 # Run SGLang Docker container with TCP port access and mounted model storage
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
+
+# Build MUSA Docker image
+docker-build-musa:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA) \
+		LLAMA_SERVER_VARIANT=musa
+
+# Run MUSA Docker container with TCP port access and mounted model storage
+docker-run-musa: docker-build-musa
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA)
+
+# Build OpenVINO Docker image
+docker-build-openvino:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO) \
+		LLAMA_SERVER_VARIANT=openvino
+
+# Run OpenVINO Docker container with TCP port access and mounted model storage
+docker-run-openvino: docker-build-openvino
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO)
 
 # Common implementation for running Docker container
 docker-run-impl:
@@ -381,6 +406,10 @@ help:
 	@echo "  docker-run-vllm		- Run vLLM Docker container"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
+	@echo "  docker-build-musa		- Build MUSA Docker image"
+	@echo "  docker-run-musa		- Run MUSA Docker container"
+	@echo "  docker-build-openvino		- Build OpenVINO Docker image"
+	@echo "  docker-run-openvino		- Run OpenVINO Docker container"
 	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"
@@ -394,7 +423,7 @@ help:
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
 	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest or bNNNN)"
-	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, or rocm)"
+	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, musa, openvino, or rocm)"
 	@echo "  LLAMA_UPSTREAM_IMAGE - Override the resolved upstream image directly"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"
 	@echo ""
