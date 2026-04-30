@@ -143,6 +143,7 @@ func (t *Target) ensureDir(p string, tw *tar.Writer) error {
 		if err := tw.WriteHeader(&tar.Header{
 			Name:     p,
 			Typeflag: tar.TypeDir,
+			Mode:     0755,
 		}); err != nil {
 			return fmt.Errorf("add dir entry %q: %w", p, err)
 		}
