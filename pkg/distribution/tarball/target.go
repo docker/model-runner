@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
+	"path"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -68,7 +68,7 @@ func (t *Target) Write(ctx context.Context, mdl types.ModelArtifact, progressWri
 		return err
 	}
 	if err = tw.WriteHeader(&tar.Header{
-		Name: filepath.Join("blobs", cn.Algorithm, cn.Hex),
+		Name: path.Join("blobs", cn.Algorithm, cn.Hex),
 		Mode: 0666,
 		Size: int64(len(rcf)),
 	}); err != nil {
@@ -97,7 +97,7 @@ func (t *Target) addLayer(layer oci.Layer, tw *tar.Writer, progressWriter io.Wri
 	if err != nil {
 		return fmt.Errorf("get layer diffID: %w", err)
 	}
-	if err := t.ensureDir(filepath.Join("blobs", diffID.Algorithm), tw); err != nil {
+	if err := t.ensureDir(path.Join("blobs", diffID.Algorithm), tw); err != nil {
 		return err
 	}
 	sz, err := layer.Size()
@@ -105,7 +105,7 @@ func (t *Target) addLayer(layer oci.Layer, tw *tar.Writer, progressWriter io.Wri
 		return fmt.Errorf("get layer size: %w", err)
 	}
 	if err = tw.WriteHeader(&tar.Header{
-		Name: filepath.Join("blobs", diffID.Algorithm, diffID.Hex),
+		Name: path.Join("blobs", diffID.Algorithm, diffID.Hex),
 		Mode: 0666,
 		Size: sz,
 	}); err != nil {
@@ -138,15 +138,15 @@ func (t *Target) addLayer(layer oci.Layer, tw *tar.Writer, progressWriter io.Wri
 	return nil
 }
 
-func (t *Target) ensureDir(path string, tw *tar.Writer) error {
-	if _, ok := t.dirs[path]; !ok {
+func (t *Target) ensureDir(p string, tw *tar.Writer) error {
+	if _, ok := t.dirs[p]; !ok {
 		if err := tw.WriteHeader(&tar.Header{
-			Name:     path,
+			Name:     p,
 			Typeflag: tar.TypeDir,
 		}); err != nil {
-			return fmt.Errorf("add dir entry %q: %w", path, err)
+			return fmt.Errorf("add dir entry %q: %w", p, err)
 		}
 	}
-	t.dirs[path] = struct{}{}
+	t.dirs[p] = struct{}{}
 	return nil
 }
