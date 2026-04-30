@@ -63,14 +63,11 @@ jobs:
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --- Find the latest published GitHub Release tag ---
-          # Using gh release list instead of git tags ensures we reference the
-          # last *successfully published* release, not an orphan tag left behind
-          # by a failed release workflow run.
-          # - Filter to v* tags only (aligned with the git tag fallback)
-          # - Use jq's // operator to handle empty arrays (avoids literal "null")
-          LATEST_RELEASE_TAG=$(gh release list --limit 100 --json tagName \
-            --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.tagName) | last | .tagName // ""' \
+          # --- Find the latest published GitHub Release tag ---          
+          # gh release list defaults to --order desc (newest first by creation
+          # date), so --limit 1 gives us the most recent release.
+          LATEST_RELEASE_TAG=$(gh release list --limit 1 --json tagName \
+            --jq '.[0].tagName // ""' \
             2>/dev/null || echo "")
 
           if [ -n "$LATEST_RELEASE_TAG" ]; then
