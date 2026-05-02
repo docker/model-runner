@@ -60,7 +60,7 @@ build-cli:
 	$(MAKE) -C cmd/cli
 
 build-dmr:
-	go build -ldflags="-s -w" -o dmr ./cmd/dmr
+	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o dmr ./cmd/dmr
 
 build-llamacpp:
 	git submodule update --init llamacpp/native
