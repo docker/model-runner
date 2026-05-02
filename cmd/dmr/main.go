@@ -1,130 +1,69 @@
-// dmr is a developer convenience wrapper that starts the model-runner server on
-// a free port and runs a model-cli command against it in one step.
-//
-// Usage: dmr <cli-args...>
-//
-// Example: dmr run qwen3:0.6B-Q4_0 tell me today's news
+// Command dmr is the unified Docker Model Runner daemon and client.
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"syscall"
-	"time"
+
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/model-runner/cmd/cli/commands"
+	"github.com/docker/model-runner/pkg/server"
+	"github.com/spf13/cobra"
 )
 
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
+var Version = "dev"
 
-func waitForServer(url string, timeout time.Duration) error {
-	client := &http.Client{Timeout: time.Second}
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		resp, err := client.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	return fmt.Errorf("server not ready after %s", timeout)
-}
-
-func checkBinary(path, name, expectedLayout string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("missing %s binary at %s\n\nExpected directory layout:\n%s\n\nPlease run 'make build' to build all binaries", name, path, expectedLayout)
-	}
-	return nil
-}
+const defaultHost = "http://localhost:12434"
+const defaultPort = "12434"
 
 func main() {
-	self, err := os.Executable()
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cli, err := command.NewDockerCli()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: %v\n", err)
-		os.Exit(1)
-	}
-	dir := filepath.Dir(self)
-
-	serverBin := filepath.Join(dir, "model-runner")
-	cliBin := filepath.Join(dir, "cmd", "cli", "model-cli")
-
-	expectedLayout := fmt.Sprintf(`%s/
-├── model-runner          (server binary)
-├── dmr                   (this wrapper)
-└── cmd/
-    └── cli/
-        └── model-cli     (CLI binary)`, dir)
-
-	if err := checkBinary(serverBin, "model-runner", expectedLayout); err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: %v\n", err)
-		os.Exit(1)
-	}
-	if err := checkBinary(cliBin, "model-cli", expectedLayout); err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("unable to initialize CLI: %w", err)
 	}
 
-	port, err := freePort()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: failed to find free port: %v\n", err)
-		os.Exit(1)
-	}
-	portStr := strconv.Itoa(port)
-	serverURL := "http://localhost:" + portStr
+	root := commands.NewRootCmd(cli)
+	root.Use = "dmr"
+	root.Short = "Docker Model Runner"
 
-	fmt.Fprintf(os.Stderr, "dmr: starting model-runner on port %d\n", port)
-
-	server := exec.Command(serverBin)
-	server.Env = append(os.Environ(), "MODEL_RUNNER_PORT="+portStr)
-	server.Stderr = os.Stderr
-	server.Stdout = os.Stdout
-
-	if err := server.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: failed to start model-runner: %v\n", err)
-		os.Exit(1)
-	}
-	defer server.Process.Kill()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		server.Process.Kill()
-	}()
-
-	if err := waitForServer(serverURL+"/", 30*time.Second); err != nil {
-		fmt.Fprintf(os.Stderr, "dmr: %v\n", err)
-		os.Exit(1)
-	}
-
-	// #nosec G702 - Intentional: dmr is a CLI wrapper that forwards arguments to model-cli
-	cli := exec.Command(cliBin, os.Args[1:]...)
-	cli.Env = append(os.Environ(), "MODEL_RUNNER_HOST="+serverURL)
-	cli.Stdin = os.Stdin
-	cli.Stdout = os.Stdout
-	cli.Stderr = os.Stderr
-
-	if err := cli.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			os.Exit(exitErr.ExitCode())
+	if os.Getenv("MODEL_RUNNER_HOST") == "" {
+		if err := os.Setenv("MODEL_RUNNER_HOST", defaultHost); err != nil {
+			return fmt.Errorf("unable to set MODEL_RUNNER_HOST: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "dmr: %v\n", err)
-		os.Exit(1)
+	}
+
+	root.AddCommand(newServeCmd())
+
+	return root.Execute()
+}
+
+func newServeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "serve",
+		Short: "Start the Docker Model Runner daemon",
+		// skip Docker CLI init; serve runs the daemon directly
+		PersistentPreRunE: func(*cobra.Command, []string) error { return nil },
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if os.Getenv("MODEL_RUNNER_PORT") == "" {
+				if err := os.Setenv("MODEL_RUNNER_PORT", defaultPort); err != nil {
+					return fmt.Errorf("unable to set MODEL_RUNNER_PORT: %w", err)
+				}
+			}
+
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
+			return server.Run(ctx, server.Config{Version: Version})
+		},
 	}
 }
