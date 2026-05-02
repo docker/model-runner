@@ -31,10 +31,17 @@ import (
 // Config holds server startup options.
 type Config struct {
 	Version string
+	// ExitFunc is called on fatal errors that cannot be propagated via the
+	// callback signature (e.g. OnBackendError). Defaults to os.Exit.
+	ExitFunc func(int)
 }
 
 // Run starts the HTTP server and blocks until ctx is cancelled.
 func Run(ctx context.Context, cfg Config) error {
+	exitFunc := cfg.ExitFunc
+	if exitFunc == nil {
+		exitFunc = os.Exit
+	}
 	log := logging.NewLogger(envconfig.LogLevel())
 
 	sockName := envconfig.SocketPath()
@@ -183,7 +190,7 @@ func Run(ctx context.Context, cfg Config) error {
 		),
 		OnBackendError: func(name string, err error) {
 			log.Error("unable to initialize backend", "backend", name, "error", err)
-			os.Exit(1)
+			exitFunc(1)
 		},
 		DefaultBackendName: llamacpp.Name,
 		HTTPClient:         http.DefaultClient,
