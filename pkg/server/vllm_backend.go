@@ -1,5 +1,5 @@
 //go:build !novllm
 
-package main
+package server
 
 const includeVLLM = true
