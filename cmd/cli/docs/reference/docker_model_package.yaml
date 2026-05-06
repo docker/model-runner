@@ -8,6 +8,7 @@ long: |-
       --safetensors-dir    A directory containing .safetensors and configuration files
       --dduf               A .dduf (Diffusers Unified Format) archive
       --from               An existing packaged model reference
+      --file               A Modelfile describing the model and its assets
 
     By default, the packaged artifact is loaded into the local Model Runner content store.
     Use --push to publish the model to a registry instead.
@@ -39,7 +40,22 @@ long: |-
 
       Multimodal models
         Use --mmproj to include a multimodal projector file.
-usage: docker model package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL
+
+      Modelfile
+        --file accepts a path to a Modelfile. Supported instructions:
+
+          FROM <model>              existing model reference
+          GGUF <path>               GGUF file
+          SAFETENSORS_DIR <path>    safetensors directory (alias: SAFETENSORS-DIR)
+          DDUF <path>               DDUF archive
+          LICENSE <path>            license file; may appear multiple times
+          CHAT_TEMPLATE <path>      chat template file (alias: CHAT-TEMPLATE)
+          MMPROJ <path>             multimodal projector (alias: MM-PROJ)
+          CONTEXT <tokens>          context size in tokens (aliases: CTX, CONTEXT-SIZE)
+
+        Paths may be relative (resolved from the Modelfile's directory) or absolute.
+        CLI flags take precedence over Modelfile values.
+usage: docker model package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model> | --file <modelfile>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL
 pname: docker model
 plink: docker_model.yaml
 options:
@@ -65,6 +81,16 @@ options:
     - option: dduf
       value_type: string
       description: absolute path to DDUF archive file (Diffusers Unified Format)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: file
+      shorthand: f
+      value_type: string
+      description: path to a Modelfile
       deprecated: false
       hidden: false
       experimental: false
