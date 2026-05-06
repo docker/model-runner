@@ -132,7 +132,7 @@ Packaging behavior:
 			}
 			if sourcesProvided > 1 {
 				return fmt.Errorf(
-					"Cannot specify more than one of --gguf, --safetensors-dir, --dduf, or --from. Please use only one source.\n\n" +
+					"Cannot specify more than one model source (--gguf, --safetensors-dir, --dduf, --from, or a source from --file).\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}

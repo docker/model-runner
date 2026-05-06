@@ -19,7 +19,7 @@ var modelfileAliases = map[string]string{
 	"CONTEXT-SIZE":    "CONTEXT",
 }
 
-// modelfilePathInstructions is the set of instructions whose value is a file or directory path.
+// modelfilePathInstructions is the set of instructions that take a file or directory path.
 var modelfilePathInstructions = map[string]struct{}{
 	"GGUF":            {},
 	"SAFETENSORS_DIR": {},
@@ -58,17 +58,20 @@ func applyModelfile(opts *packageOptions) error {
 			continue
 		}
 
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		i := strings.IndexAny(line, " \t")
+		if i == -1 {
 			return fmt.Errorf("Modelfile line %d: expected an instruction and a value, got: %q", lineNum, line)
 		}
 
-		instruction := strings.ToUpper(fields[0])
+		instruction := strings.ToUpper(line[:i])
 		if canonical, ok := modelfileAliases[instruction]; ok {
 			instruction = canonical
 		}
 
-		value := strings.Join(fields[1:], " ")
+		value := strings.TrimSpace(line[i:])
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
+		}
 
 		var absPath string
 		if _, isPath := modelfilePathInstructions[instruction]; isPath {
@@ -146,8 +149,6 @@ func applyModelfile(opts *packageOptions) error {
 				opts.contextSizeSet = true
 			}
 
-		default:
-			return fmt.Errorf("Modelfile line %d: unknown instruction %q", lineNum, instruction)
 		}
 	}
 
@@ -158,8 +159,7 @@ func applyModelfile(opts *packageOptions) error {
 	return nil
 }
 
-// modelfileResolvePath returns path as an absolute cleaned path, resolved
-// relative to baseDir when path is not already absolute.
+// modelfileResolvePath resolves path to an absolute path relative to baseDir.
 func modelfileResolvePath(path, baseDir string) (string, error) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(baseDir, path)

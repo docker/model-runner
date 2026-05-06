@@ -101,7 +101,7 @@ func TestApplyModelfile_GGUF_IsDir(t *testing.T) {
 
 	opts := packageOptions{modelfile: filepath.Join(dir, "Modelfile")}
 	if err := applyModelfile(&opts); err == nil {
-		t.Fatal("expected error when GGUF path is a directory, got nil")
+		t.Fatal("expected error, got nil")
 	}
 }
 
@@ -147,7 +147,7 @@ func TestApplyModelfile_SAFETENSORS_DIR_NotDir(t *testing.T) {
 
 	opts := packageOptions{modelfile: filepath.Join(dir, "Modelfile")}
 	if err := applyModelfile(&opts); err == nil {
-		t.Fatal("expected error when SAFETENSORS_DIR path is a file, got nil")
+		t.Fatal("expected error, got nil")
 	}
 }
 
@@ -193,7 +193,7 @@ func TestApplyModelfile_CONTEXT(t *testing.T) {
 		t.Errorf("contextSize = %d, want 4096", opts.contextSize)
 	}
 	if !opts.contextSizeSet {
-		t.Error("contextSizeSet should be true after Modelfile sets CONTEXT")
+		t.Error("contextSizeSet not set")
 	}
 }
 
@@ -222,10 +222,10 @@ func TestApplyModelfile_CONTEXT_CLIPrecedence(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if opts.contextSize != 8192 {
-		t.Errorf("contextSize = %d, want 8192 (CLI precedence)", opts.contextSize)
+		t.Errorf("contextSize = %d, want 8192", opts.contextSize)
 	}
 	if opts.contextSizeSet {
-		t.Error("contextSizeSet should remain false when CLI value takes precedence")
+		t.Error("contextSizeSet unexpectedly set")
 	}
 }
 
@@ -281,13 +281,32 @@ FROM myorg/model:latest
 	}
 }
 
-func TestApplyModelfile_UnknownInstruction(t *testing.T) {
+func TestApplyModelfile_UnknownInstructionIgnored(t *testing.T) {
 	dir := t.TempDir()
-	writeModelfile(t, dir, "FOOBAR something\n")
+	// PARAMETER and SYSTEM are Ollama Modelfile instructions irrelevant to packaging.
+	writeModelfile(t, dir, "FROM myorg/model:latest\nPARAMETER temperature 0.7\nSYSTEM You are helpful.\n")
 
 	opts := packageOptions{modelfile: filepath.Join(dir, "Modelfile")}
-	if err := applyModelfile(&opts); err == nil {
-		t.Fatal("expected error for unknown instruction, got nil")
+	if err := applyModelfile(&opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.fromModel != "myorg/model:latest" {
+		t.Errorf("fromModel = %q, want %q", opts.fromModel, "myorg/model:latest")
+	}
+}
+
+func TestApplyModelfile_GGUFPathWithSpaces(t *testing.T) {
+	dir := t.TempDir()
+	ggufFile := filepath.Join(dir, "my model.gguf")
+	writeFile(t, ggufFile, "fake gguf")
+	writeModelfile(t, dir, "GGUF \"my model.gguf\"\n")
+
+	opts := packageOptions{modelfile: filepath.Join(dir, "Modelfile")}
+	if err := applyModelfile(&opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.ggufPath != ggufFile {
+		t.Errorf("ggufPath = %q, want %q", opts.ggufPath, ggufFile)
 	}
 }
 
