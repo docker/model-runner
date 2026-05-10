@@ -36,8 +36,8 @@ type containerApp struct {
 	defaultHostPort int
 	containerPort   int
 	envFn           func(baseURL string) []string
-	extraDockerArgs []string // additional docker run args (e.g., volume mounts)
-	interactive     bool     // attach TTY for interactive/TUI apps
+	extraDockerArgs []string
+	interactiveArgs map[string]bool
 }
 
 // containerApps are launched via "docker run --rm".
@@ -58,8 +58,7 @@ var containerApps = map[string]containerApp{
 	"llmfit": {
 		defaultImage:    "ghcr.io/alexsjones/llmfit",
 		envFn:           llmfitEnv,
-		interactive:     true,
-		extraDockerArgs: []string{"--entrypoint", "llmfit"},
+		interactiveArgs: map[string]bool{"tui": true},
 	},
 }
 
@@ -126,7 +125,8 @@ Examples:
   docker model launch claude -- --help
   docker model launch openwebui --port 3000
   docker model launch claude --config
-  docker model launch llmfit -- recommend -n 5`, strings.Join(supportedApps, ", ")),
+  docker model launch llmfit -- recommend -n 5
+  docker model launch llmfit -- tui`, strings.Join(supportedApps, ", ")),
 		ValidArgs: supportedApps,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// No args - list supported apps
@@ -220,7 +220,14 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		}
 		cmd.Printf("Configuration for %s (container app):\n", app)
 		cmd.Printf("  Image:          %s\n", img)
-		cmd.Printf("  Interactive:    %v\n", ca.interactive)
+		if len(ca.interactiveArgs) > 0 {
+			keys := make([]string, 0, len(ca.interactiveArgs))
+			for k := range ca.interactiveArgs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			cmd.Printf("  Interactive args: %s\n", strings.Join(keys, ", "))
+		}
 		if ca.containerPort > 0 {
 			cmd.Printf("  Container port: %d\n", ca.containerPort)
 			cmd.Printf("  Host port:      %d\n", hostPort)
@@ -304,6 +311,9 @@ func launchContainerApp(cmd *cobra.Command, appName string, ca containerApp, bas
 	if img == "" {
 		img = ca.defaultImage
 	}
+	if portOverride > 0 && ca.containerPort == 0 {
+		return fmt.Errorf("app %q does not expose a port, --port is not applicable", appName)
+	}
 	hostPort := portOverride
 	if hostPort == 0 {
 		hostPort = ca.defaultHostPort
@@ -313,7 +323,8 @@ func launchContainerApp(cmd *cobra.Command, appName string, ca containerApp, bas
 	if detach {
 		dockerArgs = append(dockerArgs, "-d")
 	}
-	if ca.interactive {
+	interactive := len(appArgs) > 0 && ca.interactiveArgs[appArgs[0]]
+	if interactive {
 		if detach {
 			cmd.Printf("Warning: %s runs in interactive mode, app may not work as expected in detached mode\n", appName)
 		} else {
