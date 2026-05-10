@@ -36,8 +36,8 @@ type containerApp struct {
 	defaultHostPort int
 	containerPort   int
 	envFn           func(baseURL string) []string
-	extraDockerArgs []string
-	interactiveArgs map[string]bool
+	extraDockerArgs []string        // additional docker run args (e.g., volume mounts)
+	interactiveArgs map[string]bool // set of interactive args if app supports running interactively (e.g., tui)
 }
 
 // containerApps are launched via "docker run --rm".
