@@ -1,7 +1,7 @@
 # Project variables
 include .versions
 
-export PATH := $(PATH):$(shell go env GOPATH)/bin
+export PATH := $(PATH):$(firstword $(subst :, ,$(shell go env GOPATH)))/bin
 
 APP_NAME := model-runner
 LLAMA_SERVER_VARIANT := cpu
