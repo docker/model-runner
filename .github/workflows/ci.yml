@@ -26,10 +26,14 @@ jobs:
           go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
+      - name: Load golangci-lint version
+        id: golangci-lint-version
+        run: echo "version=$(grep '^GOLANGCI_LINT_VERSION=' .versions | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20
         with:
-          version: v2.10.1
+          version: ${{ steps.golangci-lint-version.outputs.version }}
           install-only: true
 
       - name: Run linting for ${{ matrix.goos }}
