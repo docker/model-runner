@@ -483,7 +483,8 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	// Preload the model in the background by calling handleOpenAIInference with preload-only context.
 	// This makes Compose preload the model as well as it calls `configure` by default.
-	go func() {
+	userAgent := r.UserAgent()
+	go func() { //nolint:gosec // G118: context.Background intentional — preload must outlive the request context
 		preloadBody, err := json.Marshal(OpenAIInferenceRequest{Model: configureRequest.Model})
 		if err != nil {
 			h.scheduler.log.Warn("failed to marshal preload request body", "error", err)
@@ -501,7 +502,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 			h.scheduler.log.Warn("failed to create preload request", "error", err)
 			return
 		}
-		preloadReq.Header.Set("User-Agent", r.UserAgent())
+		preloadReq.Header.Set("User-Agent", userAgent)
 		if backend != nil {
 			preloadReq.SetPathValue("backend", backend.Name())
 		}
