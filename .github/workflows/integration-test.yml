@@ -6,6 +6,9 @@ on:
     branches: [ main ]
   push:
 
+permissions:
+  contents: read
+
 jobs:
   integration-test:
     runs-on: ubuntu-latest
