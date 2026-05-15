@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -221,7 +222,7 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 			}
 		} else {
 			// No Range success or offset mismatch - start fresh
-			if removeErr := os.Remove(incompletePath); removeErr != nil {
+			if removeErr := os.Remove(incompletePath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 				return fmt.Errorf("remove incomplete file: %w", removeErr)
 			}
 			var createErr error
