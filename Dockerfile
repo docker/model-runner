@@ -155,3 +155,66 @@ COPY --from=builder /app/model-runner /app/model-runner
 FROM sglang AS final-sglang
 # Copy the built binary from builder-sglang (without vLLM)
 COPY --from=builder-sglang /app/model-runner /app/model-runner
+
+# --- vLLM ROCm: builder stage ---
+# Builds upstream vLLM from source on AMD's pre-built ROCm dev image, which
+# already contains PyTorch ROCm, Triton, flash-attention, and the ROCm SDK
+# (see https://hub.docker.com/r/rocm/vllm-dev). vLLM is checked out at the
+# tagged release matching VLLM_VERSION — no fork, no custom wheels.
+FROM rocm/vllm-dev:base AS vllm-rocm-builder
+
+ARG VLLM_VERSION=0.19.1
+# Target GPU architectures officially supported by vLLM ROCm:
+# gfx90a (MI200), gfx942 (MI300), gfx1100/1101 (RDNA3 7900/7800).
+ARG PYTORCH_ROCM_ARCH="gfx90a;gfx942;gfx1100;gfx1101"
+ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
+
+RUN git clone --depth 1 --branch v${VLLM_VERSION} \
+    https://github.com/vllm-project/vllm.git /vllm-src
+
+WORKDIR /vllm-src
+RUN python3 -m pip install --no-cache-dir -r requirements/rocm.txt \
+    && python3 setup.py bdist_wheel --dist-dir=/wheels
+
+# --- vLLM ROCm: runtime stage ---
+# Mirrors the /opt/vllm-env layout that pkg/inference/backends/vllm/vllm.go
+# expects (binary at /opt/vllm-env/bin/vllm, version file at
+# /opt/vllm-env/version). Symlinks are used instead of a real venv because
+# rocm/vllm-dev:base installs Python dependencies system-wide and recreating
+# a venv would break the PyTorch ROCm / Triton ROCm wiring.
+#
+# Note: unlike the CUDA vllm stage, this image does NOT include llama.cpp.
+# The base image is incompatible (different ROCm runtime versions), and the
+# rocm vllm image is intended as a vLLM-only artifact.
+FROM rocm/vllm-dev:base AS vllm-rocm
+
+COPY --from=vllm-rocm-builder /wheels/*.whl /tmp/
+RUN python3 -m pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+
+RUN groupadd --system modelrunner \
+    && useradd --system --gid modelrunner -G video \
+        --create-home --home-dir /home/modelrunner modelrunner
+
+RUN mkdir -p /opt/vllm-env/bin \
+    && ln -s "$(command -v vllm)" /opt/vllm-env/bin/vllm \
+    && python3 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version \
+    && chown -R modelrunner:modelrunner /opt/vllm-env
+
+RUN mkdir -p /var/run/model-runner /models /app \
+    && chown -R modelrunner:modelrunner /var/run/model-runner /app /models \
+    && chmod -R 755 /models
+
+USER modelrunner
+
+ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
+ENV MODEL_RUNNER_PORT=12434
+ENV HOME=/home/modelrunner
+ENV MODELS_PATH=/models
+
+LABEL com.docker.desktop.service="model-runner"
+
+ENTRYPOINT ["/app/model-runner"]
+
+FROM vllm-rocm AS final-vllm-rocm
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner

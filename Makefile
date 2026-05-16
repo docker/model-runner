@@ -9,6 +9,7 @@ LLAMA_UPSTREAM_IMAGE ?= $(shell \
 	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
+DOCKER_IMAGE_VLLM_ROCM := docker/model-runner:latest-vllm-rocm
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
 DOCKER_IMAGE_MUSA := docker/model-runner:latest-musa
 DOCKER_IMAGE_OPENVINO := docker/model-runner:latest-openvino
@@ -43,7 +44,7 @@ DOCKER_BUILD_COMMON_ARGS = \
 .PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
 .PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
-.PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-vllm docker-run-vllm docker-build-vllm-rocm docker-run-vllm-rocm docker-build-sglang docker-run-sglang
 .PHONY: docker-build-musa docker-run-musa docker-build-openvino docker-run-openvino
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
@@ -193,6 +194,23 @@ docker-build-vllm:
 # Run vLLM Docker container with TCP port access and mounted model storage
 docker-run-vllm: docker-build-vllm
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
+
+# Build vLLM Docker image with ROCm (AMD GPU) support.
+# Builds upstream vLLM from source on top of rocm/vllm-dev:base — this is a
+# vLLM-only image (no llama.cpp), unlike the CUDA variant. Build is heavy:
+# expect 30-60 min and ~12-15 GB final image size.
+# LLAMA_SERVER_VARIANT is not consumed by the Dockerfile stages here, but
+# setting it to "rocm" restricts DOCKER_BUILD_PLATFORMS to linux/amd64
+# (vLLM ROCm has no aarch64 support).
+docker-build-vllm-rocm:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-vllm-rocm \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM) \
+		LLAMA_SERVER_VARIANT=rocm
+
+# Run vLLM ROCm Docker container with TCP port access and mounted model storage
+docker-run-vllm-rocm: docker-build-vllm-rocm
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM)
 
 # Build SGLang Docker image
 docker-build-sglang:
@@ -402,8 +420,10 @@ help:
 	@echo "  docker-build			- Build Docker image for current platform"
 	@echo "  docker-build-multiplatform	- Build Docker image for multiple platforms"
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
-	@echo "  docker-build-vllm		- Build vLLM Docker image"
-	@echo "  docker-run-vllm		- Run vLLM Docker container"
+	@echo "  docker-build-vllm		- Build vLLM Docker image (CUDA)"
+	@echo "  docker-run-vllm		- Run vLLM Docker container (CUDA)"
+	@echo "  docker-build-vllm-rocm	- Build vLLM Docker image (ROCm / AMD GPU, source build)"
+	@echo "  docker-run-vllm-rocm		- Run vLLM Docker container (ROCm / AMD GPU)"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
 	@echo "  docker-build-musa		- Build MUSA Docker image"
