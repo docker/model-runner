@@ -180,7 +180,7 @@ USER modelrunner
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv venv --python 3.12 /opt/vllm-env \
     && . /opt/vllm-env/bin/activate \
-    && ~/.local/bin/uv pip install vllm \
+    && ~/.local/bin/uv pip install "vllm==${VLLM_ROCM_VERSION}" \
          --extra-index-url https://wheels.vllm.ai/rocm/${VLLM_ROCM_VERSION}/${VLLM_ROCM_TARGET} \
          --index-strategy unsafe-best-match
 
