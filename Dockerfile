@@ -102,10 +102,7 @@ USER modelrunner
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv venv --python 3.12 /opt/vllm-env \
     && . /opt/vllm-env/bin/activate \
-    && ~/.local/bin/uv pip install vllm \
-         --extra-index-url https://wheels.vllm.ai/${VLLM_VERSION}/cu130 \
-         --extra-index-url https://download.pytorch.org/whl/cu130 \
-         --index-strategy unsafe-best-match
+    && ~/.local/bin/uv pip install vllm --torch-backend auto
 
 RUN /opt/vllm-env/bin/python3.12 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
