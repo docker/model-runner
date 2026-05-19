@@ -110,7 +110,16 @@ func runLaunch(args []string) error {
 		return fmt.Errorf("sandbox.tool is not configured. Run: dmr config sandbox.tool <tool>")
 	}
 
-	cmd := exec.Command(sandboxTool, args...)
+	if strings.ContainsAny(sandboxTool, "\x00\r\n") {
+		return fmt.Errorf("sandbox.tool contains invalid characters")
+	}
+
+	sandboxToolPath, err := exec.LookPath(sandboxTool)
+	if err != nil {
+		return fmt.Errorf("sandbox tool %q not found in PATH: %w", sandboxTool, err)
+	}
+
+	cmd := exec.Command(sandboxToolPath, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
