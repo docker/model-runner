@@ -139,8 +139,11 @@ func writeSandboxToolConfig(tool string) error {
 
 	content := fmt.Sprintf("[sandbox]\ntool = %q\n", tool)
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("unable to write config: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("unable to secure config permissions: %w", err)
 	}
 
 	return nil
