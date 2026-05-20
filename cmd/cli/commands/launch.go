@@ -196,30 +196,28 @@ Examples:
 }
 
 func launchSandboxedHostApp(cmd *cobra.Command, sandboxTool, app string, appArgs []string, dryRun bool) error {
-	if strings.ContainsAny(sandboxTool, "\x00\r\n") {
-		return fmt.Errorf("sandbox.tool contains invalid characters")
-	}
-
-	sandboxToolPath, err := exec.LookPath(sandboxTool)
-	if err != nil {
-		return fmt.Errorf("sandbox tool %q not found in PATH: %w", sandboxTool, err)
+	if err := validateSandboxTool(sandboxTool); err != nil {
+		return err
 	}
 
 	args := append([]string{app}, appArgs...)
 
-	if dryRun {
-		cmd.Printf("%s %s\n", sandboxToolPath, strings.Join(args, " "))
-		return nil
+	switch sandboxTool {
+	case "sbx":
+		if dryRun {
+			cmd.Printf("sbx %s\n", strings.Join(args, " "))
+			return nil
+		}
+
+		launchCmd := exec.Command("sbx", args...)
+		launchCmd.Stdin = os.Stdin
+		launchCmd.Stdout = os.Stdout
+		launchCmd.Stderr = os.Stderr
+
+		return launchCmd.Run()
+	default:
+		return fmt.Errorf("unsupported sandbox tool %q", sandboxTool)
 	}
-
-	// #nosec G204 -- sandboxToolPath is an explicit user-configured executable
-	// selected from allowedSandboxTools. exec.Command does not invoke a shell.
-	launchCmd := exec.Command(sandboxToolPath, args...)
-	launchCmd.Stdin = os.Stdin
-	launchCmd.Stdout = os.Stdout
-	launchCmd.Stderr = os.Stderr
-
-	return launchCmd.Run()
 }
 
 // listSupportedApps prints all supported apps with their descriptions and install status.
