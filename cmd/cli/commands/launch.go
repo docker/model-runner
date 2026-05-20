@@ -143,6 +143,23 @@ Examples:
 				appArgs = args[dashIdx:]
 			}
 
+			// If a sandbox tool is configured, launch host apps through it before
+			// resolving runner endpoints. This keeps sandbox launch independent of
+			// whether the host app binary itself is installed.
+			if _, ok := hostApps[app]; ok {
+				sandboxTool, err := readSandboxToolConfig()
+				if err != nil {
+					return err
+				}
+
+				if sandboxTool != "" {
+					if err := validateSandboxTool(sandboxTool); err != nil {
+						return err
+					}
+					return launchSandboxedHostApp(cmd, sandboxTool, app, appArgs, dryRun)
+				}
+			}
+
 			runner, err := getStandaloneRunner(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("unable to determine standalone runner endpoint: %w", err)
@@ -161,9 +178,11 @@ Examples:
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
+
 			if cli, ok := hostApps[app]; ok {
 				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
 			}
+
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
 	}
@@ -174,6 +193,33 @@ Examples:
 	c.Flags().BoolVar(&configOnly, "config", false, "Print configuration without launching")
 	c.Flags().StringVar(&model, "model", "", "Model to use (for opencode)")
 	return c
+}
+
+func launchSandboxedHostApp(cmd *cobra.Command, sandboxTool, app string, appArgs []string, dryRun bool) error {
+	if strings.ContainsAny(sandboxTool, "\x00\r\n") {
+		return fmt.Errorf("sandbox.tool contains invalid characters")
+	}
+
+	sandboxToolPath, err := exec.LookPath(sandboxTool)
+	if err != nil {
+		return fmt.Errorf("sandbox tool %q not found in PATH: %w", sandboxTool, err)
+	}
+
+	args := append([]string{app}, appArgs...)
+
+	if dryRun {
+		cmd.Printf("%s %s\n", sandboxToolPath, strings.Join(args, " "))
+		return nil
+	}
+
+	// #nosec G204 -- sandboxToolPath is an explicit user-configured executable
+	// selected from allowedSandboxTools. exec.Command does not invoke a shell.
+	launchCmd := exec.Command(sandboxToolPath, args...)
+	launchCmd.Stdin = os.Stdin
+	launchCmd.Stdout = os.Stdout
+	launchCmd.Stderr = os.Stderr
+
+	return launchCmd.Run()
 }
 
 // listSupportedApps prints all supported apps with their descriptions and install status.
