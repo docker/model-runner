@@ -153,64 +153,38 @@ FROM sglang AS final-sglang
 # Copy the built binary from builder-sglang (without vLLM)
 COPY --from=builder-sglang /app/model-runner /app/model-runner
 
-# --- vLLM ROCm: builder stage ---
-# Builds upstream vLLM from source on AMD's pre-built ROCm dev image, which
-# already contains PyTorch ROCm, Triton, flash-attention, and the ROCm SDK
-# (see https://hub.docker.com/r/rocm/vllm-dev). vLLM is checked out at the
-# tagged release matching VLLM_VERSION — no fork, no custom wheels.
-FROM rocm/vllm-dev:base AS vllm-rocm-builder
-
-ARG VLLM_VERSION=0.19.1
-# Target GPU architectures officially supported by vLLM ROCm:
-# gfx90a (MI200), gfx942 (MI300), gfx1100/1101 (RDNA3 7900/7800).
-ARG PYTORCH_ROCM_ARCH="gfx90a;gfx942;gfx1100;gfx1101"
-ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
-
-RUN git clone --depth 1 --branch v${VLLM_VERSION} \
-    https://github.com/vllm-project/vllm.git /vllm-src
-
-WORKDIR /vllm-src
-RUN python3 -m pip install --no-cache-dir -r requirements/rocm.txt \
-    && python3 setup.py bdist_wheel --dist-dir=/wheels
-
-# --- vLLM ROCm: runtime stage ---
-# Mirrors the /opt/vllm-env layout that pkg/inference/backends/vllm/vllm.go
-# expects (binary at /opt/vllm-env/bin/vllm, version file at
-# /opt/vllm-env/version). Symlinks are used instead of a real venv because
-# rocm/vllm-dev:base installs Python dependencies system-wide and recreating
-# a venv would break the PyTorch ROCm / Triton ROCm wiring.
+# --- vLLM ROCm variant ---
+# Installs upstream vLLM ROCm wheels published by the vLLM project at
+# https://wheels.vllm.ai/rocm/. These wheels bundle PyTorch ROCm, Triton ROCm,
+# flash-attention ROCm, and AITER, so we can stay on the llama.cpp ROCm base
+# (keeping llama.cpp available as a fallback inside the image, like the CUDA
+# variant does).
 #
-# Note: unlike the CUDA vllm stage, this image does NOT include llama.cpp.
-# The base image is incompatible (different ROCm runtime versions), and the
-# rocm vllm image is intended as a vLLM-only artifact.
-FROM rocm/vllm-dev:base AS vllm-rocm
+# Note: vLLM ROCm wheels follow a separate release cadence from CUDA — only
+# specific vLLM versions are published with ROCm support, so VLLM_ROCM_VERSION
+# is tracked independently from VLLM_VERSION (CUDA).
+FROM llamacpp AS vllm-rocm
 
-COPY --from=vllm-rocm-builder /wheels/*.whl /tmp/
-RUN python3 -m pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+ARG VLLM_ROCM_VERSION=0.21.0
+ARG VLLM_ROCM_TARGET=rocm722
 
-RUN groupadd --system modelrunner \
-    && useradd --system --gid modelrunner -G video \
-        --create-home --home-dir /home/modelrunner modelrunner
+USER root
 
-RUN mkdir -p /opt/vllm-env/bin \
-    && ln -s "$(command -v vllm)" /opt/vllm-env/bin/vllm \
-    && python3 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version \
-    && chown -R modelrunner:modelrunner /opt/vllm-env
+RUN apt update && apt install -y python3.12 python3.12-venv python3.12-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /var/run/model-runner /models /app \
-    && chown -R modelrunner:modelrunner /var/run/model-runner /app /models \
-    && chmod -R 755 /models
+RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
 
 USER modelrunner
 
-ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
-ENV MODEL_RUNNER_PORT=12434
-ENV HOME=/home/modelrunner
-ENV MODELS_PATH=/models
+# Install uv and vLLM with ROCm wheels as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ~/.local/bin/uv venv --python 3.12 /opt/vllm-env \
+    && . /opt/vllm-env/bin/activate \
+    && ~/.local/bin/uv pip install "vllm==${VLLM_ROCM_VERSION}" \
+         --extra-index-url https://wheels.vllm.ai/rocm/${VLLM_ROCM_VERSION}/${VLLM_ROCM_TARGET} \
+         --index-strategy unsafe-best-match
 
-LABEL com.docker.desktop.service="model-runner"
-
-ENTRYPOINT ["/app/model-runner"]
+RUN /opt/vllm-env/bin/python3.12 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
 FROM vllm-rocm AS final-vllm-rocm
 # Copy the built binary from builder
