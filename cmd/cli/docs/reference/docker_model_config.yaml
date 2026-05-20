@@ -1,0 +1,13 @@
+command: docker model config
+short: Set model runner configuration values
+long: Set model runner configuration values
+usage: docker model config <key> <value>
+pname: docker model
+plink: docker_model.yaml
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
