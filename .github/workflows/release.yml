@@ -492,6 +492,7 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-pinata:
     if: ${{ !inputs.imagesOnly }}
+    continue-on-error: true
     needs: [prepare, release-cli-desktop]
     runs-on: ubuntu-latest
     permissions:
@@ -575,6 +576,7 @@ jobs:
   # ---------------------------------------------------------------------------
   update-docs:
     if: ${{ !inputs.imagesOnly }}
+    continue-on-error: true
     needs: [prepare]
     runs-on: ubuntu-latest
     permissions:
