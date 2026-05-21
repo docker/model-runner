@@ -51,11 +51,13 @@ type vllmMetal struct {
 	installDir string
 	// status is the state in which the backend is in.
 	status string
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -69,6 +71,7 @@ func newMetal(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
 		status:           inference.FormatNotInstalled(""),
+		registryMirrors:  registryMirrors,
 	}, nil
 }
 
@@ -143,7 +146,7 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:vllm-metal-%s", vllmMetalVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, v.registryMirrors); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 

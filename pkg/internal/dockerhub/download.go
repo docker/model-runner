@@ -19,10 +19,11 @@ import (
 	"github.com/containerd/containerd/v2/plugins/content/local"
 	"github.com/containerd/platforms"
 	"github.com/docker/model-runner/pkg/internal/jsonutil"
+	"github.com/docker/model-runner/pkg/internal/registryutil"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredArch string) error {
+func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredArch string, mirrors []string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("creating destination directory %s: %w", filepath.Dir(destination), err)
 	}
@@ -39,7 +40,7 @@ func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredA
 	if err != nil {
 		return fmt.Errorf("creating new content store: %w", err)
 	}
-	desc, err := retry(ctx, 10, 1*time.Second, func() (*v1.Descriptor, error) { return fetch(ctx, store, image, requiredOs, requiredArch) })
+	desc, err := retry(ctx, 10, 1*time.Second, func() (*v1.Descriptor, error) { return fetch(ctx, store, image, requiredOs, requiredArch, mirrors) })
 	if err != nil {
 		return fmt.Errorf("fetching image: %w", err)
 	}
@@ -66,12 +67,10 @@ func retry(ctx context.Context, attempts int, sleep time.Duration, f func() (*v1
 	return nil, fmt.Errorf("after %d attempts, last error: %w", attempts, err)
 }
 
-func fetch(ctx context.Context, store content.Store, ref, requiredOs, requiredArch string) (*v1.Descriptor, error) {
+func fetch(ctx context.Context, store content.Store, ref, requiredOs, requiredArch string, mirrors []string) (*v1.Descriptor, error) {
+	authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(dockerCredentials))
 	resolver := docker.NewResolver(docker.ResolverOptions{
-		Hosts: docker.ConfigureDefaultRegistries(
-			docker.WithAuthorizer(
-				docker.NewDockerAuthorizer(
-					docker.WithAuthCreds(dockerCredentials)))),
+		Hosts: registryutil.RegistryHosts(mirrors, authorizer, nil),
 	})
 	name, desc, err := resolver.Resolve(ctx, ref)
 	if err != nil {

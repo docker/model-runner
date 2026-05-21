@@ -190,3 +190,19 @@ func TLSKey() string {
 // TLSAutoCert is true (default) unless MODEL_RUNNER_TLS_AUTO_CERT is set to a falsy value.
 // Call as TLSAutoCert(true) to get the default-true behaviour.
 var TLSAutoCert = BoolWithDefault("MODEL_RUNNER_TLS_AUTO_CERT")
+
+// RegistryMirrors returns registry mirrors from MODEL_RUNNER_REGISTRY_MIRRORS (comma-separated URLs).
+// Mirrors are tried before registry-1.docker.io when pulling backend images.
+func RegistryMirrors() []string {
+	s := Var("MODEL_RUNNER_REGISTRY_MIRRORS")
+	if s == "" {
+		return nil
+	}
+	var mirrors []string
+	for _, m := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(m); trimmed != "" {
+			mirrors = append(mirrors, trimmed)
+		}
+	}
+	return mirrors
+}

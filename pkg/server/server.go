@@ -156,9 +156,10 @@ func Run(ctx context.Context, cfg Config) error {
 	svc, err := routing.NewService(routing.ServiceConfig{
 		Log: log,
 		ClientConfig: models.ClientConfig{
-			StoreRootPath: modelPath,
-			Logger:        log.With("component", "model-manager"),
-			Transport:     baseTransport,
+			StoreRootPath:   modelPath,
+			Logger:          log.With("component", "model-manager"),
+			Transport:       baseTransport,
+			RegistryMirrors: envconfig.RegistryMirrors(),
 		},
 		Backends: append(
 			routing.DefaultBackendDefs(routing.BackendsConfig{
@@ -183,6 +184,7 @@ func Run(ctx context.Context, cfg Config) error {
 				VLLMMetalPath:        vllmMetalServerPath,
 				IncludeDiffusers:     true,
 				DiffusersPath:        diffusersServerPath,
+				RegistryMirrors:      envconfig.RegistryMirrors(),
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
