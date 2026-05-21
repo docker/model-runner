@@ -20,6 +20,9 @@ func hasNVIDIAGPU() (bool, error) {
 		return false, err
 	}
 	for _, gpu := range gpus.GraphicsCards {
+		if gpu.DeviceInfo == nil || gpu.DeviceInfo.Vendor == nil {
+			continue
+		}
 		if strings.ToLower(gpu.DeviceInfo.Vendor.Name) == "nvidia" {
 			return true, nil
 		}
@@ -65,6 +68,9 @@ func hasSupportedAdrenoGPU() (bool, error) {
 		return false, err
 	}
 	for _, gpu := range gpus.GraphicsCards {
+		if gpu.DeviceInfo == nil || gpu.DeviceInfo.Product == nil {
+			continue
+		}
 		isAdrenoFamily := strings.Contains(gpu.DeviceInfo.Product.Name, "Adreno") ||
 			strings.Contains(gpu.DeviceInfo.Product.Name, "Qualcomm")
 		if isAdrenoFamily {
@@ -109,6 +115,9 @@ func hasVulkanCapableGPU() (bool, error) {
 		return false, err
 	}
 	for _, gpu := range gpus.GraphicsCards {
+		if gpu.DeviceInfo == nil || gpu.DeviceInfo.Vendor == nil || gpu.DeviceInfo.Product == nil {
+			continue
+		}
 		vendor := strings.ToLower(gpu.DeviceInfo.Vendor.Name)
 		product := gpu.DeviceInfo.Product.Name
 		isNVIDIA := vendor == "nvidia"
