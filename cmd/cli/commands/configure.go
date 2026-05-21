@@ -4,19 +4,19 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
+
 	"github.com/spf13/cobra"
 )
 
 func newConfigureCmd() *cobra.Command {
 	var flags ConfigureFlags
-
 	c := &cobra.Command{
 		Use:     "configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--gpu-memory-utilization=<float>] [--mode=<mode>] [--think] [--keep-alive=<duration>] MODEL [-- <runtime-flags...>]",
 		Aliases: []string{"config"},
 		Short:   "Manage model runtime configurations",
-		Hidden:  true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			argsBeforeDash := cmd.ArgsLenAtDash()
+
 			if argsBeforeDash == -1 {
 				// No "--" used, so we need exactly 1 total argument.
 				if len(args) != 1 {
@@ -34,15 +34,19 @@ func newConfigureCmd() *cobra.Command {
 						argsBeforeDash)
 				}
 			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := args[0]
+
 			opts, err := flags.BuildConfigureRequest(model)
 			if err != nil {
 				return err
 			}
+
 			opts.RuntimeFlags = args[1:]
+
 			return desktopClient.ConfigureBackend(opts)
 		},
 		ValidArgsFunction: completion.ModelNames(getDesktopClient, -1),
@@ -50,5 +54,6 @@ func newConfigureCmd() *cobra.Command {
 
 	flags.RegisterFlags(c)
 	c.AddCommand(newConfigureShowCmd())
+
 	return c
 }
