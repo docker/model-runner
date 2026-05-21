@@ -99,13 +99,58 @@ func hasOpenCL() (bool, error) {
 	return true, nil
 }
 
+// hasVulkanCapableGPU returns true if at least one GPU that is neither
+// NVIDIA (handled via CUDA) nor a Qualcomm Adreno (handled via OpenCL)
+// is detected. Intel Arc, AMD, and other Vulkan-capable discrete or
+// integrated GPUs fall into this category.
+func hasVulkanCapableGPU() (bool, error) {
+	gpus, err := ghw.GPU()
+	if err != nil {
+		return false, err
+	}
+	for _, gpu := range gpus.GraphicsCards {
+		vendor := strings.ToLower(gpu.DeviceInfo.Vendor.Name)
+		product := gpu.DeviceInfo.Product.Name
+		isNVIDIA := vendor == "nvidia"
+		isAdreno := strings.Contains(product, "Adreno") || strings.Contains(product, "Qualcomm")
+		if !isNVIDIA && !isAdreno {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// hasVulkan returns true when a non-CUDA/non-OpenCL GPU is present AND
+// the Vulkan runtime library (vulkan-1.dll) is loadable. This mirrors
+// the OpenCL.dll probe used by hasOpenCL.
+func hasVulkan() (bool, error) {
+	capable, err := hasVulkanCapableGPU()
+	if !capable || err != nil {
+		return false, err
+	}
+	h, err := syscall.LoadLibrary("vulkan-1.dll")
+	if err != nil {
+		if errors.Is(err, syscall.ERROR_MOD_NOT_FOUND) {
+			return false, nil
+		}
+		return false, fmt.Errorf("unable to load Vulkan DLL: %w", err)
+	}
+	syscall.FreeLibrary(h)
+	return true, nil
+}
+
 func CanUseGPU(ctx context.Context, nvGPUInfoBin string) (bool, error) {
 	// We don't ship com.docker.nv-gpu-info.exe on Windows/ARM64 at the moment,
-	// so skip the CUDA check there for now. The OpenCL check is portable.
+	// so skip the CUDA and Vulkan checks there for now. The OpenCL check is portable.
 	if runtime.GOARCH == "amd64" {
 		haveCUDA11GPU, err := hasCUDA11CapableGPU(ctx, nvGPUInfoBin)
 		if haveCUDA11GPU || err != nil {
 			return haveCUDA11GPU, err
+		}
+		// No CUDA GPU found: check for Vulkan-capable GPUs (Intel Arc, AMD, etc.).
+		haveVulkan, err := hasVulkan()
+		if haveVulkan || err != nil {
+			return haveVulkan, err
 		}
 	}
 	return hasOpenCL()
