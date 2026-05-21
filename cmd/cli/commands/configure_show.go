@@ -26,7 +26,7 @@ func newConfigureShowCmd() *cobra.Command {
 				return err
 			}
 
-			jsonResult, err := json.MarshalIndent(configs, "", " ")
+			jsonResult, err := json.MarshalIndent(configs, "", "  ")
 			if err != nil {
 				return fmt.Errorf("failed to marshal configs to JSON: %w", err)
 			}
