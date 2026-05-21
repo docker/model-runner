@@ -42,7 +42,7 @@ ifeq ($(DETECTED_OS),macOS)
 		--config Release \
 		--prefix $(INSTALL_DIR)
 	@echo "Cleaning install directory..."
-	rm $(INSTALL_DIR)/bin/*.py
+	rm -f $(INSTALL_DIR)/bin/*.py
 	rm -rf $(INSTALL_DIR)/lib/cmake
 	rm -rf $(INSTALL_DIR)/lib/pkgconfig
 	rm -rf $(INSTALL_DIR)/include
