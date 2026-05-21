@@ -35,6 +35,11 @@ type BackendsConfig struct {
 
 	IncludeDiffusers bool
 	DiffusersPath    string
+
+	// RegistryMirrors is a list of registry mirrors tried before registry-1.docker.io
+	// when pulling backend images. Populated from MODEL_RUNNER_REGISTRY_MIRRORS or
+	// injected by Docker Desktop from daemon.json registry-mirrors.
+	RegistryMirrors []string
 }
 
 // DefaultBackendDefs returns BackendDef entries for the configured backends.
@@ -50,7 +55,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 
 	defs := []BackendDef{
 		{Name: llamacpp.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppVendoredPath, cfg.LlamaCppUpdatedPath, cfg.LlamaCppConfig)
+			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppVendoredPath, cfg.LlamaCppUpdatedPath, cfg.LlamaCppConfig, cfg.RegistryMirrors)
 		}},
 	}
 
@@ -68,6 +73,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 				return vllm.New(cfg.Log, mm, sl(vllm.Name), vllm.Options{
 					LinuxBinaryPath: cfg.VLLMPath,
 					MetalPythonPath: cfg.VLLMMetalPath,
+					RegistryMirrors: cfg.RegistryMirrors,
 				})
 			},
 		})
@@ -78,7 +84,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 			Name:     diffusers.Name,
 			Deferred: true,
 			Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath)
+				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors)
 			},
 		})
 	}

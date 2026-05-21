@@ -335,6 +335,11 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		}
 	}
 
+	// Forward registry mirrors to the container if set on the host
+	if mirrors, ok := os.LookupEnv("MODEL_RUNNER_REGISTRY_MIRRORS"); ok && mirrors != "" {
+		env = append(env, "MODEL_RUNNER_REGISTRY_MIRRORS="+mirrors)
+	}
+
 	// Determine TLS port
 	tlsPort := tlsOpts.Port
 	if tlsOpts.Enabled && tlsPort == 0 {

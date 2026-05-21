@@ -52,6 +52,8 @@ type llamaCpp struct {
 	config config.BackendConfig
 	// gpuSupported indicates whether the underlying llama-server is built with GPU support.
 	gpuSupported bool
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // New creates a new llama.cpp-based backend.
@@ -62,6 +64,7 @@ func New(
 	vendoredServerStoragePath string,
 	updatedServerStoragePath string,
 	conf config.BackendConfig,
+	registryMirrors []string,
 ) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
@@ -75,6 +78,7 @@ func New(
 		vendoredServerStoragePath: vendoredServerStoragePath,
 		updatedServerStoragePath:  updatedServerStoragePath,
 		config:                    conf,
+		registryMirrors:           registryMirrors,
 	}, nil
 }
 
