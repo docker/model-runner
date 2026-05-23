@@ -166,12 +166,10 @@ Examples:
 			if err != nil {
 				return err
 			}
-
 			// --config: print configuration without launching
 			if configOnly {
 				return printAppConfig(cmd, app, ep, image, port)
 			}
-
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
@@ -349,7 +347,6 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 	if bin == "opencode" {
 		return launchOpenCode(cmd, baseURL, model, runner, appArgs, dryRun)
 	}
-
 	if !dryRun {
 		if _, err := exec.LookPath(bin); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)
@@ -362,11 +359,9 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 			return fmt.Errorf("%s not found; please install it and re-run", bin)
 		}
 	}
-
 	if cli.envFn == nil {
 		return launchUnconfigurableHostApp(cmd, bin, baseURL, cli, appArgs, dryRun)
 	}
-
 	env := cli.envFn(baseURL)
 	if dryRun {
 		cmd.Printf("Would run: %s %s\n", bin, strings.Join(appArgs, " "))
