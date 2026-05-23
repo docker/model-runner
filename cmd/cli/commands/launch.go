@@ -147,15 +147,12 @@ Examples:
 			// resolving runner endpoints. This keeps sandbox launch independent of
 			// whether the host app binary itself is installed.
 			if _, ok := hostApps[app]; ok {
-				sandboxTool, err := readSandboxToolConfig()
+				sandboxTool, err := configuredSandboxTool()
 				if err != nil {
 					return err
 				}
 
 				if sandboxTool != "" {
-					if err := validateSandboxTool(sandboxTool); err != nil {
-						return err
-					}
 					return launchSandboxedHostApp(cmd, sandboxTool, app, appArgs, dryRun)
 				}
 			}
@@ -178,7 +175,6 @@ Examples:
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
-
 			if cli, ok := hostApps[app]; ok {
 				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
 			}
@@ -196,28 +192,9 @@ Examples:
 }
 
 func launchSandboxedHostApp(cmd *cobra.Command, sandboxTool, app string, appArgs []string, dryRun bool) error {
-	if err := validateSandboxTool(sandboxTool); err != nil {
-		return err
-	}
-
 	args := append([]string{app}, appArgs...)
 
-	switch sandboxTool {
-	case "sbx":
-		if dryRun {
-			cmd.Printf("sbx %s\n", strings.Join(args, " "))
-			return nil
-		}
-
-		launchCmd := exec.Command("sbx", args...)
-		launchCmd.Stdin = os.Stdin
-		launchCmd.Stdout = os.Stdout
-		launchCmd.Stderr = os.Stderr
-
-		return launchCmd.Run()
-	default:
-		return fmt.Errorf("unsupported sandbox tool %q", sandboxTool)
-	}
+	return runSandboxTool(cmd, sandboxTool, args, dryRun)
 }
 
 // listSupportedApps prints all supported apps with their descriptions and install status.

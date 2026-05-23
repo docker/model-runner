@@ -1,9 +1,12 @@
 command: docker model config
-short: Set model runner configuration values
-long: Set model runner configuration values
-usage: docker model config <key> <value>
+short: Manage persistent model runner configuration
+long: Manage persistent model runner configuration
 pname: docker model
 plink: docker_model.yaml
+cname:
+    - docker model config sandbox.tool
+clink:
+    - docker_model_config_sandbox.tool.yaml
 deprecated: false
 hidden: false
 experimental: false

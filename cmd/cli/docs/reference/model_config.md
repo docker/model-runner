@@ -1,7 +1,14 @@
 # docker model config
 
 <!---MARKER_GEN_START-->
-Set model runner configuration values
+Manage persistent model runner configuration
+
+### Subcommands
+
+| Name                                           | Description          |
+|:-----------------------------------------------|:---------------------|
+| [`sandbox.tool`](model_config_sandbox.tool.md) | Set the sandbox tool |
+
 
 
 <!---MARKER_GEN_END-->

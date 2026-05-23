@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -16,32 +17,26 @@ var allowedSandboxTools = map[string]struct{}{
 
 func newSandboxConfigCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "config <key> <value>",
-		Short: "Set model runner configuration values",
-		Args:  cobra.ExactArgs(2),
+		Use:   "sandbox.tool <tool>",
+		Short: "Set the sandbox tool",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			key := args[0]
-			value := args[1]
-
-			if key != "sandbox.tool" {
-				return fmt.Errorf("unsupported config key %q", key)
-			}
-
-			if err := validateSandboxTool(value); err != nil {
+			tool, err := validateSandboxTool(args[0])
+			if err != nil {
 				return err
 			}
 
-			return writeSandboxToolConfig(value)
+			return writeSandboxToolConfig(tool)
 		},
 	}
 }
 
-func validateSandboxTool(tool string) error {
+func validateSandboxTool(tool string) (string, error) {
 	if _, ok := allowedSandboxTools[tool]; !ok {
-		return fmt.Errorf("unsupported sandbox tool %q", tool)
+		return "", fmt.Errorf("unsupported sandbox tool %q", tool)
 	}
 
-	return nil
+	return tool, nil
 }
 
 func dmrConfigPath() (string, error) {
@@ -123,4 +118,39 @@ func readSandboxToolConfig() (string, error) {
 	}
 
 	return "", nil
+}
+func runSandboxTool(cmd *cobra.Command, sandboxTool string, args []string, dryRun bool) error {
+	validatedSandboxTool, err := validateSandboxTool(sandboxTool)
+	if err != nil {
+		return err
+	}
+
+	if dryRun {
+		cmd.Printf("%s %s\n", validatedSandboxTool, strings.Join(args, " "))
+		return nil
+	}
+
+	switch validatedSandboxTool {
+	case "sbx":
+		launchCmd := exec.Command("sbx", args...)
+		launchCmd.Stdin = os.Stdin
+		launchCmd.Stdout = os.Stdout
+		launchCmd.Stderr = os.Stderr
+
+		return launchCmd.Run()
+	default:
+		return fmt.Errorf("unsupported sandbox tool %q", validatedSandboxTool)
+	}
+}
+func configuredSandboxTool() (string, error) {
+	sandboxTool, err := readSandboxToolConfig()
+	if err != nil {
+		return "", err
+	}
+
+	if sandboxTool == "" {
+		return "", nil
+	}
+
+	return validateSandboxTool(sandboxTool)
 }

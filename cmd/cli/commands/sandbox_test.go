@@ -52,20 +52,25 @@ func TestReadSandboxToolConfigMissingFile(t *testing.T) {
 }
 
 func TestValidateSandboxToolAllowsSbx(t *testing.T) {
-	if err := validateSandboxTool("sbx"); err != nil {
+	tool, err := validateSandboxTool("sbx")
+	if err != nil {
 		t.Fatalf("validateSandboxTool() error = %v", err)
+	}
+
+	if tool != "sbx" {
+		t.Fatalf("validateSandboxTool() = %q, want %q", tool, "sbx")
 	}
 }
 
 func TestValidateSandboxToolRejectsUnsupportedTool(t *testing.T) {
-	err := validateSandboxTool("firejail")
+	_, err := validateSandboxTool("firejail")
 	if err == nil {
 		t.Fatal("validateSandboxTool() error = nil, want error")
 	}
 }
 
-func TestSandboxConfigCommandRejectsUnsupportedKey(t *testing.T) {
-	cmd := newSandboxConfigCmd()
+func TestConfigCommandRejectsUnsupportedKey(t *testing.T) {
+	cmd := newConfigCmd()
 	cmd.SetArgs([]string{"unsupported.key", "sbx"})
 
 	if err := cmd.Execute(); err == nil {
@@ -73,10 +78,10 @@ func TestSandboxConfigCommandRejectsUnsupportedKey(t *testing.T) {
 	}
 }
 
-func TestSandboxConfigCommandRejectsUnsupportedTool(t *testing.T) {
+func TestConfigCommandRejectsUnsupportedTool(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	cmd := newSandboxConfigCmd()
+	cmd := newConfigCmd()
 	cmd.SetArgs([]string{"sandbox.tool", "firejail"})
 
 	if err := cmd.Execute(); err == nil {
@@ -84,10 +89,10 @@ func TestSandboxConfigCommandRejectsUnsupportedTool(t *testing.T) {
 	}
 }
 
-func TestSandboxConfigCommandWritesConfig(t *testing.T) {
+func TestConfigCommandWritesSandboxToolConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	cmd := newSandboxConfigCmd()
+	cmd := newConfigCmd()
 	cmd.SetArgs([]string{"sandbox.tool", "sbx"})
 
 	if err := cmd.Execute(); err != nil {
@@ -104,14 +109,16 @@ func TestSandboxConfigCommandWritesConfig(t *testing.T) {
 	}
 }
 
-func TestLaunchCommandRequiresConfiguredSandboxTool(t *testing.T) {
+func TestConfiguredSandboxToolMissingConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	cmd := newLaunchCmd()
-	cmd.SetArgs([]string{"opencode"})
+	got, err := configuredSandboxTool()
+	if err != nil {
+		t.Fatalf("configuredSandboxTool() error = %v", err)
+	}
 
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("launch command error = nil, want error")
+	if got != "" {
+		t.Fatalf("configuredSandboxTool() = %q, want empty string", got)
 	}
 }
 
