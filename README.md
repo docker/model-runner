@@ -332,8 +332,13 @@ When the runner starts, it will try to initialize OVMS as an available backend. 
 OVMS_SERVER_PATH=/absolute/path/to/ovms ./model-runner
 ```
 
-You can target OVMS explicitly through the backend-prefixed OpenAI-compatible routes:
+Create a new model
+Use models from HugginFace Hub using repository with OpenVINO format. 
+```sh
+curl http://localhost:13434/models/create -X POST -d '{"from": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov"}'
+```
 
+You can target OVMS explicitly through the backend-prefixed OpenAI-compatible routes:
 ```sh
 # List models exposed via OVMS backend routing
 curl http://localhost:13434/engines/ovms/v1/models
@@ -346,6 +351,10 @@ curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
   ]
 }'
 ```
+Delete model
+```sh
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov -X DELETE
+```
 
 ## API Examples
 
@@ -357,17 +366,17 @@ When running with `docker-run`, you can use regular HTTP requests:
 
 ```sh
 # List all available models
-curl http://localhost:13434/models
+curl http://localhost:8080/models
 
 # Create a new model
-curl http://localhost:13434/models/create -X POST -d '{"from": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov"}'
+curl http://localhost:8080/models/create -X POST -d '{"from": "ai/smollm2"}'
 
 # Get information about a specific model
 curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov
 
 # Chat with a model
-curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
-  "model": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov",
+curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
+  "model": "ai/smollm2",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello, how are you?"}
@@ -377,6 +386,34 @@ curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
 # Delete a model
 curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov -X DELETE
 
+# Get metrics
+curl http://localhost:8080/metrics
+```
+The response will contain the model's reply:
+
+```json
+{
+  "id": "chat-12345",
+  "object": "chat.completion",
+  "created": 1682456789,
+  "model": "ai/smollm2",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm doing well, thank you for asking! How can I assist you today?"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 24,
+    "completion_tokens": 16,
+    "total_tokens": 40
+  }
+}
+```
 
 ### Features
 
