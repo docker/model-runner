@@ -34,7 +34,7 @@ jobs:
         run: echo "version=$(grep '^GOLANGCI_LINT_VERSION=' .versions | cut -d= -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee
         with:
           version: ${{ steps.golangci-lint-version.outputs.version }}
           install-only: true
