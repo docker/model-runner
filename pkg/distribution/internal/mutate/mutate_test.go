@@ -1,9 +1,7 @@
 package mutate_test
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"path/filepath"
 	"testing"
 
@@ -13,35 +11,8 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
-// staticLayer is a simple in-memory layer for testing.
-type staticLayer struct {
-	content   []byte
-	mediaType oci.MediaType
-	hash      oci.Hash
-}
-
-func newStaticLayer(content []byte, mediaType oci.MediaType) *staticLayer {
-	h, _, _ := oci.SHA256(bytes.NewReader(content))
-	return &staticLayer{
-		content:   content,
-		mediaType: mediaType,
-		hash:      h,
-	}
-}
-
-func (l *staticLayer) Digest() (oci.Hash, error)         { return l.hash, nil }
-func (l *staticLayer) DiffID() (oci.Hash, error)         { return l.hash, nil }
-func (l *staticLayer) Size() (int64, error)              { return int64(len(l.content)), nil }
-func (l *staticLayer) MediaType() (oci.MediaType, error) { return l.mediaType, nil }
-func (l *staticLayer) Compressed() (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(l.content)), nil
-}
-func (l *staticLayer) Uncompressed() (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(l.content)), nil
-}
-
 func TestAppendLayer(t *testing.T) {
-	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
+	mdl1 := testutil.NewGGUFArtifact(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -52,7 +23,7 @@ func TestAppendLayer(t *testing.T) {
 
 	// Append a layer
 	mdl2 := mutate.AppendLayers(mdl1,
-		newStaticLayer([]byte("some layer content"), "application/vnd.example.some.media.type"),
+		testutil.NewStaticLayer([]byte("some layer content"), "application/vnd.example.some.media.type"),
 	)
 	if mdl2 == nil {
 		t.Fatal("Expected non-nil model")
@@ -82,7 +53,7 @@ func TestAppendLayer(t *testing.T) {
 }
 
 func TestConfigMediaTypes(t *testing.T) {
-	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
+	mdl1 := testutil.NewGGUFArtifact(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	manifest1, err := mdl1.Manifest()
 	if err != nil {
 		t.Fatalf("Failed to create model: %v", err)
@@ -103,7 +74,7 @@ func TestConfigMediaTypes(t *testing.T) {
 }
 
 func TestContextSize(t *testing.T) {
-	mdl1 := testutil.BuildModelFromPath(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
+	mdl1 := testutil.NewGGUFArtifact(t, filepath.Join("..", "..", "assets", "dummy.gguf"))
 	cfg, err := mdl1.Config()
 	if err != nil {
 		t.Fatalf("Failed to get config file: %v", err)

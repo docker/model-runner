@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -51,6 +52,8 @@ type llamaCpp struct {
 	config config.BackendConfig
 	// gpuSupported indicates whether the underlying llama-server is built with GPU support.
 	gpuSupported bool
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // New creates a new llama.cpp-based backend.
@@ -61,6 +64,7 @@ func New(
 	vendoredServerStoragePath string,
 	updatedServerStoragePath string,
 	conf config.BackendConfig,
+	registryMirrors []string,
 ) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
@@ -74,7 +78,29 @@ func New(
 		vendoredServerStoragePath: vendoredServerStoragePath,
 		updatedServerStoragePath:  updatedServerStoragePath,
 		config:                    conf,
+		registryMirrors:           registryMirrors,
 	}, nil
+}
+
+// resolveLlamaServerBin returns the llama-server binary name to use.
+// It prefers the upstream name (llama-server) shipped by the official
+// ghcr.io/ggml-org/llama.cpp images used on Linux.  When that binary
+// does not exist in dir it falls back to the Docker-convention name
+// (com.docker.llama-server) used by macOS and Docker Desktop builds.
+func resolveLlamaServerBin(dir string) string {
+	if runtime.GOOS == "windows" {
+		return "com.docker.llama-server.exe"
+	}
+	// Prefer the upstream binary name (official llama.cpp Linux images).
+	if _, err := os.Stat(filepath.Join(dir, "llama-server")); err == nil {
+		return "llama-server"
+	}
+	// Fall back to the Docker-convention name (macOS / Docker Desktop).
+	if _, err := os.Stat(filepath.Join(dir, "com.docker.llama-server")); err == nil {
+		return "com.docker.llama-server"
+	}
+	// Neither found — default to upstream name for clearer error messages.
+	return "llama-server"
 }
 
 // Name implements inference.Backend.Name.
@@ -104,15 +130,8 @@ func (l *llamaCpp) Install(ctx context.Context, httpClient *http.Client) error {
 		return errors.New("platform not supported")
 	}
 
-	llamaServerBin := "com.docker.llama-server"
-	if runtime.GOOS == "windows" {
-		llamaServerBin = "com.docker.llama-server.exe"
-	}
+	llamaServerBin := resolveLlamaServerBin(l.vendoredServerStoragePath)
 
-	// Temporary workaround for dynamically downloading llama.cpp from Docker Hub.
-	// Internet access and an available docker/docker-model-backend-llamacpp:latest on Docker Hub are required.
-	// Even if docker/docker-model-backend-llamacpp:latest has been downloaded before, we still require its
-	// digest to be equal to the one on Docker Hub.
 	llamaCppPath := filepath.Join(l.updatedServerStoragePath, llamaServerBin)
 	if err := l.ensureLatestLlamaCpp(ctx, l.log, httpClient, llamaCppPath, l.vendoredServerStoragePath); err != nil {
 		l.log.Info("Failed to ensure latest llama.cpp", "error", err)
@@ -173,7 +192,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 	return backends.RunBackend(ctx, backends.RunnerConfig{
 		BackendName:      "llama.cpp",
 		Socket:           socket,
-		BinaryPath:       filepath.Join(binPath, "com.docker.llama-server"),
+		BinaryPath:       filepath.Join(binPath, resolveLlamaServerBin(binPath)),
 		SandboxPath:      binPath,
 		SandboxConfig:    sandbox.ConfigurationLlamaCpp,
 		Args:             args,
@@ -181,6 +200,11 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		ServerLogWriter:  logging.NewWriter(l.serverLog),
 		ErrorTransformer: ExtractLlamaCppError,
 	})
+}
+
+// Uninstall implements inference.Backend.Uninstall.
+func (l *llamaCpp) Uninstall() error {
+	return nil
 }
 
 func (l *llamaCpp) Status() string {
@@ -346,7 +370,7 @@ func (l *llamaCpp) checkGPUSupport(ctx context.Context) bool {
 			command.Stderr = &output
 		},
 		binPath,
-		filepath.Join(binPath, "com.docker.llama-server"),
+		filepath.Join(binPath, resolveLlamaServerBin(binPath)),
 		"--list-devices",
 	)
 	if err != nil {

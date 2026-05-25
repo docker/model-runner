@@ -551,6 +551,13 @@ func TestListSupportedApps(t *testing.T) {
 	require.Contains(t, output, "openwebui")
 }
 
+func TestOpenWebuiEnvIncludesWebuiAuth(t *testing.T) {
+	env := openwebuiEnv(testBaseURL)
+	require.Contains(t, env, "WEBUI_AUTH=false")
+	require.Contains(t, env, "OPENAI_API_BASE="+testBaseURL+openaiPathSuffix)
+	require.Contains(t, env, "OPENAI_API_KEY="+dummyAPIKey)
+}
+
 func TestPrintAppConfigContainerApp(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
@@ -564,6 +571,7 @@ func TestPrintAppConfigContainerApp(t *testing.T) {
 	require.Contains(t, output, "container app")
 	require.Contains(t, output, "ghcr.io/open-webui/open-webui:latest")
 	require.Contains(t, output, "OPENAI_API_BASE")
+	require.Contains(t, output, "WEBUI_AUTH=false")
 }
 
 func TestPrintAppConfigContainerAppOverrides(t *testing.T) {

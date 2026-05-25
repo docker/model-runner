@@ -17,7 +17,7 @@ type SearchResult struct {
 	Source      string // "Docker Hub" or "HuggingFace"
 	Official    bool   // Whether this is an official model
 	UpdatedAt   string // Last update timestamp
-	Backend     string // Backend type: "llama.cpp", "vllm", or "llama.cpp, vllm" if both
+	Backend     string // Backend type: "llama.cpp", "vllm", "diffusers", "unknown", or a comma-separated combination
 }
 
 // SearchOptions configures the search behavior

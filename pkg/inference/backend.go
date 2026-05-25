@@ -314,6 +314,10 @@ type Backend interface {
 	// instead load only the specified model. Backends should still respond to
 	// OpenAI API requests for other models with a 421 error code.
 	Run(ctx context.Context, socket, model string, modelRef string, mode BackendMode, config *BackendConfiguration) error
+	// Uninstall removes backend-specific local installations (e.g. files
+	// downloaded to ~/.docker/model-runner/). Backends with nothing to clean
+	// up should return nil.
+	Uninstall() error
 	// Status returns a description of the backend's state.
 	Status() string
 	// GetDiskUsage returns the disk usage of the backend.

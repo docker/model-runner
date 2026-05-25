@@ -26,6 +26,15 @@ if (DDLLAMA_BUILD_SERVER)
     endif()
     add_subdirectory(vendor/llama.cpp)
 
+    # Ensure shared library DLLs are installed on Windows.
+    # Upstream install rules use LIBRARY which doesn't install RUNTIME (DLL) artifacts on DLL platforms.
+    if (BUILD_SHARED_LIBS)
+        install(TARGETS llama RUNTIME DESTINATION bin)
+        if (TARGET llama-common)
+            install(TARGETS llama-common RUNTIME DESTINATION bin)
+        endif()
+    endif()
+
     # Create custom target to copy llama-server to com.docker.llama-server
     if (WIN32)
         set(LLAMA_SERVER_DST "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/com.docker.llama-server.exe")

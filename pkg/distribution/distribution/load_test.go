@@ -4,7 +4,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 )
 
@@ -30,13 +30,8 @@ func TestLoadModel(t *testing.T) {
 		id, err = client.LoadModel(pr, nil)
 		done <- err
 	}()
-	bldr, err := builder.FromPath(testGGUFFile)
-	if err != nil {
-		t.Fatalf("Failed to create builder: %v", err)
-	}
-	err = bldr.Build(t.Context(), target, nil)
-	if err != nil {
-		t.Fatalf("Failed to build model: %v", err)
+	if err := target.Write(t.Context(), testutil.NewGGUFArtifact(t, testGGUFFile), nil); err != nil {
+		t.Fatalf("Failed to write model tarball: %v", err)
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("LoadModel exited with error: %v", err)

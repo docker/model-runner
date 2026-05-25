@@ -6,6 +6,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -17,22 +18,27 @@ type mockPlatformSupport struct {
 	vllm      bool
 	vllmMetal bool
 	sglang    bool
+	diffusers bool
 }
 
 func (m mockPlatformSupport) SupportsMLX() bool       { return m.mlx }
 func (m mockPlatformSupport) SupportsVLLM() bool      { return m.vllm }
 func (m mockPlatformSupport) SupportsVLLMMetal() bool { return m.vllmMetal }
 func (m mockPlatformSupport) SupportsSGLang() bool    { return m.sglang }
+func (m mockPlatformSupport) SupportsDiffusers() bool { return m.diffusers }
 
 // mockModel is a minimal Model implementation for testing.
 type mockModel struct {
-	config types.ModelConfig
+	config           types.ModelConfig
+	ggufPaths        []string
+	safetensorsPaths []string
+	ddufPaths        []string
 }
 
 func (m *mockModel) ID() (string, error)                   { return "test-id", nil }
-func (m *mockModel) GGUFPaths() ([]string, error)          { return nil, nil }
-func (m *mockModel) SafetensorsPaths() ([]string, error)   { return nil, nil }
-func (m *mockModel) DDUFPaths() ([]string, error)          { return nil, nil }
+func (m *mockModel) GGUFPaths() ([]string, error)          { return m.ggufPaths, nil }
+func (m *mockModel) SafetensorsPaths() ([]string, error)   { return m.safetensorsPaths, nil }
+func (m *mockModel) DDUFPaths() ([]string, error)          { return m.ddufPaths, nil }
 func (m *mockModel) ConfigArchivePath() (string, error)    { return "", nil }
 func (m *mockModel) MMPROJPath() (string, error)           { return "", nil }
 func (m *mockModel) Config() (types.ModelConfig, error)    { return m.config, nil }
@@ -55,9 +61,12 @@ func TestSelectBackendForModel(t *testing.T) {
 	mlxBackend := &mockBackend{name: mlx.Name}
 	vllmBackend := &mockBackend{name: vllm.Name}
 	sglangBackend := &mockBackend{name: sglang.Name}
+	diffusersBackend := &mockBackend{name: diffusers.Name}
 
 	safetensorsModel := &mockModel{config: &types.Config{Format: types.FormatSafetensors}}
 	ggufModel := &mockModel{config: &types.Config{Format: types.FormatGGUF}}
+	ddufModel := &mockModel{config: &types.Config{Format: types.FormatDDUF}}
+	legacyDiffusersModel := &mockModel{config: &types.Config{Format: types.FormatDiffusers}} //nolint:staticcheck // testing backward compatibility
 
 	tests := []struct {
 		name            string
@@ -152,6 +161,118 @@ func TestSelectBackendForModel(t *testing.T) {
 			platform:        mockPlatformSupport{mlx: false, vllm: true, sglang: false},
 			model:           safetensorsModel,
 			expectedBackend: vllm.Name,
+		},
+		{
+			name: "DDUF model selects diffusers backend when platform supports it",
+			backends: map[string]inference.Backend{
+				"llamacpp":     llamacppBackend,
+				diffusers.Name: diffusersBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{diffusers: true},
+			model:           ddufModel,
+			expectedBackend: diffusers.Name,
+		},
+		{
+			name: "DDUF model falls back to default when platform does not support diffusers",
+			backends: map[string]inference.Backend{
+				"llamacpp":     llamacppBackend,
+				diffusers.Name: diffusersBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{diffusers: false},
+			model:           ddufModel,
+			expectedBackend: "llamacpp",
+		},
+		{
+			name: "DDUF model falls back to default when diffusers backend not registered",
+			backends: map[string]inference.Backend{
+				"llamacpp": llamacppBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{diffusers: true},
+			model:           ddufModel,
+			expectedBackend: "llamacpp",
+		},
+		{
+			name: "legacy diffusers format model selects diffusers backend",
+			backends: map[string]inference.Backend{
+				"llamacpp":     llamacppBackend,
+				diffusers.Name: diffusersBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{diffusers: true},
+			model:           legacyDiffusersModel,
+			expectedBackend: diffusers.Name,
+		},
+		// Tests for CNCF ModelPack models that omit config.format: format
+		// must be inferred from the model's layer paths.
+		{
+			name: "ModelPack safetensors without format field selects vLLM",
+			backends: map[string]inference.Backend{
+				"llamacpp": llamacppBackend,
+				vllm.Name:  vllmBackend,
+			},
+			defaultBackend: llamacppBackend,
+			platform:       mockPlatformSupport{vllm: true},
+			model: &mockModel{
+				config:           &types.Config{},
+				safetensorsPaths: []string{"model.safetensors"},
+			},
+			expectedBackend: vllm.Name,
+		},
+		{
+			name: "ModelPack GGUF without format field selects default backend",
+			backends: map[string]inference.Backend{
+				"llamacpp": llamacppBackend,
+				vllm.Name:  vllmBackend,
+			},
+			defaultBackend: llamacppBackend,
+			platform:       mockPlatformSupport{vllm: true},
+			model: &mockModel{
+				config:    &types.Config{},
+				ggufPaths: []string{"model.gguf"},
+			},
+			expectedBackend: "llamacpp",
+		},
+		{
+			name: "ModelPack with no format and no paths uses default backend",
+			backends: map[string]inference.Backend{
+				"llamacpp": llamacppBackend,
+				vllm.Name:  vllmBackend,
+			},
+			defaultBackend:  llamacppBackend,
+			platform:        mockPlatformSupport{vllm: true},
+			model:           &mockModel{config: &types.Config{}},
+			expectedBackend: "llamacpp",
+		},
+		{
+			name: "config.format wins over inferred safetensors paths",
+			backends: map[string]inference.Backend{
+				"llamacpp": llamacppBackend,
+				vllm.Name:  vllmBackend,
+			},
+			defaultBackend: llamacppBackend,
+			platform:       mockPlatformSupport{vllm: true},
+			model: &mockModel{
+				config:           &types.Config{Format: types.FormatGGUF},
+				safetensorsPaths: []string{"model.safetensors"},
+			},
+			expectedBackend: "llamacpp",
+		},
+		{
+			name: "ModelPack DDUF without format field selects diffusers",
+			backends: map[string]inference.Backend{
+				"llamacpp":     llamacppBackend,
+				diffusers.Name: diffusersBackend,
+			},
+			defaultBackend: llamacppBackend,
+			platform:       mockPlatformSupport{diffusers: true},
+			model: &mockModel{
+				config:    &types.Config{},
+				ddufPaths: []string{"model.dduf"},
+			},
+			expectedBackend: diffusers.Name,
 		},
 	}
 

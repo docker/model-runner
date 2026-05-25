@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -52,11 +53,13 @@ type diffusers struct {
 	customPythonPath string
 	// installDir is the directory where diffusers is installed.
 	installDir string
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // New creates a new diffusers-based backend for image generation.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string) (inference.Backend, error) {
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultConfig()
@@ -76,6 +79,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
+		registryMirrors:  registryMirrors,
 	}, nil
 }
 
@@ -150,7 +154,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context) error {
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:diffusers-%s", diffusersVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, d.registryMirrors); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
@@ -255,7 +259,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		Socket:           socket,
 		BinaryPath:       d.pythonPath,
 		SandboxPath:      "",
-		SandboxConfig:    "",
+		SandboxConfig:    sandbox.ConfigurationPython,
 		Args:             args,
 		Logger:           d.log,
 		ServerLogWriter:  logging.NewWriter(d.serverLog),
@@ -264,6 +268,16 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 }
 
 // Status implements inference.Backend.Status.
+// Uninstall implements inference.Backend.Uninstall.
+func (d *diffusers) Uninstall() error {
+	if err := os.RemoveAll(d.installDir); err != nil {
+		return fmt.Errorf("failed to remove diffusers install directory: %w", err)
+	}
+	d.pythonPath = ""
+	d.status = inference.FormatNotInstalled("")
+	return nil
+}
+
 func (d *diffusers) Status() string {
 	return d.status
 }

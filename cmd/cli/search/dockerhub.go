@@ -16,15 +16,19 @@ const (
 
 // DockerHubClient searches for models on Docker Hub
 type DockerHubClient struct {
-	httpClient *http.Client
-	baseURL    string
+	httpClient         *http.Client
+	baseURL            string
+	backendResolver    backendResolver
+	resolveConcurrency int
 }
 
 // NewDockerHubClient creates a new Docker Hub search client
 func NewDockerHubClient() *DockerHubClient {
 	return &DockerHubClient{
-		httpClient: NewHTTPClient(),
-		baseURL:    dockerHubBaseURL,
+		httpClient:         NewHTTPClient(),
+		baseURL:            dockerHubBaseURL,
+		backendResolver:    newRegistryBackendResolver(),
+		resolveConcurrency: defaultBackendResolveConcurrency,
 	}
 }
 
@@ -129,9 +133,6 @@ func (c *DockerHubClient) Search(ctx context.Context, opts SearchOptions) ([]Sea
 				}
 			}
 
-			// Determine backend type from name and description
-			backend := determineDockerHubBackend(repo.Name, repo.Description)
-
 			results = append(results, SearchResult{
 				Name:        fmt.Sprintf("%s/%s", repo.Namespace, repo.Name),
 				Description: truncateString(repo.Description, 50),
@@ -140,7 +141,7 @@ func (c *DockerHubClient) Search(ctx context.Context, opts SearchOptions) ([]Sea
 				Source:      DockerHubSourceName,
 				Official:    repo.Namespace == dockerHubAIOrg,
 				UpdatedAt:   repo.LastUpdated,
-				Backend:     backend,
+				Backend:     backendUnknown,
 			})
 
 			if len(results) >= limit {
@@ -155,7 +156,12 @@ func (c *DockerHubClient) Search(ctx context.Context, opts SearchOptions) ([]Sea
 		nextURL = response.Next
 	}
 
-	return results, nil
+	return resolveSearchResultBackends(ctx, results, c.resolveConcurrency, func(ctx context.Context, result SearchResult) (string, error) {
+		if c.backendResolver == nil {
+			return backendUnknown, nil
+		}
+		return c.backendResolver.Resolve(ctx, result.Name)
+	}), nil
 }
 
 // truncateString truncates a string to maxLen characters, adding "..." if truncated
@@ -167,37 +173,4 @@ func truncateString(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
-}
-
-// determineDockerHubBackend determines the backend type from model name and description
-func determineDockerHubBackend(name, description string) string {
-	nameLower := strings.ToLower(name)
-	descLower := strings.ToLower(description)
-	combined := nameLower + " " + descLower
-
-	var hasVLLM, hasLlamaCpp bool
-
-	// Check for vLLM indicators
-	if strings.Contains(combined, "vllm") || strings.Contains(combined, "safetensors") {
-		hasVLLM = true
-	}
-
-	// Check for llama.cpp indicators (gguf is the format used by llama.cpp)
-	if strings.Contains(combined, "llama.cpp") || strings.Contains(combined, "llamacpp") ||
-		strings.Contains(combined, "gguf") || strings.Contains(combined, "llama-cpp") {
-		hasLlamaCpp = true
-	}
-
-	if hasVLLM && hasLlamaCpp {
-		return "llama.cpp, vllm"
-	}
-	if hasVLLM {
-		return "vllm"
-	}
-	if hasLlamaCpp {
-		return "llama.cpp"
-	}
-
-	// Default to llama.cpp for ai/ namespace models as they primarily use GGUF format
-	return "llama.cpp"
 }

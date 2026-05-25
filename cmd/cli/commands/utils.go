@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/docker/cli/cli-plugins/hooks"
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 	"github.com/moby/term"
@@ -47,13 +47,20 @@ func handleClientError(err error, message string) error {
 	if errors.Is(err, desktop.ErrServiceUnavailable) {
 		err = errNotRunning
 		var buf bytes.Buffer
-		hooks.PrintNextSteps(&buf, []string{enableViaCLI, enableViaGUI})
+		printNextSteps(&buf, []string{enableViaCLI, enableViaGUI})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
 	} else if strings.Contains(err.Error(), vllm.ErrorNotFound.Error()) {
 		// Handle `run` error.
 		var buf bytes.Buffer
-		hooks.PrintNextSteps(&buf, []string{enableVLLM})
+		printNextSteps(&buf, []string{enableVLLM})
 		return fmt.Errorf("%w\n%s", err, strings.TrimRight(buf.String(), "\n"))
+	} else if errors.Is(err, distribution.ErrUnsupportedMediaType) {
+		// The model uses a newer config format than this client supports.
+		var buf bytes.Buffer
+		printNextSteps(&buf, []string{
+			"Upgrade Docker Model Runner to the latest version to support this model",
+		})
+		return fmt.Errorf("%s: %w\n%s", message, err, strings.TrimRight(buf.String(), "\n"))
 	}
 	return fmt.Errorf("%s: %w", message, err)
 }
@@ -269,4 +276,18 @@ func newTable(w io.Writer) *tablewriter.Table {
 			},
 		}),
 	)
+}
+
+func printNextSteps(out io.Writer, messages []string) {
+	if len(messages) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, bold("\nWhat's next:"))
+	for _, n := range messages {
+		_, _ = fmt.Fprintln(out, "   ", n)
+	}
+}
+
+func bold(s string) string {
+	return "\033[1m" + s + "\033[0m"
 }

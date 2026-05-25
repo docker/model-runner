@@ -1,49 +1,71 @@
 # Project variables
+include .versions
+
 APP_NAME := model-runner
-GO_VERSION := 1.25.8
-LLAMA_SERVER_VERSION := latest
 LLAMA_SERVER_VARIANT := cpu
-BASE_IMAGE := ubuntu:24.04
-VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
-VLLM_VERSION ?= 0.17.0
+# Resolved lazily — only evaluated when a Docker target references it.
+LLAMA_UPSTREAM_IMAGE ?= $(shell \
+	bash scripts/resolve-llama-upstream-image.sh \
+	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
+DOCKER_IMAGE_VLLM_ROCM := docker/model-runner:latest-vllm-rocm
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
-DOCKER_IMAGE_DIFFUSERS := docker/model-runner:latest-diffusers
+DOCKER_IMAGE_MUSA := docker/model-runner:latest-musa
+DOCKER_IMAGE_OPENVINO := docker/model-runner:latest-openvino
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
-DOCKER_BUILD_ARGS := \
-	--load \
-	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
+E2E_TIMEOUT ?= 30m
+
+define check-llama-image
+$(if $(LLAMA_UPSTREAM_IMAGE),,$(error Failed to resolve llama.cpp upstream image. Check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT or set LLAMA_UPSTREAM_IMAGE directly.))
+endef
+
+ifneq (,$(filter $(LLAMA_SERVER_VARIANT),rocm musa openvino))
+DOCKER_BUILD_PLATFORMS := linux/amd64
+else
+DOCKER_BUILD_PLATFORMS := linux/amd64,linux/arm64
+endif
+
+LOCAL_DOCKER_PLATFORM ?= linux/$(shell docker version --format '{{.Server.Arch}}')
+
+DOCKER_BUILD_COMMON_ARGS = \
+	--build-arg GO_VERSION=$(GO_VERSION) \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
-	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+	--build-arg LLAMA_UPSTREAM_IMAGE=$(LLAMA_UPSTREAM_IMAGE) \
+	--build-arg SGLANG_VERSION=$(SGLANG_VERSION) \
 	--build-arg VLLM_VERSION='$(VLLM_VERSION)' \
 	--target $(DOCKER_TARGET) \
 	-t $(DOCKER_IMAGE)
 
-# Test configuration
-BUILD_DMR ?= 1
-
 # Phony targets grouped by category
-.PHONY: build run clean test integration-tests build-cli install-cli
-.PHONY: validate validate-all lint help
+.PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
+.PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
-.PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
-.PHONY: docker-build-diffusers docker-run-diffusers
+.PHONY: docker-build-vllm docker-run-vllm docker-build-vllm-rocm docker-run-vllm-rocm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-musa docker-run-musa docker-build-openvino docker-run-openvino
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
-# Default target
+# Default target: build server, CLI plugin, and dmr convenience wrapper
 .DEFAULT_GOAL := build
 
-# Build the Go application
-build:
+build: build-server build-cli build-dmr
+
+build-server:
 	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o $(APP_NAME) .
 
 build-cli:
 	$(MAKE) -C cmd/cli
+
+build-dmr:
+	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o dmr ./cmd/dmr
+
+build-llamacpp:
+	git submodule update --init llamacpp/native
+	$(MAKE) -C llamacpp build
 
 install-cli:
 	$(MAKE) -C cmd/cli install
@@ -63,6 +85,7 @@ run: build
 # Clean build artifacts
 clean:
 	rm -f $(APP_NAME)
+	rm -f dmr
 	rm -f model-runner.sock
 
 # Run tests
@@ -79,17 +102,46 @@ integration-tests:
 		echo "$$INVALID_TESTS" | sed 's/func \([^(]*\).*/\1/'; \
 		exit 1; \
 	fi
-	@BUILD_DMR=$(BUILD_DMR) go test -v -race -count=1 -tags=integration -run "^TestIntegration" -timeout=5m ./cmd/cli/commands
+	go test -v -race -count=1 -tags=integration -run "^TestIntegration" -timeout=5m ./cmd/cli/commands
 	@echo "Integration tests completed!"
+
+e2e:
+	@echo "Running e2e tests..."
+	@echo "Checking test naming conventions..."
+	@INVALID_TESTS=$$(grep "^func Test" e2e/*_test.go | grep -v "^.*:func TestE2E" | grep -v "^.*:func TestMain"); \
+	if [ -n "$$INVALID_TESTS" ]; then \
+		echo "Error: Found test functions that don't start with 'TestE2E':"; \
+		echo "$$INVALID_TESTS" | sed 's/.*func \([^(]*\).*/\1/'; \
+		exit 1; \
+	fi
+	go test -v -count=1 -tags=e2e -run "^TestE2E" -timeout=$(E2E_TIMEOUT) ./e2e/
+	@echo "E2E tests completed!"
 
 test-docker-ce-installation:
 	@echo "Testing Docker CE installation..."
 	@echo "Note: This requires Docker to be running"
-	BASE_IMAGE=$(BASE_IMAGE) scripts/test-docker-ce-installation.sh
+	scripts/test-docker-ce-installation.sh
 
 validate:
 	find . -type f -name "*.sh" | grep -v "pkg/go-containerregistry\|llamacpp/native/vendor" | xargs shellcheck
 	@echo "✓ Shellcheck validation passed!"
+
+validate-versions:
+	@errors=0; \
+	while IFS='=' read -r key value || [ -n "$$key" ]; do \
+		case "$$key" in ''|\#*) continue ;; esac; \
+		value=$$(echo "$$value" | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$$//'); \
+		dockerfile_val=$$(grep -m1 "^ARG $${key}=" Dockerfile | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$$//'); \
+		[ -z "$$dockerfile_val" ] && continue; \
+		if [ "$$value" != "$$dockerfile_val" ]; then \
+			echo "MISMATCH: $$key — .versions=$$value  Dockerfile=$$dockerfile_val"; \
+			errors=$$((errors + 1)); \
+		else \
+			echo "OK: $$key=$$value"; \
+		fi; \
+	done < .versions; \
+	[ $$errors -eq 0 ] || exit 1
+	@echo "✓ .versions is in sync with Dockerfile ARGs"
 
 lint:
 	@echo "Running golangci-lint..."
@@ -113,15 +165,20 @@ validate-all:
 	@echo "==> Running shellcheck validation..."
 	@$(MAKE) validate
 	@echo ""
+	@echo "==> Validating .versions against Dockerfile ARGs..."
+	@$(MAKE) validate-versions
+	@echo ""
 	@echo "==> All validations passed! ✅"
 
 # Build Docker image
 docker-build:
-	docker buildx build $(DOCKER_BUILD_ARGS) .
+	$(call check-llama-image)
+	docker buildx build --load --platform $(LOCAL_DOCKER_PLATFORM) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Build multi-platform Docker image
 docker-build-multiplatform:
-	docker buildx build --platform linux/amd64,linux/arm64 $(DOCKER_BUILD_ARGS) .
+	$(call check-llama-image)
+	docker buildx build --platform $(DOCKER_BUILD_PLATFORMS) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build
@@ -132,34 +189,60 @@ docker-build-vllm:
 	@$(MAKE) docker-build \
 		DOCKER_TARGET=final-vllm \
 		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM) \
-		LLAMA_SERVER_VARIANT=cuda \
-		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+		LLAMA_SERVER_VARIANT=cuda
 
 # Run vLLM Docker container with TCP port access and mounted model storage
 docker-run-vllm: docker-build-vllm
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
+
+# Build vLLM Docker image with ROCm (AMD GPU) support.
+# Installs upstream vLLM ROCm wheels from https://wheels.vllm.ai/rocm/ on
+# top of the llama.cpp ROCm base, so the image keeps llama.cpp available
+# (mirrors the CUDA vllm variant shape).
+# LLAMA_SERVER_VARIANT=rocm restricts DOCKER_BUILD_PLATFORMS to linux/amd64
+# (vLLM ROCm has no aarch64 support).
+docker-build-vllm-rocm:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-vllm-rocm \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM) \
+		LLAMA_SERVER_VARIANT=rocm
+
+# Run vLLM ROCm Docker container with TCP port access and mounted model storage
+docker-run-vllm-rocm: docker-build-vllm-rocm
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM)
 
 # Build SGLang Docker image
 docker-build-sglang:
 	@$(MAKE) docker-build \
 		DOCKER_TARGET=final-sglang \
 		DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG) \
-		LLAMA_SERVER_VARIANT=cuda \
-		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+		LLAMA_SERVER_VARIANT=cuda
 
 # Run SGLang Docker container with TCP port access and mounted model storage
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
 
-# Build Diffusers Docker image
-docker-build-diffusers:
+# Build MUSA Docker image
+docker-build-musa:
 	@$(MAKE) docker-build \
-		DOCKER_TARGET=final-diffusers \
-		DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA) \
+		LLAMA_SERVER_VARIANT=musa
 
-# Run Diffusers Docker container with TCP port access and mounted model storage
-docker-run-diffusers: docker-build-diffusers
-	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_DIFFUSERS)
+# Run MUSA Docker container with TCP port access and mounted model storage
+docker-run-musa: docker-build-musa
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA)
+
+# Build OpenVINO Docker image
+docker-build-openvino:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO) \
+		LLAMA_SERVER_VARIANT=openvino
+
+# Run OpenVINO Docker container with TCP port access and mounted model storage
+docker-run-openvino: docker-build-openvino
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO)
 
 # Common implementation for running Docker container
 docker-run-impl:
@@ -178,7 +261,6 @@ docker-run-impl:
 
 # vllm-metal (macOS ARM64 only)
 # The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-VLLM_METAL_RELEASE ?= v0.1.0-20260126-121650
 VLLM_METAL_INSTALL_DIR := $(HOME)/.docker/model-runner/vllm-metal
 VLLM_METAL_TARBALL := vllm-metal-macos-arm64-$(VLLM_METAL_RELEASE).tar.gz
 
@@ -231,14 +313,15 @@ vllm-metal-dev:
 	rm -rf "$(VLLM_METAL_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(VLLM_METAL_INSTALL_DIR)"; \
 	. "$(VLLM_METAL_INSTALL_DIR)/bin/activate" && \
-		VLLM_UPSTREAM_VERSION="0.13.0" && \
+		VLLM_UPSTREAM_VERSION=$(VLLM_UPSTREAM_VERSION) && \
 		WORK_DIR=$$(mktemp -d) && \
 		curl -fsSL -o "$$WORK_DIR/vllm.tar.gz" "https://github.com/vllm-project/vllm/releases/download/v$$VLLM_UPSTREAM_VERSION/vllm-$$VLLM_UPSTREAM_VERSION.tar.gz" && \
 		tar -xzf "$$WORK_DIR/vllm.tar.gz" -C "$$WORK_DIR" && \
 		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/cpu.txt" && \
-		pip install -e "$(VLLM_METAL_PATH)" && \
+		pip install "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION" && \
 		pip install -r "$$WORK_DIR/vllm-$$VLLM_UPSTREAM_VERSION/requirements/common.txt" && \
 		rm -rf "$$WORK_DIR" && \
+		pip install -e "$(VLLM_METAL_PATH)" && \
 		echo "dev" > "$(VLLM_METAL_INSTALL_DIR)/.vllm-metal-version"; \
 	echo "vllm-metal dev installed from $(VLLM_METAL_PATH)"
 
@@ -250,7 +333,6 @@ vllm-metal-clean:
 
 # diffusers (macOS ARM64 and Linux)
 # The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-DIFFUSERS_RELEASE ?= v0.1.0-20260216-000000
 DIFFUSERS_INSTALL_DIR := $(HOME)/.docker/model-runner/diffusers
 DIFFUSERS_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 DIFFUSERS_ARCH := $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
@@ -319,7 +401,8 @@ diffusers-clean:
 
 help:
 	@echo "Available targets:"
-	@echo "  build				- Build the Go application"
+	@echo "  build				- Build server, CLI plugin, and dmr wrapper (default)"
+	@echo "  build-server			- Build the model-runner server"
 	@echo "  build-cli			- Build the CLI (docker-model plugin)"
 	@echo "  install-cli			- Build and install the CLI as a Docker plugin"
 	@echo "  docs				- Generate CLI documentation"
@@ -327,6 +410,8 @@ help:
 	@echo "  clean				- Clean build artifacts"
 	@echo "  test				- Run tests"
 	@echo "  integration-tests		- Run integration tests (requires Docker)"
+	@echo "  build-llamacpp		- Init submodule and build llama.cpp from source"
+	@echo "  e2e				- Run e2e tests (builds llamacpp + server, macOS)"
 	@echo "  test-docker-ce-installation	- Test Docker CE installation with CLI plugin"
 	@echo "  validate			- Run shellcheck validation"
 	@echo "  validate-all			- Run all CI validations locally (lint, test, shellcheck, go mod tidy)"
@@ -334,12 +419,16 @@ help:
 	@echo "  docker-build			- Build Docker image for current platform"
 	@echo "  docker-build-multiplatform	- Build Docker image for multiple platforms"
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
-	@echo "  docker-build-vllm		- Build vLLM Docker image"
-	@echo "  docker-run-vllm		- Run vLLM Docker container"
+	@echo "  docker-build-vllm		- Build vLLM Docker image (CUDA)"
+	@echo "  docker-run-vllm		- Run vLLM Docker container (CUDA)"
+	@echo "  docker-build-vllm-rocm	- Build vLLM Docker image (ROCm / AMD GPU)"
+	@echo "  docker-run-vllm-rocm		- Run vLLM Docker container (ROCm / AMD GPU)"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
-	@echo "  docker-build-diffusers	- Build Diffusers Docker image"
-	@echo "  docker-run-diffusers		- Run Diffusers Docker container"
+	@echo "  docker-build-musa		- Build MUSA Docker image"
+	@echo "  docker-run-musa		- Run MUSA Docker container"
+	@echo "  docker-build-openvino		- Build OpenVINO Docker image"
+	@echo "  docker-run-openvino		- Run OpenVINO Docker container"
 	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"
@@ -352,6 +441,9 @@ help:
 	@echo ""
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
+	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest or bNNNN)"
+	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, musa, openvino, or rocm)"
+	@echo "  LLAMA_UPSTREAM_IMAGE - Override the resolved upstream image directly"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"
 	@echo ""
 	@echo "Example usage:"

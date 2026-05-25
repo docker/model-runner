@@ -6,6 +6,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -16,16 +19,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
+
+      - name: Load golangci-lint version
+        id: golangci-lint-version
+        run: echo "version=$(grep '^GOLANGCI_LINT_VERSION=' .versions | cut -d= -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20
         with:
-          version: v2.10.1
+          version: ${{ steps.golangci-lint-version.outputs.version }}
           install-only: true
 
       - name: Run linting for ${{ matrix.goos }}
@@ -42,10 +53,17 @@ jobs:
       - name: Verify vendor/ is not present
         run: stat vendor && exit 1 || exit 0
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
+      - name: Validate .versions against Dockerfile ARGs
+        run: make validate-versions
+
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Check go mod tidy

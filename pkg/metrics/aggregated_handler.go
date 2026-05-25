@@ -16,6 +16,20 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// SchedulerInterface defines the methods we need from the scheduler
+type SchedulerInterface interface {
+	GetRunningBackends(w http.ResponseWriter, r *http.Request)
+	GetAllActiveRunners() []ActiveRunner
+}
+
+// ActiveRunner contains information about an active runner
+type ActiveRunner struct {
+	BackendName string
+	ModelName   string
+	Mode        string
+	Socket      string
+}
+
 // AggregatedMetricsHandler collects metrics from all active runners and aggregates them with labels
 type AggregatedMetricsHandler struct {
 	log       logging.Logger

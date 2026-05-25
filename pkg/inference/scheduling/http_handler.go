@@ -23,6 +23,23 @@ import (
 
 type contextKey bool
 
+// readRequestBody reads up to maxSize bytes from the request body and writes
+// an appropriate HTTP error if reading fails. Returns (body, true) on success
+// or (nil, false) after writing the error response.
+func readRequestBody(w http.ResponseWriter, r *http.Request, maxSize int64) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSize))
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		}
+		return nil, false
+	}
+	return body, true
+}
+
 const preloadOnlyKey contextKey = false
 
 // HTTPHandler handles HTTP requests for the scheduler.
@@ -98,6 +115,7 @@ func (h *HTTPHandler) routeHandlers() map[string]http.HandlerFunc {
 	m["GET "+inference.InferencePrefix+"/v1/models/{name...}"] = h.handleModels
 
 	m["POST "+inference.InferencePrefix+"/install-backend"] = h.InstallBackend
+	m["POST "+inference.InferencePrefix+"/uninstall-backend"] = h.UninstallBackend
 	m["GET "+inference.InferencePrefix+"/status"] = h.GetBackendStatus
 	m["GET "+inference.InferencePrefix+"/ps"] = h.GetRunningBackends
 	m["GET "+inference.InferencePrefix+"/df"] = h.GetDiskUsage
@@ -132,14 +150,8 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 
 	// Read the entire request body. We put some basic size constraints in place
 	// to avoid DoS attacks. We do this early to avoid client write timeouts.
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -194,7 +206,7 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 		// Non-blocking call to track the model usage.
 		h.scheduler.tracker.TrackModel(model, r.UserAgent(), action)
 
-		// Automatically identify models for vLLM.
+		// Automatically select backend for given model.
 		backend = h.scheduler.selectBackendForModel(model, backend, request.Model)
 	}
 
@@ -271,6 +283,11 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	}()
 
 	// Create a request with the body replaced for forwarding upstream.
+	// Set ContentLength explicitly so the backend always receives a Content-Length
+	// header. Without this, HTTP/2 requests (where clients may omit Content-Length)
+	// are forwarded with Transfer-Encoding: chunked, which some backends (e.g.
+	// vLLM's Python/uvicorn server) fail to parse, resulting in an empty body and
+	// a 422 response.
 	upstreamRequest := r.Clone(r.Context())
 	upstreamRequest.Body = io.NopCloser(bytes.NewReader(body))
 	// OpenAI-compatible inference endpoints always expect JSON payloads.
@@ -278,6 +295,8 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	// application/x-www-form-urlencoded for -d bodies, which breaks OVMS
 	// routing and causes path-based model resolution. Normalize to JSON.
 	upstreamRequest.Header.Set("Content-Type", "application/json")
+	// Ensure the backend always receives a Content-Length header.
+	upstreamRequest.ContentLength = int64(len(body))
 
 	// Perform the request.
 	runner.ServeHTTP(w, upstreamRequest)
@@ -343,14 +362,8 @@ func (h *HTTPHandler) GetDiskUsage(w http.ResponseWriter, _ *http.Request) {
 // Unload unloads the specified runners (backend, model) from the backend.
 // Currently, this doesn't work for runners that are handling an OpenAI request.
 func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -376,14 +389,8 @@ type installBackendRequest struct {
 // InstallBackend handles POST <inference-prefix>/install-backend requests.
 // It triggers on-demand installation of a deferred backend.
 func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -405,10 +412,48 @@ func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// uninstallBackendRequest is the JSON body for the uninstall-backend endpoint.
+type uninstallBackendRequest struct {
+	Backend string `json:"backend"`
+}
+
+// UninstallBackend handles POST <inference-prefix>/uninstall-backend requests.
+// It removes a backend's local installation.
+func (h *HTTPHandler) UninstallBackend(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "request too large", http.StatusBadRequest)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var req uninstallBackendRequest
+	if err := json.Unmarshal(body, &req); err != nil || req.Backend == "" {
+		http.Error(w, "invalid request: backend is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.scheduler.UninstallBackend(r.Context(), req.Backend); err != nil {
+		if errors.Is(err, ErrBackendNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("backend uninstall failed: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // Configure handles POST <inference-prefix>/{backend}/_configure requests.
 func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 	// Determine the requested backend and ensure that it's valid.
 	var backend inference.Backend
+	var err error
 	if b := r.PathValue("backend"); b == "" {
 		backend = h.scheduler.defaultBackend
 	} else {
@@ -419,14 +464,8 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maximumOpenAIInferenceRequestSize))
-	if err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			http.Error(w, "request too large", http.StatusBadRequest)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-		}
+	body, ok := readRequestBody(w, r, maximumOpenAIInferenceRequestSize)
+	if !ok {
 		return
 	}
 
@@ -450,7 +489,8 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	// Preload the model in the background by calling handleOpenAIInference with preload-only context.
 	// This makes Compose preload the model as well as it calls `configure` by default.
-	go func() {
+	userAgent := r.UserAgent()
+	go func() { //nolint:gosec // G118: context.Background intentional — preload must outlive the request context
 		preloadBody, err := json.Marshal(OpenAIInferenceRequest{Model: configureRequest.Model})
 		if err != nil {
 			h.scheduler.log.Warn("failed to marshal preload request body", "error", err)
@@ -468,7 +508,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 			h.scheduler.log.Warn("failed to create preload request", "error", err)
 			return
 		}
-		preloadReq.Header.Set("User-Agent", r.UserAgent())
+		preloadReq.Header.Set("User-Agent", userAgent)
 		if backend != nil {
 			preloadReq.SetPathValue("backend", backend.Name())
 		}
@@ -520,12 +560,6 @@ func (h *HTTPHandler) RebuildRoutes(allowedOrigins []string) {
 	defer h.lock.Unlock()
 	// Update handlers that depend on the allowed origins.
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
-}
-
-// GetLlamaCppSocket delegates to the scheduler's business logic.
-// Required by metrics.SchedulerInterface.
-func (h *HTTPHandler) GetLlamaCppSocket() (string, error) {
-	return h.scheduler.GetLlamaCppSocket()
 }
 
 // GetAllActiveRunners delegates to the scheduler's business logic.

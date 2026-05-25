@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/model-runner/pkg/distribution/builder"
+	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/tarball"
 )
 
@@ -466,13 +466,8 @@ func loadTestModel(t *testing.T, client *Client, ggufPath string) string {
 		done <- err
 	}()
 
-	bldr, err := builder.FromPath(ggufPath)
-	if err != nil {
-		t.Fatalf("Failed to create builder from GGUF: %v", err)
-	}
-
-	if err := bldr.Build(t.Context(), target, nil); err != nil {
-		t.Fatalf("Failed to build model: %v", err)
+	if err := target.Write(t.Context(), testutil.NewGGUFArtifact(t, ggufPath), nil); err != nil {
+		t.Fatalf("Failed to write model tarball: %v", err)
 	}
 
 	if err := <-done; err != nil {

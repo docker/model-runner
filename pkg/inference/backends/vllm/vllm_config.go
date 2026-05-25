@@ -40,6 +40,13 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	// Add socket arguments
 	args = append(args, "--uds", socket)
 
+	// Add chat template if available in the model bundle.
+	// Since transformers v4.44, vLLM no longer provides a default chat
+	// template so we must supply one when the tokenizer omits it.
+	if path := bundle.ChatTemplatePath(); path != "" {
+		args = append(args, "--chat-template", path)
+	}
+
 	// Add mode-specific arguments
 	switch mode {
 	case inference.BackendModeCompletion:
@@ -87,19 +94,19 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	return args, nil
 }
 
-// GetMaxModelLen returns the max model length (context size) from model config or backend config.
-// Model config takes precedence over backend config.
+// GetMaxModelLen returns the max model length (context size) from backend config or model config.
+// Backend config takes precedence over model config (runtime configuration).
 // Returns nil if neither is specified (vLLM will auto-derive from model).
 func GetMaxModelLen(modelCfg types.ModelConfig, backendCfg *inference.BackendConfiguration) *int32 {
-	// Model config takes precedence
-	if modelCfg != nil {
-		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil {
-			return ctxSize
-		}
-	}
-	// Fallback to backend config
+	// Backend config takes precedence (runtime configuration via docker model configure / Ollama API num_ctx)
 	if backendCfg != nil && backendCfg.ContextSize != nil && *backendCfg.ContextSize > 0 {
 		return backendCfg.ContextSize
+	}
+	// Fallback to model config (set at packaging time via docker model package --context-size)
+	if modelCfg != nil {
+		if ctxSize := modelCfg.GetContextSize(); ctxSize != nil && *ctxSize > 0 {
+			return ctxSize
+		}
 	}
 	// Return nil to let vLLM auto-derive from model config
 	return nil

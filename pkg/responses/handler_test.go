@@ -37,9 +37,12 @@ func (m *mockSchedulerHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(m.response))
 }
 
-func newTestHandler(mock *mockSchedulerHTTP) *HTTPHandler {
+func newTestHandler(tb testing.TB, mock *mockSchedulerHTTP) *HTTPHandler {
+	tb.Helper()
 	log := slog.New(slog.DiscardHandler)
-	return NewHTTPHandler(log, mock, nil)
+	h := NewHTTPHandler(log, mock, nil)
+	tb.Cleanup(h.Close)
+	return h
 }
 
 func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
@@ -68,7 +71,7 @@ func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -110,7 +113,7 @@ func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
 
 func TestHandler_CreateResponse_MissingModel(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{"input": "Hello"}`
 
@@ -135,7 +138,7 @@ func TestHandler_CreateResponse_MissingModel(t *testing.T) {
 
 func TestHandler_CreateResponse_InvalidJSON(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{invalid`))
 	req.Header.Set("Content-Type", "application/json")
@@ -151,7 +154,7 @@ func TestHandler_CreateResponse_InvalidJSON(t *testing.T) {
 
 func TestHandler_GetResponse(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	// First, store a response
 	testResp := NewResponse("resp_test123", "gpt-4")
@@ -186,7 +189,7 @@ func TestHandler_GetResponse(t *testing.T) {
 
 func TestHandler_GetResponse_NotFound(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/responses/nonexistent", http.NoBody)
 	req.SetPathValue("id", "nonexistent")
@@ -202,7 +205,7 @@ func TestHandler_GetResponse_NotFound(t *testing.T) {
 
 func TestHandler_DeleteResponse(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	// First, store a response
 	testResp := NewResponse("resp_test123", "gpt-4")
@@ -229,7 +232,7 @@ func TestHandler_DeleteResponse(t *testing.T) {
 
 func TestHandler_DeleteResponse_NotFound(t *testing.T) {
 	mock := &mockSchedulerHTTP{}
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	req := httptest.NewRequest(http.MethodDelete, "/v1/responses/nonexistent", http.NoBody)
 	req.SetPathValue("id", "nonexistent")
@@ -264,7 +267,7 @@ func TestHandler_CreateResponse_WithPreviousResponse(t *testing.T) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	// Create a previous response
 	prevResp := NewResponse("resp_prev123", "gpt-4")
@@ -320,7 +323,7 @@ func TestHandler_CreateResponse_UpstreamError(t *testing.T) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -356,7 +359,7 @@ func TestHandler_CreateResponse_UpstreamError_NonJSONBody(t *testing.T) {
 		response: "upstream exploded in a non-json way",
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -408,7 +411,7 @@ func TestHandler_CreateResponse_Streaming(t *testing.T) {
 		},
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -484,7 +487,7 @@ func TestHandler_CreateResponse_WithTools(t *testing.T) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -563,7 +566,7 @@ func TestHandler_ResponsePersistence(t *testing.T) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	// Create a response
 	reqBody := `{"model": "gpt-4", "input": "Hi"}`
@@ -605,7 +608,7 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 		},
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(t, mock)
 
 	reqBody := `{
 		"model": "gpt-4",
@@ -692,7 +695,7 @@ func BenchmarkHandler_CreateResponse(b *testing.B) {
 		}`,
 	}
 
-	handler := newTestHandler(mock)
+	handler := newTestHandler(b, mock)
 	reqBody := []byte(`{"model": "gpt-4", "input": "Hello"}`)
 
 	for b.Loop() {

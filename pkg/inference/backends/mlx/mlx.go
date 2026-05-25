@@ -13,6 +13,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -140,11 +141,16 @@ func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mo
 		Socket:          socket,
 		BinaryPath:      m.pythonPath,
 		SandboxPath:     "",
-		SandboxConfig:   "",
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          m.log,
 		ServerLogWriter: logging.NewWriter(m.serverLog),
 	})
+}
+
+// Uninstall implements inference.Backend.Uninstall.
+func (m *mlx) Uninstall() error {
+	return nil
 }
 
 func (m *mlx) Status() string {

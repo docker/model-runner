@@ -14,10 +14,21 @@ import (
 type cleanupOptions struct {
 	models       bool
 	removeImages bool
+	backend      string
 }
 
 // runUninstallOrStop is shared logic for uninstall-runner and stop-runner commands
 func runUninstallOrStop(cmd *cobra.Command, opts cleanupOptions) error {
+	// Deferred backend uninstall is handled via the running model runner API
+	// and works in any context (Desktop, Moby, etc.), so handle it first.
+	if opts.backend != "" {
+		if err := desktopClient.UninstallBackend(opts.backend); err != nil {
+			return fmt.Errorf("failed to uninstall %s backend: %w", opts.backend, err)
+		}
+		cmd.Printf("Uninstalled %s backend\n", opts.backend)
+		return nil
+	}
+
 	// Ensure that we're running in a supported model runner context.
 	if kind := modelRunner.EngineKind(); kind == types.ModelRunnerEngineKindDesktop {
 		if desktop.IsDesktopWSLContext(cmd.Context(), dockerCLI) {
@@ -62,6 +73,7 @@ func runUninstallOrStop(cmd *cobra.Command, opts cleanupOptions) error {
 
 func newUninstallRunner() *cobra.Command {
 	var models, images bool
+	var backend string
 	c := &cobra.Command{
 		Use:   "uninstall-runner",
 		Short: "Uninstall Docker Model Runner (Docker Engine only)",
@@ -69,11 +81,13 @@ func newUninstallRunner() *cobra.Command {
 			return runUninstallOrStop(cmd, cleanupOptions{
 				models:       models,
 				removeImages: images,
+				backend:      backend,
 			})
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 	c.Flags().BoolVar(&models, "models", false, "Remove model storage volume")
 	c.Flags().BoolVar(&images, "images", false, "Remove "+standalone.ControllerImage+" images")
+	c.Flags().StringVar(&backend, "backend", "", "Uninstall a deferred backend (e.g. vllm, diffusers)")
 	return c
 }

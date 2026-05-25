@@ -257,6 +257,35 @@ func (i *installer) installBackend(ctx context.Context, name string) error {
 	return nil
 }
 
+// uninstallBackend removes a backend's local installation and resets its
+// install status so that a subsequent wait() will trigger re-installation.
+func (i *installer) uninstallBackend(_ context.Context, name string) error {
+	i.installMu.Lock()
+	defer i.installMu.Unlock()
+
+	backend, ok := i.backends[name]
+	if !ok {
+		return ErrBackendNotFound
+	}
+
+	if err := backend.Uninstall(); err != nil {
+		i.log.Warn("Backend uninstall failed", "backend", name, "error", err)
+		return err
+	}
+
+	i.log.Info("Backend uninstalled", "backend", name)
+
+	// Reset the install status so the backend can be re-installed later.
+	i.mu.Lock()
+	i.statuses[name] = &installStatus{
+		installed: make(chan struct{}),
+		failed:    make(chan struct{}),
+	}
+	i.mu.Unlock()
+
+	return nil
+}
+
 // isInstalled returns true if the given backend has completed installation.
 // It is non-blocking.
 func (i *installer) isInstalled(name string) bool {

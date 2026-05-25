@@ -335,6 +335,11 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 		}
 	}
 
+	// Forward registry mirrors to the container if set on the host
+	if mirrors, ok := os.LookupEnv("MODEL_RUNNER_REGISTRY_MIRRORS"); ok && mirrors != "" {
+		env = append(env, "MODEL_RUNNER_REGISTRY_MIRRORS="+mirrors)
+	}
+
 	// Determine TLS port
 	tlsPort := tlsOpts.Port
 	if tlsOpts.Enabled && tlsPort == 0 {
@@ -567,7 +572,21 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 			ReadOnly: true,
 		})
 
-		env = append(env, "LD_LIBRARY_PATH=/usr/lib/wsl/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}")
+		// Prepend WSL and CUDA library paths to the image's existing LD_LIBRARY_PATH.
+		// Docker does not perform shell expansion in env vars, so we must resolve
+		// the image's value explicitly.
+		ldLibPath := "/usr/lib/wsl/lib:/usr/local/cuda/lib64"
+		if imgInfo, err := dockerClient.ImageInspect(ctx, imageName); err == nil {
+			for _, e := range imgInfo.Config.Env {
+				if strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
+					if v := strings.TrimPrefix(e, "LD_LIBRARY_PATH="); v != "" {
+						ldLibPath += ":" + v
+					}
+					break
+				}
+			}
+		}
+		env = append(env, "LD_LIBRARY_PATH="+ldLibPath)
 		config.Env = env
 	}
 

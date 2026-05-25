@@ -9,24 +9,30 @@ import (
 	"github.com/moby/moby/client/pkg/jsonmessage"
 )
 
-// EnsureControllerImage ensures that the controller container image is pulled.
+// EnsureControllerImage ensures that the controller container image is
+// available. It first tries to pull from the registry; if that fails it
+// falls back to a locally available image with the same name.
 func EnsureControllerImage(ctx context.Context, dockerClient client.ImageAPIClient, gpu gpupkg.GPUSupport, backend string, printer StatusPrinter) error {
 	imageName := controllerImageName(gpu, backend)
 
-	// Perform the pull.
-	out, err := dockerClient.ImagePull(ctx, imageName, client.ImagePullOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
+	var pullErr error
+	out, pullErr := dockerClient.ImagePull(ctx, imageName, client.ImagePullOptions{})
+	if pullErr == nil {
+		defer out.Close()
+		fd, isTerminal := printer.GetFdInfo()
+		pullErr = jsonmessage.DisplayJSONMessagesStream(out, printer, fd, isTerminal, nil)
 	}
-	defer out.Close()
-
-	// Display pull progress using Docker's built-in display handler
-	fd, isTerminal := printer.GetFdInfo()
-	if err := jsonmessage.DisplayJSONMessagesStream(out, printer, fd, isTerminal, nil); err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
+	if pullErr == nil {
+		printer.Println("Successfully pulled", imageName)
+		return nil
 	}
 
-	printer.Println("Successfully pulled", imageName)
+	// Pull failed — check if the image exists locally.
+	_, inspectErr := dockerClient.ImageInspect(ctx, imageName)
+	if inspectErr != nil {
+		return fmt.Errorf("failed to pull image %s and no local image found: %w", imageName, pullErr)
+	}
+	printer.Println("Using local image", imageName)
 	return nil
 }
 

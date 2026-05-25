@@ -15,21 +15,43 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/progress"
 	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/distribution/oci/remote"
 	mdregistry "github.com/docker/model-runner/pkg/distribution/registry"
 	"github.com/docker/model-runner/pkg/distribution/registry/testregistry"
-	"github.com/docker/model-runner/pkg/inference/platform"
 )
 
 var (
 	testGGUFFile = filepath.Join("..", "assets", "dummy.gguf")
 )
+
+// newModelPackTestArtifactWithMediaType creates a ModelPack test artifact with a specified weight layer media type.
+func newModelPackTestArtifactWithMediaType(t *testing.T, modelFile string, weightMediaType oci.MediaType) *testutil.Artifact {
+	t.Helper()
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	return testutil.NewModelPackArtifact(t, modelpack.Model{
+		Descriptor: modelpack.ModelDescriptor{
+			CreatedAt: &now,
+			Name:      "dummy-modelpack",
+		},
+		Config: modelpack.ModelConfig{
+			Format:    "gguf",
+			ParamSize: "8B",
+		},
+	}, testutil.Layer(modelFile, weightMediaType))
+}
+
+func newModelPackTestArtifact(t *testing.T, modelFile string) *testutil.Artifact {
+	t.Helper()
+	return newModelPackTestArtifactWithMediaType(t, modelFile, oci.MediaType(modelpack.MediaTypeWeightGGUF))
+}
 
 // newTestClient creates a new client configured for testing with plain HTTP enabled.
 func newTestClient(storeRootPath string) (*Client, error) {
@@ -63,7 +85,7 @@ func TestClientPullModel(t *testing.T) {
 		t.Fatalf("Failed to read test model file: %v", err)
 	}
 
-	model := testutil.BuildModelFromPath(t, testGGUFFile)
+	model := testutil.NewGGUFArtifact(t, testGGUFFile)
 	tag := registryHost + "/testmodel:v1.0.0"
 	ref, err := reference.ParseReference(tag)
 	if err != nil {
@@ -142,6 +164,136 @@ func TestClientPullModel(t *testing.T) {
 		}
 	})
 
+	t.Run("pull modelpack artifact", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		testClient, err := newTestClient(tempDir)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		mpTag := registryHost + "/modelpack-test/model:v1.0.0"
+		ref, err := reference.ParseReference(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to parse reference: %v", err)
+		}
+
+		mpModel := newModelPackTestArtifact(t, testGGUFFile)
+		if err := remote.Write(ref, mpModel, nil, remote.WithPlainHTTP(true)); err != nil {
+			t.Fatalf("Failed to push ModelPack model: %v", err)
+		}
+
+		if err := testClient.PullModel(t.Context(), mpTag, nil); err != nil {
+			t.Fatalf("Failed to pull ModelPack model: %v", err)
+		}
+
+		pulledModel, err := testClient.GetModel(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to get pulled model: %v", err)
+		}
+
+		ggufPaths, err := pulledModel.GGUFPaths()
+		if err != nil {
+			t.Fatalf("Failed to get GGUF paths: %v", err)
+		}
+		if len(ggufPaths) != 1 {
+			t.Fatalf("Unexpected number of GGUF files: %d", len(ggufPaths))
+		}
+
+		pulledContent, err := os.ReadFile(ggufPaths[0])
+		if err != nil {
+			t.Fatalf("Failed to read pulled GGUF file: %v", err)
+		}
+
+		originalContent, err := os.ReadFile(testGGUFFile)
+		if err != nil {
+			t.Fatalf("Failed to read source GGUF file: %v", err)
+		}
+
+		if !bytes.Equal(pulledContent, originalContent) {
+			t.Errorf("Pulled ModelPack model content doesn't match original")
+		}
+
+		cfg, err := pulledModel.Config()
+		if err != nil {
+			t.Fatalf("Failed to read pulled model config: %v", err)
+		}
+		if cfg.GetFormat() != "gguf" {
+			t.Errorf("Config format = %q, want %q", cfg.GetFormat(), "gguf")
+		}
+		if cfg.GetParameters() != "8B" {
+			t.Errorf("Config parameters = %q, want %q", cfg.GetParameters(), "8B")
+		}
+
+		if _, ok := cfg.(*modelpack.Model); !ok {
+			t.Errorf("Config type = %T, want *modelpack.Model", cfg)
+		}
+	})
+
+	// This test validates compatibility with real CNCF model-spec artifacts
+	// produced by tools like modctl, which use format-agnostic weight media types
+	// (e.g., application/vnd.cncf.model.weight.v1.raw) instead of format-specific
+	// types. The model format is determined from config.format field instead.
+	t.Run("pull modelpack artifact with raw weight media type", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		testClient, err := newTestClient(tempDir)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		mpTag := registryHost + "/modelpack-raw-test/model:v1.0.0"
+		ref, err := reference.ParseReference(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to parse reference: %v", err)
+		}
+
+		// Use the real model-spec media type that modctl produces
+		mpModel := newModelPackTestArtifactWithMediaType(t, testGGUFFile, oci.MediaType(modelpack.MediaTypeWeightRaw))
+		if err := remote.Write(ref, mpModel, nil, remote.WithPlainHTTP(true)); err != nil {
+			t.Fatalf("Failed to push ModelPack model: %v", err)
+		}
+
+		if err := testClient.PullModel(t.Context(), mpTag, nil); err != nil {
+			t.Fatalf("Failed to pull ModelPack model with raw weight type: %v", err)
+		}
+
+		pulledModel, err := testClient.GetModel(mpTag)
+		if err != nil {
+			t.Fatalf("Failed to get pulled model: %v", err)
+		}
+
+		ggufPaths, err := pulledModel.GGUFPaths()
+		if err != nil {
+			t.Fatalf("Failed to get GGUF paths: %v", err)
+		}
+		if len(ggufPaths) != 1 {
+			t.Fatalf("Unexpected number of GGUF files: %d", len(ggufPaths))
+		}
+
+		pulledContent, err := os.ReadFile(ggufPaths[0])
+		if err != nil {
+			t.Fatalf("Failed to read pulled GGUF file: %v", err)
+		}
+
+		originalContent, err := os.ReadFile(testGGUFFile)
+		if err != nil {
+			t.Fatalf("Failed to read source GGUF file: %v", err)
+		}
+
+		if !bytes.Equal(pulledContent, originalContent) {
+			t.Errorf("Pulled ModelPack model content doesn't match original")
+		}
+
+		cfg, err := pulledModel.Config()
+		if err != nil {
+			t.Fatalf("Failed to read pulled model config: %v", err)
+		}
+		if cfg.GetFormat() != "gguf" {
+			t.Errorf("Config format = %q, want %q", cfg.GetFormat(), "gguf")
+		}
+	})
+
 	t.Run("pull non-existent model", func(t *testing.T) {
 		tempDir := t.TempDir()
 
@@ -200,7 +352,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Use the dummy.gguf file from assets directory
-		mdl := testutil.BuildModelFromPath(t, testGGUFFile)
+		mdl := testutil.NewGGUFArtifact(t, testGGUFFile)
 
 		// Push model to local store
 		testTag := registryHost + "/incomplete-test/model:v1.0.0"
@@ -388,7 +540,11 @@ func TestClientPullModel(t *testing.T) {
 	})
 
 	t.Run("pull unsupported (newer) version", func(t *testing.T) {
-		newMdl := mutate.ConfigMediaType(model, "application/vnd.docker.ai.model.config.v99.0+json")
+		newMdl := testutil.NewGGUFArtifactWithConfigMediaType(
+			t,
+			testGGUFFile,
+			"application/vnd.docker.ai.model.config.v99.0+json",
+		)
 		// Push model to local store
 		testTag := registryHost + "/unsupported-test/model:v1.0.0"
 		ref, err := reference.ParseReference(testTag)
@@ -414,7 +570,7 @@ func TestClientPullModel(t *testing.T) {
 		}
 
 		// Create a safetensors model
-		safetensorsModel := testutil.BuildModelFromPath(t, safetensorsPath)
+		safetensorsModel := testutil.NewSafetensorsArtifact(t, safetensorsPath)
 
 		// Push to registry
 		testTag := registryHost + "/safetensors-test/model:v1.0.0"
@@ -434,25 +590,13 @@ func TestClientPullModel(t *testing.T) {
 			t.Fatalf("Failed to create test client: %v", err)
 		}
 
-		// Try to pull the safetensors model with a progress writer to capture warnings
 		var progressBuf bytes.Buffer
 		err = testClient.PullModel(t.Context(), testTag, &progressBuf)
 
-		// Pull should succeed on all platforms now (with a warning on non-Linux)
 		if err != nil {
 			t.Fatalf("Expected no error, got: %v", err)
 		}
 
-		if !platform.SupportsVLLM() {
-			// On non-Linux, verify that a warning was written
-			progressOutput := progressBuf.String()
-			if !strings.Contains(progressOutput, `"type":"warning"`) {
-				t.Fatalf("Expected warning message on non-Linux platforms, got output: %s", progressOutput)
-			}
-			if !strings.Contains(progressOutput, warnUnsupportedFormat) {
-				t.Fatalf("Expected warning about safetensors format, got output: %s", progressOutput)
-			}
-		}
 	})
 
 	t.Run("pull with JSON progress messages", func(t *testing.T) {
@@ -572,7 +716,7 @@ func TestClientGetModel(t *testing.T) {
 	}
 
 	// Create model from test GGUF file
-	model := testutil.BuildModelFromPath(t, testGGUFFile)
+	model := testutil.NewGGUFArtifact(t, testGGUFFile)
 
 	// Push model to local store
 	tag := "test/model:v1.0.0"
@@ -625,7 +769,7 @@ func TestClientListModels(t *testing.T) {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
 
-	mdl := testutil.BuildModelFromPath(t, modelFile)
+	mdl := testutil.NewGGUFArtifact(t, modelFile)
 
 	// Push models to local store with different manifest digests
 	// First model
@@ -640,7 +784,7 @@ func TestClientListModels(t *testing.T) {
 	if err := os.WriteFile(modelFile2, modelContent2, 0644); err != nil {
 		t.Fatalf("Failed to write test model file: %v", err)
 	}
-	mdl2 := testutil.BuildModelFromPath(t, modelFile2)
+	mdl2 := testutil.NewGGUFArtifact(t, modelFile2)
 
 	// Second model
 	tag2 := "test/model2:v1.0.0"
@@ -825,7 +969,7 @@ func TestPush(t *testing.T) {
 	tag := uri.Host + "/incomplete-test/model:v1.0.0"
 
 	// Write a test model to the store with the given tag
-	mdl := testutil.BuildModelFromPath(t, testGGUFFile)
+	mdl := testutil.NewGGUFArtifact(t, testGGUFFile)
 	digest, err := mdl.ID()
 	if err != nil {
 		t.Fatalf("Failed to get digest of original model: %v", err)
@@ -893,7 +1037,7 @@ func TestPushProgress(t *testing.T) {
 	}
 	defer os.Remove(path)
 
-	mdl := testutil.BuildModelFromPath(t, path)
+	mdl := testutil.NewGGUFArtifact(t, path)
 
 	if err := client.store.Write(mdl, []string{tag}, nil); err != nil {
 		t.Fatalf("Failed to write model to store: %v", err)
@@ -956,7 +1100,7 @@ func TestTag(t *testing.T) {
 	}
 
 	// Create a test model
-	model := testutil.BuildModelFromPath(t, testGGUFFile)
+	model := testutil.NewGGUFArtifact(t, testGGUFFile)
 	id, err := model.ID()
 	if err != nil {
 		t.Fatalf("Failed to get model ID: %v", err)
@@ -1054,7 +1198,7 @@ func TestIsModelInStoreFound(t *testing.T) {
 	}
 
 	// Create a test model
-	model := testutil.BuildModelFromPath(t, testGGUFFile)
+	model := testutil.NewGGUFArtifact(t, testGGUFFile)
 
 	// Normalize the model name before writing
 	normalized := client.normalizeModelName("some-repo:some-tag")
@@ -1082,7 +1226,7 @@ func writeToRegistry(t *testing.T, source, refStr string, opts ...remote.Option)
 	}
 
 	// Create image with layer
-	mdl := testutil.BuildModelFromPath(t, source)
+	mdl := testutil.NewGGUFArtifact(t, source)
 
 	// Push the image
 	if err := remote.Write(ref, mdl, nil, opts...); err != nil {
@@ -1145,7 +1289,7 @@ func TestMigrateHFTagsOnClientInit(t *testing.T) {
 				t.Fatalf("Failed to create setup client: %v", err)
 			}
 
-			model := testutil.BuildModelFromPath(t, testGGUFFile)
+			model := testutil.NewGGUFArtifact(t, testGGUFFile)
 
 			if err := setupClient.store.Write(model, []string{tc.storedTag}, nil); err != nil {
 				t.Fatalf("Failed to write model to store: %v", err)
@@ -1219,7 +1363,7 @@ func TestPullHuggingFaceModelFromCache(t *testing.T) {
 			}
 
 			// Create a test model and write it to the store with a normalized HuggingFace tag
-			model := testutil.BuildModelFromPath(t, testGGUFFile)
+			model := testutil.NewGGUFArtifact(t, testGGUFFile)
 
 			// Store with normalized tag (huggingface.co)
 			hfTag := "huggingface.co/testorg/testmodel:latest"

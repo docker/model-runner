@@ -17,13 +17,6 @@ func Var(key string) string {
 	return strings.Trim(strings.TrimSpace(os.Getenv(key)), "\"'")
 }
 
-// String returns a lazy string accessor for the given environment variable.
-func String(key string) func() string {
-	return func() string {
-		return Var(key)
-	}
-}
-
 // BoolWithDefault returns a lazy bool accessor for the given environment variable,
 // allowing a caller-specified default. If the variable is set but cannot be parsed
 // as a bool, the defaultValue is returned.
@@ -165,6 +158,14 @@ func OVMSServerPath() string {
 	return Var("OVMS_SERVER_PATH")
 }
 
+// LogDir returns the directory containing DMR log files.
+// Configured via MODEL_RUNNER_LOG_DIR. When empty, the server
+// auto-creates a default log directory so that the /logs API
+// endpoint is available in all deployment modes.
+func LogDir() string {
+	return Var("MODEL_RUNNER_LOG_DIR")
+}
+
 // DisableMetrics is true when DISABLE_METRICS is set to a truthy value (e.g. "1").
 var DisableMetrics = Bool("DISABLE_METRICS")
 
@@ -195,3 +196,19 @@ func TLSKey() string {
 // TLSAutoCert is true (default) unless MODEL_RUNNER_TLS_AUTO_CERT is set to a falsy value.
 // Call as TLSAutoCert(true) to get the default-true behaviour.
 var TLSAutoCert = BoolWithDefault("MODEL_RUNNER_TLS_AUTO_CERT")
+
+// RegistryMirrors returns registry mirrors from MODEL_RUNNER_REGISTRY_MIRRORS (comma-separated URLs).
+// Mirrors are tried before registry-1.docker.io when pulling backend images.
+func RegistryMirrors() []string {
+	s := Var("MODEL_RUNNER_REGISTRY_MIRRORS")
+	if s == "" {
+		return nil
+	}
+	var mirrors []string
+	for _, m := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(m); trimmed != "" {
+			mirrors = append(mirrors, trimmed)
+		}
+	}
+	return mirrors
+}

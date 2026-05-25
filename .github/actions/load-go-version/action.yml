@@ -1,0 +1,14 @@
+name: Load Go version
+description: Read GO_VERSION from .versions and expose it as an output
+
+outputs:
+  go-version:
+    value: ${{ steps.load.outputs.GO_VERSION }}
+
+runs:
+  using: composite
+  steps:
+    - name: Load GO version
+      id: load
+      shell: bash
+      run: grep '^GO_VERSION=' .versions | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//' >> "$GITHUB_OUTPUT"

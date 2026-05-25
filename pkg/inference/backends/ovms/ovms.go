@@ -137,6 +137,11 @@ func (o *ovms) Run(ctx context.Context, socket, model string, modelRef string, _
 	})
 }
 
+// Uninstall implements inference.Backend.Uninstall.
+func (o *ovms) Uninstall() error {
+	return nil
+}
+
 func (o *ovms) Status() string {
 	return o.status
 }

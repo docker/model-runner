@@ -1,155 +1,137 @@
 package modelpack
 
 import (
-	"encoding/json"
-	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/opencontainers/go-digest"
 )
 
-// IsModelPackMediaType checks if the given media type indicates a CNCF ModelPack format.
-// It returns true if the media type has the CNCF model prefix.
-func IsModelPackMediaType(mediaType string) bool {
-	return strings.HasPrefix(mediaType, MediaTypePrefix)
+// LayerKind is a semantic classification of a model artifact layer.
+// It maps to specific CNCF model-spec media types.
+type LayerKind int
+
+const (
+	// KindWeight is a primary model weight file (GGUF, safetensors, DDUF,
+	// mmproj, etc.).
+	KindWeight LayerKind = iota
+	// KindWeightConfig is a weight config file: tokenizer.json, config.json,
+	// vLLM config archives, chat templates, etc.
+	KindWeightConfig
+	// KindDoc is a documentation file: README.md, LICENSE, etc.
+	KindDoc
+)
+
+// ClassifyLayer determines the CNCF model-spec LayerKind for a layer.
+// Resolution order:
+//  1. Explicit Docker semantic media types (most specific).
+//  2. Filepath/annotation heuristics for ambiguous media types.
+//  3. Docker media type fallback.
+func ClassifyLayer(dockerMT oci.MediaType, path string) LayerKind {
+	switch dockerMT { //nolint:exhaustive // Only Docker and CNCF semantic media types are classified; OCI standard types fall through to filepath heuristics.
+	// Docker-format documentation types.
+	case types.MediaTypeLicense, MediaTypeDocRaw:
+		return KindDoc
+	// Docker-format weight config types.
+	case types.MediaTypeChatTemplate, types.MediaTypeVLLMConfigArchive, types.MediaTypeModelFile, MediaTypeWeightConfigRaw:
+		return KindWeightConfig
+	// Docker-format weight types.
+	case types.MediaTypeMultimodalProjector:
+		return KindWeight
+	case types.MediaTypeGGUF, types.MediaTypeSafetensors, types.MediaTypeDDUF:
+		return KindWeight
+	// CNCF model-spec weight types (including legacy typed media types).
+	case MediaTypeWeightRaw, MediaTypeWeightGGUF, MediaTypeWeightSafetensors:
+		return KindWeight
+	}
+
+	// Use filepath heuristics for ambiguous or unknown media types.
+	if path != "" {
+		return classifyByPath(path)
+	}
+
+	// Default: treat unknown media types (without filepath hints) as weight
+	// config. This is intentional for the directory-based packaging flow
+	// where ambiguous files (tokenizer.json, config.json, etc.) are common
+	// and typically carry configuration rather than model weights. All known
+	// weight media types — both Docker (MediaTypeGGUF, MediaTypeSafetensors,
+	// etc.) and CNCF (MediaTypeWeightRaw, etc.) — are handled explicitly in
+	// the switch above, so this fallback only triggers for truly unrecognized
+	// media types.
+	return KindWeightConfig
 }
 
-// IsModelPackConfig detects if raw config bytes are in ModelPack format.
-// It parses the JSON structure for precise detection, avoiding false positives from string matching.
-// ModelPack format characteristics: config.paramSize or descriptor.createdAt
-// Docker format uses: config.parameters and descriptor.created
-func IsModelPackConfig(raw []byte) bool {
-	if len(raw) == 0 {
-		return false
-	}
-
-	// Parse as map to check actual JSON structure
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return false
-	}
-
-	// Check for config.paramSize (ModelPack-specific field)
-	if configRaw, ok := parsed["config"]; ok {
-		var config map[string]json.RawMessage
-		if err := json.Unmarshal(configRaw, &config); err == nil {
-			if _, hasParamSize := config["paramSize"]; hasParamSize {
-				return true
-			}
+// classifyByPath classifies a file as a LayerKind based on its path/name.
+func classifyByPath(path string) LayerKind {
+	ft := files.Classify(path)
+	switch ft {
+	case files.FileTypeGGUF, files.FileTypeSafetensors, files.FileTypeDDUF:
+		return KindWeight
+	case files.FileTypeLicense:
+		return KindDoc
+	case files.FileTypeChatTemplate:
+		return KindWeightConfig
+	case files.FileTypeUnknown:
+		return KindWeightConfig
+	case files.FileTypeConfig:
+		// .md files are documentation, not weight config.
+		if strings.ToLower(filepath.Ext(path)) == ".md" {
+			return KindDoc
 		}
-	}
-
-	// Check for descriptor.createdAt (ModelPack uses camelCase)
-	if descRaw, ok := parsed["descriptor"]; ok {
-		var desc map[string]json.RawMessage
-		if err := json.Unmarshal(descRaw, &desc); err == nil {
-			if _, hasCreatedAt := desc["createdAt"]; hasCreatedAt {
-				return true
-			}
-		}
-	}
-
-	// Check for modelfs (ModelPack-specific field name)
-	if _, hasModelFS := parsed["modelfs"]; hasModelFS {
-		return true
-	}
-
-	return false
-}
-
-// MapLayerMediaType maps ModelPack layer media types to Docker format.
-// Returns the original value if not a ModelPack type.
-func MapLayerMediaType(mediaType string) string {
-	// Only process ModelPack weight layers
-	if !strings.HasPrefix(mediaType, MediaTypePrefix) {
-		return mediaType
-	}
-
-	// Determine corresponding Docker type based on media type format
-	switch {
-	case strings.Contains(mediaType, "weight") && strings.Contains(mediaType, "gguf"):
-		return string(types.MediaTypeGGUF)
-	case strings.Contains(mediaType, "weight") && strings.Contains(mediaType, "safetensors"):
-		return string(types.MediaTypeSafetensors)
+		return KindWeightConfig
 	default:
-		// Keep other layer types (doc, code, etc.) as-is
-		return mediaType
+		return KindWeightConfig
 	}
 }
 
-// ConvertToDockerConfig converts a raw ModelPack config JSON to Docker model-spec ConfigFile.
-// It maps common fields directly. Note: Extended ModelPack metadata is not preserved
-// since types.Config no longer has a ModelPack field.
-func ConvertToDockerConfig(rawConfig []byte) (*types.ConfigFile, error) {
-	var mp Model
-	if err := json.Unmarshal(rawConfig, &mp); err != nil {
-		return nil, fmt.Errorf("unmarshal modelpack config: %w", err)
+// LayerKindToMediaType maps a LayerKind to the CNCF model-spec raw media type.
+func LayerKindToMediaType(kind LayerKind) oci.MediaType {
+	switch kind {
+	case KindWeight:
+		return MediaTypeWeightRaw
+	case KindDoc:
+		return MediaTypeDocRaw
+	case KindWeightConfig:
+		return MediaTypeWeightConfigRaw
 	}
+	return MediaTypeWeightConfigRaw
+}
 
-	// Build the Docker format config
-	dockerConfig := &types.ConfigFile{
-		Config: types.Config{
-			Format:       convertFormat(mp.Config.Format),
-			Architecture: mp.Config.Architecture,
-			Quantization: mp.Config.Quantization,
-			Parameters:   mp.Config.ParamSize,
-			Size:         "0", // ModelPack doesn't have an equivalent field
+// MapLayerMediaType returns the CNCF model-spec media type for the given
+// Docker layer media type and optional filepath annotation.
+func MapLayerMediaType(dockerMT oci.MediaType, path string) oci.MediaType {
+	return LayerKindToMediaType(ClassifyLayer(dockerMT, path))
+}
+
+// DockerConfigToModelPack converts a Docker-format model config into a
+// CNCF ModelPack Model config. The diffIDs should already be in
+// digest.Digest ("algorithm:hex") format.
+func DockerConfigToModelPack(
+	cfg types.Config,
+	desc types.Descriptor,
+	diffIDs []digest.Digest,
+) Model {
+	// Preserve determinism by propagating desc.Created directly.
+	// Callers that require a concrete timestamp should set desc.Created
+	// explicitly before calling this function.
+	return Model{
+		Descriptor: ModelDescriptor{
+			CreatedAt: desc.Created,
+			// Map architecture to family as the closest available field.
+			Family: cfg.Architecture,
 		},
-		Descriptor: types.Descriptor{
-			Created: mp.Descriptor.CreatedAt,
+		Config: ModelConfig{
+			Architecture: cfg.Architecture,
+			Format:       string(cfg.Format),
+			ParamSize:    cfg.Parameters,
+			Quantization: cfg.Quantization,
 		},
-		RootFS: oci.RootFS{
-			Type:    normalizeRootFSType(mp.ModelFS.Type),
-			DiffIDs: convertDiffIDs(mp.ModelFS.DiffIDs),
+		ModelFS: ModelFS{
+			Type:    "layers",
+			DiffIDs: diffIDs,
 		},
 	}
-
-	return dockerConfig, nil
-}
-
-// convertFormat maps ModelPack format strings to Docker Format type.
-// Format strings are normalized to lowercase for consistent matching.
-func convertFormat(mpFormat string) types.Format {
-	switch strings.ToLower(mpFormat) {
-	case "gguf":
-		return types.FormatGGUF
-	case "safetensors":
-		return types.FormatSafetensors
-	default:
-		// Pass through unknown formats as-is
-		return types.Format(strings.ToLower(mpFormat))
-	}
-}
-
-// normalizeRootFSType ensures the rootfs type is set correctly.
-// ModelPack uses "layers" as the type, which maps to Docker's "layers".
-func normalizeRootFSType(mpType string) string {
-	if mpType == "" {
-		return "layers"
-	}
-	return mpType
-}
-
-// convertDiffIDs converts opencontainers digest.Digest slice to oci.Hash slice.
-// Note: Invalid digests are silently skipped here because they will be caught
-// during layer validation when the model is actually loaded. This avoids
-// failing early for formats we might not fully understand yet.
-func convertDiffIDs(digests []digest.Digest) []oci.Hash {
-	if len(digests) == 0 {
-		return nil
-	}
-
-	result := make([]oci.Hash, 0, len(digests))
-	for _, d := range digests {
-		// digest.Digest format is "algorithm:hex", same as oci.Hash
-		hash, err := oci.NewHash(d.String())
-		if err != nil {
-			// Skip invalid digests; they will be caught during layer validation
-			continue
-		}
-		result = append(result, hash)
-	}
-	return result
 }

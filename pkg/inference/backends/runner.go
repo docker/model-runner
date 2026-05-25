@@ -42,12 +42,29 @@ type RunnerConfig struct {
 	// ErrorTransformer is an optional function to transform error output
 	// into a more user-friendly message. If nil, the raw output is used.
 	ErrorTransformer ErrorTransformer
+	// Env is an optional list of extra environment variables for the backend
+	// process, each in "KEY=VALUE" form. These are appended to the current
+	// process environment. If nil or empty, the backend inherits the parent
+	// env as-is (an empty non-nil slice is treated the same as nil).
+	Env []string
 }
 
 // Logger interface for backend logging
 type Logger interface {
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
+}
+
+// ValidateEnv checks that every entry in env is in "KEY=VALUE" form with a
+// non-empty key. It returns an error describing the first malformed entry.
+func ValidateEnv(env []string) error {
+	for _, e := range env {
+		k, _, ok := strings.Cut(e, "=")
+		if !ok || k == "" {
+			return fmt.Errorf("invalid env var format (expected KEY=VALUE): %q", e)
+		}
+	}
+	return nil
 }
 
 // RunBackend runs a backend process with common error handling and logging.
@@ -58,6 +75,11 @@ type Logger interface {
 // - Error channel handling
 // - Context cancellation
 func RunBackend(ctx context.Context, config RunnerConfig) error {
+	// Validate env var format early to catch misconfiguration before spawning.
+	if err := ValidateEnv(config.Env); err != nil {
+		return fmt.Errorf("invalid %s configuration: %w", config.BackendName, err)
+	}
+
 	// Remove old socket file
 	if err := os.RemoveAll(config.Socket); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		config.Logger.Warn("failed to remove socket file", "socket", config.Socket, "error", err)
@@ -88,6 +110,9 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 			}
 			command.Stdout = config.ServerLogWriter
 			command.Stderr = out
+			if len(config.Env) > 0 {
+				command.Env = append(os.Environ(), config.Env...)
+			}
 		},
 		config.SandboxPath,
 		config.BinaryPath,

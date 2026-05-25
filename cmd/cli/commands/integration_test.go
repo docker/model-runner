@@ -269,7 +269,8 @@ func createAndPushTestModel(t *testing.T, registryURL, modelRef string, contextS
 
 	// Set context size if specified
 	if contextSize != nil {
-		pkg = pkg.WithContextSize(*contextSize)
+		pkg, err = pkg.WithContextSize(*contextSize)
+		require.NoError(t, err)
 	}
 
 	// Construct the full reference with the local registry host for pushing from test host
@@ -1053,6 +1054,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		opts := packageOptions{
 			ggufPath: absPath,
 			tag:      targetTag,
+			format:   "docker",
 		}
 
 		// Execute the package command using the helper function with test client
@@ -1088,6 +1090,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 			ggufPath:    absPath,
 			tag:         targetTag,
 			contextSize: 4096,
+			format:      "docker",
 		}
 
 		// Create a command for context
@@ -1120,6 +1123,7 @@ func TestIntegration_PackageModel(t *testing.T) {
 		opts := packageOptions{
 			ggufPath: absPath,
 			tag:      targetTag,
+			format:   "docker",
 		}
 
 		// Create a command for context
@@ -1136,6 +1140,34 @@ func TestIntegration_PackageModel(t *testing.T) {
 		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
 
 		t.Logf("✓ Successfully packaged model with custom org: %s", targetTag)
+
+		// Cleanup
+		err = removeModel(env.client, model.ID, true)
+		require.NoError(t, err, "Failed to remove model")
+	})
+
+	// Test case 4: Package with CNCF format
+	t.Run("package GGUF with CNCF format", func(t *testing.T) {
+		targetTag := "ai/packaged-cncf:latest"
+
+		// Create package options with CNCF format
+		opts := packageOptions{
+			ggufPath: absPath,
+			tag:      targetTag,
+			format:   "cncf",
+		}
+
+		// Execute the package command using the helper function with test client
+		t.Logf("Packaging GGUF file as CNCF format %s", targetTag)
+		err := packageModel(env.ctx, newPackagedCmd(), env.client, opts)
+		require.NoError(t, err, "Failed to package GGUF model with CNCF format")
+
+		// Verify the model was loaded and tagged
+		model, err := env.client.Inspect(targetTag, false)
+		require.NoError(t, err, "Failed to inspect CNCF packaged model")
+		require.Contains(t, model.Tags, normalizeRef(t, targetTag), "Model should have the expected tag")
+
+		t.Logf("✓ Successfully packaged model with CNCF format: %s (ID: %s)", targetTag, model.ID[7:19])
 
 		// Cleanup
 		err = removeModel(env.client, model.ID, true)

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/docker/model-runner/pkg/logging"
 	"github.com/docker/model-runner/pkg/middleware"
@@ -49,6 +48,12 @@ func NewHTTPHandler(log logging.Logger, schedulerHTTP http.Handler, allowedOrigi
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 
 	return h
+}
+
+// Close releases resources held by the handler, including the background
+// store cleanup goroutine. It should be called when the handler is shut down.
+func (h *HTTPHandler) Close() {
+	h.store.Close()
 }
 
 // ServeHTTP implements http.Handler.
@@ -335,10 +340,4 @@ func (h *HTTPHandler) GetStore() *Store {
 // SetMaxRequestBodyBytes sets the maximum request body size in bytes.
 func (h *HTTPHandler) SetMaxRequestBodyBytes(bytes int64) {
 	h.maxRequestBodyBytes = bytes
-}
-
-// ResponseWithTimestamp adds a timestamp helper.
-func ResponseWithTimestamp(resp *Response) *Response {
-	resp.CreatedAt = float64(time.Now().Unix())
-	return resp
 }

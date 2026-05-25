@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/platform"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
@@ -42,13 +43,16 @@ type vLLM struct {
 	status string
 	// customBinaryPath is an optional custom path to the vllm binary.
 	customBinaryPath string
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // Options holds the configuration for the unified vLLM backend constructor.
 type Options struct {
-	Config          *Config // Linux-only: extra vllm args (nil = defaults)
-	LinuxBinaryPath string  // Linux: custom vllm binary path
-	MetalPythonPath string  // macOS ARM64: custom python path
+	Config          *Config  // Linux-only: extra vllm args (nil = defaults)
+	LinuxBinaryPath string   // Linux: custom vllm binary path
+	MetalPythonPath string   // macOS ARM64: custom python path
+	RegistryMirrors []string // registry mirrors tried before registry-1.docker.io
 }
 
 // New creates the appropriate vLLM backend for the current platform.
@@ -57,9 +61,9 @@ type Options struct {
 // methods return errors.
 func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, opts Options) (inference.Backend, error) {
 	if platform.SupportsVLLMMetal() {
-		return newMetal(log, modelManager, serverLog, opts.MetalPythonPath)
+		return newMetal(log, modelManager, serverLog, opts.MetalPythonPath, opts.RegistryMirrors)
 	}
-	return newLinux(log, modelManager, serverLog, opts.Config, opts.LinuxBinaryPath)
+	return newLinux(log, modelManager, serverLog, opts.Config, opts.LinuxBinaryPath, opts.RegistryMirrors)
 }
 
 // NeedsDeferredInstall reports whether vllm on the current platform
@@ -70,7 +74,7 @@ func NeedsDeferredInstall() bool {
 
 // newLinux creates a new Linux vLLM-based backend.
 // customBinaryPath is an optional path to a custom vllm binary; if empty, the default path is used.
-func newLinux(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string) (inference.Backend, error) {
+func newLinux(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string, registryMirrors []string) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultVLLMConfig()
@@ -83,6 +87,7 @@ func newLinux(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		config:           conf,
 		status:           inference.FormatNotInstalled(""),
 		customBinaryPath: customBinaryPath,
+		registryMirrors:  registryMirrors,
 	}, nil
 }
 
@@ -180,11 +185,16 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		Socket:          socket,
 		BinaryPath:      v.binaryPath(),
 		SandboxPath:     vllmDir,
-		SandboxConfig:   "",
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),
 	})
+}
+
+// Uninstall implements inference.Backend.Uninstall.
+func (v *vLLM) Uninstall() error {
+	return nil
 }
 
 func (v *vLLM) Status() string {

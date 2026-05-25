@@ -1,0 +1,39 @@
+[package]
+name = "model-cli"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight, high-performance LLM gateway"
+license = "Apache 2.0"
+
+[[bin]]
+name = "model-cli"
+path = "src/main.rs"
+
+# Static library consumed by the Go CLI via CGo.
+[lib]
+name = "model_cli_gateway"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
+subtle = "2"
+tokio-stream = "0.1"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bytes = "1"
+http = "1"
+async-stream = "0.3"
+pin-project-lite = "0.2"
+async-trait = "0.1"
+
+[profile.release]
+lto = true

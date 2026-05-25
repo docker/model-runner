@@ -3,8 +3,11 @@ package format
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +17,9 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
+
+// maxFormatJSONSize caps how many bytes are read from JSON metadata blobs (safetensors headers, HuggingFace config.json)
+const maxFormatJSONSize = 100 * 1024 * 1024
 
 // SafetensorsFormat implements the Format interface for Safetensors model files.
 type SafetensorsFormat struct{}
@@ -115,14 +121,94 @@ func (s *SafetensorsFormat) ExtractConfig(paths []string) (types.Config, error) 
 		architecture = fmt.Sprintf("%v", arch)
 	}
 
-	return types.Config{
+	contextSize, err := readContextSizeConfig(paths)
+	if err != nil {
+		log.Printf("warning: read context size from config.json: %v", err)
+	}
+
+	cfg := types.Config{
 		Format:       types.FormatSafetensors,
 		Parameters:   formatParameters(params),
 		Quantization: header.getQuantization(),
 		Size:         formatSize(totalSize),
 		Architecture: architecture,
 		Safetensors:  header.extractMetadata(),
-	}, nil
+		ContextSize:  contextSize,
+	}
+
+	return cfg, nil
+}
+
+// contextSizeConfigKeys lists the HuggingFace config.json keys that may hold
+// the model's maximum context length, in priority order. This mirrors
+// llama.cpp's convert_hf_to_gguf.py (TextModel.set_gguf_parameters), which is
+// the canonical HuggingFace-to-GGUF converter.
+var contextSizeConfigKeys = []string{
+	"max_position_embeddings",
+	"n_ctx",
+	"n_positions",
+	"max_length",
+	"max_sequence_length",
+	"model_max_length",
+}
+
+func readContextSizeConfig(paths []string) (*int32, error) {
+	f, err := openSiblingConfigJSON(paths)
+	if err != nil || f == nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxFormatJSONSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read config.json: %w", err)
+	}
+	if len(data) > maxFormatJSONSize {
+		return nil, fmt.Errorf("config.json exceeds %d-byte limit", maxFormatJSONSize)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse config.json: %w", err)
+	}
+
+	for _, key := range contextSizeConfigKeys {
+		v, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var n int64
+		if err := json.Unmarshal(v, &n); err != nil {
+			continue
+		}
+		if n <= 0 || n > math.MaxInt32 {
+			continue
+		}
+		ctx := int32(n)
+		return &ctx, nil
+	}
+	return nil, nil
+}
+
+// openSiblingConfigJSON walks unique directories from paths and opens the
+// first config.json it finds. Returns (nil, nil) when none exists.
+func openSiblingConfigJSON(paths []string) (*os.File, error) {
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		dir := filepath.Dir(p)
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		f, err := os.Open(filepath.Join(dir, "config.json"))
+		if err == nil {
+			return f, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("open config.json: %w", err)
+		}
+	}
+	return nil, nil
 }
 
 const (
@@ -157,8 +243,7 @@ func parseSafetensorsHeader(path string) (*safetensorsHeader, error) {
 		return nil, fmt.Errorf("read header length: %w", err)
 	}
 
-	// Sanity check: header shouldn't be larger than 100MB
-	if headerLen > 100*1024*1024 {
+	if headerLen > maxFormatJSONSize {
 		return nil, fmt.Errorf("header length too large: %d bytes", headerLen)
 	}
 

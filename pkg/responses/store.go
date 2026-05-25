@@ -13,6 +13,7 @@ type Store struct {
 	mu        sync.RWMutex
 	responses map[string]*storedResponse
 	ttl       time.Duration
+	stopCh    chan struct{}
 }
 
 type storedResponse struct {
@@ -28,10 +29,17 @@ func NewStore(ttl time.Duration) *Store {
 	s := &Store{
 		responses: make(map[string]*storedResponse),
 		ttl:       ttl,
+		stopCh:    make(chan struct{}),
 	}
-	// Start background cleanup goroutine
+	// Start background cleanup goroutine.
 	go s.cleanupLoop()
 	return s
+}
+
+// Close stops the background cleanup goroutine. It must be called when the
+// Store is no longer needed to avoid a goroutine leak.
+func (s *Store) Close() {
+	close(s.stopCh)
 }
 
 // Save stores a response.
@@ -83,12 +91,17 @@ func (s *Store) Update(id string, updateFn func(*Response)) bool {
 	return true
 }
 
-// cleanupLoop periodically removes expired responses.
+// cleanupLoop periodically removes expired responses until Close is called.
 func (s *Store) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		s.cleanup()
+	for {
+		select {
+		case <-ticker.C:
+			s.cleanup()
+		case <-s.stopCh:
+			return
+		}
 	}
 }
 

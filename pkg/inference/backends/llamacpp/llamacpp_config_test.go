@@ -191,7 +191,7 @@ func TestGetArgs(t *testing.T) {
 			),
 		},
 		{
-			name: "context size from model config",
+			name: "backend config takes precedence over model config",
 			mode: inference.BackendModeEmbedding,
 			bundle: &fakeBundle{
 				ggufPath: modelPath,
@@ -206,7 +206,25 @@ func TestGetArgs(t *testing.T) {
 				"--model", modelPath,
 				"--host", socket,
 				"--embeddings",
-				"--ctx-size", "2096", // model config takes precedence
+				"--ctx-size", "1234", // backend config takes precedence
+				"--jinja",
+			),
+		},
+		{
+			name: "model config used when no backend config",
+			mode: inference.BackendModeEmbedding,
+			bundle: &fakeBundle{
+				ggufPath: modelPath,
+				config: &types.Config{
+					ContextSize: int32ptr(2096),
+				},
+			},
+			config: nil,
+			expected: append(slices.Clone(baseArgs),
+				"--model", modelPath,
+				"--host", socket,
+				"--embeddings",
+				"--ctx-size", "2096", // model config used as fallback
 				"--jinja",
 			),
 		},

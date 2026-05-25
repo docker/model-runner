@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -54,14 +55,21 @@ func (g *GGUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 		return types.Config{Format: types.FormatGGUF}, nil
 	}
 
-	return types.Config{
+	cfg := types.Config{
 		Format:       types.FormatGGUF,
 		Parameters:   normalizeUnitString(gguf.Metadata().Parameters.String()),
 		Architecture: strings.TrimSpace(gguf.Metadata().Architecture),
 		Quantization: strings.TrimSpace(gguf.Metadata().FileType.String()),
 		Size:         normalizeUnitString(gguf.Metadata().Size.String()),
 		GGUF:         extractGGUFMetadata(&gguf.Header),
-	}, nil
+	}
+
+	if ctx := gguf.Architecture().MaximumContextLength; ctx > 0 && ctx <= math.MaxInt32 {
+		ctxSize := int32(ctx)
+		cfg.ContextSize = &ctxSize
+	}
+
+	return cfg, nil
 }
 
 var (

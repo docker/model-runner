@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"slices"
 	"strconv"
@@ -85,14 +86,20 @@ func newUpCommand() *cobra.Command {
 			}
 
 			for _, model := range models {
-				size := int32(ctxSize)
+				backendConfig := inference.BackendConfiguration{
+					Speculative: speculativeConfig,
+				}
+				if cmd.Flags().Changed("context-size") {
+					if ctxSize > math.MaxInt32 || ctxSize < math.MinInt32 {
+						return fmt.Errorf("context-size %d is out of range (must be between %d and %d)", ctxSize, math.MinInt32, math.MaxInt32)
+					}
+					size := int32(ctxSize)
+					backendConfig.ContextSize = &size
+				}
 				if err := desktopClient.ConfigureBackend(scheduling.ConfigureRequest{
-					Model: model,
-					BackendConfiguration: inference.BackendConfiguration{
-						ContextSize: &size,
-						Speculative: speculativeConfig,
-					},
-					RawRuntimeFlags: rawRuntimeFlags,
+					Model:                model,
+					BackendConfiguration: backendConfig,
+					RawRuntimeFlags:      rawRuntimeFlags,
 				}); err != nil {
 					configErrFmtString := "failed to configure backend for model %s with context-size %d  and runtime-flags %s"
 					_ = sendErrorf(configErrFmtString+": %v", model, ctxSize, rawRuntimeFlags, err)

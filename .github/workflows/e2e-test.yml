@@ -1,0 +1,57 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**'
+      - 'llamacpp/native/vendor/llama.cpp'
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+          - os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    # Must exceed the Go test timeout (E2E_TIMEOUT in the Makefile, currently
+    # 30 min) to allow for setup steps (checkout, Go/Rust toolchain, build).
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          submodules: recursive
+
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version: ${{ steps.versions.outputs.go-version }}
+          cache: true
+
+      - name: Set up Docker
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/setup-docker-action@b2189fbf2a6592b51fee7cdd93ee2bfaeba733db
+
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Run e2e tests
+        run: make e2e

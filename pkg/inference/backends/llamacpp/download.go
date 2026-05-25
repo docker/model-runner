@@ -128,7 +128,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	defer os.RemoveAll(downloadDir)
 
 	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailDownloading, desiredTag))
-	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir); extractErr != nil {
+	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir, l.registryMirrors); extractErr != nil {
 		return fmt.Errorf("could not extract image: %w", extractErr)
 	}
 
@@ -174,14 +174,14 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 }
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
-func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs, requiredArch, destination string) error {
+func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs, requiredArch, destination string, mirrors []string) error {
 	log.Info("Extracting image", "image", image, "destination", destination)
 	tmpDir, err := os.MkdirTemp("", "docker-tar-extract")
 	if err != nil {
 		return err
 	}
 	imageTar := filepath.Join(tmpDir, "save.tar")
-	if err := dockerhub.PullPlatform(ctx, image, imageTar, requiredOs, requiredArch); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, imageTar, requiredOs, requiredArch, mirrors); err != nil {
 		return err
 	}
 	return dockerhub.Extract(imageTar, requiredArch, requiredOs, destination)

@@ -1,8 +1,8 @@
 package store
 
 import (
-	"context"
-	"errors"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -197,11 +197,10 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 		buf := make([]byte, 1)
 		n, readErr := r.Read(buf)
 		if readErr != nil && readErr != io.EOF {
-			// Clean up the incomplete file on read error (unless it's a context cancellation
-			// which should preserve the file for future resume attempts)
-			if !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, context.DeadlineExceeded) {
-				_ = os.Remove(incompletePath)
-			}
+			// Preserve the incomplete file on all errors so that the next
+			// attempt can resume from where this one left off. Stale
+			// incomplete files are cleaned up by CleanupStaleIncompleteFiles
+			// during store initialisation (default: files older than 7 days).
 			return fmt.Errorf("read first byte: %w", readErr)
 		}
 
@@ -267,6 +266,35 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 	}
 
 	f.Close() // Rename will fail on Windows if the file is still open.
+
+	// Verify the digest of the completed file before making it visible. This
+	// must be done after closing the file (to flush all writes) and before the
+	// rename so that a mismatch never results in a corrupt blob being stored.
+	// We hash the whole file rather than the streamed bytes so that resumed
+	// downloads (which append to an existing partial file) are verified
+	// correctly over their entire contents.
+	if diffID.Algorithm == "sha256" {
+		completedFile, openErr := os.Open(incompletePath)
+		if openErr != nil {
+			_ = os.Remove(incompletePath)
+			return fmt.Errorf("open completed blob file for verification: %w", openErr)
+		}
+
+		hasher := sha256.New()
+		if _, copyErr := io.Copy(hasher, completedFile); copyErr != nil {
+			completedFile.Close()
+			_ = os.Remove(incompletePath)
+			return fmt.Errorf("hash completed blob file: %w", copyErr)
+		}
+		completedFile.Close()
+
+		computed := hex.EncodeToString(hasher.Sum(nil))
+		if computed != diffID.Hex {
+			_ = os.Remove(incompletePath)
+			return fmt.Errorf("blob digest mismatch for %q: expected sha256:%s, got sha256:%s",
+				diffID.String(), diffID.Hex, computed)
+		}
+	}
 
 	if renameFinalErr := os.Rename(incompletePath, path); renameFinalErr != nil {
 		return fmt.Errorf("rename blob file: %w", renameFinalErr)

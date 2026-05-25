@@ -8,6 +8,10 @@ import (
 	"os/exec"
 )
 
+// ConfigurationPython is the sandbox configuration for Python-based inference
+// backends. On non-Darwin platforms no sandboxing is applied.
+const ConfigurationPython = ``
+
 // ConfigurationLlamaCpp is the sandbox configuration for llama.cpp processes.
 const ConfigurationLlamaCpp = ``
 

@@ -20,7 +20,8 @@ WORK_DIR=$(mktemp -d)
 # Convert tarball path to absolute before we cd elsewhere
 TARBALL="$(cd "$(dirname "$TARBALL_ARG")" && pwd)/$(basename "$TARBALL_ARG")"
 
-VLLM_VERSION="0.13.0"
+VLLM_VERSION=$(grep '^VLLM_UPSTREAM_VERSION=' "$(cd "$(dirname "$0")/.." && pwd)/.versions" | cut -d= -f2 | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+
 # Extract wheel version from release tag (e.g., v0.1.0-20260126-121650 -> 0.1.0)
 VLLM_METAL_WHEEL_VERSION=$(echo "$VLLM_METAL_RELEASE" | sed 's/^v//' | cut -d'-' -f1)
 VLLM_METAL_WHEEL_URL="https://github.com/vllm-project/vllm-metal/releases/download/${VLLM_METAL_RELEASE}/vllm_metal-${VLLM_METAL_WHEEL_VERSION}-cp312-cp312-macosx_11_0_arm64.whl"
@@ -57,7 +58,10 @@ curl -fsSL -O "https://github.com/vllm-project/vllm/releases/download/v$VLLM_VER
 tar xf "vllm-$VLLM_VERSION.tar.gz"
 cd "vllm-$VLLM_VERSION"
 uv pip install --python "$PYTHON_DIR/bin/python3" --system -r requirements/cpu.txt --index-strategy unsafe-best-match
-uv pip install --python "$PYTHON_DIR/bin/python3" --system .
+# TODO: remove -Wno-parentheses once vllm-project/vllm#38801 is in a release and VLLM_VERSION is bumped past it.
+# Apple Clang 21 (Xcode 26+) promotes -Wparentheses to an error for chained comparisons like `0 < M <= 8` in
+# vllm's CPU attention headers. Clang 17 (Xcode 16.x, used in CI) only warns.
+CXXFLAGS="-Wno-parentheses" uv pip install --python "$PYTHON_DIR/bin/python3" --system .
 cd "$WORK_DIR"
 rm -rf "vllm-$VLLM_VERSION" "vllm-$VLLM_VERSION.tar.gz"
 
@@ -65,6 +69,15 @@ echo "Installing vllm-metal from pre-built wheel..."
 curl -fsSL -O "$VLLM_METAL_WHEEL_URL"
 uv pip install --python "$PYTHON_DIR/bin/python3" --system vllm_metal-*.whl
 rm -f vllm_metal-*.whl
+
+# Pre-compile the paged_ops Metal kernel extension so users don't need Xcode CLT
+# at runtime (the macOS sandbox blocks clang++ invocations).  build.py caches the
+# compiled .so under ~/.cache/vllm-metal/; we redirect $HOME so the artefact
+# lands in a known temp location we can bundle into the tarball.
+echo "Pre-compiling vllm-metal paged_ops extension..."
+HOME="$WORK_DIR" "$PYTHON_DIR/bin/python3" -c "from vllm_metal.metal.build import build; build()"
+mkdir -p "$PYTHON_DIR/prebuilt"
+cp "$WORK_DIR/.cache/vllm-metal/"*_paged_ops* "$PYTHON_DIR/prebuilt/"
 
 # Strip files not needed at runtime to reduce tarball size
 echo "Stripping unnecessary files..."
@@ -89,4 +102,4 @@ SIZE=$(du -h "$TARBALL" | cut -f1)
 echo "Created: $TARBALL ($SIZE)"
 echo ""
 echo "This tarball is fully self-contained (includes Python 3.12 + all packages)."
-echo "To use: extract to a directory and run bin/python3 -m vllm_metal.server"
+echo "To use: extract to a directory and run bin/python3 -m vllm.entrypoints.openai.api_server --model <path>"

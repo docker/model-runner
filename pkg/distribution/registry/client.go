@@ -49,11 +49,12 @@ func GetDefaultRegistryOptions() []reference.Option {
 }
 
 type Client struct {
-	transport http.RoundTripper
-	userAgent string
-	keychain  authn.Keychain
-	auth      authn.Authenticator
-	plainHTTP bool
+	transport       http.RoundTripper
+	userAgent       string
+	keychain        authn.Keychain
+	auth            authn.Authenticator
+	plainHTTP       bool
+	registryMirrors []string
 }
 
 type ClientOption func(*Client)
@@ -74,17 +75,6 @@ func WithUserAgent(userAgent string) ClientOption {
 	}
 }
 
-func WithAuthConfig(username, password string) ClientOption {
-	return func(c *Client) {
-		if username != "" && password != "" {
-			c.auth = &authn.Basic{
-				Username: username,
-				Password: password,
-			}
-		}
-	}
-}
-
 // WithAuth sets a custom authenticator.
 func WithAuth(auth authn.Authenticator) ClientOption {
 	return func(c *Client) {
@@ -98,6 +88,13 @@ func WithAuth(auth authn.Authenticator) ClientOption {
 func WithPlainHTTP(plain bool) ClientOption {
 	return func(c *Client) {
 		c.plainHTTP = plain
+	}
+}
+
+// WithRegistryMirrors sets registry mirrors to try before registry-1.docker.io.
+func WithRegistryMirrors(mirrors []string) ClientOption {
+	return func(c *Client) {
+		c.registryMirrors = mirrors
 	}
 }
 
@@ -117,11 +114,12 @@ func NewClient(opts ...ClientOption) *Client {
 // and applying optional modifications via ClientOption functions.
 func FromClient(base *Client, opts ...ClientOption) *Client {
 	client := &Client{
-		transport: base.transport,
-		userAgent: base.userAgent,
-		keychain:  base.keychain,
-		auth:      base.auth,
-		plainHTTP: base.plainHTTP,
+		transport:       base.transport,
+		userAgent:       base.userAgent,
+		keychain:        base.keychain,
+		auth:            base.auth,
+		plainHTTP:       base.plainHTTP,
+		registryMirrors: base.registryMirrors,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -142,6 +140,7 @@ func (c *Client) Model(ctx context.Context, ref string) (types.ModelArtifact, er
 		remote.WithTransport(c.transport),
 		remote.WithUserAgent(c.userAgent),
 		remote.WithPlainHTTP(c.plainHTTP),
+		remote.WithRegistryMirrors(c.registryMirrors),
 	}
 
 	// Use direct auth if provided, otherwise fall back to keychain

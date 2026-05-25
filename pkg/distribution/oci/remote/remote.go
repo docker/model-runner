@@ -22,6 +22,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/internal/registryutil"
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -41,13 +42,13 @@ const (
 type Option func(*options)
 
 type options struct {
-	ctx       context.Context
-	transport http.RoundTripper
-	userAgent string
-	auth      authn.Authenticator
-	keychain  authn.Keychain
-	progress  chan<- oci.Update
-	plainHTTP bool
+	ctx             context.Context
+	transport       http.RoundTripper
+	userAgent       string
+	auth            authn.Authenticator
+	keychain        authn.Keychain
+	plainHTTP       bool
+	registryMirrors []string
 }
 
 // WithContext sets the context for remote operations.
@@ -85,17 +86,17 @@ func WithAuthFromKeychain(kc authn.Keychain) Option {
 	}
 }
 
-// WithProgress sets a channel for receiving progress updates.
-func WithProgress(ch chan<- oci.Update) Option {
-	return func(o *options) {
-		o.progress = ch
-	}
-}
-
 // WithPlainHTTP allows connecting to registries using plain HTTP instead of HTTPS.
 func WithPlainHTTP(plain bool) Option {
 	return func(o *options) {
 		o.plainHTTP = plain
+	}
+}
+
+// WithRegistryMirrors sets registry mirrors to try before registry-1.docker.io for model pulls.
+func WithRegistryMirrors(mirrors []string) Option {
+	return func(o *options) {
+		o.registryMirrors = mirrors
 	}
 }
 
@@ -165,8 +166,35 @@ type rangeTransport struct {
 	userAgent string
 }
 
+// maxRangeRedirects is the maximum number of HTTP redirects that
+// rangeTransport will follow when a Range header is set. This prevents
+// infinite redirect loops while still supporting the common pattern where
+// registries redirect blob downloads to a CDN.
+const maxRangeRedirects = 10
+
+// isRedirect reports whether the HTTP status code is a redirect that should
+// be followed when preserving a Range header.
+func isRedirect(statusCode int) bool {
+	switch statusCode {
+	case http.StatusMovedPermanently, // 301
+		http.StatusFound,             // 302
+		http.StatusSeeOther,          // 303
+		http.StatusTemporaryRedirect, // 307
+		http.StatusPermanentRedirect: // 308
+		return true
+	}
+	return false
+}
+
 // RoundTrip implements http.RoundTripper, adding Range headers when resume offsets are present
 // and User-Agent header when configured.
+//
+// When a Range header is set for a resumable download, this method also follows
+// HTTP redirects at the transport level (up to maxRangeRedirects hops). This is
+// necessary because Go's http.Client clones headers in makeHeadersCopier before
+// RoundTrip is called, so any headers set here are invisible to the client's
+// redirect handling. By following redirects at the transport level, we ensure
+// the Range header is preserved across redirects to CDNs.
 func (t *rangeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	offsets := getResumeOffsets(req.Context())
 	var requestedOffset int64
@@ -197,22 +225,99 @@ func (t *rangeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	// If we requested a Range, record success only if the server accepted the range request
-	// Servers should return 206 (Partial Content) for successful range requests,
-	// but some may return 200 with the partial content, so we record success for both
+	// When we added a Range header, follow redirects at the transport level
+	// to ensure the header is preserved. Go's http.Client clones request
+	// headers in makeHeadersCopier *before* calling RoundTrip, so headers
+	// we set here are not visible to the client's redirect handling. The CDN
+	// would receive a request without a Range header, return the full blob
+	// from byte 0, and the incomplete file would be discarded.
 	if requestedOffset > 0 {
-		if resp.StatusCode == http.StatusPartialContent || resp.StatusCode == http.StatusOK {
-			// Record in RangeSuccess tracker so WriteBlob can check it
+		for redirects := 0; redirects < maxRangeRedirects && isRedirect(resp.StatusCode); redirects++ {
+			location := resp.Header.Get("Location")
+			if location == "" {
+				break
+			}
+			// Drain and close the redirect response body to reuse the connection.
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			redirectURL, parseErr := req.URL.Parse(location)
+			if parseErr != nil {
+				return nil, fmt.Errorf("parse redirect URL: %w", parseErr)
+			}
+
+			redirectReq := req.Clone(req.Context())
+			redirectReq.URL = redirectURL
+			redirectReq.Host = redirectURL.Host
+
+			// Strip sensitive headers on cross-domain redirects and scheme
+			// downgrades to match Go's http.Client security policy.
+			stripSensitive := req.URL.Host != redirectURL.Host ||
+				(req.URL.Scheme == "https" && redirectURL.Scheme == "http")
+			if stripSensitive {
+				redirectReq.Header.Del("Authorization")
+				redirectReq.Header.Del("Cookie")
+				redirectReq.Header.Del("Cookie2")
+				redirectReq.Header.Del("Proxy-Authorization")
+			}
+
+			req = redirectReq
+			resp, err = base.RoundTrip(redirectReq)
+			if err != nil {
+				return resp, err
+			}
+		}
+
+		// If we exhausted the redirect limit and still have a redirect
+		// response, return an explicit error instead of silently passing
+		// the 3xx to the caller.
+		if isRedirect(resp.StatusCode) {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("stopped after %d redirects", maxRangeRedirects)
+		}
+	}
+
+	// If we requested a Range, record success only when the server honoured it
+	// with 206 Partial Content and a matching Content-Range start offset. A 200
+	// response means the server ignored the Range header and is sending the full
+	// file from byte 0; appending that stream to the existing partial file would
+	// produce a corrupt blob. We also validate the Content-Range start offset to
+	// guard against a misbehaving server that returns 206 with a different range.
+	if requestedOffset > 0 && resp.StatusCode == http.StatusPartialContent {
+		if rangeStartMatchesOffset(resp.Header.Get("Content-Range"), requestedOffset) {
 			if rs := GetRangeSuccess(req.Context()); rs != nil {
 				rs.Add(digest, requestedOffset)
 			}
 		}
-		// If range request was not successful (e.g., 416 Range Not Satisfiable),
-		// don't record in RangeSuccess, which will cause WriteBlob to start fresh
-		// (no explicit action needed in the else case)
 	}
 
 	return resp, nil
+}
+
+// rangeStartMatchesOffset parses the Content-Range response header and reports
+// whether its start byte equals the given offset. The format is defined by
+// RFC 9110: "bytes START-END/TOTAL" (TOTAL may be "*"). We fail closed: if the
+// header is absent or cannot be parsed we return false so that the caller does
+// not treat an ambiguous response as a successful range request.
+func rangeStartMatchesOffset(contentRange string, offset int64) bool {
+	if contentRange == "" {
+		return false
+	}
+	// Trim the unit prefix "bytes " and split on "-"
+	after, ok := strings.CutPrefix(contentRange, "bytes ")
+	if !ok {
+		return false
+	}
+	dashIdx := strings.Index(after, "-")
+	if dashIdx < 0 {
+		return false
+	}
+	var start int64
+	if _, err := fmt.Sscanf(after[:dashIdx], "%d", &start); err != nil {
+		return false
+	}
+	return start == offset
 }
 
 // extractDigestAndOffset extracts the blob digest from the request URL and returns
@@ -348,9 +453,7 @@ func createResolver(o *options, ref reference.Reference) resolverComponents {
 		})
 	} else {
 		resolver = docker.NewResolver(docker.ResolverOptions{
-			Hosts: docker.ConfigureDefaultRegistries(
-				docker.WithAuthorizer(authorizer),
-				docker.WithClient(client)),
+			Hosts: registryutil.RegistryHosts(o.registryMirrors, authorizer, client),
 		})
 	}
 
@@ -652,19 +755,62 @@ func (l *remoteLayer) Digest() (oci.Hash, error) {
 
 // DiffID returns the uncompressed layer digest.
 // For remote layers, we look up the diff ID from the image config.
+// Supports both Docker format (rootfs.diff_ids) and CNCF ModelPack format
+// (modelfs.diffIds).
 func (l *remoteLayer) DiffID() (oci.Hash, error) {
-	// Get the config file to look up the diff ID
-	config, err := l.image.ConfigFile()
+	raw, err := l.image.RawConfigFile()
 	if err != nil {
-		return oci.Hash{}, fmt.Errorf("getting config file for diff ID lookup: %w", err)
+		return oci.Hash{}, fmt.Errorf("getting raw config for diff ID lookup: %w", err)
 	}
 
-	// Check if the layer index is within bounds of the diff IDs
-	if l.index < 0 || l.index >= len(config.RootFS.DiffIDs) {
-		return l.desc.Digest, nil // Fallback to digest if diff ID not available
+	// Try to extract diffIds from the raw config generically, so we support
+	// both Docker format (rootfs.diff_ids) and CNCF ModelPack (modelfs.diffIds).
+	diffIDs, err := extractDiffIDs(raw, l.index)
+	if err != nil || diffIDs == (oci.Hash{}) {
+		// Fall back to the descriptor digest (works for uncompressed layers).
+		return l.desc.Digest, nil
+	}
+	return diffIDs, nil
+}
+
+// extractDiffIDs parses a raw config blob and returns the DiffID at the given
+// layer index. It tries Docker format (rootfs.diff_ids) first, then CNCF
+// ModelPack format (modelfs.diffIds).
+func extractDiffIDs(raw []byte, index int) (oci.Hash, error) {
+	// Parse as a generic map to support both config formats.
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return oci.Hash{}, err
 	}
 
-	return config.RootFS.DiffIDs[l.index], nil
+	// Try Docker format: rootfs.diff_ids
+	if rootfsRaw, ok := parsed["rootfs"]; ok {
+		var rootfs struct {
+			DiffIDs []oci.Hash `json:"diff_ids"`
+		}
+		if err := json.Unmarshal(rootfsRaw, &rootfs); err == nil {
+			if index >= 0 && index < len(rootfs.DiffIDs) {
+				return rootfs.DiffIDs[index], nil
+			}
+		}
+	}
+
+	// Try CNCF ModelPack format: modelfs.diffIds
+	if modelfsRaw, ok := parsed["modelfs"]; ok {
+		var modelfs struct {
+			DiffIDs []string `json:"diffIds"`
+		}
+		if err := json.Unmarshal(modelfsRaw, &modelfs); err == nil {
+			if index >= 0 && index < len(modelfs.DiffIDs) {
+				h, err := oci.NewHash(modelfs.DiffIDs[index])
+				if err == nil {
+					return h, nil
+				}
+			}
+		}
+	}
+
+	return oci.Hash{}, nil
 }
 
 // Compressed returns the compressed layer contents.
@@ -880,8 +1026,15 @@ func Write(ref reference.Reference, img oci.Image, w io.Writer, opts ...Option) 
 		return fmt.Errorf("getting config name: %w", err)
 	}
 
+	// Use the config media type from the manifest rather than a hardcoded value,
+	// so that both Docker-format and CNCF ModelPack artifacts are pushed
+	// with the correct media type.
+	pushManifest, err := img.Manifest()
+	if err != nil {
+		return fmt.Errorf("getting manifest for config media type: %w", err)
+	}
 	configDesc := v1.Descriptor{
-		MediaType: "application/vnd.docker.container.image.v1+json",
+		MediaType: string(pushManifest.Config.MediaType),
 		Digest:    godigest.Digest(configName.String()),
 		Size:      int64(len(rawConfig)),
 	}

@@ -2,7 +2,6 @@ name: Release
 run-name: >-
   Release
   ${{ inputs.releaseTag != '' && inputs.releaseTag || format('(auto {0} bump)', inputs.bumpType || 'patch') }}
-  ${{ inputs.pushLatest && ' + latest' || '' }}
 
 on:
   workflow_dispatch:
@@ -20,34 +19,20 @@ on:
         description: "Explicit release tag — overrides auto-bump (e.g., v1.2.3)"
         required: false
         type: string
-      pushLatest:
-        description: "Tag images produced by this job as latest"
-        required: false
-        type: boolean
-        default: false
       llamaServerVersion:
         description: "llama-server version"
         required: false
         type: string
-        default: "latest"
       vllmVersion:
         description: "vLLM version"
         required: false
         type: string
-        default: "0.17.0"
       sglangVersion:
         description: "SGLang version"
         required: false
         type: string
-        default: "0.4.0"
-      # This can be removed once we have llama.cpp built for MUSA and CANN.
-      buildMusaCann:
-        description: "Build MUSA and CANN images"
-        required: false
-        type: boolean
-        default: false
       imagesOnly:
-        description: "Only build and push Docker images (skip CLI releases, pinata bump, and CE packaging)"
+        description: "Only build and push Docker images (skip CLI releases and CE packaging)"
         required: false
         type: boolean
         default: false
@@ -76,10 +61,23 @@ jobs:
         env:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --- Find the latest existing v* tag ---
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          echo "Latest existing tag: ${LATEST_TAG:-<none>}"
+          # --- Find the latest published GitHub Release tag ---          
+          # gh release list defaults to --order desc (newest first by creation
+          # date), so --limit 1 gives us the most recent release.
+          LATEST_RELEASE_TAG=$(gh release list --limit 1 --json tagName \
+            --jq '.[0].tagName // ""' \
+            2>/dev/null || echo "")
+
+          if [ -n "$LATEST_RELEASE_TAG" ]; then
+            LATEST_TAG="$LATEST_RELEASE_TAG"
+            echo "Latest published GitHub Release tag: $LATEST_TAG"
+          else
+            # Fallback to git tags when no GitHub Releases exist yet
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+            echo "No GitHub Releases found, falling back to latest git tag: ${LATEST_TAG:-<none>}"
+          fi
 
           if [ -n "$EXPLICIT_TAG" ]; then
             # Validate explicit tag format
@@ -167,7 +165,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@b6e1c73e1bb475e840842b1f43a4647fcb16b495
+        uses: docker/cagent-action@f208610469d69f20983cad64c577949a132caa33
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -195,7 +193,7 @@ jobs:
           cat release-notes.md
 
       - name: Upload release notes
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-notes
           path: release-notes.md
@@ -210,10 +208,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Load GO version
+        id: versions
+        uses: ./.github/actions/load-go-version
+
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: 1.25.8
+          go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Run tests
@@ -229,11 +231,9 @@ jobs:
       contents: read
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion || 'latest' }}
+      LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion }}
       VLLM_VERSION: ${{ inputs.vllmVersion }}
-      SGLANG_VERSION: ${{ inputs.sglangVersion || '0.4.0' }}
-      PUSH_LATEST: ${{ inputs.pushLatest || 'false' }}
-      BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
+      SGLANG_VERSION: ${{ inputs.sglangVersion }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -244,49 +244,68 @@ jobs:
         run: |
           echo "cpu<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "vllm-cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-vllm-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-vllm-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "sglang-cuda<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-sglang-cuda" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
-          fi
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "musa<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
-          fi
+          echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cann<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH_LATEST" == "true" ]; then
-            echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
-          fi
+          echo "openvino<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-openvino" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-openvino" >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+          echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
 
+      - name: Load versions
+        shell: bash
+        run: |
+          VERSIONS_LLAMA=$(grep '^LLAMA_SERVER_VERSION=' .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_VLLM=$(grep  '^VLLM_VERSION='          .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+          VERSIONS_SGLANG=$(grep '^SGLANG_VERSION='       .versions | cut -d= -f2- | sed 's/[[:space:]]*#.*//;s/[[:space:]]*$//')
+
+          # Use input value if set, otherwise fallback to .versions 
+          echo "LLAMA_SERVER_VERSION=${LLAMA_SERVER_VERSION:-$VERSIONS_LLAMA}"   >> "$GITHUB_ENV"
+          echo "VLLM_VERSION=${VLLM_VERSION:-$VERSIONS_VLLM}"                   >> "$GITHUB_ENV"
+          echo "SGLANG_VERSION=${SGLANG_VERSION:-$VERSIONS_SGLANG}"             >> "$GITHUB_ENV"
+
+      - name: Resolve llama.cpp upstream images
+        id: llama-images
+        shell: bash
+        run: |
+          CPU_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cpu)
+          CUDA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cuda)
+          ROCM_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" rocm)
+          MUSA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" musa)
+          OPENVINO_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" openvino)
+
+          echo "cpu=$CPU_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "cuda=$CUDA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "rocm=$ROCM_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "musa=$MUSA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
+
       - name: Log in to DockerHub
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
@@ -300,13 +319,15 @@ jobs:
           install: true
 
       - name: Build CPU image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-llamacpp
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
+            "LLAMA_SERVER_VARIANT=cpu"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cpu }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -314,7 +335,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -322,7 +343,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -330,7 +351,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-vllm
@@ -338,7 +359,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "VLLM_VERSION=${{ env.VLLM_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
@@ -347,7 +368,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-sglang
@@ -355,7 +376,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "SGLANG_VERSION=${{ env.SGLANG_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
@@ -364,7 +385,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -372,16 +393,14 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=rocm"
-            "BASE_IMAGE=rocm/dev-ubuntu-22.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.rocm }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
-
       - name: Build MUSA image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -389,29 +408,29 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=musa"
-            "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.musa }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.musa }}
 
-      - name: Build CANN image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+      - name: Build OpenVINO image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           file: Dockerfile
           target: final-llamacpp
-          platforms: linux/arm64, linux/amd64
+          platforms: linux/amd64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
-            "LLAMA_SERVER_VARIANT=cann"
-            "BASE_IMAGE=ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
+            "LLAMA_SERVER_VARIANT=openvino"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.openvino }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
-          tags: ${{ steps.tags.outputs.cann }}
+          tags: ${{ steps.tags.outputs.openvino }}
+
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
@@ -467,54 +486,6 @@ jobs:
             --repo docker/inference-engine-llama.cpp \
             --exit-status
           echo "✅ Desktop CLI release completed successfully"
-
-  # ---------------------------------------------------------------------------
-  # Bump docker-model version in pinata and open a PR
-  # ---------------------------------------------------------------------------
-  bump-pinata:
-    if: ${{ !inputs.imagesOnly }}
-    needs: [prepare, release-cli-desktop]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout pinata
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: docker/pinata
-          token: ${{ secrets.CLI_RELEASE_PAT }}
-          fetch-depth: 0
-
-      - name: Bump docker-model version in build.json
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          NEW_VERSION="v${VERSION}"
-          jq --arg v "$NEW_VERSION" '.["docker-model"].version = $v' build.json > build.json.tmp
-          mv build.json.tmp build.json
-
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
-        with:
-          token: ${{ secrets.CLI_RELEASE_PAT }}
-          base: main
-          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }}"
-          branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
-          title: "Bump docker-model to v${{ needs.prepare.outputs.version }}"
-          body: |
-            ### Ticket(s)
-
-            N/A — automated version bump
-
-            ### What this PR does
-
-            Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
-
-            ### Notes for the reviewer
-
-            Automated PR created by the model-runner release workflow.
-
-          draft: true
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy
@@ -631,7 +602,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, verify-docker-ce]
+    needs: [prepare, release-notes, build, release-cli-desktop, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
@@ -653,3 +624,67 @@ jobs:
             --repo docker/model-runner \
             --title "Docker Model Runner $RELEASE_TAG" \
             --notes-file release-notes.md
+
+      - name: Send Slack notification
+        if: success()
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RELEASE_URL="https://github.com/docker/model-runner/releases/tag/${RELEASE_TAG}"
+
+          SLACK_MESSAGE=$(cat <<EOF
+          {
+            "text": "🚀 Docker Model Runner ${RELEASE_TAG} has been released!",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚀 Docker Model Runner Released"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Version:*\n${RELEASE_TAG}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\ndocker/model-runner"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Release"
+                    },
+                    "url": "${RELEASE_URL}",
+                    "style": "primary"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Build"
+                    },
+                    "url": "${BUILD_URL}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "${SLACK_MESSAGE}" \
+            "${SLACK_WEBHOOK_URL}"

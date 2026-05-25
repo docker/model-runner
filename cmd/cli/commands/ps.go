@@ -39,7 +39,7 @@ func psTable(ps []desktop.BackendStatus) string {
 		if strings.HasPrefix(modelName, "sha256:") {
 			modelName = modelName[7:19]
 		} else {
-			modelName = stripDefaultsFromModelName(modelName)
+			modelName = stripDefaultsFromModelName(strings.ToLower(modelName))
 		}
 
 		table.Append([]string{
@@ -55,6 +55,10 @@ func psTable(ps []desktop.BackendStatus) string {
 }
 
 func formatUntil(status desktop.BackendStatus) string {
+	if status.Loading {
+		return "Loading..."
+	}
+
 	keepAlive := inference.KeepAliveDefault
 	if status.KeepAlive != nil {
 		keepAlive = *status.KeepAlive

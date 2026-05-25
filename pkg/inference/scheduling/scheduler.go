@@ -2,7 +2,6 @@ package scheduling
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -10,7 +9,7 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -30,6 +29,7 @@ type PlatformSupport interface {
 	SupportsVLLM() bool
 	SupportsVLLMMetal() bool
 	SupportsSGLang() bool
+	SupportsDiffusers() bool
 }
 
 // defaultPlatformSupport delegates to the platform package.
@@ -39,6 +39,7 @@ func (defaultPlatformSupport) SupportsMLX() bool       { return platform.Support
 func (defaultPlatformSupport) SupportsVLLM() bool      { return platform.SupportsVLLM() }
 func (defaultPlatformSupport) SupportsVLLMMetal() bool { return platform.SupportsVLLMMetal() }
 func (defaultPlatformSupport) SupportsSGLang() bool    { return platform.SupportsSGLang() }
+func (defaultPlatformSupport) SupportsDiffusers() bool { return platform.SupportsDiffusers() }
 
 // Scheduler is used to coordinate inference scheduling across multiple backends
 // and models.
@@ -121,10 +122,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 // selectBackendForModel selects the appropriate backend for a model based on its format.
-// If the model is in safetensors format, it will prefer the best available backend:
-// - vLLM (handles platform dispatch internally: vllm-metal on macOS ARM64, standard vLLM on Linux)
-// - MLX on macOS
-// - SGLang on Linux
+// For safetensors models, it prefers: vLLM > MLX > SGLang.
+// For DDUF/diffusers models, it selects the diffusers backend.
+// For other formats (e.g. GGUF), it returns the provided default backend.
 func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.Backend, modelRef string) inference.Backend {
 	config, err := model.Config()
 	if err != nil {
@@ -132,7 +132,16 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 		return backend
 	}
 
-	if config.GetFormat() == types.FormatSafetensors {
+	format := config.GetFormat()
+	// If the config does not specify a format, infer it from the model's
+	// available file paths. This handles CNCF ModelPack models that omit
+	// the optional config.format field.
+	if format == "" {
+		format = inferFormatFromModel(model)
+	}
+
+	switch format {
+	case types.FormatSafetensors:
 		// Prefer vLLM for safetensors models (handles platform dispatch internally)
 		if s.platformSupport.SupportsVLLM() || s.platformSupport.SupportsVLLMMetal() {
 			if vllmBackend, ok := s.backends[vllm.Name]; ok && vllmBackend != nil {
@@ -151,11 +160,53 @@ func (s *Scheduler) selectBackendForModel(model types.Model, backend inference.B
 				return sglangBackend
 			}
 		}
+		backendName := "none"
+		if backend != nil {
+			backendName = backend.Name()
+		}
 		s.log.Warn("Model is in safetensors format but no compatible backend is available",
-			"model", utils.SanitizeForLog(modelRef), "backend", backend.Name())
+			"model", utils.SanitizeForLog(modelRef), "backend", backendName)
+
+	case types.FormatDDUF, types.FormatDiffusers: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
+		// Select the diffusers backend for DDUF and legacy diffusers format models
+		if s.platformSupport.SupportsDiffusers() {
+			if diffusersBackend, ok := s.backends[diffusers.Name]; ok && diffusersBackend != nil {
+				return diffusersBackend
+			}
+		}
+		backendName := "none"
+		if backend != nil {
+			backendName = backend.Name()
+		}
+		s.log.Warn("Model is in DDUF/diffusers format but no compatible backend is available",
+			"model", utils.SanitizeForLog(modelRef), "backend", backendName)
+
+	case types.FormatGGUF:
+		// GGUF models use the default backend (llamacpp)
+
+	default:
+		// Unknown formats use the default backend
 	}
 
 	return backend
+}
+
+// inferFormatFromModel detects the model format by checking which file types
+// are present in the model's layers. Used as a fallback when the model config
+// omits the format field (e.g. some CNCF ModelPack models). Order matches
+// detectModelFormat in the distribution bundle package to ensure consistent
+// behavior for malformed or mixed artifacts.
+func inferFormatFromModel(model types.Model) types.Format {
+	if paths, err := model.GGUFPaths(); err == nil && len(paths) > 0 {
+		return types.FormatGGUF
+	}
+	if paths, err := model.SafetensorsPaths(); err == nil && len(paths) > 0 {
+		return types.FormatSafetensors
+	}
+	if paths, err := model.DDUFPaths(); err == nil && len(paths) > 0 {
+		return types.FormatDDUF
+	}
+	return ""
 }
 
 // ResetInstaller resets the backend installer with a new HTTP client.
@@ -166,6 +217,13 @@ func (s *Scheduler) ResetInstaller(httpClient *http.Client) {
 // InstallBackend triggers on-demand installation of a deferred backend.
 func (s *Scheduler) InstallBackend(ctx context.Context, name string) error {
 	return s.installer.installBackend(ctx, name)
+}
+
+// UninstallBackend unloads all runners for the backend and then removes its
+// local installation.
+func (s *Scheduler) UninstallBackend(ctx context.Context, name string) error {
+	s.loader.UnloadBackend(ctx, name)
+	return s.installer.uninstallBackend(ctx, name)
 }
 
 // GetRunningBackendsInfo returns information about all running backends as a slice
@@ -180,7 +238,7 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 	}
 	defer s.loader.unlock()
 
-	result := make([]BackendStatus, 0, len(s.loader.runners))
+	result := make([]BackendStatus, 0, len(s.loader.runners)+len(s.loader.loading))
 
 	for key, runnerInfo := range s.loader.runners {
 		if s.loader.slots[runnerInfo.slot] != nil {
@@ -203,6 +261,16 @@ func (s *Scheduler) getLoaderStatus(ctx context.Context) []BackendStatus {
 
 			result = append(result, status)
 		}
+	}
+
+	// Include models that are currently being loaded.
+	for _, info := range s.loader.loading {
+		result = append(result, BackendStatus{
+			BackendName: info.backendName,
+			ModelName:   info.modelRef,
+			Mode:        info.mode.String(),
+			Loading:     true,
+		})
 	}
 
 	return result
@@ -245,36 +313,6 @@ func (s *Scheduler) GetAllActiveRunners() []metrics.ActiveRunner {
 	}
 
 	return activeRunners
-}
-
-// GetLlamaCppSocket returns the Unix socket path for an active llama.cpp runner
-func (s *Scheduler) GetLlamaCppSocket() (string, error) {
-	runningBackends := s.getLoaderStatus(context.Background())
-
-	if !s.loader.lock(context.Background()) {
-		return "", errors.New("failed to acquire loader lock")
-	}
-	defer s.loader.unlock()
-
-	// Look for an active llama.cpp backend
-	for _, backend := range runningBackends {
-		if backend.BackendName == llamacpp.Name {
-			mode, ok := inference.ParseBackendMode(backend.Mode)
-			if !ok {
-				s.log.Warn("Unknown backend mode, defaulting to completion", "mode", backend.Mode)
-			}
-			// Find the runner slot for this backend/model combination
-			// We iterate through all runners since we don't know the draftModelID
-			for key, runnerInfo := range s.loader.runners {
-				if key.backend == backend.BackendName && key.modelID == backend.ModelName && key.mode == mode {
-					// Use the RunnerSocketPath function to get the socket path
-					return RunnerSocketPath(runnerInfo.slot)
-				}
-			}
-		}
-	}
-
-	return "", errors.New("no active llama.cpp backend found")
 }
 
 // ConfigureRunner configures a runner for a specific model and backend.

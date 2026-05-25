@@ -29,12 +29,16 @@ type Platform struct {
 
 // Manifest represents an OCI image manifest.
 type Manifest struct {
-	SchemaVersion int64             `json:"schemaVersion"`
-	MediaType     MediaType         `json:"mediaType,omitempty"`
-	Config        Descriptor        `json:"config"`
-	Layers        []Descriptor      `json:"layers"`
-	Annotations   map[string]string `json:"annotations,omitempty"`
-	Subject       *Descriptor       `json:"subject,omitempty"`
+	SchemaVersion int64     `json:"schemaVersion"`
+	MediaType     MediaType `json:"mediaType,omitempty"`
+	// ArtifactType is an optional field that identifies the artifact type.
+	// Required by the CNCF ModelPack spec:
+	// "application/vnd.cncf.model.manifest.v1+json".
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Config       Descriptor        `json:"config"`
+	Layers       []Descriptor      `json:"layers"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	Subject      *Descriptor       `json:"subject,omitempty"`
 }
 
 // IndexManifest represents an OCI image index (multi-platform manifest list).

@@ -130,8 +130,11 @@ func (m *BaseModel) Descriptor() (types.Descriptor, error) {
 	return Descriptor(m)
 }
 
-// GetConfigMediaType returns the config media type for the model.
-// If not set, returns empty string and ManifestForLayers will default to V0.1.
-func (m *BaseModel) GetConfigMediaType() oci.MediaType {
-	return m.ConfigMediaType
+// GetManifestOptions implements WithManifestOptions, providing the config
+// media type for Docker-format models. If ConfigMediaType is not set,
+// ManifestForLayers will default to V0.1.
+func (m *BaseModel) GetManifestOptions() ManifestOptions {
+	return ManifestOptions{
+		ConfigMediaType: m.ConfigMediaType,
+	}
 }

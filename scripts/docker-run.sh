@@ -3,7 +3,6 @@
 add_accelerators() {
   # Add NVIDIA GPU support for CUDA variants and GPU-accelerated backends
   if [[ "${DOCKER_IMAGE-}" == *"-cuda" ]] || \
-     [[ "${DOCKER_IMAGE-}" == *"-diffusers" ]] || \
      [[ "${DOCKER_IMAGE-}" == *"-sglang" ]]; then
       if docker info -f '{{range $k, $v := .Runtimes}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null | grep -qx "nvidia"; then
         args+=("--gpus" "all" "--runtime=nvidia")
@@ -64,7 +63,7 @@ main() {
   set -eux -o pipefail
 
   local models_path="${MODELS_PATH:-$HOME/.docker/models}"
-  local args=(docker run --rm -e LLAMA_SERVER_PATH=/app/bin)
+  local args=(docker run --rm -e LLAMA_SERVER_PATH=/app)
   add_optional_args
   mkdir -p "$models_path"
   chmod a+rwx "$models_path"

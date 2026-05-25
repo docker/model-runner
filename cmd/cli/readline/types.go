@@ -24,6 +24,7 @@ const (
 	CharTranspose = 20
 	CharCtrlU     = 21
 	CharCtrlW     = 23
+	CharCtrlX     = 24
 	CharCtrlY     = 25
 	CharCtrlZ     = 26
 	CharEsc       = 27

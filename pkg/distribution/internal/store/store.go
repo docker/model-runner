@@ -374,29 +374,16 @@ func (s *LocalStore) Write(mdl oci.Image, tags []string, w io.Writer, opts ...Wr
 		return err
 	}
 
-	// Collect new layer digests
-	var newLayerDigests []oci.Hash
-	for _, result := range results {
-		if result.created {
-			newLayerDigests = append(newLayerDigests, result.diffID)
-		}
-	}
-
-	if len(newLayerDigests) > 0 {
-		digests := append([]oci.Hash(nil), newLayerDigests...)
-		cleanups = append(cleanups, func() error {
-			var errs []error
-			for _, dg := range digests {
-				if err := s.removeBlob(dg); err != nil && !errors.Is(err, os.ErrNotExist) {
-					errs = append(errs, fmt.Errorf("remove blob %s: %w", dg, err))
-				}
-			}
-			if len(errs) > 0 {
-				return errors.Join(errs...)
-			}
-			return nil
-		})
-	}
+	// Do not register completed layer blobs in the rollback list.
+	//
+	// Layer blobs are content-addressed: a blob identified by its diffID is
+	// immutable and may be shared across multiple models. Rolling them back
+	// when a later step fails (e.g. writing the manifest, tagging) would
+	// discard already-downloaded data that is still valid, forcing a full
+	// re-download on the next attempt instead of resuming only the layer
+	// that was actually in progress. The manifest/config/index cleanup below
+	// is sufficient to leave the store in a consistent state.
+	_ = results // results used above for error checking; layer blobs are retained
 
 	// Write the manifest
 	digest, err := mdl.Digest()

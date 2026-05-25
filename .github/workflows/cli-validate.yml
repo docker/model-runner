@@ -35,7 +35,7 @@ jobs:
       -
         name: Generate matrix
         id: generate
-        uses: docker/bake-action/subaction/matrix@82490499d2e5613fcead7e128237ef0b0ea210f7
+        uses: docker/bake-action/subaction/matrix@a66e1c87e2eca0503c343edf1d208c716d54b8a8
         with:
           files: ./cmd/cli/docker-bake.hcl
           target: validate
@@ -59,7 +59,7 @@ jobs:
           buildkitd-flags: --debug
       -
         name: Validate
-        uses: docker/bake-action@82490499d2e5613fcead7e128237ef0b0ea210f7 # v7
+        uses: docker/bake-action@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7
         with:
           files: ./cmd/cli/docker-bake.hcl
           targets: ${{ matrix.target }}

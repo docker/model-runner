@@ -10,10 +10,11 @@ import (
 
 	"github.com/docker/model-runner/pkg/distribution/files"
 	"github.com/docker/model-runner/pkg/distribution/format"
-	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
 	"github.com/docker/model-runner/pkg/distribution/internal/partial"
+	"github.com/docker/model-runner/pkg/distribution/modelpack"
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/types"
+	"github.com/opencontainers/go-digest"
 )
 
 const rootFSType = "rootfs"
@@ -36,6 +37,9 @@ type DirectoryOptions struct {
 	// AllowNoWeightFiles allows packaging a directory even when it contains no
 	// GGUF/SafeTensors/DDUF weight files.
 	AllowNoWeightFiles bool
+
+	// Format is the output artifact format. Defaults to BuildFormatDocker.
+	Format BuildFormat
 }
 
 // DirectoryOption is a functional option for configuring FromDirectory.
@@ -72,6 +76,15 @@ func WithCreatedTime(t time.Time) DirectoryOption {
 func WithAllowNoWeightFiles() DirectoryOption {
 	return func(opts *DirectoryOptions) {
 		opts.AllowNoWeightFiles = true
+	}
+}
+
+// WithOutputFormat sets the output artifact format for the directory builder.
+// Defaults to BuildFormatDocker if not specified.
+// This is the DirectoryOption equivalent of WithFormat (BuildOption).
+func WithOutputFormat(f BuildFormat) DirectoryOption {
+	return func(opts *DirectoryOptions) {
+		opts.Format = f
 	}
 }
 
@@ -176,7 +189,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 			weightFiles = append(weightFiles, path)
 		case files.FileTypeDDUF:
 			if detectedFormat == "" {
-				detectedFormat = types.FormatDiffusers
+				detectedFormat = types.FormatDDUF
 			}
 			weightFiles = append(weightFiles, path)
 		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
@@ -233,6 +246,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 				config.GGUF = extracted.GGUF
 				config.Safetensors = extracted.Safetensors
 				config.Diffusers = extracted.Diffusers
+				config.ContextSize = extracted.ContextSize
 			}
 		}
 	}
@@ -245,7 +259,35 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 		created = time.Now()
 	}
 
-	// Build the model with V0.2 config (layer-per-file with annotations)
+	if options.Format == BuildFormatCNCF {
+		// Remap layer media types and convert config to CNCF format.
+		cncfLayers := make([]oci.Layer, len(layers))
+		cncfDiffIDs := make([]digest.Digest, len(diffIDs))
+		for i, l := range layers {
+			mt, err := l.MediaType()
+			if err != nil {
+				return nil, fmt.Errorf("get layer media type: %w", err)
+			}
+			fp := layerFilePath(l)
+			rl, err := newRemappedLayer(l, modelpack.MapLayerMediaType(mt, fp))
+			if err != nil {
+				return nil, fmt.Errorf("remap layer %d: %w", i, err)
+			}
+			cncfLayers[i] = rl
+			cncfDiffIDs[i] = digest.Digest(diffIDs[i].String())
+		}
+		mp := modelpack.DockerConfigToModelPack(
+			config,
+			types.Descriptor{Created: &created},
+			cncfDiffIDs,
+		)
+		return &Builder{
+			model:        &partial.CNCFModel{ModelPackConfig: mp, LayerList: cncfLayers},
+			outputFormat: BuildFormatCNCF,
+		}, nil
+	}
+
+	// Build the Docker-format model with V0.2 config (layer-per-file with annotations).
 	mdl := &partial.BaseModel{
 		ModelConfigFile: types.ConfigFile{
 			Config: config,
@@ -262,7 +304,8 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 	}
 
 	return &Builder{
-		model: mdl,
+		model:        mdl,
+		outputFormat: BuildFormatDocker,
 	}, nil
 }
 
@@ -351,22 +394,4 @@ func fileTypeToMediaType(ft files.FileType) oci.MediaType {
 	default:
 		return types.MediaTypeModelFile
 	}
-}
-
-// WithFileLayer adds an individual file layer with a relative path annotation.
-// This is useful for adding files that should be extracted to a specific path.
-func (b *Builder) WithFileLayer(absPath, relPath string) (*Builder, error) {
-	// Classify the file to determine media type
-	fileType := files.Classify(absPath)
-	mediaType := fileTypeToMediaType(fileType)
-
-	layer, err := partial.NewLayerWithRelativePath(absPath, relPath, mediaType)
-	if err != nil {
-		return nil, fmt.Errorf("file layer from %q: %w", absPath, err)
-	}
-
-	return &Builder{
-		model:          mutate.AppendLayers(b.model, layer),
-		originalLayers: b.originalLayers,
-	}, nil
 }

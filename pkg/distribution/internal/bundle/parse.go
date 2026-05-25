@@ -12,9 +12,9 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/types"
 )
 
-// errFoundSafetensors is a sentinel error used to stop filepath.Walk early
-// after finding the first safetensors file.
-var errFoundSafetensors = fmt.Errorf("found safetensors file")
+// errFoundModelFile is a sentinel error used to stop filepath.Walk early after
+// finding the first matching model file.
+var errFoundModelFile = fmt.Errorf("found model file")
 
 // Parse returns the Bundle at the given rootDir
 func Parse(rootDir string) (*Bundle, error) {
@@ -37,10 +37,14 @@ func Parse(rootDir string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
+	ddufPath, err := findDDUFFile(modelDir)
+	if err != nil {
+		return nil, err
+	}
 
 	// Ensure at least one model weight format is present
-	if ggufPath == "" && safetensorsPath == "" {
-		return nil, fmt.Errorf("no supported model weights found (neither GGUF nor safetensors)")
+	if ggufPath == "" && safetensorsPath == "" && ddufPath == "" {
+		return nil, fmt.Errorf("no supported model weights found (neither GGUF, safetensors, nor DDUF)")
 	}
 
 	mmprojPath, err := findMultiModalProjectorFile(modelDir)
@@ -62,6 +66,7 @@ func Parse(rootDir string) (*Bundle, error) {
 		mmprojPath:       mmprojPath,
 		ggufFile:         ggufPath,
 		safetensorsFile:  safetensorsPath,
+		ddufFile:         ddufPath,
 		runtimeConfig:    cfg,
 		chatTemplatePath: templatePath,
 	}, nil
@@ -92,72 +97,120 @@ func parseRuntimeConfig(rootDir string) (types.ModelConfig, error) {
 	return &cfg, nil
 }
 
-func findGGUFFile(modelDir string) (string, error) {
-	ggufs, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.gguf"))
-	if err != nil {
-		return "", fmt.Errorf("find gguf files: %w", err)
-	}
-	if len(ggufs) == 0 {
-		// GGUF files are optional - safetensors models won't have them
-		return "", nil
-	}
-	return filepath.Base(ggufs[0]), nil
+// findModelFile finds a supported model file by extension. It prefers a
+// top-level match in modelDir and falls back to a recursive search when needed.
+// Hidden files are ignored.
+func findModelFile(modelDir, ext string) (string, error) {
+	return findModelFileExcluding(modelDir, ext, nil)
 }
 
-func findSafetensorsFile(modelDir string) (string, error) {
-	// First check top-level directory (most common case)
-	safetensors, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.safetensors"))
+// findModelFileExcluding finds a supported model file by extension, skipping
+// any file for which the exclude function returns true. It prefers a top-level
+// match in modelDir and falls back to a recursive search when needed. Hidden
+// files are ignored.
+func findModelFileExcluding(modelDir, ext string, exclude func(string) bool) (string, error) {
+	pattern := filepath.Join(modelDir, "[^.]*"+ext)
+	paths, err := filepath.Glob(pattern)
 	if err != nil {
-		return "", fmt.Errorf("find safetensors files: %w", err)
+		return "", fmt.Errorf("find %s files: %w", ext, err)
 	}
-	if len(safetensors) > 0 {
-		return filepath.Base(safetensors[0]), nil
+	for _, p := range paths {
+		name := filepath.Base(p)
+		if exclude != nil && exclude(name) {
+			continue
+		}
+		return name, nil
 	}
 
-	// Search recursively for V0.2 models with nested directory structure
-	// (e.g., text_encoder/model.safetensors)
 	var firstFound string
-	walkErr := filepath.Walk(modelDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			// Propagate filesystem errors so callers can distinguish them from
-			// the case where no safetensors files are present.
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) == ".safetensors" && !strings.HasPrefix(info.Name(), ".") {
+	walkErr := filepath.Walk(
+		modelDir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				// Propagate filesystem errors so callers can distinguish them
+				// from the case where no matching files are present.
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if filepath.Ext(path) != ext ||
+				strings.HasPrefix(info.Name(), ".") {
+				return nil
+			}
+			if exclude != nil && exclude(info.Name()) {
+				return nil
+			}
+
 			rel, relErr := filepath.Rel(modelDir, path)
 			if relErr != nil {
-				// Treat a bad relative path as a real error instead of silently
-				// ignoring it, so malformed bundles surface to the caller.
+				// Treat a bad relative path as a real error instead of
+				// silently ignoring it, so malformed bundles surface to the
+				// caller.
 				return relErr
 			}
 			firstFound = rel
-			return errFoundSafetensors // found one, stop walking
-		}
-		return nil
-	})
-	if walkErr != nil && !errors.Is(walkErr, errFoundSafetensors) {
-		return "", fmt.Errorf("walk for safetensors files: %w", walkErr)
+			return errFoundModelFile
+		},
+	)
+	if walkErr != nil && !errors.Is(walkErr, errFoundModelFile) {
+		return "", fmt.Errorf("walk for %s files: %w", ext, walkErr)
 	}
 
-	// Safetensors files are optional - GGUF models won't have them
 	return firstFound, nil
 }
 
+func findGGUFFile(modelDir string) (string, error) {
+	// GGUF files are optional. Use findModelFileExcluding to skip mmproj
+	// files that also carry a .gguf extension (common in CNCF ModelPack
+	// format where mmproj files are named e.g. "mmproj-BF16.gguf").
+	return findModelFileExcluding(modelDir, ".gguf", isMMProjFilePath)
+}
+
+func findSafetensorsFile(modelDir string) (string, error) {
+	// Safetensors files are optional.
+	return findModelFile(modelDir, ".safetensors")
+}
+
+func findDDUFFile(modelDir string) (string, error) {
+	// DDUF files are optional.
+	return findModelFile(modelDir, ".dduf")
+}
+
 func findMultiModalProjectorFile(modelDir string) (string, error) {
+	// First, look for files with the traditional .mmproj extension.
 	mmprojPaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.mmproj"))
 	if err != nil {
 		return "", err
 	}
-	if len(mmprojPaths) == 0 {
-		return "", nil
-	}
 	if len(mmprojPaths) > 1 {
 		return "", fmt.Errorf("found multiple .mmproj files, but only 1 is supported")
 	}
-	return filepath.Base(mmprojPaths[0]), nil
+	if len(mmprojPaths) == 1 {
+		return filepath.Base(mmprojPaths[0]), nil
+	}
+
+	// Fall back to detecting mmproj files with a .gguf extension.
+	// CNCF ModelPack format packages mmproj files as generic weight layers,
+	// preserving their original filename (e.g., "mmproj-BF16.gguf").
+	ggufPaths, err := filepath.Glob(filepath.Join(modelDir, "[^.]*.gguf"))
+	if err != nil {
+		return "", err
+	}
+	var mmprojGGUF []string
+	for _, p := range ggufPaths {
+		if isMMProjFilePath(p) {
+			mmprojGGUF = append(mmprojGGUF, p)
+		}
+	}
+	if len(mmprojGGUF) > 1 {
+		return "", fmt.Errorf("found multiple mmproj .gguf files, but only 1 is supported")
+	}
+	if len(mmprojGGUF) == 1 {
+		return filepath.Base(mmprojGGUF[0]), nil
+	}
+
+	return "", nil
 }
 
 func findChatTemplateFile(modelDir string) (string, error) {

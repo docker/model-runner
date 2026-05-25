@@ -4,7 +4,6 @@ import (
 	"os"
 
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
 )
 
@@ -33,20 +32,17 @@ func controllerImageVariant(detectedGPU gpupkg.GPUSupport, backend string) strin
 	if backend == vllm.Name {
 		return "vllm-cuda"
 	}
-	// If diffusers backend is requested, return diffusers variant
-	if backend == diffusers.Name {
-		return "diffusers"
-	}
 	// Default to llama.cpp backend behavior
 	switch detectedGPU {
 	case gpupkg.GPUSupportCUDA:
 		return "cuda"
 	case gpupkg.GPUSupportROCm:
 		return "rocm"
-	case gpupkg.GPUSupportMUSA:
-		return "musa"
-	case gpupkg.GPUSupportCANN:
-		return "cann"
+	case gpupkg.GPUSupportMUSA, gpupkg.GPUSupportCANN:
+		// Upstream llama.cpp publishes MUSA (server-musa) and OpenVINO
+		// (server-openvino) images, but we haven't integrated them yet.
+		// TODO: add MUSA and OpenVINO/CANN variant support.
+		return ""
 	case gpupkg.GPUSupportNone:
 		return ""
 	default:

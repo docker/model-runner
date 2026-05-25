@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/internal/mutate"
-	"github.com/docker/model-runner/pkg/distribution/internal/partial"
 	"github.com/docker/model-runner/pkg/distribution/internal/store"
 	"github.com/docker/model-runner/pkg/distribution/internal/testutil"
 	"github.com/docker/model-runner/pkg/distribution/oci"
@@ -425,14 +424,19 @@ func TestWriteRollsBackOnTagFailure(t *testing.T) {
 		t.Fatalf("expected config blob to be cleaned up, stat error: %v", err)
 	}
 
+	// Layer blobs are content-addressed and are intentionally retained even
+	// after a failed write. They may be reused by a subsequent pull of the
+	// same or another model, and they allow the download to resume rather
+	// than restart from byte 0. Only the manifest, config, and index are
+	// rolled back to leave the store in a consistent (non-indexed) state.
 	for _, digestStr := range diffIDs {
 		parts := strings.SplitN(digestStr, ":", 2)
 		if len(parts) != 2 {
 			t.Fatalf("unexpected diffID format: %q", digestStr)
 		}
 		layerPath := filepath.Join(storePath, "blobs", parts[0], parts[1])
-		if _, err := os.Stat(layerPath); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("expected layer blob %q to be cleaned up, stat error: %v", layerPath, err)
+		if _, err := os.Stat(layerPath); err != nil {
+			t.Fatalf("expected layer blob %q to be retained for future resume, stat error: %v", layerPath, err)
 		}
 	}
 
@@ -461,7 +465,7 @@ func TestWriteRollsBackOnConfigFailure(t *testing.T) {
 	}
 
 	mdl := newTestModel(t)
-	cfgFailModel := configErrorModel{ModelArtifact: mdl}
+	cfgFailModel := testutil.WithRawConfigError(mdl, fmt.Errorf("forced config failure"))
 
 	if err := s.Write(cfgFailModel, []string{"cfg-failure:latest"}, nil); err == nil {
 		t.Fatalf("expected write to fail due to config overwrite")
@@ -526,14 +530,6 @@ func assertStoreClean(t *testing.T, s *store.LocalStore, storePath string, mdl t
 	if strings.Contains(string(content), manifestDigest.Hex) {
 		t.Fatalf("models index still references failed digest %s", manifestDigest.Hex)
 	}
-}
-
-type configErrorModel struct {
-	types.ModelArtifact
-}
-
-func (configErrorModel) RawConfigFile() ([]byte, error) {
-	return nil, fmt.Errorf("forced config failure")
 }
 
 type failingLayer struct {
@@ -760,23 +756,14 @@ func TestStoreWithMultimodalProjector(t *testing.T) {
 }
 
 func newTestModel(t *testing.T) types.ModelArtifact {
-	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
-	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
-	if err != nil {
-		t.Fatalf("failed to create license layer: %v", err)
-	}
-	mdl = mutate.AppendLayers(mdl, licenseLayer)
-	return mdl
+	return testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("testdata", "dummy.gguf"),
+		testutil.Layer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense),
+	)
 }
 
 func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
-	mdl := testutil.BuildModelFromPath(t, filepath.Join("testdata", "dummy.gguf"))
-
-	licenseLayer, err := partial.NewLayer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense)
-	if err != nil {
-		t.Fatalf("failed to create license layer: %v", err)
-	}
-
 	// Create dummy multimodal projector file for testing
 	mmprojPath := filepath.Join(t.TempDir(), "dummy.mmproj")
 	mmprojContent := []byte("dummy multimodal projector content for testing")
@@ -784,13 +771,12 @@ func newTestModelWithMultimodalProjector(t *testing.T) types.ModelArtifact {
 		t.Fatalf("failed to create dummy multimodal projector file: %v", err)
 	}
 
-	mmprojLayer, err := partial.NewLayer(mmprojPath, types.MediaTypeMultimodalProjector)
-	if err != nil {
-		t.Fatalf("failed to create multimodal projector layer: %v", err)
-	}
-
-	mdl = mutate.AppendLayers(mdl, licenseLayer, mmprojLayer)
-	return mdl
+	return testutil.NewGGUFArtifact(
+		t,
+		filepath.Join("testdata", "dummy.gguf"),
+		testutil.Layer(filepath.Join("testdata", "license.txt"), types.MediaTypeLicense),
+		testutil.Layer(mmprojPath, types.MediaTypeMultimodalProjector),
+	)
 }
 
 // TestWriteLightweight tests the WriteLightweight method

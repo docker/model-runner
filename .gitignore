@@ -2,6 +2,7 @@
 model-runner
 model-runner.sock
 docker-model
+dmr
 # Directory where we store the updated llama.cpp
 updated-inference/
 vendor/

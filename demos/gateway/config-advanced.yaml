@@ -1,0 +1,39 @@
+# Advanced gateway config: load balancing, retries, and fallbacks
+#
+# Demonstrates three key gateway features:
+#
+# 1. LOAD BALANCING — two deployments under the same model alias.
+#    The gateway round-robins across them automatically.
+#
+# 2. RETRIES — if a provider call fails, it will be retried up to
+#    num_retries times before giving up (or falling back).
+#
+# 3. FALLBACKS — if "fast-model" exhausts all retries, the gateway
+#    automatically promotes the request to "big-model".
+
+model_list:
+  # Two local DMR models registered under the same alias.
+  # Requests for "fast-model" are round-robined across both.
+  - model_name: fast-model
+    params:
+      model: docker_model_runner/ai/smollm2
+
+  - model_name: fast-model
+    params:
+      model: docker_model_runner/ai/qwen3:0.6B-Q4_0
+
+  # Larger fallback model
+  - model_name: big-model
+    params:
+      model: docker_model_runner/ai/gemma3
+
+  # Embedding model
+  - model_name: embeddings
+    params:
+      model: docker_model_runner/ai/nomic-embed-text-v1.5
+
+general_settings:
+  master_key: demo-secret
+  num_retries: 2                        # retry failing calls twice before fallback
+  fallbacks:
+    - fast-model: [big-model]           # fast-model falls back to big-model

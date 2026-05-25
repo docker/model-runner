@@ -15,15 +15,19 @@ const (
 
 // HuggingFaceClient searches for models on HuggingFace Hub
 type HuggingFaceClient struct {
-	httpClient *http.Client
-	baseURL    string
+	httpClient         *http.Client
+	baseURL            string
+	backendResolver    backendResolver
+	resolveConcurrency int
 }
 
 // NewHuggingFaceClient creates a new HuggingFace search client
 func NewHuggingFaceClient() *HuggingFaceClient {
 	return &HuggingFaceClient{
-		httpClient: NewHTTPClient(),
-		baseURL:    huggingFaceAPIURL,
+		httpClient:         NewHTTPClient(),
+		baseURL:            huggingFaceAPIURL,
+		backendResolver:    newHuggingFaceRepoBackendResolver(),
+		resolveConcurrency: defaultBackendResolveConcurrency,
 	}
 }
 
@@ -109,9 +113,6 @@ func (c *HuggingFaceClient) Search(ctx context.Context, opts SearchOptions) ([]S
 		// Generate description from tags
 		description := generateDescription(model.Tags, model.PipelineTag)
 
-		// Determine backend type from tags
-		backend := determineBackend(model.Tags)
-
 		results = append(results, SearchResult{
 			Name:        modelName,
 			Description: truncateString(description, 50),
@@ -120,11 +121,16 @@ func (c *HuggingFaceClient) Search(ctx context.Context, opts SearchOptions) ([]S
 			Source:      HuggingFaceSourceName,
 			Official:    false,
 			UpdatedAt:   model.CreatedAt,
-			Backend:     backend,
+			Backend:     backendUnknown,
 		})
 	}
 
-	return results, nil
+	return resolveSearchResultBackends(ctx, results, c.resolveConcurrency, func(ctx context.Context, result SearchResult) (string, error) {
+		if c.backendResolver == nil {
+			return backendUnknown, nil
+		}
+		return c.backendResolver.Resolve(ctx, result.Name)
+	}), nil
 }
 
 // generateDescription creates a description from model tags
@@ -164,43 +170,4 @@ func generateDescription(tags []string, pipelineTag string) string {
 		return "AI model"
 	}
 	return strings.Join(parts, ", ")
-}
-
-// determineBackend determines the backend type from HuggingFace model tags.
-// Since we filter by apps=vllm,llama.cpp, all results are compatible with at least one backend.
-// - GGUF format models work with llama.cpp
-// - Transformers/safetensors models work with vLLM
-func determineBackend(tags []string) string {
-	var hasVLLM, hasLlamaCpp bool
-
-	for _, tag := range tags {
-		tagLower := strings.ToLower(tag)
-
-		// Check for explicit vllm tag or formats that indicate vLLM compatibility
-		if tagLower == "vllm" || tagLower == "text-generation-inference" {
-			hasVLLM = true
-		}
-		// Transformers/safetensors models are typically vLLM compatible
-		if tagLower == "transformers" || tagLower == "safetensors" {
-			hasVLLM = true
-		}
-
-		// Check for llama.cpp compatibility (GGUF format)
-		if tagLower == "llama.cpp" || tagLower == "llama-cpp" || tagLower == "gguf" {
-			hasLlamaCpp = true
-		}
-	}
-
-	if hasVLLM && hasLlamaCpp {
-		return "llama.cpp, vllm"
-	}
-	if hasVLLM {
-		return "vllm"
-	}
-	if hasLlamaCpp {
-		return "llama.cpp"
-	}
-	// Fallback: since we filter by apps=vllm,llama.cpp, model must be compatible with one
-	// but we couldn't determine which from tags
-	return "llama.cpp"
 }

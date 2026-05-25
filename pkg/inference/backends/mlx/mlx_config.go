@@ -61,9 +61,22 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 	return args, nil
 }
 
-// GetMaxTokens returns the max tokens (context size) from model config or backend config.
-// Model config takes precedence over backend config.
+// GetMaxTokens returns the max tokens (context size) from backend config or model config.
+// Backend config takes precedence over model config (runtime configuration).
 // Returns nil if neither is specified (MLX will use model defaults).
 func GetMaxTokens(modelCfg types.ModelConfig, backendCfg *inference.BackendConfiguration) *uint64 {
+	// Backend config takes precedence (runtime configuration via docker model configure / Ollama API num_ctx)
+	if backendCfg != nil && backendCfg.ContextSize != nil && *backendCfg.ContextSize > 0 {
+		v := uint64(*backendCfg.ContextSize)
+		return &v
+	}
+	// Fallback to model config (set at packaging time via docker model package --context-size)
+	if modelCfg != nil {
+		if cs := modelCfg.GetContextSize(); cs != nil && *cs > 0 {
+			v := uint64(*cs)
+			return &v
+		}
+	}
+	// Return nil to let MLX use model defaults
 	return nil
 }

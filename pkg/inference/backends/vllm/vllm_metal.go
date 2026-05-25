@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/docker/model-runner/pkg/distribution/types"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -20,12 +21,13 @@ import (
 	"github.com/docker/model-runner/pkg/internal/dockerhub"
 	"github.com/docker/model-runner/pkg/internal/utils"
 	"github.com/docker/model-runner/pkg/logging"
+	"github.com/docker/model-runner/pkg/sandbox"
 )
 
 const (
 	defaultInstallDir = ".docker/model-runner/vllm-metal"
 	// vllmMetalVersion is the vllm-metal release tag to download from Docker Hub.
-	vllmMetalVersion = "v0.1.0-20260126-121650"
+	vllmMetalVersion = "v0.2.0-20260420-142150"
 )
 
 var (
@@ -49,11 +51,13 @@ type vllmMetal struct {
 	installDir string
 	// status is the state in which the backend is in.
 	status string
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
 }
 
 // newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -67,6 +71,7 @@ func newMetal(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
 		status:           inference.FormatNotInstalled(""),
+		registryMirrors:  registryMirrors,
 	}, nil
 }
 
@@ -141,7 +146,7 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:vllm-metal-%s", vllmMetalVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, v.registryMirrors); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
@@ -173,6 +178,29 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 	// Restore the execute bit on the bundled Python binary.
 	if err := os.Chmod(filepath.Join(v.installDir, "bin", "python3"), 0755); err != nil {
 		return fmt.Errorf("failed to make python3 executable: %w", err)
+	}
+
+	// Copy pre-built Metal kernel extension to the user's cache directory
+	// so vllm-metal skips JIT compilation at runtime (the macOS sandbox
+	// blocks clang++ invocations needed by the JIT compiler).
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		cacheDir := filepath.Join(homeDir, ".cache", "vllm-metal")
+		prebuiltDir := filepath.Join(v.installDir, "prebuilt")
+		if entries, readErr := os.ReadDir(prebuiltDir); readErr == nil {
+			if mkErr := os.MkdirAll(cacheDir, 0755); mkErr == nil {
+				for _, entry := range entries {
+					src := filepath.Join(prebuiltDir, entry.Name())
+					dst := filepath.Join(cacheDir, entry.Name())
+					if data, cpErr := os.ReadFile(src); cpErr == nil {
+						if wErr := os.WriteFile(dst, data, 0755); wErr != nil {
+							v.log.Warn("failed to copy prebuilt extension", "file", entry.Name(), "error", wErr)
+						}
+					}
+				}
+				v.log.Info("Copied pre-built Metal kernel extension to cache", "cacheDir", cacheDir)
+			}
+		}
 	}
 
 	v.log.Info("vllm-metal installed successfully", "version", vllmMetalVersion)
@@ -207,7 +235,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
-	args, err := v.buildArgs(bundle, socket, mode, config)
+	args, err := v.buildArgs(bundle, socket, model, modelRef, mode, config)
 	if err != nil {
 		return fmt.Errorf("failed to build vllm-metal arguments: %w", err)
 	}
@@ -216,16 +244,19 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		BackendName:     "vllm-metal",
 		Socket:          socket,
 		BinaryPath:      v.pythonPath,
-		SandboxPath:     "",
-		SandboxConfig:   "",
+		SandboxPath:     v.installDir,
+		SandboxConfig:   sandbox.ConfigurationPython,
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),
+		Env:             []string{"VLLM_HOST_IP=127.0.0.1"},
 	})
 }
 
 // buildArgs builds the command line arguments for vllm-metal server.
-func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, socket string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
+// vllm-metal is a vLLM platform plugin, so we launch vLLM's OpenAI-compatible
+// API server directly; the Metal plugin is auto-discovered via entry points.
+func (v *vllmMetal) buildArgs(bundle types.ModelBundle, socket, model, modelRef string, mode inference.BackendMode, config *inference.BackendConfiguration) ([]string, error) {
 	// Parse host:port from socket (vllm-metal uses TCP)
 	host, port, err := net.SplitHostPort(socket)
 	if err != nil {
@@ -240,10 +271,18 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 	modelPath := filepath.Dir(safetensorsPath)
 
 	args := []string{
-		"-m", "vllm_metal.server",
+		"-m", "vllm.entrypoints.openai.api_server",
 		"--model", modelPath,
 		"--host", host,
 		"--port", port,
+		"--enable-auto-tool-choice", "--tool-call-parser", "hermes",
+	}
+
+	// Add chat template if available in the model bundle.
+	// Since transformers v4.44, vLLM no longer provides a default chat
+	// template so we must supply one when the tokenizer omits it.
+	if path := bundle.ChatTemplatePath(); path != "" {
+		args = append(args, "--chat-template", path)
 	}
 
 	// Add mode-specific arguments
@@ -258,6 +297,10 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 		return nil, fmt.Errorf("image generation mode not supported by vllm-metal backend")
 	}
 
+	// Register model aliases so the model-runner can address the model by its
+	// digest (model) and its human-readable reference (modelRef).
+	args = append(args, "--served-model-name", model, modelRef)
+
 	// Add context size if specified
 	if config != nil && config.ContextSize != nil {
 		args = append(args, "--max-model-len", strconv.Itoa(int(*config.ContextSize)))
@@ -269,6 +312,16 @@ func (v *vllmMetal) buildArgs(bundle interface{ SafetensorsPath() string }, sock
 	}
 
 	return args, nil
+}
+
+// Uninstall implements inference.Backend.Uninstall.
+func (v *vllmMetal) Uninstall() error {
+	if err := os.RemoveAll(v.installDir); err != nil {
+		return fmt.Errorf("failed to remove vllm-metal install directory: %w", err)
+	}
+	v.pythonPath = ""
+	v.status = inference.FormatNotInstalled("")
+	return nil
 }
 
 // Status implements inference.Backend.Status.
