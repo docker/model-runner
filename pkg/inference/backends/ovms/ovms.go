@@ -71,7 +71,7 @@ func (o *ovms) RewritePath(path string) string {
 
 func (o *ovms) Install(ctx context.Context, _ *http.Client) error {
 	binary := o.binaryPath()
-	if _, err := os.Stat(binary); err != nil {
+	if _, err := exec.LookPath(binary); err != nil {
 		o.status = inference.FormatNotInstalled("")
 		return ErrOVMSNotFound
 	}
