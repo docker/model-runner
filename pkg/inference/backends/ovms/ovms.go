@@ -22,8 +22,6 @@ import (
 const (
 	// Name is the backend name.
 	Name = "ovms"
-
-	defaultBinaryPath = "./ovms/bin/ovms"
 )
 
 var ErrOVMSNotFound = errors.New("ovms binary not found")
@@ -71,6 +69,11 @@ func (o *ovms) RewritePath(path string) string {
 
 func (o *ovms) Install(ctx context.Context, _ *http.Client) error {
 	binary := o.binaryPath()
+	if o.customBinaryPath != "" {
+		o.log.Info("OVMS binary configured via OVMS_SERVER_PATH", "path", binary)
+	} else if resolved, err := exec.LookPath(Name); err == nil {
+		o.log.Info("OVMS binary resolved from PATH", "path", resolved)
+	}
 	if _, err := exec.LookPath(binary); err != nil {
 		o.status = inference.FormatNotInstalled("")
 		return ErrOVMSNotFound
@@ -154,7 +157,11 @@ func (o *ovms) binaryPath() string {
 	if o.customBinaryPath != "" {
 		return o.customBinaryPath
 	}
-	return defaultBinaryPath
+	if path, err := exec.LookPath(Name); err == nil {
+		return path
+	}
+	// Keep command name as a last resort so error reporting remains clear.
+	return Name
 }
 
 // resolveOVMSModelPath returns the path OVMS should receive via --model_path.

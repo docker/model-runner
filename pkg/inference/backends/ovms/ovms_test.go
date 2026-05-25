@@ -9,6 +9,31 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 )
 
+func TestBinaryPath(t *testing.T) {
+	t.Run("uses custom binary path when provided", func(t *testing.T) {
+		o := &ovms{customBinaryPath: "/tmp/custom-ovms"}
+		if got := o.binaryPath(); got != "/tmp/custom-ovms" {
+			t.Fatalf("binaryPath() = %q, want %q", got, "/tmp/custom-ovms")
+		}
+	})
+
+	t.Run("uses ovms from PATH when custom path is empty", func(t *testing.T) {
+		binDir := t.TempDir()
+		binary := filepath.Join(binDir, Name)
+		if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("write fake ovms binary: %v", err)
+		}
+
+		originalPath := os.Getenv("PATH")
+		t.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)
+
+		o := &ovms{}
+		if got := o.binaryPath(); got != binary {
+			t.Fatalf("binaryPath() = %q, want %q", got, binary)
+		}
+	})
+}
+
 func TestResolveOVMSModelPath(t *testing.T) {
 	t.Run("uses model subdirectory when present", func(t *testing.T) {
 		bundleRoot := t.TempDir()

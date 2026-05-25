@@ -323,13 +323,15 @@ The vLLM wheels are sourced from the official vLLM GitHub Releases at `https://g
 
 Docker Model Runner can also run an OVMS backend.
 
-- Default OVMS binary path: `./ovms/bin/ovms`
+- Default OVMS binary: resolved from `PATH` (looks up `ovms`)
 - Override binary path with: `OVMS_SERVER_PATH`
 
-When the runner starts, it will try to initialize OVMS as an available backend. If you are running from source and want to use a custom OVMS binary, set:
+OVMS can be installed based on this [guide](https://docs.openvino.ai/2026/model-server/ovms_docs_deploying_server_baremetal.html). Minimal version is 2026.2.
+
+When the runner starts, it will try to initialize OVMS as an available backend.
 
 ```sh
-OVMS_SERVER_PATH=/absolute/path/to/ovms ./model-runner
+MODEL_RUNNER_PORT=13434 ./model-runner
 ```
 
 Create a new model
