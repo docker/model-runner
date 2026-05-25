@@ -31,8 +31,9 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 
 	// Filter to model files (weights + configs)
 	weightFiles, configFiles := FilterModelFiles(files)
+	isOpenVINORepo := IsOpenVINOModel(files)
 
-	if len(weightFiles) == 0 {
+	if len(weightFiles) == 0 && !isOpenVINORepo {
 		return nil, fmt.Errorf("no model weight files (GGUF or SafeTensors) found in repository %s", repo)
 	}
 
@@ -54,10 +55,20 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		}
 	}
 
-	// Combine all files to download
-	allFiles := append(weightFiles, configFiles...)
-	if mmprojFile != nil {
-		allFiles = append(allFiles, *mmprojFile)
+	// Combine all files to download.
+	// For OpenVINO repositories, pull all repository files so the full IR layout is preserved.
+	var allFiles []RepoFile
+	if isOpenVINORepo {
+		for _, f := range files {
+			if f.Type == "file" {
+				allFiles = append(allFiles, f)
+			}
+		}
+	} else {
+		allFiles = append(weightFiles, configFiles...)
+		if mmprojFile != nil {
+			allFiles = append(allFiles, *mmprojFile)
+		}
 	}
 
 	if progressWriter != nil {
@@ -90,7 +101,7 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 		_ = progress.WriteProgress(progressWriter, "Building model artifact...", 0, 0, 0, "", "pull")
 	}
 
-	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir, createdTime)
+	model, err := buildModelFromFiles(result.LocalPaths, weightFiles, configFiles, tempDir, createdTime, isOpenVINORepo)
 	if err != nil {
 		return nil, fmt.Errorf("build model: %w", err)
 	}
@@ -103,25 +114,28 @@ func BuildModel(ctx context.Context, client *Client, repo, revision, tag string,
 // which preserves directory structure and adds each file as an individual layer with
 // filepath annotations. For GGUF models, it uses the V0.1 packaging (FromPaths)
 // for backward compatibility.
-func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
-	// Check if this is a safetensors model - use V0.2 packaging
-	if isSafetensorsModel(weightFiles) {
-		return buildSafetensorsModelV02(tempDir, createdTime)
+func buildModelFromFiles(localPaths map[string]string, weightFiles, configFiles []RepoFile, tempDir string, createdTime *time.Time, allowNoStandardWeights bool) (types.ModelArtifact, error) {
+	// Safetensors and OpenVINO repos are packaged with V0.2 layer-per-file packaging.
+	if isSafetensorsModel(weightFiles) || allowNoStandardWeights {
+		return buildDirectoryModelV02(tempDir, createdTime, allowNoStandardWeights)
 	}
 
 	// For GGUF models, use V0.1 packaging (backward compatible)
 	return buildGGUFModelV01(localPaths, weightFiles, configFiles, createdTime)
 }
 
-// buildSafetensorsModelV02 builds a safetensors model using V0.2 layer-per-file packaging.
+// buildDirectoryModelV02 builds a model using V0.2 layer-per-file packaging.
 // It uses builder.FromDirectory which recursively scans the tempDir and creates one layer
 // per file, preserving nested directory structure with filepath annotations.
 // If createdTime is non-nil, it is used as the creation timestamp for the OCI config
 // to produce deterministic digests. Otherwise time.Now() is used.
-func buildSafetensorsModelV02(tempDir string, createdTime *time.Time) (types.ModelArtifact, error) {
+func buildDirectoryModelV02(tempDir string, createdTime *time.Time, allowNoStandardWeights bool) (types.ModelArtifact, error) {
 	var dirOpts []builder.DirectoryOption
 	if createdTime != nil {
 		dirOpts = append(dirOpts, builder.WithCreatedTime(*createdTime))
+	}
+	if allowNoStandardWeights {
+		dirOpts = append(dirOpts, builder.WithAllowNoWeightFiles())
 	}
 
 	b, err := builder.FromDirectory(tempDir, dirOpts...)

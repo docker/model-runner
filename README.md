@@ -300,6 +300,34 @@ docker buildx build \
 
 The vLLM wheels are sourced from the official vLLM GitHub Releases at `https://github.com/vllm-project/vllm/releases`, which provides prebuilt wheels for each release version.
 
+### OVMS integration
+
+Docker Model Runner can also run an OVMS backend.
+
+- Default OVMS binary path: `./ovms/bin/ovms`
+- Override binary path with: `OVMS_SERVER_PATH`
+
+When the runner starts, it will try to initialize OVMS as an available backend. If you are running from source and want to use a custom OVMS binary, set:
+
+```sh
+OVMS_SERVER_PATH=/absolute/path/to/ovms ./model-runner
+```
+
+You can target OVMS explicitly through the backend-prefixed OpenAI-compatible routes:
+
+```sh
+# List models exposed via OVMS backend routing
+curl http://localhost:13434/engines/ovms/v1/models
+
+# Example chat/completions call through OVMS backend routing
+curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
+  "model": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov",
+  "messages": [
+    {"role": "user", "content": "Hello from OVMS"}
+  ]
+}'
+```
+
 ## API Examples
 
 The Model Runner exposes a REST API that can be accessed via TCP port. You can interact with it using curl commands.
@@ -310,17 +338,17 @@ When running with `docker-run`, you can use regular HTTP requests:
 
 ```sh
 # List all available models
-curl http://localhost:8080/models
+curl http://localhost:13434/models
 
 # Create a new model
-curl http://localhost:8080/models/create -X POST -d '{"from": "ai/smollm2"}'
+curl http://localhost:13434/models/create -X POST -d '{"from": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov"}'
 
 # Get information about a specific model
-curl http://localhost:8080/models/ai/smollm2
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov
 
 # Chat with a model
-curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
-  "model": "ai/smollm2",
+curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
+  "model": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello, how are you?"}
@@ -328,37 +356,8 @@ curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
 }'
 
 # Delete a model
-curl http://localhost:8080/models/ai/smollm2 -X DELETE
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov -X DELETE
 
-# Get metrics
-curl http://localhost:8080/metrics
-```
-
-The response will contain the model's reply:
-
-```json
-{
-  "id": "chat-12345",
-  "object": "chat.completion",
-  "created": 1682456789,
-  "model": "ai/smollm2",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "I'm doing well, thank you for asking! How can I assist you today?"
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 24,
-    "completion_tokens": 16,
-    "total_tokens": 40
-  }
-}
-```
 
 ### Features
 

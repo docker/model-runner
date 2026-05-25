@@ -19,6 +19,7 @@ import (
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/ovms"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -64,6 +65,7 @@ func main() {
 	sglangServerPath := envconfig.SGLangServerPath()
 	mlxServerPath := envconfig.MLXServerPath()
 	diffusersServerPath := envconfig.DiffusersServerPath()
+	ovmsServerPath := envconfig.OVMSServerPath()
 	vllmMetalServerPath := envconfig.VLLMMetalServerPath()
 
 	// Create a proxy-aware HTTP transport
@@ -91,6 +93,9 @@ func main() {
 	}
 	if vllmMetalServerPath != "" {
 		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
+	}
+	if ovmsServerPath != "" {
+		log.Info("OVMS_SERVER_PATH", "path", ovmsServerPath)
 	}
 
 	// Create llama.cpp configuration from environment variables
@@ -129,6 +134,9 @@ func main() {
 				IncludeDiffusers:     true,
 				DiffusersPath:        diffusersServerPath,
 			}),
+			routing.BackendDef{Name: ovms.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
+				return ovms.New(log, mm, log.With("component", ovms.Name), ovmsServerPath)
+			}},
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
 			}},

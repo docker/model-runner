@@ -159,6 +159,12 @@ func VLLMMetalServerPath() string {
 	return Var("VLLM_METAL_SERVER_PATH")
 }
 
+// OVMSServerPath returns the optional path to the OVMS server binary.
+// Configured via OVMS_SERVER_PATH.
+func OVMSServerPath() string {
+	return Var("OVMS_SERVER_PATH")
+}
+
 // DisableMetrics is true when DISABLE_METRICS is set to a truthy value (e.g. "1").
 var DisableMetrics = Bool("DISABLE_METRICS")
 

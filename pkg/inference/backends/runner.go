@@ -23,7 +23,7 @@ type ErrorTransformer func(output string) string
 
 // RunnerConfig holds configuration for a backend runner
 type RunnerConfig struct {
-	// BackendName is the display name of the backend (e.g., "llama.cpp", "vLLM")
+	// BackendName is the display name of the backend (e.g., "llama.cpp", "vLLM", "ovms")
 	BackendName string
 	// Socket is the unix socket path
 	Socket string
