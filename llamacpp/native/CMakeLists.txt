@@ -31,7 +31,11 @@ if (DDLLAMA_BUILD_SERVER)
     # subdirectory), so we install it explicitly to ensure the dylib/so ends up in
     # install/lib/ and the server binary can resolve its rpath dependency.
     if (TARGET llama-server-impl)
-        install(TARGETS llama-server-impl LIBRARY DESTINATION lib)
+        install(TARGETS llama-server-impl
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION bin
+        )
     endif()
 
     # Ensure shared library DLLs are installed on Windows.
