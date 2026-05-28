@@ -26,6 +26,14 @@ if (DDLLAMA_BUILD_SERVER)
     endif()
     add_subdirectory(vendor/llama.cpp)
 
+    # Install llama-server-impl shared library.
+    # Upstream gates this on LLAMA_TOOLS_INSTALL (which defaults OFF when used as a
+    # subdirectory), so we install it explicitly to ensure the dylib/so ends up in
+    # install/lib/ and the server binary can resolve its rpath dependency.
+    if (TARGET llama-server-impl)
+        install(TARGETS llama-server-impl LIBRARY DESTINATION lib)
+    endif()
+
     # Ensure shared library DLLs are installed on Windows.
     # Upstream install rules use LIBRARY which doesn't install RUNTIME (DLL) artifacts on DLL platforms.
     if (BUILD_SHARED_LIBS)
