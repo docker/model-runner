@@ -5,14 +5,16 @@ Launch an app configured to use Docker Model Runner.
 
 Without arguments, lists all supported apps.
 
-Supported apps: anythingllm, claude, codex, openclaw, opencode, openwebui
+Supported apps: anythingllm, claude, codex, llmfit, openclaw, opencode, openwebui
 
 Examples:
   docker model launch
   docker model launch opencode
+  docker model launch llmfit
   docker model launch claude -- --help
   docker model launch openwebui --port 3000
   docker model launch claude --config
+  docker model launch llmfit -- recommend -n 5
 
 ### Options
 

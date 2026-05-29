@@ -159,7 +159,7 @@ func TestLaunchContainerAppDryRun(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, "openwebui", ca, testBaseURL, "", 0, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -177,7 +177,7 @@ func TestLaunchContainerAppOverrides(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, overrideImage, overridePort, false, nil, true)
+	err := launchContainerApp(cmd, "openwebui", ca, testBaseURL, overrideImage, overridePort, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -191,7 +191,7 @@ func TestLaunchContainerAppDetach(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, true, nil, true)
+	err := launchContainerApp(cmd, "openwebui", ca, testBaseURL, "", 0, true, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -206,7 +206,7 @@ func TestLaunchContainerAppUsesEnvFn(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, "openwebui", ca, testBaseURL, "", 0, false, nil, true)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -219,7 +219,7 @@ func TestLaunchContainerAppNilEnvFn(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := newTestCmd(buf)
 
-	err := launchContainerApp(cmd, ca, testBaseURL, "", 0, false, nil, true)
+	err := launchContainerApp(cmd, "", ca, testBaseURL, "", 0, false, nil, true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "container app requires envFn to be set")
 }
@@ -549,6 +549,7 @@ func TestListSupportedApps(t *testing.T) {
 	require.Contains(t, output, "claude")
 	require.Contains(t, output, "opencode")
 	require.Contains(t, output, "openwebui")
+	require.Contains(t, output, "llmfit")
 }
 
 func TestOpenWebuiEnvIncludesWebuiAuth(t *testing.T) {
@@ -570,6 +571,9 @@ func TestPrintAppConfigContainerApp(t *testing.T) {
 	require.Contains(t, output, "Configuration for openwebui")
 	require.Contains(t, output, "container app")
 	require.Contains(t, output, "ghcr.io/open-webui/open-webui:latest")
+	require.NotContains(t, output, "Interactive args")
+	require.Contains(t, output, "Container port")
+	require.Contains(t, output, "Host port")
 	require.Contains(t, output, "OPENAI_API_BASE")
 	require.Contains(t, output, "WEBUI_AUTH=false")
 }
@@ -586,6 +590,23 @@ func TestPrintAppConfigContainerAppOverrides(t *testing.T) {
 	require.Contains(t, output, "custom/image:v2")
 	require.NotContains(t, output, "ghcr.io/open-webui/open-webui:latest")
 	require.Contains(t, output, "9999")
+}
+
+func TestPrintAppConfigContainerAppNoPorts(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	ep := engineEndpoints{container: testBaseURL, host: testBaseURL}
+	err := printAppConfig(cmd, "llmfit", ep, "", 0)
+	require.NoError(t, err)
+	output := buf.String()
+	require.Contains(t, output, "Configuration for llmfit")
+	require.Contains(t, output, "container app")
+	require.Contains(t, output, "ghcr.io/alexsjones/llmfit")
+	require.Contains(t, output, "Interactive args: tui")
+	require.Contains(t, output, "DOCKER_MODEL_RUNNER_HOST="+testBaseURL)
+	require.NotContains(t, output, "Container port")
+	require.NotContains(t, output, "Host port")
 }
 
 func TestPrintAppConfigHostApp(t *testing.T) {
@@ -610,4 +631,113 @@ func TestPrintAppConfigUnsupported(t *testing.T) {
 	err := printAppConfig(cmd, "bogus", ep, "", 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported app")
+}
+
+func TestLaunchContainerAppNoPort(t *testing.T) {
+	ca := containerApp{
+		defaultImage: "ghcr.io/alexsjones/llmfit",
+		envFn:        llmfitEnv,
+	}
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 0, false, nil, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Would run: docker")
+	require.Contains(t, output, "run --rm")
+	require.NotContains(t, output, "-it")
+	require.NotContains(t, output, "-p")
+	require.Contains(t, output, "DOCKER_MODEL_RUNNER_HOST="+testBaseURL)
+	require.Contains(t, output, "ghcr.io/alexsjones/llmfit")
+}
+
+func TestLaunchContainerAppNoPortWithArgs(t *testing.T) {
+	ca := containerApp{
+		defaultImage: "ghcr.io/alexsjones/llmfit",
+		envFn:        llmfitEnv,
+	}
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 0, false, []string{"recommend", "-n", "3"}, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "Would run: docker")
+	require.Contains(t, output, "run --rm")
+	require.NotContains(t, output, "-it")
+	require.NotContains(t, output, "-p")
+	require.Contains(t, output, "recommend -n 3")
+	require.Contains(t, output, "DOCKER_MODEL_RUNNER_HOST="+testBaseURL)
+	require.Contains(t, output, "ghcr.io/alexsjones/llmfit")
+}
+
+func TestLaunchContainerAppNoPortRejectsPortFlag(t *testing.T) {
+	ca := containerApp{
+		defaultImage: "ghcr.io/alexsjones/llmfit",
+		envFn:        llmfitEnv,
+	}
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 3000, false, nil, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not expose a port")
+}
+
+func TestLaunchContainerAppTriggersInteractive(t *testing.T) {
+	ca := containerApp{
+		defaultImage:    "ghcr.io/alexsjones/llmfit",
+		envFn:           llmfitEnv,
+		interactiveArgs: map[string]bool{"tui": true},
+	}
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 0, false, []string{"tui"}, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "run --rm -it")
+	require.Contains(t, output, "ghcr.io/alexsjones/llmfit tui")
+}
+
+func TestLaunchContainerAppInteractiveArgsNoMatch(t *testing.T) {
+	ca := containerApp{
+		defaultImage:    "ghcr.io/alexsjones/llmfit",
+		envFn:           llmfitEnv,
+		interactiveArgs: map[string]bool{"tui": true},
+	}
+	buf := new(bytes.Buffer)
+	cmd := newTestCmd(buf)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 0, false, []string{"recommend", "-n", "3"}, true)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "run --rm")
+	require.NotContains(t, output, "-it")
+}
+
+func TestLaunchContainerAppInteractiveSkippedOnDetach(t *testing.T) {
+	ca := containerApp{
+		defaultImage:    "ghcr.io/alexsjones/llmfit",
+		envFn:           llmfitEnv,
+		interactiveArgs: map[string]bool{"tui": true},
+	}
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := &cobra.Command{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err := launchContainerApp(cmd, "llmfit", ca, testBaseURL, "", 0, true, []string{"tui"}, true)
+	require.NoError(t, err)
+
+	output := stdout.String()
+	require.Contains(t, output, "run --rm -d")
+	require.NotContains(t, output, "-it")
+	require.Contains(t, output, "Warning: llmfit runs in interactive mode, app may not work as expected in detached mode")
 }

@@ -36,7 +36,8 @@ type containerApp struct {
 	defaultHostPort int
 	containerPort   int
 	envFn           func(baseURL string) []string
-	extraDockerArgs []string // additional docker run args (e.g., volume mounts)
+	extraDockerArgs []string        // additional docker run args (e.g., volume mounts)
+	interactiveArgs map[string]bool // set of interactive args if app supports running interactively (e.g., tui)
 }
 
 // containerApps are launched via "docker run --rm".
@@ -48,7 +49,17 @@ var containerApps = map[string]containerApp{
 		envFn:           anythingllmEnv,
 		extraDockerArgs: []string{"-v", "anythingllm_storage:/app/server/storage"},
 	},
-	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openwebuiEnv},
+	"openwebui": {
+		defaultImage:    "ghcr.io/open-webui/open-webui:latest",
+		defaultHostPort: 3000,
+		containerPort:   8080,
+		envFn:           openwebuiEnv,
+	},
+	"llmfit": {
+		defaultImage:    "ghcr.io/alexsjones/llmfit",
+		envFn:           llmfitEnv,
+		interactiveArgs: map[string]bool{"tui": true},
+	},
 }
 
 // hostApp describes a native CLI app launched on the host.
@@ -86,6 +97,7 @@ var appDescriptions = map[string]string{
 	"openclaw":    "Open Claw AI assistant",
 	"opencode":    "Open Code AI code editor",
 	"openwebui":   "Open WebUI for models",
+	"llmfit":      "Recommend models that run on your system",
 }
 
 func newLaunchCmd() *cobra.Command {
@@ -109,9 +121,12 @@ Supported apps: %s
 Examples:
   docker model launch
   docker model launch opencode
+  docker model launch llmfit
   docker model launch claude -- --help
   docker model launch openwebui --port 3000
-  docker model launch claude --config`, strings.Join(supportedApps, ", ")),
+  docker model launch claude --config
+  docker model launch llmfit -- recommend -n 5
+  docker model launch llmfit -- tui`, strings.Join(supportedApps, ", ")),
 		ValidArgs: supportedApps,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// No args - list supported apps
@@ -153,7 +168,7 @@ Examples:
 			}
 
 			if ca, ok := containerApps[app]; ok {
-				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
+				return launchContainerApp(cmd, app, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
 				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
@@ -205,8 +220,18 @@ func printAppConfig(cmd *cobra.Command, app string, ep engineEndpoints, imageOve
 		}
 		cmd.Printf("Configuration for %s (container app):\n", app)
 		cmd.Printf("  Image:          %s\n", img)
-		cmd.Printf("  Container port: %d\n", ca.containerPort)
-		cmd.Printf("  Host port:      %d\n", hostPort)
+		if len(ca.interactiveArgs) > 0 {
+			keys := make([]string, 0, len(ca.interactiveArgs))
+			for k := range ca.interactiveArgs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			cmd.Printf("  Interactive args: %s\n", strings.Join(keys, ", "))
+		}
+		if ca.containerPort > 0 {
+			cmd.Printf("  Container port: %d\n", ca.containerPort)
+			cmd.Printf("  Host port:      %d\n", hostPort)
+		}
 		if ca.envFn != nil {
 			cmd.Printf("  Environment:\n")
 			for _, e := range ca.envFn(ep.container) {
@@ -281,10 +306,13 @@ func resolveBaseEndpoints(runner *standaloneRunner) (engineEndpoints, error) {
 }
 
 // launchContainerApp launches a container-based app via "docker run".
-func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
+func launchContainerApp(cmd *cobra.Command, appName string, ca containerApp, baseURL string, imageOverride string, portOverride int, detach bool, appArgs []string, dryRun bool) error {
 	img := imageOverride
 	if img == "" {
 		img = ca.defaultImage
+	}
+	if portOverride > 0 && ca.containerPort == 0 {
+		return fmt.Errorf("app %q does not expose a port, --port is not applicable", appName)
 	}
 	hostPort := portOverride
 	if hostPort == 0 {
@@ -295,9 +323,21 @@ func launchContainerApp(cmd *cobra.Command, ca containerApp, baseURL string, ima
 	if detach {
 		dockerArgs = append(dockerArgs, "-d")
 	}
-	dockerArgs = append(dockerArgs,
-		"-p", fmt.Sprintf("%d:%d", hostPort, ca.containerPort),
-	)
+	interactive := len(appArgs) > 0 && ca.interactiveArgs[appArgs[0]]
+	if interactive {
+		if detach {
+			cmd.Printf("Warning: %s runs in interactive mode, app may not work as expected in detached mode\n", appName)
+		} else {
+			dockerArgs = append(dockerArgs, "-it")
+		}
+	}
+
+	if ca.containerPort > 0 {
+		dockerArgs = append(dockerArgs,
+			"-p", fmt.Sprintf("%d:%d", hostPort, ca.containerPort),
+		)
+	}
+
 	dockerArgs = append(dockerArgs, ca.extraDockerArgs...)
 	if ca.envFn == nil {
 		return fmt.Errorf("container app requires envFn to be set")
@@ -416,6 +456,12 @@ func anthropicEnv(baseURL string) []string {
 	return []string{
 		"ANTHROPIC_BASE_URL=" + baseURL + "/anthropic",
 		"ANTHROPIC_API_KEY=" + dummyAPIKey,
+	}
+}
+
+func llmfitEnv(baseURL string) []string {
+	return []string{
+		"DOCKER_MODEL_RUNNER_HOST=" + baseURL,
 	}
 }
 
