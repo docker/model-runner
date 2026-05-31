@@ -28,10 +28,9 @@ import (
 // controllerContainerName is the name to use for the controller container.
 const controllerContainerName = "docker-model-runner"
 
-// copyDockerConfigToContainer copies the Docker config file from the host to the container
-// and sets up proper ownership and permissions for the modelrunner user.
-// It does nothing for Desktop and Cloud engine kinds.
-func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Client, containerID string, engineKind types.ModelRunnerEngineKind) error {
+// SyncDockerConfigToContainer copies the host's ~/.docker/config.json into the
+// running container. It is a no-op for Desktop and Cloud engine kinds.
+func SyncDockerConfigToContainer(ctx context.Context, dockerClient *client.Client, containerID string, engineKind types.ModelRunnerEngineKind) error {
 	// Do nothing for Desktop and Cloud engine kinds
 	if engineKind == types.ModelRunnerEngineKindDesktop || engineKind == types.ModelRunnerEngineKindCloud ||
 		os.Getenv("_MODEL_RUNNER_TREAT_DESKTOP_AS_MOBY") == "1" {
@@ -622,7 +621,7 @@ func CreateControllerContainer(ctx context.Context, dockerClient *client.Client,
 
 	// Copy Docker config file if it exists and we're the container creator.
 	if created && !vllmOnWSL {
-		if err := copyDockerConfigToContainer(ctx, dockerClient, resp.ID, engineKind); err != nil {
+		if err := SyncDockerConfigToContainer(ctx, dockerClient, resp.ID, engineKind); err != nil {
 			// Log warning but continue - don't fail container creation
 			printer.Printf("Warning: failed to copy Docker config: %v\n", err)
 		}

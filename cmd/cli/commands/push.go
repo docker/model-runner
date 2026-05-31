@@ -21,6 +21,7 @@ func newPushCmd() *cobra.Command {
 
 func pushModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	printer := asPrinter(cmd)
+	syncDockerConfigForRegistry(cmd.Context(), printer)
 	response, _, err := desktopClient.Push(model, printer)
 
 	if err != nil {

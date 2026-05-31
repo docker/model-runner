@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -244,6 +246,32 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.TLSKey != nil {
 		cmd.Flags().StringVar(opts.TLSKey, "tls-key", "", "Path to TLS private key file (auto-generated if not provided)")
+	}
+}
+
+// syncDockerConfigForRegistry copies the host's Docker config into the running
+// container. Only applicable for Moby engine setups; a no-op otherwise.
+func syncDockerConfigForRegistry(ctx context.Context, printer standalone.StatusPrinter) {
+	if modelRunner == nil {
+		return
+	}
+	engineKind := modelRunner.EngineKind()
+	if engineKind != types.ModelRunnerEngineKindMoby {
+		return
+	}
+	dockerClient, err := desktop.DockerClientForContext(dockerCLI, dockerCLI.CurrentContext())
+	if err != nil {
+		return // non-fatal: proceed with potentially stale credentials
+	}
+	defer dockerClient.Close()
+
+	containerID, _, _, err := standalone.FindControllerContainer(ctx, dockerClient)
+	if err != nil || containerID == "" {
+		return // non-fatal: container may not be running yet
+	}
+
+	if err := standalone.SyncDockerConfigToContainer(ctx, dockerClient, containerID, engineKind); err != nil {
+		printer.Printf("Warning: failed to sync Docker credentials to runner: %v\n", err)
 	}
 }
 
