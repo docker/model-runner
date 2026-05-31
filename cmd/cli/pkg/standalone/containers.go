@@ -23,6 +23,7 @@ import (
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"github.com/docker/cli/cli/config"
 )
 
 // controllerContainerName is the name to use for the controller container.
@@ -38,7 +39,7 @@ func copyDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 		return nil
 	}
 
-	dockerConfigPath := os.ExpandEnv("$HOME/.docker/config.json")
+	dockerConfigPath := filepath.Join(config.Dir(), "config.json")
 	if s, err := os.Stat(dockerConfigPath); err != nil || s.Mode()&os.ModeType != 0 {
 		return nil
 	}
