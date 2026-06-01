@@ -261,13 +261,18 @@ func syncDockerConfigForRegistry(ctx context.Context, printer standalone.StatusP
 	}
 	dockerClient, err := desktop.DockerClientForContext(dockerCLI, dockerCLI.CurrentContext())
 	if err != nil {
-		return // non-fatal: proceed with potentially stale credentials
+		printer.Printf("Warning: failed to create Docker client for credential sync: %v\n", err)
+		return
 	}
 	defer dockerClient.Close()
 
 	containerID, _, _, err := standalone.FindControllerContainer(ctx, dockerClient)
-	if err != nil || containerID == "" {
-		return // non-fatal: container may not be running yet
+	if err != nil {
+		printer.Printf("Warning: failed to find model runner container for credential sync: %v\n", err)
+		return
+	}
+	if containerID == "" {
+		return
 	}
 
 	if err := standalone.SyncDockerConfigToContainer(ctx, dockerClient, containerID, engineKind); err != nil {
