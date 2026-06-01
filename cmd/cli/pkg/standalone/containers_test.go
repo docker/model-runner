@@ -1,7 +1,6 @@
 package standalone
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,7 +26,7 @@ func TestSyncDockerConfigToContainer_NoopForDesktopAndCloud(t *testing.T) {
 		types.ModelRunnerEngineKindCloud,
 	} {
 		t.Run(engineKind.String(), func(t *testing.T) {
-			err := SyncDockerConfigToContainer(context.Background(), nil, "container-id", engineKind)
+			err := SyncDockerConfigToContainer(t.Context(), nil, "container-id", engineKind)
 			if err != nil {
 				t.Fatalf("SyncDockerConfigToContainer(%v) returned unexpected error: %v", engineKind, err)
 			}
@@ -41,7 +40,7 @@ func TestSyncDockerConfigToContainer_NoopWhenConfigMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	err := SyncDockerConfigToContainer(context.Background(), nil, "container-id", types.ModelRunnerEngineKindMoby)
+	err := SyncDockerConfigToContainer(t.Context(), nil, "container-id", types.ModelRunnerEngineKindMoby)
 	if err != nil {
 		t.Fatalf("SyncDockerConfigToContainer returned unexpected error for missing config: %v", err)
 	}
