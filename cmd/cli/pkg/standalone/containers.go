@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
-	dockercliconfig "github.com/docker/cli/cli/config"
 	gpupkg "github.com/docker/model-runner/cmd/cli/pkg/gpu"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/moby/moby/api/types/container"
@@ -38,7 +37,15 @@ func SyncDockerConfigToContainer(ctx context.Context, dockerClient *client.Clien
 		return nil
 	}
 
-	dockerConfigPath := filepath.Join(dockercliconfig.Dir(), "config.json")
+	dockerConfigDir := os.Getenv("DOCKER_CONFIG")
+	if dockerConfigDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		dockerConfigDir = filepath.Join(homeDir, ".docker")
+	}
+	dockerConfigPath := filepath.Join(dockerConfigDir, "config.json")
 	if s, err := os.Stat(dockerConfigPath); err != nil || s.Mode()&os.ModeType != 0 {
 		return nil
 	}
