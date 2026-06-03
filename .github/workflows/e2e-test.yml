@@ -44,7 +44,7 @@ jobs:
 
       - name: Set up Docker
         if: matrix.os == 'ubuntu-latest'
-        uses: docker/setup-docker-action@b2189fbf2a6592b51fee7cdd93ee2bfaeba733db
+        uses: docker/setup-docker-action@0234bb73ccb40f0c430b795634f9247e2b5c2d23
 
       - name: Install build dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
