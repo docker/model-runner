@@ -114,6 +114,9 @@ var LlamaCppAllowedFlags = map[string]bool{
 	"--spm-infill":       true,
 
 	// Speculative decoding (safe flags only - no file paths)
+	// Flags prefixed with --spec-draft-* are the canonical llama.cpp v1.5+ names.
+	// Short aliases (e.g. -td) and legacy unprefixed variants (e.g. --threads-draft)
+	// are kept for backward compatibility with older llama.cpp versions.
 	"--spec-draft-threads": true, "-td": true, "--threads-draft": true,
 	"--spec-draft-threads-batch": true, "-tbd": true, "--threads-batch-draft": true,
 	"--spec-draft-cpu-mask": true, "-Cd": true, "--cpu-mask-draft": true,
@@ -128,8 +131,8 @@ var LlamaCppAllowedFlags = map[string]bool{
 	"--spec-draft-override-tensor": true, "-otd": true, "--override-tensor-draft": true,
 	"--spec-draft-cpu-moe": true, "-cmoed": true, "--cpu-moe-draft": true,
 	"--spec-draft-n-cpu-moe": true, "--spec-draft-ncmoe": true, "-ncmoed": true, "--n-cpu-moe-draft": true,
-	"--spec-draft-n-max": true, "--draft-n-max": true,
-	"--spec-draft-n-min": true, "--draft-n-min": true,
+	"--spec-draft-n-max": true, "--draft-n-max": true, "--draft-max": true,
+	"--spec-draft-n-min": true, "--draft-n-min": true, "--draft-min": true,
 	"--spec-draft-p-split": true, "--draft-p-split": true,
 	"--spec-draft-p-min": true, "--draft-p-min": true,
 	"--spec-draft-backend-sampling": true, "--no-spec-draft-backend-sampling": true,

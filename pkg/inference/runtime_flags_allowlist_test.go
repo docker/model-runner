@@ -162,7 +162,7 @@ func TestLlamaCppAllowedFlags_Categories(t *testing.T) {
 			"--metrics", "--no-metrics", "--jinja", "--no-jinja",
 		},
 		"speculative": {
-			"--spec-draft-n-max", "--draft-n-max", "--spec-draft-n-min", "--draft-n-min",
+			"--spec-draft-n-max", "--draft-n-max", "--draft-max", "--spec-draft-n-min", "--draft-n-min", "--draft-min",
 			"--spec-draft-p-min", "--draft-p-min",
 			"--spec-draft-p-split", "--draft-p-split",
 			"--spec-draft-threads", "-td", "--threads-draft",
