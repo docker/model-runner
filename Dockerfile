@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION=1.25
-ARG LLAMA_SERVER_VERSION=b9501
+ARG LLAMA_SERVER_VERSION=b9587
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b9501
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b9587
 
 ARG VERSION=dev
 
