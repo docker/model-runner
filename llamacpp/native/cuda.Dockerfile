@@ -32,6 +32,7 @@ RUN echo "-B build \
     -DGGML_NATIVE=OFF \
     -DGGML_OPENMP=OFF \
     -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=61;62;70;75;80;86;89;120;121 \
     -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
     -DLLAMA_OPENSSL=OFF \
     -GNinja \
