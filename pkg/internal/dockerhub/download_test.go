@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	remoteerrors "github.com/containerd/containerd/v2/core/remotes/errors"
 	"github.com/containerd/errdefs"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -135,5 +136,42 @@ func TestRetry_RetriesTransientError(t *testing.T) {
 	}
 	if calls != 3 {
 		t.Fatalf("expected 3 attempts on a transient error, got %d", calls)
+	}
+}
+
+// TestRetry_FailsFastOnForbidden verifies that a 403 Forbidden — which the
+// containerd resolver surfaces as remoteerrors.ErrUnexpectedStatus, not an
+// errdefs sentinel — is treated as terminal and not retried. Same applies to
+// 401 Unauthorized via the same path.
+func TestRetry_FailsFastOnForbidden(t *testing.T) {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		var calls int
+		_, err := retry(t.Context(), 10, time.Second, func() (*v1.Descriptor, error) {
+			calls++
+			return nil, remoteerrors.ErrUnexpectedStatus{StatusCode: code}
+		})
+		if err == nil {
+			t.Fatalf("status %d: expected error, got nil", code)
+		}
+		if calls != 1 {
+			t.Fatalf("status %d: expected exactly 1 attempt, got %d", code, calls)
+		}
+	}
+}
+
+// TestRetry_RetriesRateLimited verifies that a 429 Too Many Requests is NOT
+// terminal: a later attempt can succeed once the rate limit clears, so retry
+// must keep looping.
+func TestRetry_RetriesRateLimited(t *testing.T) {
+	var calls int
+	_, err := retry(t.Context(), 3, time.Millisecond, func() (*v1.Descriptor, error) {
+		calls++
+		return nil, remoteerrors.ErrUnexpectedStatus{StatusCode: http.StatusTooManyRequests}
+	})
+	if err == nil {
+		t.Fatalf("expected error after exhausting attempts, got nil")
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts on a rate-limit error, got %d", calls)
 	}
 }
