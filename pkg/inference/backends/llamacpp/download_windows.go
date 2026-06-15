@@ -11,7 +11,7 @@ import (
 	"github.com/docker/model-runner/pkg/logging"
 )
 
-func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
+func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger, _ *http.Client,
 	llamaCppPath, vendoredServerStoragePath string,
 ) error {
 	nvGPUInfoBin := filepath.Join(vendoredServerStoragePath, "com.docker.nv-gpu-info.exe")
@@ -43,6 +43,6 @@ func (l *llamaCpp) ensureLatestLlamaCpp(ctx context.Context, log logging.Logger,
 		desiredVariant = "opencl"
 	}
 	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailCheckingForUpdates, desiredVariant))
-	return l.downloadLatestLlamaCpp(ctx, log, httpClient, llamaCppPath, vendoredServerStoragePath, desiredVersion,
+	return l.downloadLatestLlamaCpp(ctx, log, llamaCppPath, vendoredServerStoragePath, desiredVersion,
 		desiredVariant)
 }

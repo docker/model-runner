@@ -17,6 +17,7 @@ import (
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/containerd/v2/core/remotes/docker"
 	"github.com/containerd/containerd/v2/plugins/content/local"
+	"github.com/containerd/errdefs"
 	"github.com/containerd/platforms"
 	"github.com/docker/model-runner/pkg/internal/jsonutil"
 	"github.com/docker/model-runner/pkg/internal/registryutil"
@@ -47,6 +48,39 @@ func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredA
 	return archive.Export(ctx, store, output, archive.WithManifest(*desc, image), archive.WithSkipMissing(store))
 }
 
+// ResolveDigest resolves the given image reference (e.g. "registry-1.docker.io/docker/foo:tag")
+// against the registry (with optional mirrors tried first for Docker Hub references) and
+// returns the resolved digest. It does not download any blobs; it issues only the manifest
+// HEAD/GET that the registry resolver needs.
+//
+// Authentication uses the same credentials lookup as PullPlatform (env vars
+// DOCKER_HUB_USER/DOCKER_HUB_PASSWORD or ~/.docker/config.json), so a prior
+// `docker login <mirror-host>` is honored.
+func ResolveDigest(ctx context.Context, ref string, mirrors []string) (string, error) {
+	resolver := newResolver(mirrors)
+	desc, err := retry(ctx, 10, 1*time.Second, func() (*v1.Descriptor, error) {
+		name, d, err := resolver.Resolve(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		slog.Debug("resolved image tag", "ref", ref, "resolved", name, "digest", d.Digest.String())
+		return &d, nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("resolving image %q: %w", ref, err)
+	}
+	return desc.Digest.String(), nil
+}
+
+// newResolver builds a containerd docker resolver that authenticates via
+// dockerCredentials and tries the given mirrors before the upstream registry.
+func newResolver(mirrors []string) remotes.Resolver {
+	authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(dockerCredentials))
+	return docker.NewResolver(docker.ResolverOptions{
+		Hosts: registryutil.RegistryHosts(mirrors, authorizer, nil),
+	})
+}
+
 func retry(ctx context.Context, attempts int, sleep time.Duration, f func() (*v1.Descriptor, error)) (*v1.Descriptor, error) {
 	var err error
 	var result *v1.Descriptor
@@ -63,15 +97,25 @@ func retry(ctx context.Context, attempts int, sleep time.Duration, f func() (*v1
 		if err == nil {
 			return result, nil
 		}
+		if isTerminal(err) {
+			return nil, err
+		}
 	}
 	return nil, fmt.Errorf("after %d attempts, last error: %w", attempts, err)
 }
 
+// isTerminal reports whether err is non-retryable: a missing tag/manifest, an
+// authentication failure, or a canceled/expired context. Retrying these only
+// wastes time, so the caller should fail fast instead of looping.
+func isTerminal(err error) bool {
+	return errdefs.IsNotFound(err) ||
+		errdefs.IsUnauthorized(err) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded)
+}
+
 func fetch(ctx context.Context, store content.Store, ref, requiredOs, requiredArch string, mirrors []string) (*v1.Descriptor, error) {
-	authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(dockerCredentials))
-	resolver := docker.NewResolver(docker.ResolverOptions{
-		Hosts: registryutil.RegistryHosts(mirrors, authorizer, nil),
-	})
+	resolver := newResolver(mirrors)
 	name, desc, err := resolver.Resolve(ctx, ref)
 	if err != nil {
 		return nil, err
