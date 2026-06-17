@@ -26,7 +26,8 @@ const (
 	Name              = "diffusers"
 	defaultInstallDir = ".docker/model-runner/diffusers"
 	// diffusersVersion is the diffusers release tag to download from Docker Hub.
-	diffusersVersion = "v0.1.0-20260216-000000"
+	// Keep in sync with DIFFUSERS_RELEASE in .versions.
+	diffusersVersion = "v0.1.0-20260617-000000"
 )
 
 var (
