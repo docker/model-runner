@@ -2,8 +2,10 @@ package store
 
 import (
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -273,14 +275,20 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 	// We hash the whole file rather than the streamed bytes so that resumed
 	// downloads (which append to an existing partial file) are verified
 	// correctly over their entire contents.
-	if diffID.Algorithm == "sha256" {
+	var hasher hash.Hash
+	switch diffID.Algorithm {
+	case "sha256":
+		hasher = sha256.New()
+	case "sha512":
+		hasher = sha512.New()
+	}
+	if hasher != nil {
 		completedFile, openErr := os.Open(incompletePath)
 		if openErr != nil {
 			_ = os.Remove(incompletePath)
 			return fmt.Errorf("open completed blob file for verification: %w", openErr)
 		}
 
-		hasher := sha256.New()
 		if _, copyErr := io.Copy(hasher, completedFile); copyErr != nil {
 			completedFile.Close()
 			_ = os.Remove(incompletePath)
@@ -291,8 +299,8 @@ func (s *LocalStore) WriteBlobWithResume(diffID oci.Hash, r io.Reader, digestStr
 		computed := hex.EncodeToString(hasher.Sum(nil))
 		if computed != diffID.Hex {
 			_ = os.Remove(incompletePath)
-			return fmt.Errorf("blob digest mismatch for %q: expected sha256:%s, got sha256:%s",
-				diffID.String(), diffID.Hex, computed)
+			return fmt.Errorf("blob digest mismatch for %q: expected %s:%s, got %s:%s",
+				diffID.String(), diffID.Algorithm, diffID.Hex, diffID.Algorithm, computed)
 		}
 	}
 
