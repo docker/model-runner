@@ -1,0 +1,97 @@
+name: Assign PR
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: pr-assignee-rotation
+  cancel-in-progress: false
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign PR in rotation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          ROTATION_START_AT: "2026-06-18T08:11:55Z"
+        run: |
+          set -euo pipefail
+
+          readonly USERS=(ilopezluna ericcurtin doringeman)
+          readonly BOT_LOGIN="github-actions[bot]"
+
+          next_assignee="${USERS[0]}"
+          page=1
+
+          while true; do
+            prs=$(gh api \
+              --method GET \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${REPO}/pulls" \
+              -f state=all \
+              -f sort=created \
+              -f direction=desc \
+              -f per_page=100 \
+              -f page="${page}")
+
+            count=$(jq 'length' <<<"${prs}")
+            if [ "${count}" -eq 0 ]; then
+              break
+            fi
+
+            while IFS=$'\t' read -r number created_at; do
+              if [[ "${number}" == "${PR_NUMBER}" ]]; then
+                continue
+              fi
+
+              if [[ "${created_at}" > "${PR_CREATED_AT}" || "${created_at}" == "${PR_CREATED_AT}" ]]; then
+                continue
+              fi
+
+              if [[ "${created_at}" < "${ROTATION_START_AT}" ]]; then
+                echo "Reached PRs created before rotation start; using ${next_assignee}."
+                break 2
+              fi
+
+              events=$(gh api \
+                --method GET \
+                -H "Accept: application/vnd.github+json" \
+                "/repos/${REPO}/issues/${number}/events" \
+                -f per_page=100)
+
+              previous_assignee=$(jq -r \
+                --arg bot "${BOT_LOGIN}" \
+                --argjson users "$(printf '%s\n' "${USERS[@]}" | jq -R . | jq -s .)" \
+                '[.[] | select(.event == "assigned" and .actor.login == $bot and (.assignee.login as $login | $users | index($login)))][-1].assignee.login // empty' \
+                <<<"${events}")
+
+              if [[ -n "${previous_assignee}" ]]; then
+                for i in "${!USERS[@]}"; do
+                  if [[ "${USERS[$i]}" == "${previous_assignee}" ]]; then
+                    next_assignee="${USERS[$(((i + 1) % ${#USERS[@]}))]}"
+                    echo "Previous rotated PR #${number} was assigned to ${previous_assignee}; assigning ${next_assignee}."
+                    break 3
+                  fi
+                done
+              fi
+            done < <(jq -r '.[] | [.number, .created_at] | @tsv' <<<"${prs}")
+
+            page=$((page + 1))
+          done
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=${next_assignee}" >/dev/null
+
+          echo "Assigned PR #${PR_NUMBER} to ${next_assignee}."
