@@ -40,7 +40,11 @@ fi
 echo "Installing standalone Python 3.12 via uv..."
 uv python install 3.12
 
-PYTHON_BIN=$(uv python find 3.12)
+PYTHON_BIN=$(uv python find 3.12 | awk '/^\// { path=$0 } END { print path }')
+if [ -z "$PYTHON_BIN" ]; then
+    echo "Error: could not resolve uv Python 3.12 path" >&2
+    exit 1
+fi
 PYTHON_PREFIX=$(cd "$(dirname "$PYTHON_BIN")/.." && pwd)
 echo "Using standalone Python from: $PYTHON_PREFIX"
 
