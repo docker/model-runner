@@ -342,8 +342,13 @@ diffusers-build:
 	@if [ -f "$(DIFFUSERS_TARBALL)" ]; then \
 		echo "Tarball already exists: $(DIFFUSERS_TARBALL)"; \
 	else \
+		set -e; \
 		echo "Building diffusers tarball..."; \
 		scripts/build-diffusers-tarball.sh $(DIFFUSERS_RELEASE) $(DIFFUSERS_TARBALL); \
+		if [ ! -f "$(DIFFUSERS_TARBALL)" ]; then \
+			echo "Error: $(DIFFUSERS_TARBALL) was not created"; \
+			exit 1; \
+		fi; \
 		echo "Tarball created: $(DIFFUSERS_TARBALL)"; \
 	fi
 
@@ -369,7 +374,8 @@ diffusers-dev:
 		echo "Usage: make diffusers-dev DIFFUSERS_PATH=../path-to-diffusers-server"; \
 		exit 1; \
 	fi
-	@PYTHON_BIN=""; \
+	@set -e; \
+	PYTHON_BIN=""; \
 	if command -v python3.12 >/dev/null 2>&1; then \
 		PYTHON_BIN="python3.12"; \
 	elif command -v python3 >/dev/null 2>&1; then \
@@ -386,11 +392,11 @@ diffusers-dev:
 	echo "Installing diffusers from $(DIFFUSERS_PATH)..."; \
 	rm -rf "$(DIFFUSERS_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(DIFFUSERS_INSTALL_DIR)"; \
-	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate" && \
-		pip install "diffusers==0.36.0" "torch==2.9.1" "transformers==4.57.5" "accelerate==1.3.0" "safetensors==0.5.2" "huggingface_hub==0.34.0" "bitsandbytes==0.49.1" "fastapi==0.115.12" "uvicorn[standard]==0.34.1" "pillow==11.2.1" && \
-		SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages" && \
-		cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server" && \
-		echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
+	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate"; \
+	pip install "diffusers==0.38.0" "torch==2.9.1" "transformers==4.57.5" "accelerate==1.3.0" "safetensors==0.8.0" "huggingface_hub==0.34.0" "bitsandbytes==0.49.1" "fastapi==0.115.12" "uvicorn[standard]==0.34.1" "pillow==11.2.1"; \
+	SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages"; \
+	cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server"; \
+	echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
 	echo "diffusers dev installed from $(DIFFUSERS_PATH)"
 
 diffusers-clean:
