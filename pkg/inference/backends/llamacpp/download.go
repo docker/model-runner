@@ -2,11 +2,8 @@ package llamacpp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +47,7 @@ func SetDesiredServerVersion(version string) {
 }
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
-func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger, httpClient *http.Client,
+func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger,
 	llamaCppPath, vendoredServerStoragePath, desiredVersion, desiredVariant string,
 ) error {
 	ShouldUpdateServerLock.Lock()
@@ -63,35 +60,18 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 
 	log.Info("downloadLatestLlamaCpp", "desiredVersion", desiredVersion, "desiredVariant", desiredVariant, "vendoredServerStoragePath", vendoredServerStoragePath, "llamaCppPath", llamaCppPath)
 	desiredTag := desiredVersion + "-" + desiredVariant
-	url := fmt.Sprintf("https://hub.docker.com/v2/namespaces/%s/repositories/%s/tags/%s", hubNamespace, hubRepo, desiredTag)
-	resp, err := httpClient.Get(url)
+
+	// Resolve the desired tag to a digest via the Registry HTTP API v2. This
+	// honors l.registryMirrors (typically a corporate Artifactory / Nexus /
+	// Harbor mirror configured for docker.io) and credentials populated by
+	// `docker login`, so customers behind a private mirror with no direct
+	// egress to registry-1.docker.io can still resolve and pull the backend
+	// image. See docker/model-runner#TBD.
+	tagRef := fmt.Sprintf("registry-1.docker.io/%s/%s:%s", hubNamespace, hubRepo, desiredTag)
+	latest, err := dockerhub.ResolveDigest(ctx, tagRef, l.registryMirrors)
 	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// https://docs.docker.com/reference/api/hub/latest/#tag/repositories/paths/~1v2~1namespaces~1%7Bnamespace%7D~1repositories~1%7Brepository%7D~1tags~1%7Btag%7D/get
-	var response struct {
-		Name   string `json:"name"`
-		Digest string `json:"digest"`
-	}
-
-	if unmarshalErr := json.Unmarshal(body, &response); unmarshalErr != nil {
-		return fmt.Errorf("failed to unmarshal response body: %w", unmarshalErr)
-	}
-
-	var latest string
-	if response.Name == desiredTag {
-		latest = response.Digest
-	}
-	if latest == "" {
-		log.Warn("could not find the tag", "tag", desiredTag, "response", body)
-		return fmt.Errorf("could not find the %s tag", desiredTag)
+		log.Warn("could not resolve llama.cpp tag", "tag", desiredTag, "mirrors", l.registryMirrors, "error", err)
+		return fmt.Errorf("could not resolve the %s tag: %w", desiredTag, err)
 	}
 
 	bundledVersionFile := filepath.Join(vendoredServerStoragePath, "com.docker.llama-server.digest")
