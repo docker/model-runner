@@ -14,14 +14,14 @@ type fakeBackendResolver struct {
 	errs     map[string]error
 }
 
-func (f fakeBackendResolver) Resolve(_ context.Context, target string) (string, error) {
+func (f fakeBackendResolver) Resolve(_ context.Context, target string) (string, int64, error) {
 	if err, ok := f.errs[target]; ok {
-		return backendUnknown, err
+		return backendUnknown, 0, err
 	}
 	if backend, ok := f.backends[target]; ok {
-		return backend, nil
+		return backend, 0, nil
 	}
-	return backendUnknown, nil
+	return backendUnknown, 0, nil
 }
 
 func TestDockerHubSearchUsesVerifiedBackend(t *testing.T) {
