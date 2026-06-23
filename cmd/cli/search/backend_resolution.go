@@ -63,8 +63,10 @@ func (r *registryBackendResolver) Resolve(ctx context.Context, target string) (s
 	}
 
 	var totalSize int64
-	for _, layer := range manifest.Layers {
-		totalSize += layer.Size
+	if manifest != nil {
+		for _, layer := range manifest.Layers {
+			totalSize += layer.Size
+		}
 	}
 
 	if backend == backendUnknown && configErr != nil {

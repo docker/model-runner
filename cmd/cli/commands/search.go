@@ -131,7 +131,7 @@ func formatCount(n int64) string {
 // formatSize formats a byte count as a human-readable size string
 func formatSize(n int64) string {
 	if n <= 0 {
-		return ""
+		return "n/a"
 	}
 	return units.CustomSize("%.2f%s", float64(n), 1000.0, []string{"B", "kB", "MB", "GB", "TB"})
 }
