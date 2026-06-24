@@ -24,6 +24,19 @@ RUN echo "gitdir: ../../.git/modules/llamacpp/native/vendor/llama.cpp" > vendor/
 
 ENV CC=/usr/bin/clang
 ENV CXX=/usr/bin/clang++
+
+# Assert CUDA 12.x — required for Pascal sm_61/sm_62 offline compilation.
+# The nvidia/cuda base image version is set by the CUDA_VERSION ARG above.
+RUN /usr/local/cuda/bin/nvcc --version | grep -q "release 12" || \
+    { echo "ERROR: CUDA 12.x is required for Pascal GPU support."; \
+      /usr/local/cuda/bin/nvcc --version; exit 1; }
+
+# Explicitly list target CUDA architectures to include Pascal (sm_61, sm_62).
+# CMake's CUDA_ARCHITECTURES defaults on CUDA 12.9+ omit pre-Turing architectures,
+# causing "no compatible GPU found" on GTX 10-series, P40, and similar Pascal GPUs.
+#
+# The list includes only architectures supported by the CUDA 12.x toolchain.
+# CUDA 13+ drops pre-sm_75 support — stay on CUDA 12.x for Pascal compatibility.
 RUN echo "-B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=ON \
@@ -32,6 +45,7 @@ RUN echo "-B build \
     -DGGML_NATIVE=OFF \
     -DGGML_OPENMP=OFF \
     -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=61;62;70;75;80;86;89 \
     -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
     -DLLAMA_OPENSSL=OFF \
     -GNinja \
