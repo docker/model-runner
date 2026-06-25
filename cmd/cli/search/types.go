@@ -18,6 +18,7 @@ type SearchResult struct {
 	Official    bool   // Whether this is an official model
 	UpdatedAt   string // Last update timestamp
 	Backend     string // Backend type: "llama.cpp", "vllm", "diffusers", "unknown", or a comma-separated combination
+	Size        int64  // Total size in bytes (0 if unknown)
 }
 
 // SearchOptions configures the search behavior

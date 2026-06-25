@@ -180,13 +180,13 @@ func TestResolveSearchResultBackendsConcurrent(t *testing.T) {
 		}
 	}
 
-	resolve := func(_ context.Context, result SearchResult) (string, error) {
+	resolve := func(_ context.Context, result SearchResult) (string, int64, error) {
 		for i, r := range results {
 			if r.Name == result.Name {
-				return wantBackends[i], nil
+				return wantBackends[i], 0, nil
 			}
 		}
-		return backendUnknown, nil
+		return backendUnknown, 0, nil
 	}
 
 	resolved := resolveSearchResultBackends(t.Context(), results, numResults, resolve)
