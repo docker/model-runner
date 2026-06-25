@@ -80,6 +80,12 @@ ENV MODELS_PATH=/models
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
 
+EXPOSE ${MODEL_RUNNER_PORT}
+
+# Override the healthcheck inherited from the upstream llama.cpp image.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f "http://localhost:${MODEL_RUNNER_PORT}/engines/status" || exit 1
+
 ENTRYPOINT ["/app/model-runner"]
 
 # --- vLLM variant ---
