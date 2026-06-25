@@ -53,6 +53,20 @@ func TestRegistryHosts_PreservesMirrorPath(t *testing.T) {
 			wantPath:   "/v2",
 		},
 		{
+			name:       "existing v2 suffix not doubled",
+			mirror:     "https://mirror.example.com/artifactory/api/docker/repo/v2",
+			wantHost:   "mirror.example.com",
+			wantScheme: "https",
+			wantPath:   "/artifactory/api/docker/repo/v2",
+		},
+		{
+			name:       "existing v2 suffix with trailing slash",
+			mirror:     "https://mirror.example.com/v2/",
+			wantHost:   "mirror.example.com",
+			wantScheme: "https",
+			wantPath:   "/v2",
+		},
+		{
 			name:       "no scheme with path",
 			mirror:     "mirror.example.com/artifactory/docker",
 			wantHost:   "mirror.example.com",

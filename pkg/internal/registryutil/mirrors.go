@@ -55,8 +55,12 @@ func RegistryHosts(mirrors []string, authorizer docker.Authorizer, client *http.
 			// Preserve any path prefix on the mirror (e.g. a JFrog Artifactory
 			// repository path "/artifactory/api/docker/<repo>") and append the
 			// Registry v2 API root. Without this, a mirror configured with a path
-			// would be queried at the host root and fail.
-			path := strings.TrimRight(u.Path, "/") + "/v2"
+			// would be queried at the host root and fail. A "/v2" suffix already
+			// present on the configured mirror is kept as-is rather than doubled.
+			path := strings.TrimRight(u.Path, "/")
+			if !strings.HasSuffix(path, "/v2") {
+				path += "/v2"
+			}
 			hosts = append(hosts, docker.RegistryHost{
 				Client:       mirrorClient,
 				Authorizer:   authorizer,
