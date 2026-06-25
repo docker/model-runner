@@ -24,7 +24,7 @@ const (
 )
 
 type backendResolver interface {
-	Resolve(ctx context.Context, target string) (string, error)
+	Resolve(ctx context.Context, target string) (backend string, size int64, err error)
 }
 
 type registryBackendResolver struct {
@@ -38,36 +38,42 @@ func newRegistryBackendResolver() *registryBackendResolver {
 	}
 }
 
-func (r *registryBackendResolver) Resolve(ctx context.Context, target string) (string, error) {
+func (r *registryBackendResolver) Resolve(ctx context.Context, target string) (string, int64, error) {
 	model, err := r.lookup(ctx, withDefaultTag(target))
 	if err != nil {
-		return backendUnknown, err
+		return backendUnknown, 0, err
 	}
 
+	backend := backendUnknown
 	config, configErr := model.Config()
 	if configErr == nil {
-		if backend := backendFromFormat(config.GetFormat()); backend != backendUnknown {
-			return backend, nil
-		}
+		backend = backendFromFormat(config.GetFormat())
 	}
 
 	manifest, manifestErr := model.Manifest()
 	if manifestErr != nil {
 		if configErr != nil {
-			return backendUnknown, errors.Join(configErr, manifestErr)
+			return backendUnknown, 0, errors.Join(configErr, manifestErr)
 		}
-		return backendUnknown, manifestErr
+		return backend, 0, manifestErr
 	}
 
-	if backend := backendFromManifestLayers(manifest); backend != backendUnknown {
-		return backend, nil
+	if backend == backendUnknown {
+		backend = backendFromManifestLayers(manifest)
 	}
 
-	if configErr != nil {
-		return backendUnknown, configErr
+	var totalSize int64
+	if manifest != nil {
+		for _, layer := range manifest.Layers {
+			totalSize += layer.Size
+		}
 	}
 
-	return backendUnknown, nil
+	if backend == backendUnknown && configErr != nil {
+		return backendUnknown, totalSize, configErr
+	}
+
+	return backend, totalSize, nil
 }
 
 type huggingFaceRepoBackendResolver struct {
@@ -81,12 +87,12 @@ func newHuggingFaceRepoBackendResolver() *huggingFaceRepoBackendResolver {
 	}
 }
 
-func (r *huggingFaceRepoBackendResolver) Resolve(ctx context.Context, target string) (string, error) {
+func (r *huggingFaceRepoBackendResolver) Resolve(ctx context.Context, target string) (string, int64, error) {
 	repoFiles, err := r.listFiles(ctx, target, "main")
 	if err != nil {
-		return backendUnknown, err
+		return backendUnknown, 0, err
 	}
-	return backendFromRepoFiles(repoFiles), nil
+	return backendFromRepoFiles(repoFiles), distributionhf.TotalSize(repoFiles), nil
 }
 
 func backendFromFormat(format disttypes.Format) string {
@@ -152,7 +158,7 @@ func resolveSearchResultBackends(
 	ctx context.Context,
 	results []SearchResult,
 	resolveConcurrency int,
-	resolve func(context.Context, SearchResult) (string, error),
+	resolve func(context.Context, SearchResult) (string, int64, error),
 ) []SearchResult {
 	if len(results) == 0 {
 		return results
@@ -168,12 +174,13 @@ func resolveSearchResultBackends(
 
 	for i := range resolved {
 		group.Go(func() error {
-			backend, err := resolve(workerCtx, resolved[i])
+			backend, size, err := resolve(workerCtx, resolved[i])
 			if err != nil || backend == "" {
 				resolved[i].Backend = backendUnknown
 				return nil
 			}
 			resolved[i].Backend = backend
+			resolved[i].Size = size
 			return nil
 		})
 	}

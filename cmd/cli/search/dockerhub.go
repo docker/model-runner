@@ -156,9 +156,9 @@ func (c *DockerHubClient) Search(ctx context.Context, opts SearchOptions) ([]Sea
 		nextURL = response.Next
 	}
 
-	return resolveSearchResultBackends(ctx, results, c.resolveConcurrency, func(ctx context.Context, result SearchResult) (string, error) {
+	return resolveSearchResultBackends(ctx, results, c.resolveConcurrency, func(ctx context.Context, result SearchResult) (string, int64, error) {
 		if c.backendResolver == nil {
-			return backendUnknown, nil
+			return backendUnknown, 0, nil
 		}
 		return c.backendResolver.Resolve(ctx, result.Name)
 	}), nil

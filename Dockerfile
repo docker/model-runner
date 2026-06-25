@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION=1.25
-ARG LLAMA_SERVER_VERSION=b8967
+ARG LLAMA_SERVER_VERSION=b9592
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b8967
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b9592
 
 ARG VERSION=dev
 
@@ -79,6 +79,12 @@ ENV MODELS_PATH=/models
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
+
+EXPOSE ${MODEL_RUNNER_PORT}
+
+# Override the healthcheck inherited from the upstream llama.cpp image.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f "http://localhost:${MODEL_RUNNER_PORT}/engines/status" || exit 1
 
 ENTRYPOINT ["/app/model-runner"]
 

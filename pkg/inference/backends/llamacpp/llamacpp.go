@@ -181,10 +181,10 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		if draftPath != "" {
 			args = append(args, "--model-draft", draftPath)
 			if config.Speculative.NumTokens > 0 {
-				args = append(args, "--draft-max", strconv.Itoa(config.Speculative.NumTokens))
+				args = append(args, "--spec-draft-n-max", strconv.Itoa(config.Speculative.NumTokens))
 			}
 			if config.Speculative.MinAcceptanceRate > 0 {
-				args = append(args, "--draft-p-min", strconv.FormatFloat(config.Speculative.MinAcceptanceRate, 'f', 2, 64))
+				args = append(args, "--spec-draft-p-min", strconv.FormatFloat(config.Speculative.MinAcceptanceRate, 'f', 2, 64))
 			}
 		}
 	}
