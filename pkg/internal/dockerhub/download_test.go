@@ -79,6 +79,63 @@ func TestResolveDigest_UsesMirror(t *testing.T) {
 	}
 }
 
+// TestResolveDigest_UsesMirrorPathPrefix verifies that a mirror configured with
+// a path prefix (e.g. a JFrog Artifactory repository path) has its manifest
+// lookups routed under that prefix, not the host root. Before the path-preserving
+// fix in registryutil.RegistryHosts, the resolver queried <host>/v2/... and
+// missed the mirror entirely, falling back to registry-1.docker.io.
+func TestResolveDigest_UsesMirrorPathPrefix(t *testing.T) {
+	const (
+		wantDigest = "sha256:af91915100000000000000000000000000000000000000000000000000abcdef"
+		prefix     = "/artifactory/docker"
+		tag        = "latest-cuda"
+	)
+
+	var manifestUnderPrefix atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only serve the registry API under the configured path prefix; a request
+		// at the host root (e.g. /v2/...) is a miss, mimicking an Artifactory
+		// whose Docker endpoint lives under a repository path.
+		if !strings.HasPrefix(r.URL.Path, prefix+"/v2") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/manifests/"+tag) {
+			manifestUnderPrefix.Store(true)
+			w.Header().Set("Docker-Content-Digest", wantDigest)
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}`)
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+			if r.Method == http.MethodHead {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
+			return
+		}
+		// API version probe under the prefix.
+		w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	ref := "registry-1.docker.io/docker/docker-model-backend-llamacpp:" + tag
+	got, err := ResolveDigest(ctx, ref, []string{srv.URL + prefix})
+	if err != nil {
+		t.Fatalf("ResolveDigest returned error: %v", err)
+	}
+	if got != wantDigest {
+		t.Fatalf("digest mismatch: got %q want %q", got, wantDigest)
+	}
+	if !manifestUnderPrefix.Load() {
+		t.Fatalf("expected manifest request under %q, mirror path prefix was not honored", prefix+"/v2")
+	}
+}
+
 // TestResolveDigest_CanceledContext verifies the resolver does not block when
 // the context is already canceled. This protects against silent stalls when
 // the network path to the upstream/mirror is blackholed (a frequent symptom
