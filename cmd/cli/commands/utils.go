@@ -259,6 +259,9 @@ func syncDockerConfigForRegistry(ctx context.Context, printer standalone.StatusP
 	if engineKind != types.ModelRunnerEngineKindMoby {
 		return
 	}
+	if desktop.IsDesktopWSLContext(ctx, dockerCLI) {
+		return
+	}
 	dockerClient, err := desktop.DockerClientForContext(dockerCLI, dockerCLI.CurrentContext())
 	if err != nil {
 		printer.Printf("Warning: failed to create Docker client for credential sync: %v\n", err)
