@@ -35,20 +35,22 @@ func RegistryHosts(mirrors []string, authorizer docker.Authorizer, client *http.
 		}
 		var hosts []docker.RegistryHost
 		for _, mirror := range mirrors {
-			u, err := url.Parse(mirror)
+			// A mirror may be given without a scheme (e.g. "host:5000/path" or
+			// "127.0.0.1:5000"). url.Parse mishandles those — an IP:port errors
+			// on the colon, a host:port is parsed as scheme:opaque — so default
+			// to https before parsing when no scheme is present.
+			raw := mirror
+			if !strings.Contains(raw, "://") {
+				raw = "https://" + raw
+			}
+			u, err := url.Parse(raw)
 			if err != nil {
 				slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
 				continue
 			}
-			// A mirror given without a scheme (e.g. "host:5000/path") parses with
-			// an empty Host and the whole value in Path. Re-parse it as https so
-			// the host and any path prefix are separated correctly.
 			if u.Host == "" {
-				u, err = url.Parse("https://" + mirror)
-				if err != nil {
-					slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
-					continue
-				}
+				slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", "empty host")
+				continue
 			}
 			// Preserve any path prefix on the mirror (e.g. a JFrog Artifactory
 			// repository path "/artifactory/api/docker/<repo>") and append the

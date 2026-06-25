@@ -67,6 +67,20 @@ func TestRegistryHosts_PreservesMirrorPath(t *testing.T) {
 			wantPath:   "/v2",
 		},
 		{
+			name:       "no scheme IP with port",
+			mirror:     "127.0.0.1:5000",
+			wantHost:   "127.0.0.1:5000",
+			wantScheme: "https",
+			wantPath:   "/v2",
+		},
+		{
+			name:       "no scheme IP with port and path",
+			mirror:     "127.0.0.1:5000/artifactory/docker",
+			wantHost:   "127.0.0.1:5000",
+			wantScheme: "https",
+			wantPath:   "/artifactory/docker/v2",
+		},
+		{
 			name:       "http scheme preserved",
 			mirror:     "http://mirror.internal/proxy/docker",
 			wantHost:   "mirror.internal",
