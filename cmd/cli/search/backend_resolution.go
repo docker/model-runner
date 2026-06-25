@@ -92,7 +92,8 @@ func (r *huggingFaceRepoBackendResolver) Resolve(ctx context.Context, target str
 	if err != nil {
 		return backendUnknown, 0, err
 	}
-	return backendFromRepoFiles(repoFiles), distributionhf.TotalSize(repoFiles), nil
+	modelFiles, _ := distributionhf.FilterModelFiles(repoFiles)
+	return backendFromRepoFiles(repoFiles), distributionhf.TotalSize(modelFiles), nil
 }
 
 func backendFromFormat(format disttypes.Format) string {

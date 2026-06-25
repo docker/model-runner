@@ -61,7 +61,7 @@ func (d *DDUFFormat) ExtractConfig(paths []string) (types.Config, error) {
 	return types.Config{
 		Format:       types.FormatDDUF,
 		Architecture: "diffusers",
-		Size:         formatSize(totalSize),
+		Size:         FormatSize(totalSize),
 		Diffusers: map[string]string{
 			"layout":    "dduf",
 			"dduf_file": ddufFile,

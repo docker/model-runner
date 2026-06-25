@@ -223,17 +223,22 @@ func TestFormatSize(t *testing.T) {
 		bytes int64
 		want  string
 	}{
-		{1000, "1.00kB"},
+		{0, "0.00B"},
+		{-1, "0.00B"},
+		{500, "500.00B"},
+		{1500, "1.50kB"},
 		{1000000, "1.00MB"},
+		{2_500_000, "2.50MB"},
 		{1000000000, "1.00GB"},
-		{5000000000, "5.00GB"},
+		{4_300_000_000, "4.30GB"},
+		{1_200_000_000_000, "1.20TB"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			got := formatSize(tt.bytes)
+			got := FormatSize(tt.bytes)
 			if got != tt.want {
-				t.Errorf("formatSize(%d) = %q, want %q", tt.bytes, got, tt.want)
+				t.Errorf("FormatSize(%d) = %q, want %q", tt.bytes, got, tt.want)
 			}
 		})
 	}
