@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/containerd/containerd/v2/core/remotes/docker"
 )
@@ -39,18 +40,27 @@ func RegistryHosts(mirrors []string, authorizer docker.Authorizer, client *http.
 				slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
 				continue
 			}
-			mirrorHost := u.Host
-			scheme := u.Scheme
-			if mirrorHost == "" {
-				mirrorHost = mirror
-				scheme = "https"
+			// A mirror given without a scheme (e.g. "host:5000/path") parses with
+			// an empty Host and the whole value in Path. Re-parse it as https so
+			// the host and any path prefix are separated correctly.
+			if u.Host == "" {
+				u, err = url.Parse("https://" + mirror)
+				if err != nil {
+					slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
+					continue
+				}
 			}
+			// Preserve any path prefix on the mirror (e.g. a JFrog Artifactory
+			// repository path "/artifactory/api/docker/<repo>") and append the
+			// Registry v2 API root. Without this, a mirror configured with a path
+			// would be queried at the host root and fail.
+			path := strings.TrimRight(u.Path, "/") + "/v2"
 			hosts = append(hosts, docker.RegistryHost{
 				Client:       mirrorClient,
 				Authorizer:   authorizer,
-				Host:         mirrorHost,
-				Scheme:       scheme,
-				Path:         "/v2",
+				Host:         u.Host,
+				Scheme:       u.Scheme,
+				Path:         path,
 				Capabilities: docker.HostCapabilityPull | docker.HostCapabilityResolve,
 			})
 		}
