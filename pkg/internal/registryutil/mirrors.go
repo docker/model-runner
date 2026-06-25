@@ -35,37 +35,15 @@ func RegistryHosts(mirrors []string, authorizer docker.Authorizer, client *http.
 		}
 		var hosts []docker.RegistryHost
 		for _, mirror := range mirrors {
-			// A mirror may be given without a scheme (e.g. "host:5000/path" or
-			// "127.0.0.1:5000"). url.Parse mishandles those — an IP:port errors
-			// on the colon, a host:port is parsed as scheme:opaque — so default
-			// to https before parsing when no scheme is present.
-			raw := mirror
-			if !strings.Contains(raw, "://") {
-				raw = "https://" + raw
-			}
-			u, err := url.Parse(raw)
-			if err != nil {
-				slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
+			host, scheme, path, ok := parseMirror(mirror)
+			if !ok {
 				continue
-			}
-			if u.Host == "" {
-				slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", "empty host")
-				continue
-			}
-			// Preserve any path prefix on the mirror (e.g. a JFrog Artifactory
-			// repository path "/artifactory/api/docker/<repo>") and append the
-			// Registry v2 API root. Without this, a mirror configured with a path
-			// would be queried at the host root and fail. A "/v2" suffix already
-			// present on the configured mirror is kept as-is rather than doubled.
-			path := strings.TrimRight(u.Path, "/")
-			if !strings.HasSuffix(path, "/v2") {
-				path += "/v2"
 			}
 			hosts = append(hosts, docker.RegistryHost{
 				Client:       mirrorClient,
 				Authorizer:   authorizer,
-				Host:         u.Host,
-				Scheme:       u.Scheme,
+				Host:         host,
+				Scheme:       scheme,
 				Path:         path,
 				Capabilities: docker.HostCapabilityPull | docker.HostCapabilityResolve,
 			})
@@ -76,4 +54,40 @@ func RegistryHosts(mirrors []string, authorizer docker.Authorizer, client *http.
 		}
 		return append(hosts, upstream...), nil
 	}
+}
+
+// parseMirror normalizes a configured mirror string into the host, scheme and
+// Registry v2 API base path used to build a docker.RegistryHost. It returns
+// ok=false (after logging a warning) for a mirror that does not parse or has no
+// host, so the caller can skip it.
+//
+// Normalization rules:
+//   - A mirror without a scheme (e.g. "host:5000/path" or "127.0.0.1:5000")
+//     defaults to https. The scheme is prepended before parsing because
+//     url.Parse mishandles scheme-less inputs — an IP:port errors on the colon,
+//     a host:port is parsed as scheme:opaque.
+//   - Any path prefix is preserved (e.g. a JFrog Artifactory repository path
+//     "/artifactory/api/docker/<repo>"); without this a mirror with a path would
+//     be queried at the host root and fail.
+//   - "/v2" is appended unless the configured path already ends with it, so the
+//     suffix is never doubled.
+func parseMirror(mirror string) (host, scheme, path string, ok bool) {
+	raw := mirror
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", err)
+		return "", "", "", false
+	}
+	if u.Host == "" {
+		slog.Warn("skipping invalid registry mirror", "mirror", mirror, "error", "empty host")
+		return "", "", "", false
+	}
+	path = strings.TrimRight(u.Path, "/")
+	if !strings.HasSuffix(path, "/v2") {
+		path += "/v2"
+	}
+	return u.Host, u.Scheme, path, true
 }
