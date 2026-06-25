@@ -104,10 +104,10 @@ func formatParameters(params int64) string {
 }
 
 // FormatSize converts bytes to human-readable format matching Docker's style.
-// Returns "0.00B" for zero or negative sizes, otherwise formats like "256MB".
+// Returns "n/a" for zero or negative sizes, otherwise formats like "256MB".
 func FormatSize(bytes int64) string {
 	if bytes <= 0 {
-		bytes = 0
+		return "n/a"
 	}
 	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }

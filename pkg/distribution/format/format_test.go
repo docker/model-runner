@@ -223,8 +223,8 @@ func TestFormatSize(t *testing.T) {
 		bytes int64
 		want  string
 	}{
-		{0, "0.00B"},
-		{-1, "0.00B"},
+		{0, "n/a"},
+		{-1, "n/a"},
 		{500, "500.00B"},
 		{1500, "1.50kB"},
 		{1000000, "1.00MB"},
