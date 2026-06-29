@@ -130,7 +130,7 @@ func (s *SafetensorsFormat) ExtractConfig(paths []string) (types.Config, error) 
 		Format:       types.FormatSafetensors,
 		Parameters:   formatParameters(params),
 		Quantization: header.getQuantization(),
-		Size:         formatSize(totalSize),
+		Size:         FormatSize(totalSize),
 		Architecture: architecture,
 		Safetensors:  header.extractMetadata(),
 		ContextSize:  contextSize,

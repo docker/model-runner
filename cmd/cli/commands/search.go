@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/docker/go-units"
 	"github.com/docker/model-runner/cmd/cli/commands/formatter"
 	"github.com/docker/model-runner/cmd/cli/search"
+	"github.com/docker/model-runner/pkg/distribution/format"
 	"github.com/spf13/cobra"
 )
 
@@ -106,7 +106,7 @@ func prettyPrintSearchResults(results []search.SearchResult) string {
 			name,
 			r.Description,
 			r.Backend,
-			formatSize(r.Size),
+			format.FormatSize(r.Size),
 			formatCount(r.Downloads),
 			formatCount(r.Stars),
 			r.Source,
@@ -126,12 +126,4 @@ func formatCount(n int64) string {
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	}
 	return fmt.Sprintf("%d", n)
-}
-
-// formatSize formats a byte count as a human-readable size string
-func formatSize(n int64) string {
-	if n <= 0 {
-		return "n/a"
-	}
-	return units.CustomSize("%.2f%s", float64(n), 1000.0, []string{"B", "kB", "MB", "GB", "TB"})
 }
