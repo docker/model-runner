@@ -1,0 +1,16 @@
+command: docker model config
+short: Manage persistent model runner configuration
+long: Manage persistent model runner configuration
+pname: docker model
+plink: docker_model.yaml
+cname:
+    - docker model config sandbox.tool
+clink:
+    - docker_model_config_sandbox.tool.yaml
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
