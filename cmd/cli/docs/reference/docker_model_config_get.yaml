@@ -1,0 +1,79 @@
+command: docker model config get
+short: Get the value of a config key
+long: |-
+    Get the value of a config key.
+
+    Prints the value of the given key to stdout. If the key appears multiple times
+    (multi-valued), the last value is printed. Use --all to print all values.
+
+    Exit status is 1 if the key is not found (unless --default is given).
+usage: docker model config get <key>
+pname: docker model config
+plink: docker_model_config.yaml
+options:
+    - option: all
+      value_type: bool
+      default_value: "false"
+      description: print all values for multi-valued keys
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: default
+      value_type: string
+      description: value to emit if the key is not set
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: file
+      shorthand: f
+      value_type: string
+      description: use a specific config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: global
+      value_type: bool
+      default_value: "false"
+      description: use the global (user-level) config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: show-origin
+      value_type: bool
+      default_value: "false"
+      description: show the origin (file path) of each value
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: system
+      value_type: bool
+      default_value: "false"
+      description: use the system-wide config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
