@@ -38,7 +38,7 @@ func newPackagedCmd() *cobra.Command {
 	var opts packageOptions
 
 	c := &cobra.Command{
-		Use:   "package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
+		Use:   "package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model> | --file <modelfile>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
 		Short: "Package a model into a Docker Model OCI artifact",
 		Long: `Package a model into a Docker Model OCI artifact.
 
@@ -47,6 +47,7 @@ The model source must be one of:
   --safetensors-dir    A directory containing .safetensors and configuration files
   --dduf               A .dduf (Diffusers Unified Format) archive
   --from               An existing packaged model reference
+  --file               A Modelfile describing the model and its assets
 
 By default, the packaged artifact is loaded into the local Model Runner content store.
 Use --push to publish the model to a registry instead.
@@ -77,9 +78,28 @@ Packaging behavior:
     such as --context-size to create a variant of the original model.
 
   Multimodal models
-    Use --mmproj to include a multimodal projector file.`,
+    Use --mmproj to include a multimodal projector file.
+
+  Modelfile
+    --file accepts a path to a Modelfile. Supported instructions:
+
+      FROM <model>              existing model reference
+      GGUF <path>               GGUF file
+      SAFETENSORS_DIR <path>    safetensors directory (alias: SAFETENSORS-DIR)
+      DDUF <path>               DDUF archive
+      LICENSE <path>            license file; may appear multiple times
+      CHAT_TEMPLATE <path>      chat template file (alias: CHAT-TEMPLATE)
+      MMPROJ <path>             multimodal projector (alias: MM-PROJ)
+      CONTEXT <tokens>          context size in tokens (aliases: CTX, CONTEXT-SIZE)
+
+    Paths may be relative (resolved from the Modelfile's directory) or absolute.
+    CLI flags take precedence over Modelfile values.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := requireExactArgs(1, "package", "MODEL")(cmd, args); err != nil {
+				return err
+			}
+
+			if err := applyModelfile(&opts); err != nil {
 				return err
 			}
 
@@ -99,14 +119,20 @@ Packaging behavior:
 			}
 
 			if sourcesProvided == 0 {
+				if opts.modelfile != "" {
+					return fmt.Errorf(
+						"Modelfile %q specifies no model source; add a FROM, GGUF, SAFETENSORS_DIR, or DDUF instruction",
+						opts.modelfile,
+					)
+				}
 				return fmt.Errorf(
-					"One of --gguf, --safetensors-dir, --dduf, or --from is required.\n\n" +
+					"One of --gguf, --safetensors-dir, --dduf, --from, or --file is required.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
 			if sourcesProvided > 1 {
 				return fmt.Errorf(
-					"Cannot specify more than one of --gguf, --safetensors-dir, --dduf, or --from. Please use only one source.\n\n" +
+					"Cannot specify more than one model source (--gguf, --safetensors-dir, --dduf, --from, or a source from --file).\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
@@ -210,17 +236,20 @@ Packaging behavior:
 	c.Flags().Uint64Var(&opts.contextSize, "context-size", 0, "context size in tokens")
 	c.Flags().StringVar(&opts.format, "format", "docker",
 		"output artifact format: \"docker\" (default) or \"cncf\" (CNCF ModelPack spec)")
+	c.Flags().StringVarP(&opts.modelfile, "file", "f", "", "path to a Modelfile")
 	return c
 }
 
 type packageOptions struct {
 	chatTemplatePath string
 	contextSize      uint64
+	contextSizeSet   bool // context-size provided via Modelfile
 	ggufPath         string
 	safetensorsDir   string
 	ddufPath         string
 	fromModel        string
 	licensePaths     []string
+	modelfile        string
 	mmprojPath       string
 	push             bool
 	tag              string
@@ -378,13 +407,14 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 	// Use daemon-side repackaging for simple config-only changes (no new
 	// layers). Disabled for CNCF format because the daemon produces
 	// Docker-format artifacts.
+	contextSizeChanged := cmd.Flags().Changed("context-size") || opts.contextSizeSet
 	canUseDaemonRepackage := opts.fromModel != "" &&
 		!opts.push &&
 		opts.format != "cncf" &&
 		len(opts.licensePaths) == 0 &&
 		opts.chatTemplatePath == "" &&
 		opts.mmprojPath == "" &&
-		cmd.Flags().Changed("context-size")
+		contextSizeChanged
 
 	if canUseDaemonRepackage {
 		cmd.PrintErrf("Reading model from daemon: %q\n", opts.fromModel)
@@ -440,7 +470,7 @@ func packageModel(ctx context.Context, cmd *cobra.Command, client *desktop.Clien
 	distClient := initResult.distClient
 
 	// Set context size
-	if cmd.Flags().Changed("context-size") {
+	if contextSizeChanged {
 		cmd.PrintErrf("Setting context size %d\n", opts.contextSize)
 		pkg, err = pkg.WithContextSize(int32(opts.contextSize))
 		if err != nil {
