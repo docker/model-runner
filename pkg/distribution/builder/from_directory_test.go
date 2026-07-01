@@ -3,6 +3,7 @@ package builder
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -167,6 +168,44 @@ func TestFromDirectoryWithExclusions(t *testing.T) {
 				t.Errorf("Expected %d layers, got %d", tt.expectedLayers, len(layers))
 			}
 		})
+	}
+}
+
+func TestFromDirectoryNoStandardWeights(t *testing.T) {
+	tmpDir := t.TempDir()
+	createTestFile(t, tmpDir, "openvino/model.xml", "<net></net>")
+	createTestFile(t, tmpDir, "openvino/model.bin", "weights")
+	createTestFile(t, tmpDir, "openvino/config.json", "{}")
+
+	_, err := FromDirectory(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when directory has no GGUF/SafeTensors/DDUF weights")
+	}
+
+	if got := err.Error(); got == "" || !strings.Contains(got, "no weight files") {
+		t.Fatalf("expected no weight files error, got %q", got)
+	}
+}
+
+func TestFromDirectoryAllowNoWeightFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	createTestFile(t, tmpDir, "openvino/model.xml", "<net></net>")
+	createTestFile(t, tmpDir, "openvino/model.bin", "weights")
+	createTestFile(t, tmpDir, "openvino/config.json", "{}")
+
+	b, err := FromDirectory(tmpDir, WithAllowNoWeightFiles())
+	if err != nil {
+		t.Fatalf("FromDirectory with WithAllowNoWeightFiles failed: %v", err)
+	}
+
+	mdl := b.Model()
+	layers, err := mdl.Layers()
+	if err != nil {
+		t.Fatalf("Failed to get layers: %v", err)
+	}
+
+	if len(layers) != 3 {
+		t.Errorf("Expected 3 layers, got %d", len(layers))
 	}
 }
 

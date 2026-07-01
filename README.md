@@ -319,6 +319,45 @@ docker buildx build \
 
 The vLLM wheels are sourced from the official vLLM GitHub Releases at `https://github.com/vllm-project/vllm/releases`, which provides prebuilt wheels for each release version.
 
+### OVMS integration
+
+Docker Model Runner can also run an OVMS backend.
+
+- Default OVMS binary: resolved from `PATH` (looks up `ovms`)
+- Override binary path with: `OVMS_SERVER_PATH`
+
+OVMS can be installed based on this [guide](https://docs.openvino.ai/2026/model-server/ovms_docs_deploying_server_baremetal.html). Minimal version is 2026.2.
+
+When the runner starts, it will try to initialize OVMS as an available backend.
+
+```sh
+MODEL_RUNNER_PORT=13434 ./model-runner
+```
+
+Create a new model
+Use models from HugginFace Hub using repository with OpenVINO format. 
+```sh
+curl http://localhost:13434/models/create -X POST -d '{"from": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov"}'
+```
+
+You can target OVMS explicitly through the backend-prefixed OpenAI-compatible routes:
+```sh
+# List models exposed via OVMS backend routing
+curl http://localhost:13434/engines/ovms/v1/models
+
+# Example chat/completions call through OVMS backend routing
+curl http://localhost:13434/engines/ovms/v1/chat/completions -X POST -d '{
+  "model": "hf.co/OpenVINO/Qwen3-0.6B-int4-ov",
+  "messages": [
+    {"role": "user", "content": "Hello from OVMS"}
+  ]
+}'
+```
+Delete model
+```sh
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov -X DELETE
+```
+
 ## API Examples
 
 The Model Runner exposes a REST API that can be accessed via TCP port. You can interact with it using curl commands.
@@ -335,7 +374,7 @@ curl http://localhost:8080/models
 curl http://localhost:8080/models/create -X POST -d '{"from": "ai/smollm2"}'
 
 # Get information about a specific model
-curl http://localhost:8080/models/ai/smollm2
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov
 
 # Chat with a model
 curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
@@ -347,12 +386,11 @@ curl http://localhost:8080/engines/llama.cpp/v1/chat/completions -X POST -d '{
 }'
 
 # Delete a model
-curl http://localhost:8080/models/ai/smollm2 -X DELETE
+curl http://localhost:13434/models/hf.co/OpenVINO/Qwen3-0.6B-int4-ov -X DELETE
 
 # Get metrics
 curl http://localhost:8080/metrics
 ```
-
 The response will contain the model's reply:
 
 ```json
