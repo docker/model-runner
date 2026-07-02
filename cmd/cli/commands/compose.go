@@ -63,6 +63,7 @@ func newUpCommand() *cobra.Command {
 				return errors.New("unable to determine standalone runner endpoint")
 			}
 
+			syncDockerConfigForRegistry(cmd.Context(), asPrinter(cmd))
 			if err := downloadModelsOnlyIfNotFound(desktopClient, models); err != nil {
 				return err
 			}
