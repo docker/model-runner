@@ -245,6 +245,39 @@ type runnerOptions struct {
 	tlsKey          string
 }
 
+func commandFlagChanged(cmd *cobra.Command, name string) bool {
+	if cmd == nil {
+		return false
+	}
+	flag := cmd.Flags().Lookup(name)
+	return flag != nil && flag.Changed
+}
+
+func existingRunnerOptionsHint(cmd *cobra.Command, opts runnerOptions) string {
+	backendChanged := commandFlagChanged(cmd, "backend")
+	gpuChanged := commandFlagChanged(cmd, "gpu")
+
+	if !backendChanged && !gpuChanged {
+		return ""
+	}
+
+	reinstallArgs := []string{"docker", "model", "reinstall-runner"}
+
+	if backendChanged && opts.backend != "" {
+		reinstallArgs = append(reinstallArgs, "--backend", fmt.Sprintf("%q", opts.backend))
+	}
+	if gpuChanged && opts.gpuMode != "" {
+		reinstallArgs = append(reinstallArgs, "--gpu", fmt.Sprintf("%q", opts.gpuMode))
+	}
+
+	return fmt.Sprintf(
+		"\nThe requested runner options were not applied because the Model Runner container is already running.\n"+
+			"To recreate the runner with the requested options, run:\n\n"+
+			"  %s\n",
+		strings.Join(reinstallArgs, " "),
+	)
+}
+
 // runInstallOrStart is shared logic for install-runner and start-runner commands
 func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error {
 	// On macOS ARM64, the vllm backend requires deferred installation
@@ -343,6 +376,9 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 			} else {
 				cmd.Printf("Model Runner container %s is already running\n", ctrID[:12])
 			}
+
+			cmd.Print(existingRunnerOptionsHint(cmd, opts))
+
 			return nil
 		}
 	}
