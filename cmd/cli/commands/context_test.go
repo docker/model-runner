@@ -2,11 +2,15 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/cmd/cli/pkg/modelctx"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -394,4 +398,45 @@ func TestContextInspect_notFound(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestResolveKindHost verifies that every engine kind maps to the expected
+// host string, including TLS variants and the unknown-kind fallback.
+func TestResolveKindHost(t *testing.T) {
+	mobyPlain := "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+	mobyTLS := "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
+	cloudPlain := "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+	cloudTLS := "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
+
+	tests := []struct {
+		name   string
+		kind   types.ModelRunnerEngineKind
+		useTLS bool
+		want   string
+	}{
+		{"desktop_plain", types.ModelRunnerEngineKindDesktop, false, "Docker Desktop"},
+		{"desktop_tls_ignored", types.ModelRunnerEngineKindDesktop, true, "Docker Desktop"},
+		{"cloud_plain", types.ModelRunnerEngineKindCloud, false, cloudPlain},
+		{"cloud_tls", types.ModelRunnerEngineKindCloud, true, cloudTLS},
+		{"moby_plain", types.ModelRunnerEngineKindMoby, false, mobyPlain},
+		{"moby_tls", types.ModelRunnerEngineKindMoby, true, mobyTLS},
+		{"moby_manual_plain", types.ModelRunnerEngineKindMobyManual, false, mobyPlain},
+		{"moby_manual_tls", types.ModelRunnerEngineKindMobyManual, true, mobyTLS},
+		{"unknown_fallback", types.ModelRunnerEngineKind(99), false, "(auto-detect)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resolveKindHost(tt.kind, tt.useTLS))
+		})
+	}
+}
+
+// TestResolveDefaultContext_nilCLI documents the nil-CLI contract: when
+// dockerCLI is not set, the fallback strings are returned immediately without
+// any network probe.
+func TestResolveDefaultContext_nilCLI(t *testing.T) {
+	dockerCLI = nil
+	host, desc := resolveDefaultContext(context.Background())
+	assert.Equal(t, "(auto-detect)", host)
+	assert.Equal(t, "Auto-detected Docker context", desc)
 }

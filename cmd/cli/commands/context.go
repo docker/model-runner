@@ -17,7 +17,6 @@ import (
 	"github.com/docker/model-runner/cmd/cli/pkg/modelctx"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
-	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -76,15 +75,38 @@ func dockerConfigDir() (string, error) {
 	return filepath.Join(home, ".docker"), nil
 }
 
+// resolveKindHost maps an engine kind and TLS preference to the host string
+// shown in "context ls" / "context inspect". Desktop returns the
+// human-readable engine name; other kinds return a localhost URL.
+func resolveKindHost(kind types.ModelRunnerEngineKind, useTLS bool) string {
+	switch kind {
+	case types.ModelRunnerEngineKindDesktop:
+		return kind.String()
+	case types.ModelRunnerEngineKindCloud:
+		if useTLS {
+			return "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
+		}
+		return "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+	case types.ModelRunnerEngineKindMoby, types.ModelRunnerEngineKindMobyManual:
+		if useTLS {
+			return "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
+		}
+		return "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+	default:
+		return "(auto-detect)"
+	}
+}
+
 // resolveDefaultContext attempts to detect the Docker engine kind for the
 // synthetic "default" context row. When the CLI is available it probes the
 // Docker daemon (with a short timeout) and returns a descriptive host and
 // description derived from the detected engine kind. If detection fails or
-// the CLI is unavailable it falls back to generic strings.
+// the CLI is unavailable (nil) it falls back to generic strings.
 func resolveDefaultContext(ctx context.Context) (host, description string) {
 	const fallbackHost = "(auto-detect)"
 	const fallbackDescription = "Auto-detected Docker context"
 
+	// dockerCLI is nil during tests and when the CLI is not yet initialised.
 	if dockerCLI == nil {
 		return fallbackHost, fallbackDescription
 	}
@@ -93,26 +115,10 @@ func resolveDefaultContext(ctx context.Context) (host, description string) {
 	defer cancel()
 
 	kind := desktop.DetectEngineKind(detectCtx, dockerCLI)
-	description = "Model Runner on " + kind.String()
-
-	switch kind {
-	case types.ModelRunnerEngineKindDesktop:
-		host = kind.String()
-	case types.ModelRunnerEngineKindCloud:
-		if envconfig.TLSEnabled() {
-			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
-		} else {
-			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
-		}
-	case types.ModelRunnerEngineKindMoby, types.ModelRunnerEngineKindMobyManual:
-		if envconfig.TLSEnabled() {
-			host = "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
-		} else {
-			host = "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
-		}
-	}
-
-	return host, description
+	// Mirror DetectContext: MODEL_RUNNER_TLS must be explicitly set to "true".
+	tlsVal, tlsSet := os.LookupEnv("MODEL_RUNNER_TLS")
+	useTLS := tlsSet && tlsVal == "true"
+	return resolveKindHost(kind, useTLS), "Model Runner on " + kind.String()
 }
 
 // newContextCreateCmd returns the "context create" command.
