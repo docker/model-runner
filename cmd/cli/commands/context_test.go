@@ -2,7 +2,6 @@ package commands
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -436,7 +435,7 @@ func TestResolveKindHost(t *testing.T) {
 // any network probe.
 func TestResolveDefaultContext_nilCLI(t *testing.T) {
 	dockerCLI = nil
-	host, desc := resolveDefaultContext(context.Background())
+	host, desc := resolveDefaultContext(t.Context())
 	assert.Equal(t, "(auto-detect)", host)
 	assert.Equal(t, "Auto-detected Docker context", desc)
 }
