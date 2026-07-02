@@ -72,6 +72,7 @@ func NewRouter(cfg RouterConfig) *RouterResult {
 	if cfg.ModelHandlerMiddleware != nil {
 		modelEndpoint = cfg.ModelHandlerMiddleware(cfg.ModelHandler)
 	}
+	router.Handle(inference.ModelsPrefix+"/backend", cfg.SchedulerHTTP)
 	router.Handle(inference.ModelsPrefix, modelEndpoint)
 	router.Handle(inference.ModelsPrefix+"/", modelEndpoint)
 
