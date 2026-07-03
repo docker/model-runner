@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
-
 	"github.com/spf13/cobra"
 )
 
