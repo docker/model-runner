@@ -5,7 +5,7 @@ Docker Model Runner (DMR) makes it easy to manage, run, and deploy AI models usi
 
 ## Overview
 
-This package supports the Docker Model Runner in Docker Desktop and Docker Engine.
+This package supports the Docker Model Runner in Docker Desktop, Docker Engine, and as the standalone `dmr` binary (no Docker installation required — see [Standalone (dmr)](#standalone-dmr) below).
 
 ### Installation
 
@@ -27,6 +27,37 @@ sudo usermod -aG docker $USER # give user permission to access docker daemon, re
 ```
 
 Docker Model Runner is included in Docker Engine when installed from Docker's official repositories.
+
+### Standalone (dmr)
+
+If you don't want to install Docker Desktop or Docker Engine at all, `dmr`
+is a single self-contained binary that bundles both the inference daemon and
+the full model management CLI (`run`, `ls`, `pull`, `rm`, `ps`, ...). It has
+no dependency on Docker Desktop or a running Docker Engine.
+
+```bash
+# macOS (arm64)
+brew install docker/tap/dmr
+
+# Windows (amd64)
+winget install Docker.dmr
+```
+
+Linux users can download a prebuilt archive from the
+[latest `dmr-v*` release](https://github.com/docker/model-runner/releases)
+or build it from source (see [`cmd/dmr`](./cmd/dmr)):
+
+```bash
+make build-dmr
+./dmr serve &      # start the daemon
+./dmr pull ai/gemma3
+./dmr run ai/gemma3 "Hello"
+```
+
+`dmr serve` listens on TCP port `12434` by default (see `dmr serve --help`
+for `--port`/`--socket`/`--models-path`), and the bundled CLI talks to it
+there automatically. Point any dmr command at a different daemon with
+`MODEL_RUNNER_HOST` (or `--host`), exactly as with `docker model`.
 
 ### Verifying Your Installation
 
