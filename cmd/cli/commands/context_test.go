@@ -434,6 +434,8 @@ func TestResolveKindHost(t *testing.T) {
 // dockerCLI is not set, the fallback strings are returned immediately without
 // any network probe.
 func TestResolveDefaultContext_nilCLI(t *testing.T) {
+	prev := dockerCLI
+	t.Cleanup(func() { dockerCLI = prev })
 	dockerCLI = nil
 	host, desc := resolveDefaultContext(t.Context())
 	assert.Equal(t, "(auto-detect)", host)
