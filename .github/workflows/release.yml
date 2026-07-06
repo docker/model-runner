@@ -165,7 +165,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/docker-agent-action@3c0fa9d282c3f84d08dfd70ab0a28b151d11db70 # v2.0.0
+        uses: docker/docker-agent-action@e96a4bb40cac114f64358621e1d08346c8eadc8c # v2.0.1
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -213,7 +213,7 @@ jobs:
         uses: ./.github/actions/load-go-version
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
