@@ -41,7 +41,7 @@ DOCKER_BUILD_COMMON_ARGS = \
 	-t $(DOCKER_IMAGE)
 
 # Phony targets grouped by category
-.PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
+.PHONY: build build-cli build-dmr build-dmr-cross build-llamacpp install-cli run clean test integration-tests e2e
 .PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
 .PHONY: docker-build-vllm docker-run-vllm docker-build-vllm-rocm docker-run-vllm-rocm docker-build-sglang docker-run-sglang
@@ -60,8 +60,31 @@ build-server:
 build-cli:
 	$(MAKE) -C cmd/cli
 
+DMR_VERSION := $(shell git describe --tags --always --dirty --match 'dmr-v*' | sed 's/^dmr-//')
+DMR_LDFLAGS := -s -w \
+	-X main.Version=$(DMR_VERSION) \
+	-X github.com/docker/model-runner/cmd/cli/desktop.Version=$(DMR_VERSION)
+
+# build-dmr builds a native dmr binary. dmr has no cgo dependencies, so
+# CGO_ENABLED=0 keeps the binary statically linked and trivial to
+# cross-compile (see build-dmr-cross).
 build-dmr:
-	CGO_ENABLED=1 go build -ldflags="-s -w -X main.Version=$(shell git describe --tags --always --dirty --match 'v*')" -o dmr ./cmd/dmr
+	CGO_ENABLED=0 go build -ldflags="$(DMR_LDFLAGS)" -o dmr ./cmd/dmr
+
+# build-dmr-cross builds standalone dmr binaries for every platform we
+# publish packages for (see packaging/), into dist/dmr/<os>-<arch>/dmr.
+DMR_CROSS_TARGETS := darwin-arm64 linux-amd64 linux-arm64 windows-amd64
+
+build-dmr-cross:
+	@for target in $(DMR_CROSS_TARGETS); do \
+		os=$${target%-*}; arch=$${target#*-}; \
+		ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
+		echo "Building dmr for $$os/$$arch..."; \
+		mkdir -p dist/dmr/$$target; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath \
+			-ldflags="$(DMR_LDFLAGS)" \
+			-o dist/dmr/$$target/dmr$$ext ./cmd/dmr; \
+	done
 
 build-llamacpp:
 	git submodule update --init llamacpp/native
@@ -410,6 +433,7 @@ help:
 	@echo "  build				- Build server, CLI plugin, and dmr wrapper (default)"
 	@echo "  build-server			- Build the model-runner server"
 	@echo "  build-cli			- Build the CLI (docker-model plugin)"
+	@echo "  build-dmr-cross		- Cross-compile dmr for all published platforms into dist/dmr/"
 	@echo "  install-cli			- Build and install the CLI as a Docker plugin"
 	@echo "  docs				- Generate CLI documentation"
 	@echo "  run				- Run the application locally"

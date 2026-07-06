@@ -1,0 +1,179 @@
+name: Release dmr
+
+# Builds the standalone dmr binary for macOS (arm64), Linux (amd64/arm64),
+# and Windows (amd64), publishes a GitHub Release with the archives, then
+# opens the corresponding Homebrew formula and WinGet manifest updates so
+# `brew install docker/tap/dmr` and `winget install Docker.dmr` pick up the
+# new version.
+#
+# Triggered by pushing a tag of the form dmr-vX.Y.Z (kept distinct from the
+# model-runner container image release tags used by release.yml).
+
+on:
+  push:
+    tags:
+      - "dmr-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. dmr-v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build all targets
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # Full history (incl. tags) so that `make build-dmr-cross`'s `git
+      # describe --match 'dmr-v*'` resolves DMR_VERSION to the exact tag
+      # being released here — the same version derivation used by
+      # `make build-dmr` for local/dev builds, kept as a single source of
+      # truth instead of re-encoding build flags in this workflow.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cross-compile dmr
+        run: make build-dmr-cross
+
+      - name: Package archives
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          for dir in dist/dmr/*/; do
+            target=$(basename "$dir")
+            if [ -f "${dir}dmr.exe" ]; then
+              (cd "$dir" && zip "$OLDPWD/dist/release/dmr-${target}.zip" dmr.exe)
+            else
+              tar czf "dist/release/dmr-${target}.tar.gz" -C "$dir" dmr
+            fi
+          done
+
+      - id: version
+        run: echo "version=${TAG#dmr-v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmr-archives
+          path: dist/release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmr-archives
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "dmr ${{ needs.build.outputs.version }}"
+          files: dist/*
+          generate_release_notes: true
+
+  publish-homebrew:
+    name: Publish Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute release checksums
+        id: sha
+        run: |
+          set -euo pipefail
+          for target in darwin-arm64 linux-amd64 linux-arm64; do
+            curl -sL -o "${target}.tar.gz" \
+              "https://github.com/${{ github.repository }}/releases/download/${TAG}/dmr-${target}.tar.gz"
+            sum=$(sha256sum "${target}.tar.gz" | cut -d' ' -f1)
+            echo "${target//-/_}=${sum}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Generate formula
+        run: |
+          set -euo pipefail
+          mkdir -p formula
+          cat > formula/dmr.rb <<RUBY
+          class Dmr < Formula
+            desc "Standalone Docker Model Runner — run local models with no Docker Desktop required"
+            homepage "https://github.com/${{ github.repository }}"
+            version "${{ needs.release.outputs.version }}"
+            license "Apache-2.0"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/${{ github.repository }}/releases/download/${TAG}/dmr-darwin-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.darwin_arm64 }}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/${{ github.repository }}/releases/download/${TAG}/dmr-linux-amd64.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_amd64 }}"
+              end
+              on_arm do
+                url "https://github.com/${{ github.repository }}/releases/download/${TAG}/dmr-linux-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_arm64 }}"
+              end
+            end
+
+            def install
+              bin.install "dmr"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/dmr version")
+            end
+          end
+          RUBY
+
+      - name: Open pull request against docker/homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="dmr-${{ needs.release.outputs.version }}"
+          gh repo clone docker/homebrew-tap tap -- --depth=1
+          cp formula/dmr.rb tap/Formula/dmr.rb
+          cd tap
+          git checkout -b "$branch"
+          git -c user.name="docker-tools-robot" -c user.email="docker-tools-robot@users.noreply.github.com" \
+            commit -am "dmr ${{ needs.release.outputs.version }}"
+          git push origin "$branch"
+          gh pr create --repo docker/homebrew-tap \
+            --title "dmr ${{ needs.release.outputs.version }}" \
+            --body "Automated formula update for dmr ${{ needs.release.outputs.version }}."
+
+  publish-winget:
+    name: Publish WinGet manifest
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Install wingetcreate
+        run: winget install wingetcreate --accept-source-agreements --accept-package-agreements
+
+      - name: Submit manifest to microsoft/winget-pkgs
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_GH_KEY }}
+        run: |
+          $Version = "${{ needs.release.outputs.version }}"
+          $Url = "https://github.com/${{ github.repository }}/releases/download/$env:TAG/dmr-windows-amd64.zip"
+          wingetcreate update Docker.dmr -s -v $Version -u $Url
