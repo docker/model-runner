@@ -38,11 +38,11 @@ jobs:
       # being released here — the same version derivation used by
       # `make build-dmr` for local/dev builds, kept as a single source of
       # truth instead of re-encoding build flags in this workflow.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
 
@@ -65,7 +65,7 @@ jobs:
       - id: version
         run: echo "version=${TAG#dmr-v}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dmr-archives
           path: dist/release/*
@@ -78,17 +78,21 @@ jobs:
     outputs:
       version: ${{ needs.build.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: dmr-archives
           path: dist
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          name: "dmr ${{ needs.build.outputs.version }}"
-          files: dist/*
-          generate_release_notes: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "dmr ${{ needs.build.outputs.version }}" \
+            --generate-notes \
+            dist/*
 
   publish-homebrew:
     name: Publish Homebrew formula
