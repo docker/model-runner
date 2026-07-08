@@ -47,6 +47,12 @@ type RunnerConfig struct {
 	// process environment. If nil or empty, the backend inherits the parent
 	// env as-is (an empty non-nil slice is treated the same as nil).
 	Env []string
+	// CommandModifier, if non-nil, is invoked on the backend command immediately
+	// before it is started, after the internal setup (cancellation, stdio, env).
+	// Embedders use it to customize process attributes such as credentials
+	// (SysProcAttr), environment, or working directory. It composes with, and
+	// runs after, the internal modifier.
+	CommandModifier func(*exec.Cmd)
 }
 
 // Logger interface for backend logging
@@ -112,6 +118,9 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 			command.Stderr = out
 			if len(config.Env) > 0 {
 				command.Env = append(os.Environ(), config.Env...)
+			}
+			if config.CommandModifier != nil {
+				config.CommandModifier(command)
 			}
 		},
 		config.SandboxPath,

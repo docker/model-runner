@@ -53,11 +53,13 @@ type vllmMetal struct {
 	status string
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -72,6 +74,7 @@ func newMetal(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		installDir:       installDir,
 		status:           inference.FormatNotInstalled(""),
 		registryMirrors:  registryMirrors,
+		commandModifier:  commandModifier,
 	}, nil
 }
 
@@ -250,6 +253,7 @@ func (v *vllmMetal) Run(ctx context.Context, socket, model string, modelRef stri
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),
 		Env:             []string{"VLLM_HOST_IP=127.0.0.1"},
+		CommandModifier: v.commandModifier,
 	})
 }
 

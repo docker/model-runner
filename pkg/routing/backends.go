@@ -1,6 +1,8 @@
 package routing
 
 import (
+	"os/exec"
+
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -39,6 +41,12 @@ type BackendsConfig struct {
 	// when pulling backend images. Populated from MODEL_RUNNER_REGISTRY_MIRRORS or
 	// injected by Docker Desktop from daemon.json registry-mirrors.
 	RegistryMirrors []string
+
+	// CommandModifier, if non-nil, is applied to every backend runner process
+	// immediately before it starts (see backends.RunnerConfig.CommandModifier).
+	// Embedders use it to customize process attributes such as credentials or
+	// environment; nil leaves the process unchanged.
+	CommandModifier func(*exec.Cmd)
 }
 
 // DefaultBackendDefs returns BackendDef entries for the configured backends.
@@ -54,13 +62,13 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 
 	defs := []BackendDef{
 		{Name: llamacpp.Name, Deferred: llamacpp.NeedsDeferredInstall(), Init: func(mm *models.Manager) (inference.Backend, error) {
-			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig, cfg.RegistryMirrors)
+			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig, cfg.RegistryMirrors, cfg.CommandModifier)
 		}},
 	}
 
 	if cfg.IncludeMLX {
 		defs = append(defs, BackendDef{Name: mlx.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return mlx.New(cfg.Log, mm, sl(mlx.Name), nil, cfg.MLXPath)
+			return mlx.New(cfg.Log, mm, sl(mlx.Name), nil, cfg.MLXPath, cfg.CommandModifier)
 		}})
 	}
 
@@ -73,6 +81,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 					LinuxBinaryPath: cfg.VLLMPath,
 					MetalPythonPath: cfg.VLLMMetalPath,
 					RegistryMirrors: cfg.RegistryMirrors,
+					CommandModifier: cfg.CommandModifier,
 				})
 			},
 		})
@@ -83,7 +92,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 			Name:     diffusers.Name,
 			Deferred: true,
 			Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors)
+				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors, cfg.CommandModifier)
 			},
 		})
 	}
