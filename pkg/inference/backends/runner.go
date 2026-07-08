@@ -120,6 +120,12 @@ func RunBackend(ctx context.Context, config RunnerConfig) error {
 				command.Env = append(os.Environ(), config.Env...)
 			}
 			if config.CommandModifier != nil {
+				// Materialize the inherited environment first: a nil Env means
+				// "inherit the parent", but a modifier that appends to it would
+				// otherwise start from an empty slice and drop the parent env.
+				if command.Env == nil {
+					command.Env = os.Environ()
+				}
 				config.CommandModifier(command)
 			}
 		},
