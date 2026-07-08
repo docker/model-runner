@@ -146,13 +146,6 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("invalid LLAMA_ARGS: %w", err)
 	}
 
-	updatedServerPath := func() string {
-		wd, _ := os.Getwd()
-		d := filepath.Join(wd, "updated-inference", "bin")
-		_ = os.MkdirAll(d, 0o755)
-		return d
-	}()
-
 	svc, err := routing.NewService(routing.ServiceConfig{
 		Log: log,
 		ClientConfig: models.ClientConfig{
@@ -174,17 +167,16 @@ func Run(ctx context.Context, cfg Config) error {
 						&slog.HandlerOptions{Level: envconfig.LogLevel()},
 					))
 				},
-				LlamaCppVendoredPath: llamaServerPath,
-				LlamaCppUpdatedPath:  updatedServerPath,
-				LlamaCppConfig:       llamaCppConfig,
-				IncludeMLX:           true,
-				MLXPath:              mlxServerPath,
-				IncludeVLLM:          includeVLLM,
-				VLLMPath:             vllmServerPath,
-				VLLMMetalPath:        vllmMetalServerPath,
-				IncludeDiffusers:     true,
-				DiffusersPath:        diffusersServerPath,
-				RegistryMirrors:      envconfig.RegistryMirrors(),
+				LlamaCppPath:     llamaServerPath,
+				LlamaCppConfig:   llamaCppConfig,
+				IncludeMLX:       true,
+				MLXPath:          mlxServerPath,
+				IncludeVLLM:      includeVLLM,
+				VLLMPath:         vllmServerPath,
+				VLLMMetalPath:    vllmMetalServerPath,
+				IncludeDiffusers: true,
+				DiffusersPath:    diffusersServerPath,
+				RegistryMirrors:  envconfig.RegistryMirrors(),
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
