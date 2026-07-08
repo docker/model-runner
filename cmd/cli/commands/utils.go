@@ -197,17 +197,18 @@ func requireMinArgs(n int, cmdName string, usageArgs string) cobra.PositionalArg
 
 // runnerFlagOptions holds common runner configuration options
 type runnerFlagOptions struct {
-	Port       *uint16
-	Host       *string
-	GpuMode    *string
-	Backend    *string
-	DoNotTrack *bool
-	Debug      *bool
-	ProxyCert  *string
-	TLS        *bool
-	TLSPort    *uint16
-	TLSCert    *string
-	TLSKey     *string
+	Port               *uint16
+	Host               *string
+	GpuMode            *string
+	Backend            *string
+	LlamaServerVersion *string
+	DoNotTrack         *bool
+	Debug              *bool
+	ProxyCert          *string
+	TLS                *bool
+	TLSPort            *uint16
+	TLSCert            *string
+	TLSKey             *string
 }
 
 // addRunnerFlags adds common runner flags to a command
@@ -224,6 +225,10 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.Backend != nil {
 		cmd.Flags().StringVar(opts.Backend, "backend", "", backendUsage)
+	}
+	if opts.LlamaServerVersion != nil {
+		cmd.Flags().StringVar(opts.LlamaServerVersion, "llama-server-version", "",
+			`Override the llama.cpp version to install on macOS/Windows (e.g. "latest" or "v0.0.34"); defaults to the version pinned to this release`)
 	}
 	if opts.DoNotTrack != nil {
 		cmd.Flags().BoolVar(opts.DoNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")

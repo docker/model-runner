@@ -1,7 +1,6 @@
 package envconfig_test
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/envconfig"
@@ -15,16 +14,13 @@ func TestLlamaServerPath(t *testing.T) {
 		}
 	})
 
-	t.Run("default depends on platform", func(t *testing.T) {
+	t.Run("empty when unset", func(t *testing.T) {
 		t.Setenv("LLAMA_SERVER_PATH", "")
-		got := envconfig.LlamaServerPath()
-		if runtime.GOOS == "darwin" {
-			want := "/Applications/Docker.app/Contents/Resources/model-runner/bin"
-			if got != want {
-				t.Fatalf("LlamaServerPath() = %q, want %q", got, want)
-			}
-		} else if got != "" {
-			t.Fatalf("LlamaServerPath() = %q, want empty string on %s", got, runtime.GOOS)
+		// When unset there is no meaningful default here: the llama.cpp backend
+		// falls back to a writable per-user directory (macOS/Windows) or the
+		// image sets LLAMA_SERVER_PATH explicitly (Linux).
+		if got := envconfig.LlamaServerPath(); got != "" {
+			t.Fatalf("LlamaServerPath() = %q, want empty string", got)
 		}
 	})
 }

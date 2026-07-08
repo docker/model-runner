@@ -2,6 +2,7 @@ package llamacpp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -21,6 +22,18 @@ import (
 const (
 	hubNamespace = "docker"
 	hubRepo      = "docker-model-backend-llamacpp"
+
+	// LatestServerVersion is the sentinel that opts into tracking the mutable
+	// "latest" tag rather than a pinned release.
+	LatestServerVersion = "latest"
+
+	// pinnedServerVersion is the default llama.cpp version this model-runner
+	// build downloads on macOS/Windows. It is a tag of the
+	// docker/docker-model-backend-llamacpp image and must be bumped together
+	// with the Linux bundle (Dockerfile LLAMA_SERVER_VERSION) whenever llama.cpp
+	// is upgraded, so all platforms ship a consistent, tested build. Users can
+	// override it via LLAMA_SERVER_VERSION or `--llama-server-version`.
+	pinnedServerVersion = "v0.0.34"
 )
 
 var (
@@ -28,9 +41,9 @@ var (
 	ShouldUseGPUVariantLock   sync.Mutex
 	ShouldUpdateServer        = true
 	ShouldUpdateServerLock    sync.Mutex
-	DesiredServerVersion      = "latest"
+	DesiredServerVersion      = pinnedServerVersion
 	DesiredServerVersionLock  sync.Mutex
-	errLlamaCppUpToDate       = errors.New("bundled llama.cpp version is up to date, no need to update")
+	errLlamaCppUpToDate       = errors.New("llama.cpp version is up to date, no need to update")
 	errLlamaCppUpdateDisabled = errors.New("llama.cpp auto-updated is disabled")
 )
 
@@ -48,18 +61,37 @@ func SetDesiredServerVersion(version string) {
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
 func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logger,
-	llamaCppPath, vendoredServerStoragePath, desiredVersion, desiredVariant string,
+	desiredVersion, desiredVariant string,
 ) error {
+	llamaCppPath := filepath.Join(l.installDir, l.downloadBinaryName())
+	desiredTag := desiredVersion + "-" + desiredVariant
+	binaryPresent := false
+	if _, statErr := os.Stat(llamaCppPath); statErr == nil {
+		binaryPresent = true
+	}
+	rec := l.readInstalledVersion()
+
 	ShouldUpdateServerLock.Lock()
 	shouldUpdateServer := ShouldUpdateServer
 	ShouldUpdateServerLock.Unlock()
 	if !shouldUpdateServer {
 		log.Info("downloadLatestLlamaCpp: update disabled")
+		if binaryPresent {
+			l.setRunningStatus(log, llamaCppPath, desiredTag, rec.Digest)
+		}
 		return errLlamaCppUpdateDisabled
 	}
 
-	log.Info("downloadLatestLlamaCpp", "desiredVersion", desiredVersion, "desiredVariant", desiredVariant, "vendoredServerStoragePath", vendoredServerStoragePath, "llamaCppPath", llamaCppPath)
-	desiredTag := desiredVersion + "-" + desiredVariant
+	log.Info("downloadLatestLlamaCpp", "desiredVersion", desiredVersion, "desiredVariant", desiredVariant, "installDir", l.installDir)
+
+	// Fast path: a pinned (immutable) version tag that is already installed
+	// needs no registry round-trip at all, so startup works offline. Only the
+	// mutable "latest" tag must always be re-resolved to pick up new pushes.
+	if binaryPresent && desiredVersion != LatestServerVersion && rec.Tag == desiredTag {
+		log.Info("pinned llama.cpp version already installed, skipping update check", "tag", desiredTag)
+		l.setRunningStatus(log, llamaCppPath, desiredTag, rec.Digest)
+		return errLlamaCppUpToDate
+	}
 
 	// Resolve the desired tag to a digest via the Registry HTTP API v2. This
 	// honors l.registryMirrors (typically a corporate Artifactory / Nexus /
@@ -74,30 +106,16 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		return fmt.Errorf("could not resolve the %s tag: %w", desiredTag, err)
 	}
 
-	bundledVersionFile := filepath.Join(vendoredServerStoragePath, "com.docker.llama-server.digest")
-	currentVersionFile := filepath.Join(filepath.Dir(llamaCppPath), ".llamacpp_version")
-
-	data, err := os.ReadFile(bundledVersionFile)
-	if err != nil {
-		return fmt.Errorf("failed to read bundled llama.cpp version: %w", err)
-	} else if strings.TrimSpace(string(data)) == latest {
-		l.setRunningStatus(log, filepath.Join(vendoredServerStoragePath, "com.docker.llama-server"), desiredTag, latest)
+	// If we have already downloaded this exact digest and the binary is still
+	// present, there is nothing to do. Unlike the previous Docker Desktop
+	// bundled model, there is no vendored binary to compare against here.
+	if binaryPresent && rec.Digest == latest {
+		log.Info("current llama.cpp version is already up to date")
+		l.setRunningStatus(log, llamaCppPath, desiredTag, latest)
 		return errLlamaCppUpToDate
 	}
-
-	data, err = os.ReadFile(currentVersionFile)
-	if err != nil {
-		log.Warn("failed to read current llama.cpp version", "error", err)
-		log.Warn("proceeding to update llama.cpp binary")
-	} else if strings.TrimSpace(string(data)) == latest {
-		log.Info("current llama.cpp version is already up to date")
-		if _, statErr := os.Stat(llamaCppPath); statErr == nil {
-			l.setRunningStatus(log, llamaCppPath, desiredTag, latest)
-			return nil
-		}
-		log.Info("llama.cpp binary must be updated, proceeding to update it")
-	} else {
-		log.Info("current llama.cpp version is outdated, proceeding to update it", "current", strings.TrimSpace(string(data)), "latest", latest)
+	if rec.Digest != "" && rec.Digest != latest {
+		log.Info("current llama.cpp version is outdated, proceeding to update", "current", rec.Digest, "latest", latest)
 	}
 
 	image := fmt.Sprintf("registry-1.docker.io/%s/%s@%s", hubNamespace, hubRepo, latest)
@@ -112,32 +130,33 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 		return fmt.Errorf("could not extract image: %w", extractErr)
 	}
 
-	if err := os.RemoveAll(filepath.Dir(llamaCppPath)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	libDir := filepath.Join(filepath.Dir(l.installDir), "lib")
+	if err := os.RemoveAll(l.installDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed to clear inference binary dir: %w", err)
 	}
-	if err := os.RemoveAll(filepath.Join(filepath.Dir(filepath.Dir(llamaCppPath)), "lib")); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.RemoveAll(libDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed to clear inference library dir: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(filepath.Dir(llamaCppPath)), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(l.installDir), 0o755); err != nil {
 		return fmt.Errorf("could not create directory for llama.cpp artifacts: %w", err)
 	}
 
 	rootDir := fmt.Sprintf("com.docker.llama-server.native.%s.%s.%s", runtime.GOOS, desiredVariant, runtime.GOARCH)
-	if err := os.Rename(filepath.Join(downloadDir, rootDir, "bin"), filepath.Dir(llamaCppPath)); err != nil {
+	if err := os.Rename(filepath.Join(downloadDir, rootDir, "bin"), l.installDir); err != nil {
 		return fmt.Errorf("could not move llama.cpp binary: %w", err)
 	}
 	if err := os.Chmod(llamaCppPath, 0o755); err != nil {
 		return fmt.Errorf("could not chmod llama.cpp binary: %w", err)
 	}
 
-	libDir := filepath.Join(downloadDir, rootDir, "lib")
-	fi, err := os.Stat(libDir)
+	srcLibDir := filepath.Join(downloadDir, rootDir, "lib")
+	fi, err := os.Stat(srcLibDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed to stat llama.cpp lib dir: %w", err)
 	}
 	if err == nil && fi.IsDir() {
-		if err := os.Rename(libDir, filepath.Join(filepath.Dir(filepath.Dir(llamaCppPath)), "lib")); err != nil {
+		if err := os.Rename(srcLibDir, libDir); err != nil {
 			return fmt.Errorf("could not move llama.cpp libs: %w", err)
 		}
 	}
@@ -146,11 +165,53 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	l.setRunningStatus(log, llamaCppPath, desiredTag, latest)
 	log.Info(l.status)
 
-	if err := os.WriteFile(currentVersionFile, []byte(latest), 0o644); err != nil {
-		log.Warn("failed to save llama.cpp version", "error", err)
-	}
+	l.writeInstalledVersion(log, installedVersion{Tag: desiredTag, Digest: latest})
 
 	return nil
+}
+
+// installedVersion records which llama.cpp image tag and digest are currently
+// installed in installDir. Tracking the tag (not just the digest) lets us skip
+// the registry round-trip for immutable pinned versions.
+//
+//nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
+type installedVersion struct {
+	Tag    string `json:"tag"`
+	Digest string `json:"digest"`
+}
+
+//nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
+func (l *llamaCpp) versionFilePath() string {
+	return filepath.Join(l.installDir, ".llamacpp_version")
+}
+
+// readInstalledVersion reads the recorded install metadata, tolerating the
+// legacy format where the file held only the raw digest.
+//
+//nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
+func (l *llamaCpp) readInstalledVersion() installedVersion {
+	data, err := os.ReadFile(l.versionFilePath())
+	if err != nil {
+		return installedVersion{}
+	}
+	var rec installedVersion
+	if json.Unmarshal(data, &rec) == nil && rec.Digest != "" {
+		return rec
+	}
+	// Legacy format: the file previously held only the digest string.
+	return installedVersion{Digest: strings.TrimSpace(string(data))}
+}
+
+//nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
+func (l *llamaCpp) writeInstalledVersion(log logging.Logger, rec installedVersion) {
+	data, err := json.Marshal(rec)
+	if err != nil {
+		log.Warn("failed to marshal llama.cpp version", "error", err)
+		return
+	}
+	if err := os.WriteFile(l.versionFilePath(), data, 0o644); err != nil {
+		log.Warn("failed to save llama.cpp version", "error", err)
+	}
 }
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)

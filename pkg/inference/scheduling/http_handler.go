@@ -378,6 +378,10 @@ func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
 // installBackendRequest is the JSON body for the install-backend endpoint.
 type installBackendRequest struct {
 	Backend string `json:"backend"`
+	// Version optionally overrides the backend version to install (e.g.
+	// "latest" or a specific "vX.Y.Z"). Empty means use the version pinned to
+	// this model-runner release. Only honored by backends that support it.
+	Version string `json:"version,omitempty"`
 }
 
 // InstallBackend handles POST <inference-prefix>/install-backend requests.
@@ -394,7 +398,7 @@ func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.scheduler.InstallBackend(r.Context(), req.Backend); err != nil {
+	if err := h.scheduler.InstallBackend(r.Context(), req.Backend, req.Version); err != nil {
 		if errors.Is(err, ErrBackendNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {

@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -99,20 +98,13 @@ func TCPPort() string {
 	return Var("MODEL_RUNNER_PORT")
 }
 
-// LlamaServerPath returns the path to the llama.cpp server binary.
-// Configured via LLAMA_SERVER_PATH. On macOS this defaults to the Docker
-// Desktop bundle location as a last-resort lookup (Desktop vendors its own
-// copy there); on every other platform there is no meaningful default path
-// to check, and the daemon falls back to downloading the pinned llama.cpp
-// release on demand.
+// LlamaServerPath returns the directory that holds the llama.cpp server binary.
+// Configured via LLAMA_SERVER_PATH. On Linux the container image sets this to
+// the bundled binary's location. When it is unset (macOS/Windows), an empty
+// string is returned and the llama.cpp backend falls back to a writable
+// per-user directory into which it downloads the pinned release on demand.
 func LlamaServerPath() string {
-	if s := Var("LLAMA_SERVER_PATH"); s != "" {
-		return s
-	}
-	if runtime.GOOS == "darwin" {
-		return "/Applications/Docker.app/Contents/Resources/model-runner/bin"
-	}
-	return ""
+	return Var("LLAMA_SERVER_PATH")
 }
 
 // LlamaArgs returns custom arguments to pass to the llama.cpp server.
