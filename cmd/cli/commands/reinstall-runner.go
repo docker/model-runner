@@ -10,6 +10,7 @@ func newReinstallRunner() *cobra.Command {
 	var host string
 	var gpuMode string
 	var backend string
+	var llamaServerVersion string
 	var doNotTrack bool
 	var debug bool
 	var proxyCert string
@@ -22,34 +23,36 @@ func newReinstallRunner() *cobra.Command {
 		Short: "Reinstall Docker Model Runner (Docker Engine only)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstallOrStart(cmd, runnerOptions{
-				port:            port,
-				host:            host,
-				gpuMode:         gpuMode,
-				backend:         backend,
-				doNotTrack:      doNotTrack,
-				pullImage:       true,
-				pruneContainers: true,
-				proxyCert:       proxyCert,
-				tls:             tlsEnabled,
-				tlsPort:         tlsPort,
-				tlsCert:         tlsCert,
-				tlsKey:          tlsKey,
+				port:               port,
+				host:               host,
+				gpuMode:            gpuMode,
+				backend:            backend,
+				llamaServerVersion: llamaServerVersion,
+				doNotTrack:         doNotTrack,
+				pullImage:          true,
+				pruneContainers:    true,
+				proxyCert:          proxyCert,
+				tls:                tlsEnabled,
+				tlsPort:            tlsPort,
+				tlsCert:            tlsCert,
+				tlsKey:             tlsKey,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 	addRunnerFlags(c, runnerFlagOptions{
-		Port:       &port,
-		Host:       &host,
-		GpuMode:    &gpuMode,
-		Backend:    &backend,
-		DoNotTrack: &doNotTrack,
-		Debug:      &debug,
-		ProxyCert:  &proxyCert,
-		TLS:        &tlsEnabled,
-		TLSPort:    &tlsPort,
-		TLSCert:    &tlsCert,
-		TLSKey:     &tlsKey,
+		Port:               &port,
+		Host:               &host,
+		GpuMode:            &gpuMode,
+		Backend:            &backend,
+		LlamaServerVersion: &llamaServerVersion,
+		DoNotTrack:         &doNotTrack,
+		Debug:              &debug,
+		ProxyCert:          &proxyCert,
+		TLS:                &tlsEnabled,
+		TLSPort:            &tlsPort,
+		TLSCert:            &tlsCert,
+		TLSKey:             &tlsKey,
 	})
 	return c
 }

@@ -214,8 +214,16 @@ func (s *Scheduler) ResetInstaller(httpClient *http.Client) {
 	s.installer = newInstaller(s.log, s.backends, httpClient, s.deferredBackends)
 }
 
-// InstallBackend triggers on-demand installation of a deferred backend.
-func (s *Scheduler) InstallBackend(ctx context.Context, name string) error {
+// InstallBackend triggers on-demand installation of a deferred backend. When
+// version is non-empty and the backend supports version selection, it installs
+// that version (e.g. "latest" or a specific "vX.Y.Z") instead of the version
+// pinned to this release.
+func (s *Scheduler) InstallBackend(ctx context.Context, name, version string) error {
+	if version != "" {
+		if vs, ok := s.backends[name].(inference.BackendVersionSelector); ok {
+			vs.SetInstallVersion(version)
+		}
+	}
 	return s.installer.installBackend(ctx, name)
 }
 

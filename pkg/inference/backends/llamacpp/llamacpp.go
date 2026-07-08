@@ -97,6 +97,16 @@ func NeedsDeferredInstall() bool {
 	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 }
 
+// SetInstallVersion implements inference.BackendVersionSelector. It selects the
+// llama.cpp image version installed on the next Install (e.g. "latest" or a
+// specific "vX.Y.Z" tag), overriding the version pinned to this release.
+func (l *llamaCpp) SetInstallVersion(version string) {
+	if version == "" {
+		return
+	}
+	SetDesiredServerVersion(version)
+}
+
 // resolveLlamaServerBin returns the llama-server binary name to use.
 // It prefers the upstream name (llama-server) shipped by the official
 // ghcr.io/ggml-org/llama.cpp images used on Linux.  When that binary
@@ -121,6 +131,8 @@ func resolveLlamaServerBin(dir string) string {
 // downloadBinaryName returns the name of the llama.cpp server binary shipped in
 // the docker-model-backend-llamacpp images used for on-demand downloads. These
 // images always use the Docker-convention name.
+//
+//nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
 func (l *llamaCpp) downloadBinaryName() string {
 	if runtime.GOOS == "windows" {
 		return "com.docker.llama-server.exe"
