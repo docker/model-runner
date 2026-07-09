@@ -63,25 +63,52 @@ jobs:
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --- Find the latest published GitHub Release tag ---          
-          # gh release list defaults to --order desc (newest first by creation
-          # date), so --limit 1 gives us the most recent release.
-          LATEST_RELEASE_TAG=$(gh release list --limit 1 --json tagName \
-            --jq '.[0].tagName // ""' \
-            2>/dev/null || echo "")
+          # Strict semver (vX.Y.Z) pattern for this workflow's release track.
+          # Defined once and reused for release discovery, explicit-tag
+          # validation, and the final guard so the rule can't drift.
+          RELEASE_TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
+          # --- Find the latest published GitHub Release tag ---
+          # This workflow owns the container-image / docker-model-plugin track,
+          # which uses strict semver tags (vX.Y.Z). The standalone `dmr` binary
+          # is released separately via release-dmr.yml on `dmr-v*` tags. Filter
+          # to our own scheme so we never pick up the other track's release
+          # (gh release list is newest-first by creation, so `first` = newest).
+          # 100 comfortably covers this repo's release cadence; if the latest
+          # vX.Y.Z ever falls outside that window (e.g. a burst of off-track
+          # dmr-v* releases), the git-tag fallback below still finds it.
+          LATEST_RELEASE_TAG=""
+          GH_ERR=$(mktemp)
+          if RELEASES_JSON=$(gh release list --limit 100 --json tagName 2>"$GH_ERR"); then
+            LATEST_RELEASE_TAG=$(printf '%s' "$RELEASES_JSON" \
+              | jq -r --arg pat "$RELEASE_TAG_PATTERN" \
+                  'map(.tagName) | map(select(test($pat))) | first // ""')
+          else
+            # Surface the failure instead of silently degrading, then fall back.
+            echo "::warning::gh release list failed; falling back to git tags: $(cat "$GH_ERR")"
+          fi
+          rm -f "$GH_ERR"
+
+          # Fall back to git tags when the release lookup found no semver match —
+          # because it failed, because no GitHub Releases exist yet, or because
+          # the newest 100 releases were all off-track and the true latest
+          # vX.Y.Z release fell outside that window. `git tag` is unbounded, so
+          # this always finds the real latest semver tag. Match only strict
+          # semver — the 'v*' glob would also match stray tags like
+          # 'vdmr-v0.1.1'. `|| true` keeps a no-match grep from tripping
+          # pipefail (a fresh repo with no semver tags is valid — see below).
           if [ -n "$LATEST_RELEASE_TAG" ]; then
             LATEST_TAG="$LATEST_RELEASE_TAG"
             echo "Latest published GitHub Release tag: $LATEST_TAG"
           else
-            # Fallback to git tags when no GitHub Releases exist yet
-            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
-            echo "No GitHub Releases found, falling back to latest git tag: ${LATEST_TAG:-<none>}"
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname \
+              | { grep -E "$RELEASE_TAG_PATTERN" || true; } | head -1)
+            echo "No matching GitHub Release found, falling back to latest git tag: ${LATEST_TAG:-<none>}"
           fi
 
           if [ -n "$EXPLICIT_TAG" ]; then
             # Validate explicit tag format
-            if ! echo "$EXPLICIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            if ! echo "$EXPLICIT_TAG" | grep -qE "$RELEASE_TAG_PATTERN"; then
               echo "::error::Invalid release tag format: '$EXPLICIT_TAG'. Expected format: v<MAJOR>.<MINOR>.<PATCH> (e.g., v1.2.3)"
               exit 1
             fi
@@ -125,6 +152,13 @@ jobs:
               RELEASE_TAG="v${VERSION}"
               echo "Auto-bumped $BUMP_TYPE: $LATEST_TAG → $RELEASE_TAG"
             fi
+          fi
+
+          # Guard: never let a malformed tag reach the image build or the
+          # downstream release triggers. Must be strict semver (vX.Y.Z).
+          if ! echo "$RELEASE_TAG" | grep -qE "$RELEASE_TAG_PATTERN"; then
+            echo "::error::Resolved release tag '$RELEASE_TAG' is not valid vX.Y.Z. Aborting."
+            exit 1
           fi
 
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
