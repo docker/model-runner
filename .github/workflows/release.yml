@@ -528,20 +528,35 @@ jobs:
           BEFORE_ID=$(gh run list \
             --repo docker/inference-engine-llama.cpp \
             --workflow release-cli-dd.yml \
-            --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-cli-dd.yml"
+              exit 1
+              ;;
+          esac
 
           gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
             -f tag="v$VERSION"
 
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
           RUN_ID=""
+          LAST_SEEN=""
           for _ in $(seq 1 30); do
             sleep 3
             CANDIDATE=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
             if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
               RUN_ID="$CANDIDATE"
               break
@@ -549,7 +564,7 @@ jobs:
           done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine Desktop CLI release run ID"
+            echo "::error::Failed to determine Desktop CLI release run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
@@ -596,19 +611,34 @@ jobs:
           BEFORE_ID=$(gh run list \
             --repo docker/packaging \
             --workflow release-model.yml \
-            --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-model.yml"
+              exit 1
+              ;;
+          esac
 
           gh workflow run release-model.yml \
             --repo docker/packaging \
             -f ref="$RELEASE_TAG"
 
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
           RUN_ID=""
+          LAST_SEEN=""
           for _ in $(seq 1 30); do
             sleep 3
             CANDIDATE=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
             if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
               RUN_ID="$CANDIDATE"
               break
@@ -616,7 +646,7 @@ jobs:
           done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine packaging workflow run ID"
+            echo "::error::Failed to determine packaging workflow run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
