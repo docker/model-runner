@@ -485,7 +485,32 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Idempotency guard: a re-run of the release for a tag that was already
+      # published must NOT re-trigger the downstream release. The desktop
+      # release re-pushes docker/docker-model-cli-desktop-module:<tag>, and
+      # pushing an already-existing tag fails with "403 denied". Detect the
+      # already-published tag on Docker Hub and skip the trigger instead.
+      - name: Log in to DockerHub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          username: "docker"
+          password: ${{ secrets.ORG_ACCESS_TOKEN }}
+
+      - name: Check whether desktop module is already published
+        id: published
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          if docker manifest inspect \
+              "docker/docker-model-cli-desktop-module:$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "✅ desktop-module:$RELEASE_TAG already exists — skipping trigger"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Trigger Desktop CLI release and wait for completion
+        if: steps.published.outputs.already != 'true'
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -493,35 +518,42 @@ jobs:
         run: |
           echo "🚀 Triggering Desktop CLI release workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-cli-dd.yml \
+          # Record the newest existing run BEFORE dispatch so we can identify
+          # the run WE trigger. `gh workflow run` prints nothing usable on
+          # stdout, and "query the latest run" races: it can return a run
+          # started by someone else, or a stale completed run (which is how a
+          # trigger job can "succeed" while watching the wrong run). Run IDs are
+          # monotonically increasing, so the first run with a strictly greater
+          # ID than BEFORE_ID is ours.
+          BEFORE_ID=$(gh run list \
+            --repo docker/inference-engine-llama.cpp \
+            --workflow release-cli-dd.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+
+          gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION")
+            -f tag="v$VERSION"
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
-
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine workflow run ID"
+            echo "::error::Failed to determine Desktop CLI release run ID"
             exit 1
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Desktop CLI release workflow triggered"
 
           echo "⏳ Waiting for Desktop CLI release to complete..."
@@ -556,26 +588,32 @@ jobs:
         run: |
           echo "📦 Triggering packaging workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-model.yml \
+          # Identify the run WE trigger by its ID, not by "the latest run".
+          # `gh workflow run` prints nothing usable on stdout and querying the
+          # newest run right after dispatch races with concurrent/stale runs.
+          # Run IDs increase monotonically, so the first run with an ID greater
+          # than the pre-dispatch newest is ours. (See release-cli-desktop.)
+          BEFORE_ID=$(gh run list \
             --repo docker/packaging \
-            -f ref="$RELEASE_TAG")
+            --workflow release-model.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0')
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+          gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f ref="$RELEASE_TAG"
 
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
             echo "::error::Failed to determine packaging workflow run ID"
@@ -583,7 +621,6 @@ jobs:
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Packaging workflow triggered"
 
           echo "⏳ Waiting for packaging to complete..."
@@ -662,6 +699,12 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          # Idempotency: a re-run for an already-released tag must not fail here.
+          if gh release view "$RELEASE_TAG" --repo docker/model-runner >/dev/null 2>&1; then
+            echo "✅ GitHub Release $RELEASE_TAG already exists — skipping creation"
+            exit 0
+          fi
+
           echo "Creating GitHub Release for $RELEASE_TAG"
           gh release create "$RELEASE_TAG" \
             --repo docker/model-runner \
