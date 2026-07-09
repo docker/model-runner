@@ -37,7 +37,7 @@ dmr rm ai/gemma3       # remove a local model
 ## Building
 
 ```
-make build-dmr         # native build, output ./dmr
+make build-dmr         # native build, output ./dmr (or dmr.exe on Windows)
 make build-dmr-cross   # cross-compile every published target into dist/dmr/<os>-<arch>/
 ```
 

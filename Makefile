@@ -65,11 +65,17 @@ DMR_LDFLAGS := -s -w \
 	-X main.Version=$(DMR_VERSION) \
 	-X github.com/docker/model-runner/cmd/cli/desktop.Version=$(DMR_VERSION)
 
+# Add .exe on windows, nothing elsewhere
+DMR_EXE := dmr
+ifeq ($(OS),Windows_NT)
+DMR_EXE := dmr.exe
+endif
+
 # build-dmr builds a native dmr binary. dmr has no cgo dependencies, so
 # CGO_ENABLED=0 keeps the binary statically linked and trivial to
 # cross-compile (see build-dmr-cross).
 build-dmr:
-	CGO_ENABLED=0 go build -ldflags="$(DMR_LDFLAGS)" -o dmr ./cmd/dmr
+	CGO_ENABLED=0 go build -ldflags="$(DMR_LDFLAGS)" -o $(DMR_EXE) ./cmd/dmr
 
 # build-dmr-cross builds standalone dmr binaries for every platform we
 # publish packages for (see packaging/), into dist/dmr/<os>-<arch>/dmr.
@@ -108,7 +114,7 @@ run: build
 # Clean build artifacts
 clean:
 	rm -f $(APP_NAME)
-	rm -f dmr
+	rm -f $(DMR_EXE)
 	rm -f model-runner.sock
 
 # Run tests
