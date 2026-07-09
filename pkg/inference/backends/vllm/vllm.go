@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -45,14 +46,17 @@ type vLLM struct {
 	customBinaryPath string
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // Options holds the configuration for the unified vLLM backend constructor.
 type Options struct {
-	Config          *Config  // Linux-only: extra vllm args (nil = defaults)
-	LinuxBinaryPath string   // Linux: custom vllm binary path
-	MetalPythonPath string   // macOS ARM64: custom python path
-	RegistryMirrors []string // registry mirrors tried before registry-1.docker.io
+	Config          *Config         // Linux-only: extra vllm args (nil = defaults)
+	LinuxBinaryPath string          // Linux: custom vllm binary path
+	MetalPythonPath string          // macOS ARM64: custom python path
+	RegistryMirrors []string        // registry mirrors tried before registry-1.docker.io
+	CommandModifier func(*exec.Cmd) // applied to the server process before it starts
 }
 
 // New creates the appropriate vLLM backend for the current platform.
@@ -61,9 +65,9 @@ type Options struct {
 // methods return errors.
 func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, opts Options) (inference.Backend, error) {
 	if platform.SupportsVLLMMetal() {
-		return newMetal(log, modelManager, serverLog, opts.MetalPythonPath, opts.RegistryMirrors)
+		return newMetal(log, modelManager, serverLog, opts.MetalPythonPath, opts.RegistryMirrors, opts.CommandModifier)
 	}
-	return newLinux(log, modelManager, serverLog, opts.Config, opts.LinuxBinaryPath, opts.RegistryMirrors)
+	return newLinux(log, modelManager, serverLog, opts.Config, opts.LinuxBinaryPath, opts.RegistryMirrors, opts.CommandModifier)
 }
 
 // NeedsDeferredInstall reports whether vllm on the current platform
@@ -74,7 +78,7 @@ func NeedsDeferredInstall() bool {
 
 // newLinux creates a new Linux vLLM-based backend.
 // customBinaryPath is an optional path to a custom vllm binary; if empty, the default path is used.
-func newLinux(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string, registryMirrors []string) (inference.Backend, error) {
+func newLinux(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customBinaryPath string, registryMirrors []string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultVLLMConfig()
@@ -88,6 +92,7 @@ func newLinux(log logging.Logger, modelManager *models.Manager, serverLog loggin
 		status:           inference.FormatNotInstalled(""),
 		customBinaryPath: customBinaryPath,
 		registryMirrors:  registryMirrors,
+		commandModifier:  commandModifier,
 	}, nil
 }
 
@@ -189,6 +194,7 @@ func (v *vLLM) Run(ctx context.Context, socket, model string, modelRef string, m
 		Args:            args,
 		Logger:          v.log,
 		ServerLogWriter: logging.NewWriter(v.serverLog),
+		CommandModifier: v.commandModifier,
 	})
 }
 

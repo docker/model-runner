@@ -56,11 +56,13 @@ type diffusers struct {
 	installDir string
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // New creates a new diffusers-based backend for image generation.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string) (inference.Backend, error) {
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultConfig()
@@ -81,6 +83,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		customPythonPath: customPythonPath,
 		installDir:       installDir,
 		registryMirrors:  registryMirrors,
+		commandModifier:  commandModifier,
 	}, nil
 }
 
@@ -265,6 +268,7 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		Logger:           d.log,
 		ServerLogWriter:  logging.NewWriter(d.serverLog),
 		ErrorTransformer: ExtractPythonError,
+		CommandModifier:  d.commandModifier,
 	})
 }
 

@@ -53,6 +53,8 @@ type llamaCpp struct {
 	gpuSupported bool
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // New creates a new llama.cpp-based backend. installDir is the directory that
@@ -65,6 +67,7 @@ func New(
 	installDir string,
 	conf config.BackendConfig,
 	registryMirrors []string,
+	commandModifier func(*exec.Cmd),
 ) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
@@ -87,6 +90,7 @@ func New(
 		status:          inference.FormatNotInstalled(""),
 		config:          conf,
 		registryMirrors: registryMirrors,
+		commandModifier: commandModifier,
 	}, nil
 }
 
@@ -228,6 +232,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		Logger:           l.log,
 		ServerLogWriter:  logging.NewWriter(l.serverLog),
 		ErrorTransformer: ExtractLlamaCppError,
+		CommandModifier:  l.commandModifier,
 	})
 }
 

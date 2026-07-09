@@ -39,11 +39,13 @@ type mlx struct {
 	pythonPath string
 	// customPythonPath is an optional custom path to the python3 binary.
 	customPythonPath string
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // New creates a new MLX-based backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default path is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string) (inference.Backend, error) {
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultMLXConfig()
@@ -56,6 +58,7 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 		config:           conf,
 		status:           inference.FormatNotInstalled(""),
 		customPythonPath: customPythonPath,
+		commandModifier:  commandModifier,
 	}, nil
 }
 
@@ -145,6 +148,7 @@ func (m *mlx) Run(ctx context.Context, socket, model string, modelRef string, mo
 		Args:            args,
 		Logger:          m.log,
 		ServerLogWriter: logging.NewWriter(m.serverLog),
+		CommandModifier: m.commandModifier,
 	})
 }
 

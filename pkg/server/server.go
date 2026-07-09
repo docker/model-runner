@@ -179,7 +179,7 @@ func Run(ctx context.Context, cfg Config) error {
 				RegistryMirrors:  envconfig.RegistryMirrors(),
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath)
+				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath, nil)
 			}},
 		),
 		OnBackendError: func(name string, err error) {
