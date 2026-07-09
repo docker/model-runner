@@ -63,19 +63,25 @@ jobs:
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --- Find the latest published GitHub Release tag ---          
-          # gh release list defaults to --order desc (newest first by creation
-          # date), so --limit 1 gives us the most recent release.
-          LATEST_RELEASE_TAG=$(gh release list --limit 1 --json tagName \
-            --jq '.[0].tagName // ""' \
+          # --- Find the latest published GitHub Release tag ---
+          # This workflow owns the container-image / docker-model-plugin track,
+          # which uses strict semver tags (vX.Y.Z). The standalone `dmr` binary
+          # is released separately via release-dmr.yml on `dmr-v*` tags. Filter
+          # to our own scheme so we never pick up the other track's release
+          # (gh release list is newest-first by creation, so `first` = newest).
+          LATEST_RELEASE_TAG=$(gh release list --limit 100 --json tagName \
+            --jq 'map(.tagName) | map(select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | first // ""' \
             2>/dev/null || echo "")
 
           if [ -n "$LATEST_RELEASE_TAG" ]; then
             LATEST_TAG="$LATEST_RELEASE_TAG"
             echo "Latest published GitHub Release tag: $LATEST_TAG"
           else
-            # Fallback to git tags when no GitHub Releases exist yet
-            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+            # Fallback to git tags when no GitHub Releases exist yet. Match only
+            # strict semver tags — the 'v*' glob would also match stray/foreign
+            # tags like 'vdmr-v0.1.1'.
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
             echo "No GitHub Releases found, falling back to latest git tag: ${LATEST_TAG:-<none>}"
           fi
 
@@ -125,6 +131,13 @@ jobs:
               RELEASE_TAG="v${VERSION}"
               echo "Auto-bumped $BUMP_TYPE: $LATEST_TAG → $RELEASE_TAG"
             fi
+          fi
+
+          # Guard: never let a malformed tag reach the image build or the
+          # downstream release triggers. Must be strict semver (vX.Y.Z).
+          if ! echo "$RELEASE_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Resolved release tag '$RELEASE_TAG' is not valid vX.Y.Z. Aborting."
+            exit 1
           fi
 
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
