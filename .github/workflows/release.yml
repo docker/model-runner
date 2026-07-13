@@ -199,7 +199,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/docker-agent-action@e96a4bb40cac114f64358621e1d08346c8eadc8c # v2.0.1
+        uses: docker/docker-agent-action@774b6e0e60d6c648b0f2dc43bd5221377a0a7420 # v2.0.2
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -339,14 +339,14 @@ jobs:
           echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
 
       - name: Set up Buildx
         id: buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
         with:
           version: "lab:latest"
           driver: cloud
@@ -362,7 +362,7 @@ jobs:
         run: docker buildx prune -af --builder ${{ steps.buildx.outputs.name }}
 
       - name: Build CPU image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -378,7 +378,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -394,7 +394,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-vllm
@@ -411,7 +411,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-sglang
@@ -428,7 +428,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -443,7 +443,7 @@ jobs:
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
       - name: Build MUSA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -459,7 +459,7 @@ jobs:
           tags: ${{ steps.tags.outputs.musa }}
 
       - name: Build OpenVINO image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -491,7 +491,7 @@ jobs:
       # pushing an already-existing tag fails with "403 denied". Detect the
       # already-published tag on Docker Hub and skip the trigger instead.
       - name: Log in to DockerHub
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
