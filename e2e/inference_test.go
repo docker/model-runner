@@ -120,7 +120,10 @@ func TestE2E_Inference(t *testing.T) {
 								"schema": map[string]any{
 									"type": "object",
 									"properties": map[string]any{
-										"answer": map[string]any{"type": "string"},
+										"answer": map[string]any{
+											"type": "string",
+											"enum": []string{"yes"},
+										},
 									},
 									"required":             []string{"answer"},
 									"additionalProperties": false,
@@ -150,6 +153,9 @@ func TestE2E_Inference(t *testing.T) {
 				}
 				if output.Answer == "" {
 					t.Fatalf("answer field is empty in output_text=%q", resp.OutputText)
+				}
+				if output.Answer != "yes" {
+					t.Fatalf("answer = %q, want yes (output_text=%q)", output.Answer, resp.OutputText)
 				}
 			})
 
