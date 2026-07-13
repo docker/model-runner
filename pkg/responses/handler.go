@@ -33,34 +33,23 @@ func NewHTTPHandler(log logging.Logger, schedulerHTTP http.Handler, allowedOrigi
 		maxRequestBodyBytes: 10 * 1024 * 1024, // Default to 10MB
 	}
 
-	// Register routes
-	h.router.HandleFunc("POST "+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET "+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET "+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE "+APIPrefix+"/{id}", h.handleDelete)
-	// Also register /v1/responses routes
-	h.router.HandleFunc("POST /v1"+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET /v1"+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET /v1"+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE /v1"+APIPrefix+"/{id}", h.handleDelete)
-	// Also register /engines/responses and /engines/v1/responses routes.
-	h.router.HandleFunc("POST /engines"+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET /engines"+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET /engines"+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE /engines"+APIPrefix+"/{id}", h.handleDelete)
-	h.router.HandleFunc("POST /engines/v1"+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET /engines/v1"+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET /engines/v1"+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE /engines/v1"+APIPrefix+"/{id}", h.handleDelete)
-	h.router.HandleFunc("POST /engines/{backend}/v1"+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET /engines/{backend}/v1"+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET /engines/{backend}/v1"+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE /engines/{backend}/v1"+APIPrefix+"/{id}", h.handleDelete)
+	h.registerRoutes(APIPrefix)
+	h.registerRoutes("/v1" + APIPrefix)
+	h.registerRoutes("/engines" + APIPrefix)
+	h.registerRoutes("/engines/v1" + APIPrefix)
+	h.registerRoutes("/engines/{backend}/v1" + APIPrefix)
 
 	// Apply CORS middleware
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 
 	return h
+}
+
+func (h *HTTPHandler) registerRoutes(prefix string) {
+	h.router.HandleFunc("POST "+prefix, h.handleCreate)
+	h.router.HandleFunc("GET "+prefix+"/{id}", h.handleGet)
+	h.router.HandleFunc("GET "+prefix+"/{id}/input_items", h.handleListInputItems)
+	h.router.HandleFunc("DELETE "+prefix+"/{id}", h.handleDelete)
 }
 
 // Close releases resources held by the handler, including the background
@@ -380,13 +369,13 @@ func chatCompletionPathForRequest(r *http.Request) string {
 
 func validateUnsupportedRequestFields(req *CreateRequest) error {
 	if len(req.Include) > 0 {
-		return fmt.Errorf("include is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("include")
 	}
 	if req.StreamOptions != nil && !isNullJSON(req.StreamOptions) {
-		return fmt.Errorf("stream_options is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("stream_options")
 	}
 	if req.TopLogprobs != nil {
-		return fmt.Errorf("top_logprobs is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("top_logprobs")
 	}
 	switch req.Truncation {
 	case "", "disabled":
@@ -400,15 +389,19 @@ func validateUnsupportedRequestFields(req *CreateRequest) error {
 		return fmt.Errorf("conversation is not supported by Docker Model Runner Responses compatibility layer; use previous_response_id instead")
 	}
 	if req.Prompt != nil && !isNullJSON(req.Prompt) {
-		return fmt.Errorf("prompt is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("prompt")
 	}
 	if req.ServiceTier != "" {
-		return fmt.Errorf("service_tier is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("service_tier")
 	}
 	if req.SafetyIdentifier != "" {
-		return fmt.Errorf("safety_identifier is not supported by Docker Model Runner Responses compatibility layer")
+		return unsupportedFieldError("safety_identifier")
 	}
 	return nil
+}
+
+func unsupportedFieldError(field string) error {
+	return fmt.Errorf("%s is not supported by Docker Model Runner Responses compatibility layer", field)
 }
 
 func isNullJSON(raw json.RawMessage) bool {
