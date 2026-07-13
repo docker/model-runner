@@ -91,8 +91,41 @@ type CreateRequest struct {
 	// MaxOutputTokens limits the response length.
 	MaxOutputTokens *int `json:"max_output_tokens,omitempty"`
 
+	// Store controls whether the response is stored for later retrieval.
+	Store *bool `json:"store,omitempty"`
+
+	// Text configures text output formatting.
+	Text *ResponseTextConfig `json:"text,omitempty"`
+
+	// Include requests additional hosted-tool output fields. Unsupported locally.
+	Include []string `json:"include,omitempty"`
+
 	// Stream enables streaming responses.
 	Stream bool `json:"stream,omitempty"`
+
+	// StreamOptions configures response streaming. Unsupported locally.
+	StreamOptions json.RawMessage `json:"stream_options,omitempty"`
+
+	// TopLogprobs requests token log probabilities. Unsupported locally.
+	TopLogprobs *int `json:"top_logprobs,omitempty"`
+
+	// Truncation configures OpenAI context truncation behavior.
+	Truncation string `json:"truncation,omitempty"`
+
+	// Background requests asynchronous background response execution.
+	Background *bool `json:"background,omitempty"`
+
+	// Conversation requests OpenAI hosted conversation state. Unsupported locally.
+	Conversation json.RawMessage `json:"conversation,omitempty"`
+
+	// Prompt requests an OpenAI hosted prompt template. Unsupported locally.
+	Prompt json.RawMessage `json:"prompt,omitempty"`
+
+	// ServiceTier selects OpenAI service tier. Unsupported locally.
+	ServiceTier string `json:"service_tier,omitempty"`
+
+	// SafetyIdentifier is an OpenAI safety identifier. Unsupported locally.
+	SafetyIdentifier string `json:"safety_identifier,omitempty"`
 
 	// Metadata is user-defined metadata for the response.
 	Metadata map[string]string `json:"metadata,omitempty"`
@@ -102,6 +135,21 @@ type CreateRequest struct {
 
 	// User is an optional user identifier.
 	User string `json:"user,omitempty"`
+}
+
+// ResponseTextConfig configures text output for a Responses API request.
+type ResponseTextConfig struct {
+	Format    *ResponseTextFormat `json:"format,omitempty"`
+	Verbosity string              `json:"verbosity,omitempty"`
+}
+
+// ResponseTextFormat configures the output text format.
+type ResponseTextFormat struct {
+	Type        string          `json:"type"`
+	Name        string          `json:"name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
+	Strict      *bool           `json:"strict,omitempty"`
 }
 
 // Response represents a complete response from the API.
@@ -159,6 +207,12 @@ type Response struct {
 
 	// MaxOutputTokens limit used.
 	MaxOutputTokens *int `json:"max_output_tokens"`
+
+	// Store indicates whether the response was stored.
+	Store *bool `json:"store,omitempty"`
+
+	// Text config used for the response.
+	Text *ResponseTextConfig `json:"text,omitempty"`
 
 	// PreviousResponseID is the ID of the previous response in the chain.
 	PreviousResponseID *string `json:"previous_response_id"`

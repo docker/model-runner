@@ -1,7 +1,12 @@
 package routing
 
 import (
+	"encoding/json"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -44,4 +49,56 @@ func TestNewRouter_WithoutResponsesAPI_Close(t *testing.T) {
 
 	// Should be a no-op, must not panic.
 	result.Close()
+}
+
+func TestNewRouter_ResponsesAPIRoutes(t *testing.T) {
+	tests := []string{
+		"/responses",
+		"/v1/responses",
+		"/engines/responses",
+		"/engines/v1/responses",
+		"/engines/llama.cpp/v1/responses",
+	}
+
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			log := slog.New(slog.DiscardHandler)
+
+			result := NewRouter(RouterConfig{
+				Log:                 log,
+				IncludeResponsesAPI: true,
+			})
+			t.Cleanup(result.Close)
+
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{
+				"input": "Hello"
+			}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			result.Mux.ServeHTTP(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusBadRequest {
+				body, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+			}
+
+			var errResp struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+				t.Fatalf("failed to decode error response: %v", err)
+			}
+			if errResp.Error.Code != "invalid_request" {
+				t.Errorf("error.code = %s, want invalid_request", errResp.Error.Code)
+			}
+			if errResp.Error.Message != "model is required" {
+				t.Errorf("error.message = %s, want model is required", errResp.Error.Message)
+			}
+		})
+	}
 }

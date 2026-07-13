@@ -51,8 +51,9 @@ type RouterConfig struct {
 	ModelHandlerMiddleware func(http.Handler) http.Handler
 
 	// IncludeResponsesAPI enables the OpenAI Responses API compatibility
-	// layer, registering it under /responses, /v1/responses, and
-	// /engines/responses prefixes. Requires SchedulerHTTP to be set.
+	// layer, registering it under /responses, /v1/responses,
+	// /engines/responses, /engines/v1/responses, and backend-qualified
+	// /engines/{backend}/v1/responses prefixes. Requires SchedulerHTTP to be set.
 	IncludeResponsesAPI bool
 }
 
@@ -99,8 +100,15 @@ func NewRouter(cfg RouterConfig) *RouterResult {
 		router.Handle(responses.APIPrefix, responsesHandler)
 		router.Handle("/v1"+responses.APIPrefix+"/", responsesHandler)
 		router.Handle("/v1"+responses.APIPrefix, responsesHandler)
-		router.Handle(inference.InferencePrefix+responses.APIPrefix+"/", responsesHandler)
 		router.Handle(inference.InferencePrefix+responses.APIPrefix, responsesHandler)
+		router.Handle(inference.InferencePrefix+responses.APIPrefix+"/{id}", responsesHandler)
+		router.Handle(inference.InferencePrefix+responses.APIPrefix+"/{id}/input_items", responsesHandler)
+		router.Handle(inference.InferencePrefix+"/v1"+responses.APIPrefix, responsesHandler)
+		router.Handle(inference.InferencePrefix+"/v1"+responses.APIPrefix+"/{id}", responsesHandler)
+		router.Handle(inference.InferencePrefix+"/v1"+responses.APIPrefix+"/{id}/input_items", responsesHandler)
+		router.Handle(inference.InferencePrefix+"/{backend}/v1"+responses.APIPrefix, responsesHandler)
+		router.Handle(inference.InferencePrefix+"/{backend}/v1"+responses.APIPrefix+"/{id}", responsesHandler)
+		router.Handle(inference.InferencePrefix+"/{backend}/v1"+responses.APIPrefix+"/{id}/input_items", responsesHandler)
 		result.closers = append(result.closers, responsesHandler.Close)
 	}
 
