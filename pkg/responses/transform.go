@@ -3,21 +3,39 @@ package responses
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
+var responseTextFormatNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 // ChatCompletionRequest represents an OpenAI chat completion request.
 type ChatCompletionRequest struct {
-	Model             string        `json:"model"`
-	Messages          []ChatMessage `json:"messages"`
-	Tools             []ChatTool    `json:"tools,omitempty"`
-	ToolChoice        interface{}   `json:"tool_choice,omitempty"`
-	Temperature       *float64      `json:"temperature,omitempty"`
-	TopP              *float64      `json:"top_p,omitempty"`
-	MaxTokens         *int          `json:"max_tokens,omitempty"`
-	Stream            bool          `json:"stream,omitempty"`
-	User              string        `json:"user,omitempty"`
-	ParallelToolCalls *bool         `json:"parallel_tool_calls,omitempty"`
+	Model             string              `json:"model"`
+	Messages          []ChatMessage       `json:"messages"`
+	Tools             []ChatTool          `json:"tools,omitempty"`
+	ToolChoice        interface{}         `json:"tool_choice,omitempty"`
+	Temperature       *float64            `json:"temperature,omitempty"`
+	TopP              *float64            `json:"top_p,omitempty"`
+	MaxTokens         *int                `json:"max_tokens,omitempty"`
+	Stream            bool                `json:"stream,omitempty"`
+	User              string              `json:"user,omitempty"`
+	ParallelToolCalls *bool               `json:"parallel_tool_calls,omitempty"`
+	ResponseFormat    *ChatResponseFormat `json:"response_format,omitempty"`
+}
+
+// ChatResponseFormat configures output formatting in chat completions.
+type ChatResponseFormat struct {
+	Type       string          `json:"type"`
+	JSONSchema *ChatJSONSchema `json:"json_schema,omitempty"`
+}
+
+// ChatJSONSchema is the chat completions JSON schema response_format payload.
+type ChatJSONSchema struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema"`
+	Strict      *bool           `json:"strict,omitempty"`
 }
 
 // ChatMessage represents a message in the chat completion format.
@@ -130,6 +148,12 @@ func TransformRequestToChatCompletion(req *CreateRequest, store *Store) (*ChatCo
 		ToolChoice:        req.ToolChoice,
 	}
 
+	responseFormat, err := responseFormatFromText(req.Text)
+	if err != nil {
+		return nil, err
+	}
+	chatReq.ResponseFormat = responseFormat
+
 	// Convert tools
 	if len(req.Tools) > 0 {
 		chatReq.Tools = make([]ChatTool, 0, len(req.Tools))
@@ -152,7 +176,10 @@ func TransformRequestToChatCompletion(req *CreateRequest, store *Store) (*ChatCo
 					}
 				}
 				chatReq.Tools = append(chatReq.Tools, chatTool)
+				continue
 			}
+
+			return nil, fmt.Errorf("tool type %q is not supported by Docker Model Runner Responses compatibility layer", tool.Type)
 		}
 	}
 
@@ -168,13 +195,18 @@ func TransformRequestToChatCompletion(req *CreateRequest, store *Store) (*ChatCo
 	}
 
 	// If there's a previous response, include its conversation
-	if req.PreviousResponseID != "" && store != nil {
-		prevResp, ok := store.Get(req.PreviousResponseID)
-		if ok {
-			// Recursively get the conversation history
-			prevMessages := getConversationHistory(prevResp, store)
-			messages = append(messages, prevMessages...)
+	if req.PreviousResponseID != "" {
+		if store == nil {
+			return nil, fmt.Errorf("previous_response_id %q cannot be used because response storage is unavailable", req.PreviousResponseID)
 		}
+		prevResp, ok := store.Get(req.PreviousResponseID)
+		if !ok {
+			return nil, fmt.Errorf("previous_response_id %q was not found", req.PreviousResponseID)
+		}
+
+		// Recursively get the conversation history
+		prevMessages := getConversationHistory(prevResp, store)
+		messages = append(messages, prevMessages...)
 	}
 
 	// Parse and convert input
@@ -186,6 +218,50 @@ func TransformRequestToChatCompletion(req *CreateRequest, store *Store) (*ChatCo
 
 	chatReq.Messages = messages
 	return chatReq, nil
+}
+
+func responseFormatFromText(text *ResponseTextConfig) (*ChatResponseFormat, error) {
+	if text == nil || text.Format == nil {
+		return nil, nil
+	}
+
+	format := text.Format
+	switch format.Type {
+	case "", "text":
+		return nil, nil
+	case "json_object":
+		return &ChatResponseFormat{Type: "json_object"}, nil
+	case "json_schema":
+		if format.Name == "" {
+			return nil, fmt.Errorf("text.format.name is required when text.format.type is json_schema")
+		}
+		if !responseTextFormatNamePattern.MatchString(format.Name) {
+			return nil, fmt.Errorf("text.format.name must contain only letters, numbers, underscores, and dashes, with a maximum length of 64")
+		}
+		if strings.TrimSpace(string(format.Schema)) == "" {
+			return nil, fmt.Errorf("text.format.schema is required when text.format.type is json_schema")
+		}
+
+		var schemaValue any
+		if err := json.Unmarshal(format.Schema, &schemaValue); err != nil {
+			return nil, fmt.Errorf("text.format.schema must be a valid JSON object: %w", err)
+		}
+		if _, ok := schemaValue.(map[string]any); !ok {
+			return nil, fmt.Errorf("text.format.schema must be a JSON object")
+		}
+
+		return &ChatResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &ChatJSONSchema{
+				Name:        format.Name,
+				Description: format.Description,
+				Schema:      format.Schema,
+				Strict:      format.Strict,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported text.format.type %q", format.Type)
+	}
 }
 
 // parseInput parses the input field which can be a string or array of items.

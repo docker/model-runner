@@ -106,6 +106,53 @@ func TestE2E_Inference(t *testing.T) {
 				t.Logf("responses API: %q", resp.OutputText)
 			})
 
+			t.Run("ResponsesAPIStructuredOutput", func(t *testing.T) {
+				status, body := doJSON(t, http.MethodPost, serverURL+"/responses",
+					map[string]any{
+						"model":             bc.model,
+						"input":             "Return a JSON object with answer set to yes.",
+						"max_output_tokens": 64,
+						"text": map[string]any{
+							"format": map[string]any{
+								"type":   "json_schema",
+								"name":   "answer_payload",
+								"strict": true,
+								"schema": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"answer": map[string]any{"type": "string"},
+									},
+									"required":             []string{"answer"},
+									"additionalProperties": false,
+								},
+							},
+						},
+					})
+				if status != http.StatusOK {
+					t.Fatalf("responses structured output: status=%d body=%s", status, body)
+				}
+				var resp struct {
+					Status     string `json:"status"`
+					OutputText string `json:"output_text"`
+				}
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("decode: %v (body=%s)", err, body)
+				}
+				if resp.Status != "completed" {
+					t.Errorf("expected status=completed, got %q", resp.Status)
+				}
+
+				var output struct {
+					Answer string `json:"answer"`
+				}
+				if err := json.Unmarshal([]byte(resp.OutputText), &output); err != nil {
+					t.Fatalf("output_text is not valid structured JSON: %v (output_text=%q)", err, resp.OutputText)
+				}
+				if output.Answer == "" {
+					t.Fatalf("answer field is empty in output_text=%q", resp.OutputText)
+				}
+			})
+
 			t.Run("AnthropicMessages", func(t *testing.T) {
 				status, body := doJSON(t, http.MethodPost, serverURL+"/anthropic/v1/messages",
 					map[string]any{
