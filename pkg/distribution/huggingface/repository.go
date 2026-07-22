@@ -62,6 +62,40 @@ func FilterModelFiles(repoFiles []RepoFile) (weights []RepoFile, configs []RepoF
 	return weights, configs
 }
 
+// IsOpenVINOModel returns true when the repository contains at least one OpenVINO
+// IR weight pair (.xml + .bin with the same stem), including nested paths.
+func IsOpenVINOModel(repoFiles []RepoFile) bool {
+	xmlFiles := make(map[string]struct{})
+	binFiles := make(map[string]struct{})
+
+	for _, f := range repoFiles {
+		if f.Type != "file" {
+			continue
+		}
+
+		ext := strings.ToLower(path.Ext(f.Path))
+		if ext != ".xml" && ext != ".bin" {
+			continue
+		}
+
+		stem := strings.TrimSuffix(f.Path, path.Ext(f.Path))
+		switch ext {
+		case ".xml":
+			xmlFiles[stem] = struct{}{}
+		case ".bin":
+			binFiles[stem] = struct{}{}
+		}
+	}
+
+	for stem := range xmlFiles {
+		if _, ok := binFiles[stem]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 // TotalSize calculates the total size of files
 func TotalSize(repoFiles []RepoFile) int64 {
 	var total int64

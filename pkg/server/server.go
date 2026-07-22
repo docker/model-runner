@@ -18,6 +18,7 @@ import (
 	"github.com/docker/model-runner/pkg/envconfig"
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
+	"github.com/docker/model-runner/pkg/inference/backends/ovms"
 	"github.com/docker/model-runner/pkg/inference/backends/sglang"
 	"github.com/docker/model-runner/pkg/inference/config"
 	"github.com/docker/model-runner/pkg/inference/models"
@@ -65,6 +66,7 @@ func Run(ctx context.Context, cfg Config) error {
 	sglangServerPath := envconfig.SGLangServerPath()
 	mlxServerPath := envconfig.MLXServerPath()
 	diffusersServerPath := envconfig.DiffusersServerPath()
+	ovmsServerPath := envconfig.OVMSServerPath()
 	vllmMetalServerPath := envconfig.VLLMMetalServerPath()
 
 	// Create a proxy-aware HTTP transport.
@@ -91,6 +93,9 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	if vllmMetalServerPath != "" {
 		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
+	}
+	if ovmsServerPath != "" {
+		log.Info("OVMS_SERVER_PATH", "path", ovmsServerPath)
 	}
 
 	// Determine log directory.  When MODEL_RUNNER_LOG_DIR is set use it;
@@ -178,6 +183,9 @@ func Run(ctx context.Context, cfg Config) error {
 				DiffusersPath:    diffusersServerPath,
 				RegistryMirrors:  envconfig.RegistryMirrors(),
 			}),
+			routing.BackendDef{Name: ovms.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
+				return ovms.New(log, mm, log.With("component", ovms.Name), ovmsServerPath)
+			}},
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath, nil)
 			}},
