@@ -8,6 +8,7 @@ The model source must be one of:
   --safetensors-dir    A directory containing .safetensors and configuration files
   --dduf               A .dduf (Diffusers Unified Format) archive
   --from               An existing packaged model reference
+  --file               A Modelfile describing the model and its assets
 
 By default, the packaged artifact is loaded into the local Model Runner content store.
 Use --push to publish the model to a registry instead.
@@ -40,6 +41,21 @@ Packaging behavior:
   Multimodal models
     Use --mmproj to include a multimodal projector file.
 
+  Modelfile
+    --file accepts a path to a Modelfile. Supported instructions:
+
+      FROM <model>              existing model reference
+      GGUF <path>               GGUF file
+      SAFETENSORS_DIR <path>    safetensors directory (alias: SAFETENSORS-DIR)
+      DDUF <path>               DDUF archive
+      LICENSE <path>            license file; may appear multiple times
+      CHAT_TEMPLATE <path>      chat template file (alias: CHAT-TEMPLATE)
+      MMPROJ <path>             multimodal projector (alias: MM-PROJ)
+      CONTEXT <tokens>          context size in tokens (aliases: CTX, CONTEXT-SIZE)
+
+    Paths may be relative (resolved from the Modelfile's directory) or absolute.
+    CLI flags take precedence over Modelfile values.
+
 ### Options
 
 | Name                | Type          | Default  | Description                                                                            |
@@ -47,6 +63,7 @@ Packaging behavior:
 | `--chat-template`   | `string`      |          | absolute path to chat template file (must be Jinja format)                             |
 | `--context-size`    | `uint64`      | `0`      | context size in tokens                                                                 |
 | `--dduf`            | `string`      |          | absolute path to DDUF archive file (Diffusers Unified Format)                          |
+| `-f`, `--file`      | `string`      |          | path to a Modelfile                                                                    |
 | `--format`          | `string`      | `docker` | output artifact format: "docker" (default) or "cncf" (CNCF ModelPack spec)             |
 | `--from`            | `string`      |          | reference to an existing model to repackage                                            |
 | `--gguf`            | `string`      |          | absolute path to gguf file                                                             |
