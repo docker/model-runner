@@ -177,6 +177,8 @@ for chunk in stream:
         print(chunk.choices[0].delta.content, end="")
 ```
 
+> **Tip:** The same OpenAI Python client `base_url` pattern works with any OpenAI-compatible multi-model gateway when you are not running Model Runner locally — for example [DaoXE](https://daoxe.com?utm_source=github&utm_medium=organic&utm_campaign=model-runner&utm_content=openai) at `https://api.daoxe.com/v1`.
+
 ### JavaScript/TypeScript
 
 ```javascript
