@@ -170,11 +170,13 @@ var LlamaCppAllowedFlags = map[string]bool{
 	"--chat-template":        true,
 	"--chat-template-kwargs": true,
 	"--jinja":                true, "--no-jinja": true,
-	"--pooling":              true,
-	"--reasoning-format":     true,
-	"--reasoning-budget":     true,
-	"--prefill-assistant":    true,
-	"--no-prefill-assistant": true,
+	"--pooling":               true,
+	"--reasoning-format":      true,
+	"--reasoning-budget":      true,
+	"--reasoning-preserve":    true,
+	"--no-reasoning-preserve": true,
+	"--prefill-assistant":     true,
+	"--no-prefill-assistant":  true,
 
 	// Web interface and API (safe flags only - no file paths)
 	"--api-prefix": true,
