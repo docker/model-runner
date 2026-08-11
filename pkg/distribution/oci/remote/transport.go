@@ -117,31 +117,39 @@ func resolveAndValidateRealm(rawURL string) (dialAddr, hostname string, err erro
 		}
 	}
 
-	// Block well-known internal hostnames regardless of DNS resolution.
+	dialAddr, err = resolveAndValidateHost(hostname, port)
+	if err != nil {
+		return "", "", err
+	}
+	return dialAddr, hostname, nil
+}
+
+// resolveAndValidateHost validates hostname against the internal-hostname
+// blocklist and the private/loopback/link-local IP ranges, returning a dial
+// address (ip:port) that is safe to connect to. Returning the resolved IP lets
+// callers dial that exact address, closing the DNS-rebinding (TOCTOU) window
+// between validation and connection. A literal IP hostname is validated
+// directly without a DNS lookup.
+func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) {
 	for _, internal := range internalHostnames {
 		if strings.EqualFold(hostname, internal) {
-			return "", "", fmt.Errorf("realm URL hostname %q is not allowed", hostname)
+			return "", fmt.Errorf("realm URL hostname %q is not allowed", hostname)
 		}
 	}
 
-	// If the hostname is a literal IP address, validate it directly without a
-	// DNS lookup — there is no DNS to rebind.
 	if ip := net.ParseIP(hostname); ip != nil {
 		if isDisallowedIP(ip) {
-			return "", "", fmt.Errorf("realm URL contains a disallowed IP address %s", hostname)
+			return "", fmt.Errorf("realm URL contains a disallowed IP address %s", hostname)
 		}
-		return net.JoinHostPort(hostname, port), hostname, nil
+		return net.JoinHostPort(hostname, port), nil
 	}
 
-	// Resolve the hostname and validate every returned address. Using the
-	// resolved IP as the dial address prevents DNS rebinding: the same IP that
-	// passed validation is the one that will be used for the connection.
 	ips, err := net.LookupHost(hostname)
 	if err != nil {
-		return "", "", fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
+		return "", fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
 	}
 	if len(ips) == 0 {
-		return "", "", fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
+		return "", fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
 	}
 	for _, ipStr := range ips {
 		ip := net.ParseIP(ipStr)
@@ -149,13 +157,45 @@ func resolveAndValidateRealm(rawURL string) (dialAddr, hostname string, err erro
 			continue
 		}
 		if isDisallowedIP(ip) {
-			return "", "", fmt.Errorf("realm URL resolves to a disallowed address %s", ipStr)
+			return "", fmt.Errorf("realm URL resolves to a disallowed address %s", ipStr)
 		}
 	}
 
-	// All resolved IPs passed validation. Use the first one as the dial
-	// address so the HTTP client never performs a second DNS lookup.
-	return net.JoinHostPort(ips[0], port), hostname, nil
+	return net.JoinHostPort(ips[0], port), nil
+}
+
+// newGuardedAuthClient returns the HTTP client that containerd's authorizer uses
+// to fetch bearer tokens. containerd contacts the realm URL from a registry's
+// WWW-Authenticate challenge with this client only (see the auth package's
+// FetchToken/FetchTokenWithOAuth), so guarding its dialer blocks token-exchange
+// SSRF on every path that builds an authorizer — the pull path, the push
+// re-challenge path, and their fallbacks — rather than only the hand-rolled
+// Exchange(). The dialer validates the resolved IP just before connecting and
+// dials that exact address, so DNS rebinding cannot slip an internal address
+// past the check.
+func newGuardedAuthClient(base http.RoundTripper) *http.Client {
+	var cloned *http.Transport
+	if t, ok := base.(*http.Transport); ok {
+		cloned = t.Clone()
+	} else if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		cloned = dt.Clone()
+	} else {
+		cloned = &http.Transport{}
+	}
+
+	cloned.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid token endpoint address %q: %w", addr, err)
+		}
+		dialAddr, err := resolveAndValidateHost(host, port)
+		if err != nil {
+			return nil, err
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, dialAddr)
+	}
+
+	return &http.Client{Transport: cloned}
 }
 
 // buildSafeTransport wraps base with a custom DialContext that connects
