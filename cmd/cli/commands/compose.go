@@ -12,7 +12,6 @@ import (
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/docker/model-runner/pkg/inference/scheduling"
 	"github.com/spf13/cobra"
@@ -37,7 +36,6 @@ func newUpCommand() *cobra.Command {
 	var models []string
 	var ctxSize int64
 	var rawRuntimeFlags string
-	var backend string
 	var draftModel string
 	var numTokens int
 	var minAcceptanceRate float64
@@ -119,7 +117,6 @@ func newUpCommand() *cobra.Command {
 	c.Flags().StringArrayVar(&models, "model", nil, "model to use")
 	c.Flags().Int64Var(&ctxSize, "context-size", -1, "context size for the model")
 	c.Flags().StringVar(&rawRuntimeFlags, "runtime-flags", "", "raw runtime flags to pass to the inference engine")
-	c.Flags().StringVar(&backend, "backend", llamacpp.Name, "inference backend to use")
 	c.Flags().StringVar(&draftModel, "speculative-draft-model", "", "draft model for speculative decoding")
 	c.Flags().IntVar(&numTokens, "speculative-num-tokens", 0, "number of tokens to predict speculatively")
 	c.Flags().Float64Var(&minAcceptanceRate, "speculative-min-acceptance-rate", 0, "minimum acceptance rate for speculative decoding")
