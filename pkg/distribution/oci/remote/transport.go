@@ -92,6 +92,10 @@ func isDisallowedIP(ip net.IP) bool {
 
 // validateTokenEndpointURL validates the host of a token-endpoint URL against
 // the internal-hostname blocklist and the private/loopback/link-local ranges.
+// The local DNS resolution this performs is deliberate even when a proxy will
+// resolve the name itself: checking the resolved IPs is the validation, and a
+// name that cannot be resolved locally is rejected (fail closed) rather than
+// forwarded unchecked.
 func validateTokenEndpointURL(u *url.URL) error {
 	port := u.Port()
 	if port == "" {
@@ -207,7 +211,7 @@ func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, err
 		}
 		if proxyURL != nil {
 			if err := validateTokenEndpointURL(req.URL); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("realm URL rejected: %w", err)
 			}
 			return g.proxied.RoundTrip(req)
 		}
