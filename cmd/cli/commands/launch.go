@@ -143,6 +143,20 @@ Examples:
 				appArgs = args[dashIdx:]
 			}
 
+			// If a sandbox tool is configured, launch host apps through it before
+			// resolving runner endpoints. This keeps sandbox launch independent of
+			// whether the host app binary itself is installed.
+			if _, ok := hostApps[app]; ok {
+				sandboxTool, err := configuredSandboxTool()
+				if err != nil {
+					return err
+				}
+
+				if sandboxTool != "" {
+					return launchSandboxedHostApp(cmd, sandboxTool, app, appArgs, dryRun)
+				}
+			}
+
 			runner, err := getStandaloneRunner(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("unable to determine standalone runner endpoint: %w", err)
@@ -152,18 +166,17 @@ Examples:
 			if err != nil {
 				return err
 			}
-
 			// --config: print configuration without launching
 			if configOnly {
 				return printAppConfig(cmd, app, ep, image, port)
 			}
-
 			if ca, ok := containerApps[app]; ok {
 				return launchContainerApp(cmd, ca, ep.container, image, port, detach, appArgs, dryRun)
 			}
 			if cli, ok := hostApps[app]; ok {
 				return launchHostApp(cmd, app, ep.host, cli, model, runner, appArgs, dryRun)
 			}
+
 			return fmt.Errorf("unsupported app %q (supported: %s)", app, strings.Join(supportedApps, ", "))
 		},
 	}
@@ -174,6 +187,12 @@ Examples:
 	c.Flags().BoolVar(&configOnly, "config", false, "Print configuration without launching")
 	c.Flags().StringVar(&model, "model", "", "Model to use (for opencode)")
 	return c
+}
+
+func launchSandboxedHostApp(cmd *cobra.Command, sandboxTool, app string, appArgs []string, dryRun bool) error {
+	args := append([]string{app}, appArgs...)
+
+	return runSandboxTool(cmd, sandboxTool, args, dryRun)
 }
 
 // listSupportedApps prints all supported apps with their descriptions and install status.
@@ -328,7 +347,6 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 	if bin == "opencode" {
 		return launchOpenCode(cmd, baseURL, model, runner, appArgs, dryRun)
 	}
-
 	if !dryRun {
 		if _, err := exec.LookPath(bin); err != nil {
 			cmd.PrintErrf("%q executable not found in PATH.\n", bin)
@@ -341,11 +359,9 @@ func launchHostApp(cmd *cobra.Command, bin string, baseURL string, cli hostApp, 
 			return fmt.Errorf("%s not found; please install it and re-run", bin)
 		}
 	}
-
 	if cli.envFn == nil {
 		return launchUnconfigurableHostApp(cmd, bin, baseURL, cli, appArgs, dryRun)
 	}
-
 	env := cli.envFn(baseURL)
 	if dryRun {
 		cmd.Printf("Would run: %s %s\n", bin, strings.Join(appArgs, " "))
