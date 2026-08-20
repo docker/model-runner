@@ -34,6 +34,10 @@ type DirectoryOptions struct {
 	// This is useful for producing deterministic OCI digests.
 	Created *time.Time
 
+	// AllowNoWeightFiles allows packaging a directory even when it contains no
+	// GGUF/SafeTensors/DDUF weight files.
+	AllowNoWeightFiles bool
+
 	// Format is the output artifact format. Defaults to BuildFormatDocker.
 	Format BuildFormat
 }
@@ -63,6 +67,15 @@ func WithExclusions(patterns ...string) DirectoryOption {
 func WithCreatedTime(t time.Time) DirectoryOption {
 	return func(opts *DirectoryOptions) {
 		opts.Created = &t
+	}
+}
+
+// WithAllowNoWeightFiles allows FromDirectory to succeed even when no standard
+// model weight files are present. This is used for formats such as OpenVINO IR
+// where model files are represented differently (for example .xml + .bin pairs).
+func WithAllowNoWeightFiles() DirectoryOption {
+	return func(opts *DirectoryOptions) {
+		opts.AllowNoWeightFiles = true
 	}
 }
 
@@ -208,7 +221,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 		return nil, fmt.Errorf("no files found in directory: %s", dirPath)
 	}
 
-	if len(weightFiles) == 0 {
+	if len(weightFiles) == 0 && !options.AllowNoWeightFiles {
 		return nil, fmt.Errorf("no weight files (safetensors, GGUF, or DDUF) found in directory: %s", dirPath)
 	}
 

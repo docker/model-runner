@@ -131,6 +131,11 @@ func run(
 			// Remove the prefix up to the OpenAI API root.
 			pr.Out.URL.Path = trimRequestPathToOpenAIRoot(pr.Out.URL.Path)
 			pr.Out.URL.RawPath = trimRequestPathToOpenAIRoot(pr.Out.URL.RawPath)
+			// Allow backends to rewrite the proxied path.
+			if rp, ok := backend.(interface{ RewritePath(string) string }); ok {
+				pr.Out.URL.Path = rp.RewritePath(pr.Out.URL.Path)
+				pr.Out.URL.RawPath = rp.RewritePath(pr.Out.URL.RawPath)
+			}
 		},
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -210,6 +215,12 @@ func run(
 
 // wait waits for the runner to be ready.
 func (r *runner) wait(ctx context.Context) error {
+	// Determine the health endpoint for this backend.
+	healthPath := "/health"
+	if hp, ok := r.backend.(interface{ HealthPath() string }); ok {
+		healthPath = hp.HealthPath()
+	}
+
 	// Loop and poll for readiness.
 	for p := 0; p < maximumReadinessPings; p++ {
 		select {
@@ -222,7 +233,7 @@ func (r *runner) wait(ctx context.Context) error {
 		}
 		// Create and execute a request targeting the health endpoint.
 		// Note: /health returns 503 during model loading, 200 when ready.
-		readyRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/health", http.NoBody)
+		readyRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost"+healthPath, http.NoBody)
 		if err != nil {
 			return fmt.Errorf("readiness request creation failed: %w", err)
 		}
