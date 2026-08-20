@@ -8,6 +8,7 @@ Docker Model Runner
 | Name                                            | Description                                                            |
 |:------------------------------------------------|:-----------------------------------------------------------------------|
 | [`bench`](model_bench.md)                       | Benchmark a model's performance at different concurrency levels        |
+| [`config`](model_config.md)                     | Read and write model-runner config file values                         |
 | [`context`](model_context.md)                   | Manage Docker Model Runner contexts                                    |
 | [`df`](model_df.md)                             | Show Docker Model Runner disk usage                                    |
 | [`gateway`](model_gateway.md)                   | Run an OpenAI-compatible LLM gateway                                   |

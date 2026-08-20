@@ -1,5 +1,4 @@
 command: docker model configure
-aliases: docker model configure, docker model config
 short: Manage model runtime configurations
 long: Manage model runtime configurations
 usage: docker model configure [--context-size=<n>] [--speculative-draft-model=<model>] [--hf_overrides=<json>] [--gpu-memory-utilization=<float>] [--mode=<mode>] [--think] [--keep-alive=<duration>] MODEL [-- <runtime-flags...>]
