@@ -2,18 +2,27 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/model-runner/cmd/cli/commands/formatter"
+	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/modelctx"
+	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/spf13/cobra"
 )
+
+// defaultContextDetectTimeout is the maximum time allowed for detecting the
+// engine kind when building the synthetic "default" context row.
+const defaultContextDetectTimeout = 2 * time.Second
 
 // newContextCmd returns the "docker model context" parent command. Its
 // subcommands manage named Model Runner contexts stored on disk, so they do
@@ -64,6 +73,52 @@ func dockerConfigDir() (string, error) {
 		return "", fmt.Errorf("unable to determine home directory: %w", err)
 	}
 	return filepath.Join(home, ".docker"), nil
+}
+
+// resolveKindHost maps an engine kind and TLS preference to the host string
+// shown in "context ls" / "context inspect". Desktop returns the
+// human-readable engine name; other kinds return a localhost URL.
+func resolveKindHost(kind types.ModelRunnerEngineKind, useTLS bool) string {
+	switch kind {
+	case types.ModelRunnerEngineKindDesktop:
+		return kind.String()
+	case types.ModelRunnerEngineKindCloud:
+		if useTLS {
+			return "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortCloud)
+		}
+		return "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortCloud)
+	case types.ModelRunnerEngineKindMoby, types.ModelRunnerEngineKindMobyManual:
+		if useTLS {
+			return "https://localhost:" + strconv.Itoa(standalone.DefaultTLSPortMoby)
+		}
+		return "http://localhost:" + strconv.Itoa(standalone.DefaultControllerPortMoby)
+	default:
+		return "(auto-detect)"
+	}
+}
+
+// resolveDefaultContext attempts to detect the Docker engine kind for the
+// synthetic "default" context row. When the CLI is available it probes the
+// Docker daemon (with a short timeout) and returns a descriptive host and
+// description derived from the detected engine kind. If detection fails or
+// the CLI is unavailable (nil) it falls back to generic strings.
+func resolveDefaultContext(ctx context.Context) (host, description string) {
+	const fallbackHost = "(auto-detect)"
+	const fallbackDescription = "Auto-detected Docker context"
+
+	// dockerCLI is nil during tests and when the CLI is not yet initialised.
+	if dockerCLI == nil {
+		return fallbackHost, fallbackDescription
+	}
+
+	detectCtx, cancel := context.WithTimeout(ctx, defaultContextDetectTimeout)
+	defer cancel()
+
+	kind := desktop.DetectEngineKind(detectCtx, dockerCLI)
+	// Mirror DetectContext: MODEL_RUNNER_TLS must be explicitly set to "true".
+	tlsVal, tlsSet := os.LookupEnv("MODEL_RUNNER_TLS")
+	useTLS := tlsSet && tlsVal == "true"
+	return resolveKindHost(kind, useTLS), "Model Runner on " + kind.String()
 }
 
 // newContextCreateCmd returns the "context create" command.
@@ -223,12 +278,16 @@ func newContextLsCmd() *cobra.Command {
 				)
 			}
 
+			// Resolve the host and description for the synthetic "default"
+			// row by detecting the engine kind (Desktop, Moby, Cloud).
+			defaultHost, defaultDescription := resolveDefaultContext(cmd.Context())
+
 			// Build rows: synthetic "default" first, then named contexts sorted.
 			rows := []contextListRow{
 				{
 					name:        modelctx.DefaultContextName,
-					host:        "(auto-detect)",
-					description: "Auto-detected Docker context",
+					host:        defaultHost,
+					description: defaultDescription,
 					active:      activeName == modelctx.DefaultContextName,
 				},
 			}
@@ -325,15 +384,23 @@ func newContextInspectCmd() *cobra.Command {
 				return fmt.Errorf("unable to open context store: %w", err)
 			}
 
+			// Resolve the default context info once (lazily) so that
+			// repeated "default" args do not trigger multiple probes.
+			var defaultHost, defaultDescription string
+			defaultResolved := false
+
 			results := make([]namedContextInspect, 0, len(args))
 			for _, name := range args {
 				if name == modelctx.DefaultContextName {
-					// Return a synthetic entry for "default".
+					if !defaultResolved {
+						defaultHost, defaultDescription = resolveDefaultContext(cmd.Context())
+						defaultResolved = true
+					}
 					results = append(results, namedContextInspect{
 						Name: modelctx.DefaultContextName,
 						ContextConfig: modelctx.ContextConfig{
-							Host:        "(auto-detect)",
-							Description: "Auto-detected Docker context",
+							Host:        defaultHost,
+							Description: defaultDescription,
 						},
 					})
 					continue
