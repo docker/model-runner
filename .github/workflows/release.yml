@@ -199,7 +199,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/docker-agent-action@baf90543d81f5de59751dfd10e6cf45e21a5a982 # v2.0.3
+        uses: docker/docker-agent-action@b08367e7e9a471822464be2bb9fdaa1c0fb6061b # v2.0.4
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -346,7 +346,7 @@ jobs:
 
       - name: Set up Buildx
         id: buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
         with:
           version: "lab:latest"
           driver: cloud
