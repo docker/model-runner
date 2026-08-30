@@ -182,6 +182,7 @@ MODEL_RUNNER_HOST=http://localhost:13434 ./model-cli list
 
 - [Model Runner Documentation](https://docs.docker.com/desktop/features/model-runner/)
 - [Model CLI README](./cmd/cli/README.md)
+- [Unified memory for integrated GPUs](./docs/unified-memory.md)
 - [Model Specification](https://github.com/docker/model-spec/blob/main/spec.md)
 - [Community Slack Channel](https://dockercommunity.slack.com/archives/C09H9P5E57B)
 

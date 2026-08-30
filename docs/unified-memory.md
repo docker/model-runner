@@ -17,7 +17,7 @@ services:
 ## docker model run
 
 ```shell
-docker model run -e GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 ai/gemma3 "Hello"
+GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 docker model run ai/gemma3 "Hello"
 ```
 
 ## Standalone dmr
