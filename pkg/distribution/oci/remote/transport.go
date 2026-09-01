@@ -90,13 +90,66 @@ func isDisallowedIP(ip net.IP) bool {
 	return false
 }
 
+// normalizeAuthority returns host as a canonical "host:port" authority, filling
+// in the scheme's default port when host carries none.
+//
+// The trust domain is deliberately the full authority and not the bare
+// hostname: the same IP on a different port is a different service (an internal
+// admin panel, a metadata shim, ...), so comparing hostnames alone would trust
+// it and reopen the SSRF this guard exists to prevent.
+func normalizeAuthority(host, scheme string) string {
+	if host == "" {
+		return ""
+	}
+	h, port, err := net.SplitHostPort(host)
+	if err != nil {
+		// No port at all (or a bare IPv6 address): fall back to the scheme
+		// default below.
+		h, port = host, ""
+	}
+	if port == "" {
+		switch scheme {
+		case "https":
+			port = "443"
+		case "http":
+			port = "80"
+		}
+	}
+	if port == "" {
+		return h
+	}
+	return net.JoinHostPort(h, port)
+}
+
+// isTrustedAuthority reports whether authority is the same authority as
+// trustedAuthority, compared case-insensitively with effective ports filled in.
+// An empty trustedAuthority trusts nothing, so callers that have no known
+// registry host get the full blocklist.
+func isTrustedAuthority(authority, trustedAuthority string) bool {
+	return trustedAuthority != "" && strings.EqualFold(authority, trustedAuthority)
+}
+
 // validateTokenEndpointURL validates the host of a token-endpoint URL against
 // the internal-hostname blocklist and the private/loopback/link-local ranges.
 // The local DNS resolution this performs is deliberate even when a proxy will
 // resolve the name itself: checking the resolved IPs is the validation, and a
 // name that cannot be resolved locally is rejected (fail closed) rather than
 // forwarded unchecked.
-func validateTokenEndpointURL(u *url.URL) error {
+//
+// When the realm's authority (host and port) equals trustedAuthority — the
+// registry host actually being contacted — the check is skipped: a token
+// endpoint on the registry's own authority is, by definition, within the same
+// trust domain the user explicitly chose to pull from. This is what keeps
+// internal/corporate registries (whose token endpoint lives on an RFC1918
+// network) working, while still blocking a registry from pivoting the client to
+// a different authority: the cloud metadata service, another internal host, or
+// another service on the same host but a different port.
+func validateTokenEndpointURL(u *url.URL, trustedAuthority string) error {
+	if isTrustedAuthority(normalizeAuthority(u.Host, u.Scheme), trustedAuthority) {
+		// Same trust domain as the host being pulled from: permit private/
+		// loopback/link-local addresses so internal registries work.
+		return nil
+	}
 	port := u.Port()
 	if port == "" {
 		if u.Scheme == "https" {
@@ -115,6 +168,35 @@ func validateTokenEndpointURL(u *url.URL) error {
 // callers dial that exact address, closing the DNS-rebinding (TOCTOU) window
 // between validation and connection. A literal IP hostname is validated
 // directly without a DNS lookup.
+// lookupHostAddrs returns the addresses hostname resolves to, or hostname itself
+// when it is already a literal IP.
+func lookupHostAddrs(hostname string) ([]string, error) {
+	if ip := net.ParseIP(hostname); ip != nil {
+		return []string{hostname}, nil
+	}
+	ips, err := net.LookupHost(hostname)
+	if err != nil {
+		return nil, fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
+	}
+	return ips, nil
+}
+
+// resolveHost resolves hostname to a pinned dial address (ip:port) without
+// applying the blocklist. Used for realms inside the registry's own trust
+// domain, where private/loopback/link-local addresses are legitimate. Pinning
+// is still done: the caller dials the exact address that was resolved, so DNS
+// rebinding cannot swap in a different host between resolution and connection.
+func resolveHost(hostname, port string) (string, error) {
+	addrs, err := lookupHostAddrs(hostname)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(addrs[0], port), nil
+}
+
 func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) {
 	for _, internal := range internalHostnames {
 		if strings.EqualFold(hostname, internal) {
@@ -129,24 +211,21 @@ func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) 
 		return net.JoinHostPort(hostname, port), nil
 	}
 
-	ips, err := net.LookupHost(hostname)
+	addrs, err := lookupHostAddrs(hostname)
 	if err != nil {
-		return "", fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
+		return "", err
 	}
-	if len(ips) == 0 {
-		return "", fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
-	}
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
+	for _, addr := range addrs {
+		ip := net.ParseIP(addr)
 		if ip == nil {
 			continue
 		}
 		if isDisallowedIP(ip) {
-			return "", fmt.Errorf("realm URL resolves to a disallowed address %s", ipStr)
+			return "", fmt.Errorf("realm URL resolves to a disallowed address %s", addr)
 		}
 	}
 
-	return net.JoinHostPort(ips[0], port), nil
+	return net.JoinHostPort(addrs[0], port), nil
 }
 
 // newGuardedAuthClient returns the HTTP client used to fetch bearer tokens,
@@ -156,12 +235,20 @@ func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) 
 // validated against the internal-hostname blocklist and the private/loopback/
 // link-local IP ranges before a connection is established.
 //
+// Realms whose authority (host and port) equals trustedAuthority are exempt
+// from the blocklist: they are the registry host the caller is already
+// contacting, so private/loopback/link-local addresses are legitimate there
+// (internal and self-hosted registries). Those requests are still resolved and
+// pinned to the resolved IP, so DNS rebinding cannot redirect them elsewhere.
+// Every other realm — including another service on the same host but a
+// different port — is validated as before.
+//
 // How the connection is guarded depends on whether a proxy applies to the
 // request (see guardedAuthTransport). A dial-time-only guard would break every
 // proxied deployment: with a proxy configured, the dialer sees the proxy's
 // address — commonly a private or loopback IP — rather than the realm's, and
 // would reject the proxy itself.
-func newGuardedAuthClient(base http.RoundTripper) *http.Client {
+func newGuardedAuthClient(base http.RoundTripper, trustedAuthority string) *http.Client {
 	var proxied *http.Transport
 	if t, ok := base.(*http.Transport); ok {
 		proxied = t.Clone()
@@ -178,6 +265,16 @@ func newGuardedAuthClient(base http.RoundTripper) *http.Client {
 		if err != nil {
 			return nil, fmt.Errorf("invalid token endpoint address %q: %w", addr, err)
 		}
+		if isTrustedAuthority(normalizeAuthority(addr, ""), trustedAuthority) {
+			// Realm is the registry's own authority: skip the blocklist but
+			// still pin the resolved address, so DNS rebinding cannot redirect
+			// this connection (see validateTokenEndpointURL).
+			dialAddr, err := resolveHost(host, port)
+			if err != nil {
+				return nil, err
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, dialAddr)
+		}
 		dialAddr, err := resolveAndValidateHost(host, port)
 		if err != nil {
 			return nil, err
@@ -185,7 +282,7 @@ func newGuardedAuthClient(base http.RoundTripper) *http.Client {
 		return (&net.Dialer{}).DialContext(ctx, network, dialAddr)
 	}
 
-	return &http.Client{Transport: &guardedAuthTransport{proxied: proxied, direct: direct}}
+	return &http.Client{Transport: &guardedAuthTransport{proxied: proxied, direct: direct, trustedAuthority: trustedAuthority}}
 }
 
 // guardedAuthTransport validates every token-endpoint request against the SSRF
@@ -198,9 +295,13 @@ func newGuardedAuthClient(base http.RoundTripper) *http.Client {
 //     intact and a stock dialer: the proxy is the one connecting to the realm,
 //     so pinning the dial address is neither possible nor meaningful. The
 //     realm host is validated here at the request level instead.
+//
+// Realms on trustedAuthority are exempt from the blocklist on both paths; see
+// newGuardedAuthClient.
 type guardedAuthTransport struct {
-	proxied *http.Transport // proxy settings intact, stock dialer
-	direct  *http.Transport // no proxy, validating dialer pinned to the resolved IP
+	proxied          *http.Transport // proxy settings intact, stock dialer
+	direct           *http.Transport // no proxy, validating dialer pinned to the resolved IP
+	trustedAuthority string          // authority whose realms skip the blocklist
 }
 
 func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -210,7 +311,7 @@ func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, err
 			return nil, fmt.Errorf("determining proxy for token endpoint: %w", err)
 		}
 		if proxyURL != nil {
-			if err := validateTokenEndpointURL(req.URL); err != nil {
+			if err := validateTokenEndpointURL(req.URL, g.trustedAuthority); err != nil {
 				return nil, fmt.Errorf("realm URL rejected: %w", err)
 			}
 			return g.proxied.RoundTrip(req)
@@ -288,8 +389,9 @@ func parseWWWAuthenticate(header string) WWWAuthenticate {
 // the registry's WWW-Authenticate challenge and is therefore untrusted; the
 // guarded client rejects realms on internal hostnames or private/loopback
 // addresses and honors any configured proxy.
-func Exchange(ctx context.Context, _ reference.Registry, auth authn.Authenticator, transport http.RoundTripper, scopes []string, pr *PingResponse) (*Token, error) {
-	client := newGuardedAuthClient(transport)
+func Exchange(ctx context.Context, reg reference.Registry, auth authn.Authenticator, transport http.RoundTripper, scopes []string, pr *PingResponse) (*Token, error) {
+	trustedAuthority := normalizeAuthority(reg.RegistryStr(), reg.Scheme())
+	client := newGuardedAuthClient(transport, trustedAuthority)
 
 	// Build token request URL
 	tokenURL, err := url.Parse(pr.WWWAuthenticate.Realm)
@@ -300,7 +402,7 @@ func Exchange(ctx context.Context, _ reference.Registry, auth authn.Authenticato
 	// Validate the realm before any request is made so a blocked realm fails
 	// fast with a clear error. The guarded client re-validates at connection
 	// time (or per request when proxied), closing the TOCTOU window.
-	if err := validateTokenEndpointURL(tokenURL); err != nil {
+	if err := validateTokenEndpointURL(tokenURL, trustedAuthority); err != nil {
 		return nil, fmt.Errorf("realm URL rejected: %w", err)
 	}
 
