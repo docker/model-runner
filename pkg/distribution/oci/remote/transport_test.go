@@ -63,6 +63,41 @@ func TestExchangeSSRF_RequestSentToRealmURL(t *testing.T) {
 	}
 }
 
+// TestExchangeAllowsInternalRealmOnSameHost verifies that an internal/corporate
+// registry whose token endpoint lives on the same host (e.g. an RFC1918 address
+// or loopback) is NOT blocked by the SSRF guard. The realm is within the same
+// trust domain as the registry being pulled, so private/loopback/link-local
+// addresses must be permitted there.
+func TestExchangeAllowsInternalRealmOnSameHost(t *testing.T) {
+	var hitCount atomic.Int32
+
+	// "Internal service" on 127.0.0.1 — without the same-host exception this
+	// would be rejected by the loopback blocklist.
+	internalService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitCount.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"token":"internal-token"}`)
+	}))
+	defer internalService.Close()
+
+	// Registry host matches the realm host (both resolve to 127.0.0.1).
+	ref, err := reference.ParseReference("127.0.0.1:5000/myimage")
+	if err != nil {
+		t.Fatalf("failed to parse reference: %v", err)
+	}
+
+	pr := pingResponseForRealm(internalService.URL + "/token")
+
+	_, err = remote.Exchange(t.Context(), ref.Context().Registry, nil, nil, []string{"repository:x:pull"}, pr)
+	if err != nil && strings.Contains(err.Error(), "realm URL rejected") {
+		t.Fatalf("internal same-host realm was wrongly rejected: %v", err)
+	}
+	if hitCount.Load() == 0 {
+		t.Errorf("expected the token request to reach the internal service at %s (same-host realms must be allowed)", internalService.URL)
+	}
+}
+
 // TestExchangeSSRF_SensitiveBodyNotReflectedInError verifies that Exchange()
 // does NOT include a token-endpoint response body in the error it returns to
 // the caller.
