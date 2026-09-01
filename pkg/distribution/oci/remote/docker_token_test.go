@@ -151,7 +151,7 @@ func TestDockerTokenWithoutLocalDNS(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{"token":"via-proxy"}`)
 	}))
-	client := newGuardedAuthClient(transport, "registry-1.docker.io")
+	client := newGuardedAuthClient(transport, "registry-1.docker.io", "https")
 	guard := client.Transport.(*guardedAuthTransport)
 	t.Cleanup(guard.proxied.CloseIdleConnections)
 	t.Cleanup(guard.direct.CloseIdleConnections)
@@ -181,7 +181,7 @@ func TestDockerTokenWithoutLocalDNS(t *testing.T) {
 		t.Fatalf("expected two proxied requests without DNS, got hits=%d DNS=%d", hits.Load(), lookups.Load())
 	}
 	// Unrelated registries still fail closed, even for the Docker token URL.
-	otherClient := newGuardedAuthClient(transport, "evil.example")
+	otherClient := newGuardedAuthClient(transport, "evil.example", "https")
 	_, err = otherClient.Do(req)
 	if err == nil || !strings.Contains(err.Error(), "resolving realm hostname") {
 		t.Fatalf("untrusted registry should require local DNS: %v", err)
@@ -189,7 +189,7 @@ func TestDockerTokenWithoutLocalDNS(t *testing.T) {
 	// Without a proxy, the validating dialer still requires local DNS.
 	directTransport := transport.Clone()
 	directTransport.Proxy = nil
-	_, err = newGuardedAuthClient(directTransport, "registry-1.docker.io").Do(req)
+	_, err = newGuardedAuthClient(directTransport, "registry-1.docker.io", "https").Do(req)
 	if err == nil || !strings.Contains(err.Error(), "resolving realm hostname") {
 		t.Fatalf("direct connection should require validated DNS: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestDockerTokenRedirectToPrivateRealmBlocked(t *testing.T) {
 		hits.Add(1)
 		http.Redirect(w, r, "https://169.254.169.254/token", http.StatusFound)
 	}))
-	client := newGuardedAuthClient(transport, "registry-1.docker.io")
+	client := newGuardedAuthClient(transport, "registry-1.docker.io", "https")
 	guard := client.Transport.(*guardedAuthTransport)
 	t.Cleanup(guard.proxied.CloseIdleConnections)
 	t.Cleanup(guard.direct.CloseIdleConnections)
