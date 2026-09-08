@@ -17,9 +17,18 @@ type mockSchedulerHTTP struct {
 	statusCode   int
 	streaming    bool
 	streamChunks []string
+	calls        int
+	lastPath     string
+	lastBody     []byte
 }
 
 func (m *mockSchedulerHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	m.calls++
+	m.lastPath = r.URL.Path
+	if r.Body != nil {
+		m.lastBody, _ = io.ReadAll(r.Body)
+	}
+
 	if m.streaming {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -106,8 +115,455 @@ func TestHandler_CreateResponse_NonStreaming(t *testing.T) {
 	if result.OutputText != "Hello! How can I help you?" {
 		t.Errorf("output_text = %s, want Hello! How can I help you?", result.OutputText)
 	}
+	if result.Store == nil || !*result.Store {
+		t.Fatalf("store = %v, want true", result.Store)
+	}
 	if !strings.HasPrefix(result.ID, "resp_") {
 		t.Errorf("id should start with resp_, got %s", result.ID)
+	}
+}
+
+func TestHandler_CreateResponse_TextFormatJSONSchema(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		statusCode: http.StatusOK,
+		response: `{
+			"id": "chatcmpl-123",
+			"object": "chat.completion",
+			"created": 1234567890,
+			"model": "gpt-4",
+			"choices": [
+				{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "{\"answer\":\"yes\"}"
+					},
+					"finish_reason": "stop"
+				}
+			]
+		}`,
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Answer yes as JSON",
+		"text": {
+			"format": {
+				"type": "json_schema",
+				"name": "answer_prompt",
+				"description": "Answer payload",
+				"strict": true,
+				"schema": {
+					"type": "object",
+					"properties": {
+						"answer": {"type": "string"}
+					},
+					"required": ["answer"],
+					"additionalProperties": false
+				}
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+
+	if mock.lastPath != "/engines/v1/chat/completions" {
+		t.Fatalf("upstream path = %s, want /engines/v1/chat/completions", mock.lastPath)
+	}
+
+	var chatReq ChatCompletionRequest
+	if err := json.Unmarshal(mock.lastBody, &chatReq); err != nil {
+		t.Fatalf("failed to decode upstream request: %v", err)
+	}
+	if chatReq.ResponseFormat == nil {
+		t.Fatal("upstream response_format is nil")
+	}
+	if chatReq.ResponseFormat.Type != "json_schema" {
+		t.Errorf("upstream response_format.type = %s, want json_schema", chatReq.ResponseFormat.Type)
+	}
+	if chatReq.ResponseFormat.JSONSchema == nil {
+		t.Fatal("upstream response_format.json_schema is nil")
+	}
+	if chatReq.ResponseFormat.JSONSchema.Name != "answer_prompt" {
+		t.Errorf("json_schema.name = %s, want answer_prompt", chatReq.ResponseFormat.JSONSchema.Name)
+	}
+	if chatReq.ResponseFormat.JSONSchema.Strict == nil || !*chatReq.ResponseFormat.JSONSchema.Strict {
+		t.Errorf("json_schema.strict = %v, want true", chatReq.ResponseFormat.JSONSchema.Strict)
+	}
+	if !strings.Contains(string(chatReq.ResponseFormat.JSONSchema.Schema), `"additionalProperties":false`) {
+		t.Errorf("json_schema.schema = %s, want original schema", chatReq.ResponseFormat.JSONSchema.Schema)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Text == nil || result.Text.Format == nil {
+		t.Fatal("response text.format is nil")
+	}
+	if result.Text.Format.Type != "json_schema" {
+		t.Errorf("response text.format.type = %s, want json_schema", result.Text.Format.Type)
+	}
+	if result.Text.Format.Name != "answer_prompt" {
+		t.Errorf("response text.format.name = %s, want answer_prompt", result.Text.Format.Name)
+	}
+}
+
+func TestHandler_CreateResponse_TextFormatJSONObject(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		statusCode: http.StatusOK,
+		response: `{
+			"id": "chatcmpl-123",
+			"choices": [
+				{
+					"message": {
+						"role": "assistant",
+						"content": "{\"answer\":\"yes\"}"
+					}
+				}
+			]
+		}`,
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Answer with JSON",
+		"text": {
+			"format": {
+				"type": "json_object"
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+
+	var chatReq ChatCompletionRequest
+	if err := json.Unmarshal(mock.lastBody, &chatReq); err != nil {
+		t.Fatalf("failed to decode upstream request: %v", err)
+	}
+	if chatReq.ResponseFormat == nil {
+		t.Fatal("upstream response_format is nil")
+	}
+	if chatReq.ResponseFormat.Type != "json_object" {
+		t.Errorf("upstream response_format.type = %s, want json_object", chatReq.ResponseFormat.Type)
+	}
+	if chatReq.ResponseFormat.JSONSchema != nil {
+		t.Errorf("upstream response_format.json_schema = %v, want nil", chatReq.ResponseFormat.JSONSchema)
+	}
+}
+
+func TestHandler_CreateResponse_StoreFalseNotPersisted(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		statusCode: http.StatusOK,
+		response: `{
+			"id": "chatcmpl-123",
+			"choices": [
+				{
+					"message": {
+						"role": "assistant",
+						"content": "Hello!"
+					}
+				}
+			]
+		}`,
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Hi",
+		"store": false
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Store == nil || *result.Store {
+		t.Fatalf("store = %v, want false", result.Store)
+	}
+	if handler.store.Count() != 0 {
+		t.Fatalf("store count = %d, want 0", handler.store.Count())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/responses/"+result.ID, http.NoBody)
+	getReq.SetPathValue("id", result.ID)
+	getW := httptest.NewRecorder()
+	handler.handleGet(getW, getReq)
+	if getW.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("GET status = %d, want %d", getW.Result().StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestHandler_CreateResponse_StreamingStoreFalseNotPersisted(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		streaming: true,
+		streamChunks: []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: [DONE]\n\n",
+		},
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Hello",
+		"stream": true,
+		"store": false
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	if handler.store.Count() != 0 {
+		t.Fatalf("store count = %d, want 0", handler.store.Count())
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read body: %v", err)
+	}
+	if !strings.Contains(string(body), `"store":false`) {
+		t.Fatalf("stream events did not preserve store=false: %s", body)
+	}
+}
+
+func TestHandler_CreateResponse_BackendQualifiedRoute(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		statusCode: http.StatusOK,
+		response: `{
+			"id": "chatcmpl-123",
+			"choices": [
+				{
+					"message": {
+						"role": "assistant",
+						"content": "Hello!"
+					}
+				}
+			]
+		}`,
+	}
+
+	handler := newTestHandler(t, mock)
+
+	req := httptest.NewRequest(http.MethodPost, "/engines/llama.cpp/v1/responses", strings.NewReader(`{
+		"model": "gpt-4",
+		"input": "Hi"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	if mock.lastPath != "/engines/llama.cpp/v1/chat/completions" {
+		t.Fatalf("upstream path = %s, want /engines/llama.cpp/v1/chat/completions", mock.lastPath)
+	}
+}
+
+func TestHandler_CreateResponse_PreviousResponseNotFound(t *testing.T) {
+	mock := &mockSchedulerHTTP{}
+	handler := newTestHandler(t, mock)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
+		"model": "gpt-4",
+		"input": "Hi",
+		"previous_response_id": "resp_missing"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+	}
+	if mock.calls != 0 {
+		t.Fatalf("scheduler calls = %d, want 0", mock.calls)
+	}
+}
+
+func TestHandler_CreateResponse_UnsupportedResponseFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		field   string
+		wantErr string
+	}{
+		{
+			name:    "include",
+			field:   `"include": ["file_search_call.results"],`,
+			wantErr: "include is not supported",
+		},
+		{
+			name:    "stream options",
+			field:   `"stream_options": {"include_obfuscation": true},`,
+			wantErr: "stream_options is not supported",
+		},
+		{
+			name:    "top logprobs",
+			field:   `"top_logprobs": 5,`,
+			wantErr: "top_logprobs is not supported",
+		},
+		{
+			name:    "truncation auto",
+			field:   `"truncation": "auto",`,
+			wantErr: "truncation value",
+		},
+		{
+			name:    "background",
+			field:   `"background": true,`,
+			wantErr: "background responses are not supported",
+		},
+		{
+			name:    "conversation",
+			field:   `"conversation": {"id": "conv_123"},`,
+			wantErr: "conversation is not supported",
+		},
+		{
+			name:    "prompt",
+			field:   `"prompt": {"id": "pmpt_123"},`,
+			wantErr: "prompt is not supported",
+		},
+		{
+			name:    "service tier",
+			field:   `"service_tier": "flex",`,
+			wantErr: "service_tier is not supported",
+		},
+		{
+			name:    "safety identifier",
+			field:   `"safety_identifier": "user-123",`,
+			wantErr: "safety_identifier is not supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockSchedulerHTTP{}
+			handler := newTestHandler(t, mock)
+
+			reqBody := `{
+				"model": "gpt-4",
+				` + tt.field + `
+				"input": "Hello"
+			}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.handleCreate(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusBadRequest {
+				body, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+			}
+			if mock.calls != 0 {
+				t.Fatalf("scheduler calls = %d, want 0", mock.calls)
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("failed to read body: %v", err)
+			}
+			if !strings.Contains(string(body), tt.wantErr) {
+				t.Fatalf("body = %s, want to contain %q", body, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestHandler_CreateResponse_SupportedNoopResponseFields(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		statusCode: http.StatusOK,
+		response: `{
+			"id": "chatcmpl-123",
+			"choices": [
+				{
+					"message": {
+						"role": "assistant",
+						"content": "Hello!"
+					}
+				}
+			]
+		}`,
+	}
+
+	handler := newTestHandler(t, mock)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
+		"model": "gpt-4",
+		"input": "Hi",
+		"background": false,
+		"truncation": "disabled",
+		"stream_options": null,
+		"conversation": null,
+		"prompt": null
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	if mock.calls != 1 {
+		t.Fatalf("scheduler calls = %d, want 1", mock.calls)
 	}
 }
 
@@ -453,6 +909,132 @@ func TestHandler_CreateResponse_Streaming(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, "response.completed") {
 		t.Error("expected response.completed event")
+	}
+}
+
+func TestHandler_CreateResponse_Streaming_TextFormatJSONSchema(t *testing.T) {
+	mock := &mockSchedulerHTTP{
+		streaming: true,
+		streamChunks: []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"{\\\"answer\\\":\\\"yes\\\"}\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1234567890,\"model\":\"gpt-4\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: [DONE]\n\n",
+		},
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Answer yes as JSON",
+		"stream": true,
+		"text": {
+			"format": {
+				"type": "json_schema",
+				"name": "answer_prompt",
+				"strict": true,
+				"schema": {
+					"type": "object",
+					"properties": {
+						"answer": {"type": "string"}
+					},
+					"required": ["answer"],
+					"additionalProperties": false
+				}
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+
+	var chatReq ChatCompletionRequest
+	if err := json.Unmarshal(mock.lastBody, &chatReq); err != nil {
+		t.Fatalf("failed to decode upstream request: %v", err)
+	}
+	if chatReq.ResponseFormat == nil || chatReq.ResponseFormat.JSONSchema == nil {
+		t.Fatalf("upstream response_format = %#v, want json_schema", chatReq.ResponseFormat)
+	}
+	if chatReq.ResponseFormat.JSONSchema.Name != "answer_prompt" {
+		t.Errorf("json_schema.name = %s, want answer_prompt", chatReq.ResponseFormat.JSONSchema.Name)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, `"text":{"format":{"type":"json_schema"`) {
+		t.Errorf("stream response events did not preserve text config: %s", bodyStr)
+	}
+}
+
+func TestHandler_CreateResponse_InvalidTextFormat(t *testing.T) {
+	mock := &mockSchedulerHTTP{}
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Hello",
+		"text": {
+			"format": {
+				"type": "json_schema",
+				"schema": {"type": "object"}
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+	}
+	if mock.calls != 0 {
+		t.Fatalf("scheduler calls = %d, want 0", mock.calls)
+	}
+}
+
+func TestHandler_CreateResponse_UnsupportedHostedTool(t *testing.T) {
+	mock := &mockSchedulerHTTP{}
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{
+		"model": "gpt-4",
+		"input": "Search the web",
+		"tools": [
+			{"type": "web_search"}
+		]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+	}
+	if mock.calls != 0 {
+		t.Fatalf("scheduler calls = %d, want 0", mock.calls)
 	}
 }
 

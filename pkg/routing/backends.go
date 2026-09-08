@@ -42,6 +42,16 @@ type BackendsConfig struct {
 	// injected by Docker Desktop from daemon.json registry-mirrors.
 	RegistryMirrors []string
 
+	// RegistryCredentials, if non-nil, resolves credentials for the registry (or
+	// mirror) that backend images are pulled from. Embedders that already hold
+	// registry credentials in process — Docker Desktop, which is itself the
+	// credential backend — supply one so pulls authenticate without shelling out
+	// to a docker-credential-* helper.
+	//
+	// When nil, credentials are resolved from the environment and
+	// ~/.docker/config.json, including credHelpers and credsStore.
+	RegistryCredentials inference.RegistryCredentials
+
 	// CommandModifier, if non-nil, is applied to every backend runner process
 	// immediately before it starts (see backends.RunnerConfig.CommandModifier).
 	// Embedders use it to customize process attributes such as credentials or
@@ -62,7 +72,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 
 	defs := []BackendDef{
 		{Name: llamacpp.Name, Deferred: llamacpp.NeedsDeferredInstall(), Init: func(mm *models.Manager) (inference.Backend, error) {
-			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig, cfg.RegistryMirrors, cfg.CommandModifier)
+			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig, cfg.RegistryMirrors, cfg.RegistryCredentials, cfg.CommandModifier)
 		}},
 	}
 
@@ -92,7 +102,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 			Name:     diffusers.Name,
 			Deferred: true,
 			Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors, cfg.CommandModifier)
+				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors, cfg.RegistryCredentials, cfg.CommandModifier)
 			},
 		})
 	}

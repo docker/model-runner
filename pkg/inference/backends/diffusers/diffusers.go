@@ -56,13 +56,16 @@ type diffusers struct {
 	installDir string
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// registryCredentials, if non-nil, resolves credentials for the registry (or
+	// mirror) the backend image is fetched from.
+	registryCredentials inference.RegistryCredentials
 	// commandModifier, if non-nil, is applied to the server process before it starts.
 	commandModifier func(*exec.Cmd)
 }
 
 // New creates a new diffusers-based backend for image generation.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string, registryCredentials inference.RegistryCredentials, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultConfig()
@@ -75,15 +78,16 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 	installDir := filepath.Join(homeDir, defaultInstallDir)
 
 	return &diffusers{
-		log:              log,
-		modelManager:     modelManager,
-		serverLog:        serverLog,
-		config:           conf,
-		status:           inference.FormatNotInstalled(""),
-		customPythonPath: customPythonPath,
-		installDir:       installDir,
-		registryMirrors:  registryMirrors,
-		commandModifier:  commandModifier,
+		log:                 log,
+		modelManager:        modelManager,
+		serverLog:           serverLog,
+		config:              conf,
+		status:              inference.FormatNotInstalled(""),
+		customPythonPath:    customPythonPath,
+		installDir:          installDir,
+		registryMirrors:     registryMirrors,
+		registryCredentials: registryCredentials,
+		commandModifier:     commandModifier,
 	}, nil
 }
 
@@ -158,7 +162,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context) error {
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:diffusers-%s", diffusersVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, d.registryMirrors); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, d.registryMirrors, d.registryCredentials); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 

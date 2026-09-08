@@ -95,12 +95,12 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 
 	// Resolve the desired tag to a digest via the Registry HTTP API v2. This
 	// honors l.registryMirrors (typically a corporate Artifactory / Nexus /
-	// Harbor mirror configured for docker.io) and credentials populated by
-	// `docker login`, so customers behind a private mirror with no direct
-	// egress to registry-1.docker.io can still resolve and pull the backend
-	// image. See docker/model-runner#TBD.
+	// Harbor mirror configured for docker.io) and l.registryCredentials — or,
+	// when those are nil, credentials populated by `docker login` — so customers
+	// behind a private mirror with no direct egress to registry-1.docker.io can
+	// still resolve and pull the backend image.
 	tagRef := fmt.Sprintf("registry-1.docker.io/%s/%s:%s", hubNamespace, hubRepo, desiredTag)
-	latest, err := dockerhub.ResolveDigest(ctx, tagRef, l.registryMirrors)
+	latest, err := dockerhub.ResolveDigest(ctx, tagRef, l.registryMirrors, l.registryCredentials)
 	if err != nil {
 		log.Warn("could not resolve llama.cpp tag", "tag", desiredTag, "mirrors", l.registryMirrors, "error", err)
 		return fmt.Errorf("could not resolve the %s tag: %w", desiredTag, err)
@@ -126,7 +126,7 @@ func (l *llamaCpp) downloadLatestLlamaCpp(ctx context.Context, log logging.Logge
 	defer os.RemoveAll(downloadDir)
 
 	l.status = inference.FormatInstalling(fmt.Sprintf("%s llama.cpp %s", inference.DetailDownloading, desiredTag))
-	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir, l.registryMirrors); extractErr != nil {
+	if extractErr := extractFromImage(ctx, log, image, runtime.GOOS, runtime.GOARCH, downloadDir, l.registryMirrors, l.registryCredentials); extractErr != nil {
 		return fmt.Errorf("could not extract image: %w", extractErr)
 	}
 
@@ -215,14 +215,14 @@ func (l *llamaCpp) writeInstalledVersion(log logging.Logger, rec installedVersio
 }
 
 //nolint:unused // Used in platform-specific files (download_darwin.go, download_windows.go)
-func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs, requiredArch, destination string, mirrors []string) error {
+func extractFromImage(ctx context.Context, log logging.Logger, image, requiredOs, requiredArch, destination string, mirrors []string, creds inference.RegistryCredentials) error {
 	log.Info("Extracting image", "image", image, "destination", destination)
 	tmpDir, err := os.MkdirTemp("", "docker-tar-extract")
 	if err != nil {
 		return err
 	}
 	imageTar := filepath.Join(tmpDir, "save.tar")
-	if err := dockerhub.PullPlatform(ctx, image, imageTar, requiredOs, requiredArch, mirrors); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, imageTar, requiredOs, requiredArch, mirrors, creds); err != nil {
 		return err
 	}
 	return dockerhub.Extract(imageTar, requiredArch, requiredOs, destination)

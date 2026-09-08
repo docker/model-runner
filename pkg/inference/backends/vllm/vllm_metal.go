@@ -53,13 +53,16 @@ type vllmMetal struct {
 	status string
 	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
 	registryMirrors []string
+	// registryCredentials, if non-nil, resolves credentials for the registry (or
+	// mirror) the backend image is fetched from.
+	registryCredentials inference.RegistryCredentials
 	// commandModifier, if non-nil, is applied to the server process before it starts.
 	commandModifier func(*exec.Cmd)
 }
 
 // newMetal creates a new vllm-metal backend.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
+func newMetal(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, customPythonPath string, registryMirrors []string, registryCredentials inference.RegistryCredentials, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -67,14 +70,15 @@ func newMetal(log logging.Logger, modelManager *models.Manager, serverLog loggin
 	installDir := filepath.Join(homeDir, defaultInstallDir)
 
 	return &vllmMetal{
-		log:              log,
-		modelManager:     modelManager,
-		serverLog:        serverLog,
-		customPythonPath: customPythonPath,
-		installDir:       installDir,
-		status:           inference.FormatNotInstalled(""),
-		registryMirrors:  registryMirrors,
-		commandModifier:  commandModifier,
+		log:                 log,
+		modelManager:        modelManager,
+		serverLog:           serverLog,
+		customPythonPath:    customPythonPath,
+		installDir:          installDir,
+		status:              inference.FormatNotInstalled(""),
+		registryMirrors:     registryMirrors,
+		registryCredentials: registryCredentials,
+		commandModifier:     commandModifier,
 	}, nil
 }
 
@@ -149,7 +153,7 @@ func (v *vllmMetal) downloadAndExtract(ctx context.Context, _ *http.Client) erro
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:vllm-metal-%s", vllmMetalVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, v.registryMirrors); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, v.registryMirrors, v.registryCredentials); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 

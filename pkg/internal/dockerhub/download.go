@@ -2,14 +2,12 @@ package dockerhub
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/containerd/containerd/v2/core/content"
@@ -21,12 +19,15 @@ import (
 	"github.com/containerd/containerd/v2/plugins/content/local"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/platforms"
-	"github.com/docker/model-runner/pkg/internal/jsonutil"
 	"github.com/docker/model-runner/pkg/internal/registryutil"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredArch string, mirrors []string) error {
+// PullPlatform downloads image for the given OS/architecture and writes it to
+// destination as a tarball. Mirrors are tried before registry-1.docker.io for
+// Docker Hub references. When creds is nil, credentials are resolved from the
+// environment and ~/.docker/config.json.
+func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredArch string, mirrors []string, creds Credentials) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("creating destination directory %s: %w", filepath.Dir(destination), err)
 	}
@@ -43,7 +44,7 @@ func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredA
 	if err != nil {
 		return fmt.Errorf("creating new content store: %w", err)
 	}
-	resolver := newResolver(mirrors)
+	resolver := newResolver(mirrors, creds)
 	desc, err := retry(ctx, 10, 1*time.Second, func() (*v1.Descriptor, error) {
 		return fetch(ctx, resolver, store, image, requiredOs, requiredArch)
 	})
@@ -58,11 +59,12 @@ func PullPlatform(ctx context.Context, image, destination, requiredOs, requiredA
 // returns the resolved digest. It does not download any blobs; it issues only the manifest
 // HEAD/GET that the registry resolver needs.
 //
-// Authentication uses the same credentials lookup as PullPlatform (env vars
-// DOCKER_HUB_USER/DOCKER_HUB_PASSWORD or ~/.docker/config.json), so a prior
-// `docker login <mirror-host>` is honored.
-func ResolveDigest(ctx context.Context, ref string, mirrors []string) (string, error) {
-	resolver := newResolver(mirrors)
+// Authentication uses the same credentials lookup as PullPlatform: creds when
+// non-nil, otherwise the environment and ~/.docker/config.json (including
+// credHelpers and credsStore), so a prior `docker login <mirror-host>` is
+// honored.
+func ResolveDigest(ctx context.Context, ref string, mirrors []string, creds Credentials) (string, error) {
+	resolver := newResolver(mirrors, creds)
 	desc, err := retry(ctx, 10, 1*time.Second, func() (*v1.Descriptor, error) {
 		name, d, err := resolver.Resolve(ctx, ref)
 		if err != nil {
@@ -77,10 +79,14 @@ func ResolveDigest(ctx context.Context, ref string, mirrors []string) (string, e
 	return desc.Digest.String(), nil
 }
 
-// newResolver builds a containerd docker resolver that authenticates via
-// dockerCredentials and tries the given mirrors before the upstream registry.
-func newResolver(mirrors []string) remotes.Resolver {
-	authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(dockerCredentials))
+// newResolver builds a containerd docker resolver that tries the given mirrors
+// before the upstream registry, authenticating with creds — or, when creds is
+// nil, with defaultCredentials.
+func newResolver(mirrors []string, creds Credentials) remotes.Resolver {
+	if creds == nil {
+		creds = defaultCredentials
+	}
+	authorizer := docker.NewDockerAuthorizer(docker.WithAuthCreds(creds))
 	return docker.NewResolver(docker.ResolverOptions{
 		Hosts: registryutil.RegistryHosts(mirrors, authorizer, nil),
 	})
@@ -155,44 +161,4 @@ func fetch(ctx context.Context, resolver remotes.Resolver, store content.Store, 
 		return nil, err
 	}
 	return &desc, nil
-}
-
-func dockerCredentials(host string) (string, string, error) {
-	hubUsername, hubPassword := os.Getenv("DOCKER_HUB_USER"), os.Getenv("DOCKER_HUB_PASSWORD")
-	if hubUsername != "" && hubPassword != "" {
-		return hubUsername, hubPassword, nil
-	}
-	slog.Debug("checking for registry auth config", "host", host)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", "", err
-	}
-	credentialConfig := filepath.Join(home, ".docker", "config.json")
-	cfg := struct {
-		Auths map[string]struct {
-			Auth string
-		}
-	}{}
-	if err := jsonutil.ReadFile(credentialConfig, &cfg); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", "", nil
-		}
-		return "", "", err
-	}
-	for h, r := range cfg.Auths {
-		if h == host {
-			creds, err := base64.StdEncoding.DecodeString(r.Auth)
-			if err != nil {
-				return "", "", err
-			}
-			parts := strings.SplitN(string(creds), ":", 2)
-			if len(parts) != 2 {
-				slog.Debug("skipping non-user/password auth for registry", "host", host, "auth_type", parts[0])
-				return "", "", nil
-			}
-			slog.Debug("using auth for registry", "host", host, "user", parts[0])
-			return parts[0], parts[1], nil
-		}
-	}
-	return "", "", nil
 }

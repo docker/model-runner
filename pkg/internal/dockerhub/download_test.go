@@ -67,7 +67,7 @@ func TestResolveDigest_UsesMirror(t *testing.T) {
 
 	// Reference points at registry-1.docker.io; the mirror should intercept it.
 	ref := "registry-1.docker.io/docker/docker-model-backend-llamacpp:latest-cuda"
-	got, err := ResolveDigest(ctx, ref, []string{srv.URL})
+	got, err := ResolveDigest(ctx, ref, []string{srv.URL}, nil)
 	if err != nil {
 		t.Fatalf("ResolveDigest returned error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestResolveDigest_UsesMirrorPathPrefix(t *testing.T) {
 	defer cancel()
 
 	ref := "registry-1.docker.io/docker/docker-model-backend-llamacpp:" + tag
-	got, err := ResolveDigest(ctx, ref, []string{srv.URL + prefix})
+	got, err := ResolveDigest(ctx, ref, []string{srv.URL + prefix}, nil)
 	if err != nil {
 		t.Fatalf("ResolveDigest returned error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestResolveDigest_CanceledContext(t *testing.T) {
 	done := make(chan struct{})
 	var resolveErr error
 	go func() {
-		_, resolveErr = ResolveDigest(ctx, "registry-1.docker.io/docker/docker-model-backend-llamacpp:latest-cuda", nil)
+		_, resolveErr = ResolveDigest(ctx, "registry-1.docker.io/docker/docker-model-backend-llamacpp:latest-cuda", nil, nil)
 		close(done)
 	}()
 	select {

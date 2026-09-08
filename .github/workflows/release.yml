@@ -52,7 +52,7 @@ jobs:
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
@@ -194,12 +194,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/docker-agent-action@e96a4bb40cac114f64358621e1d08346c8eadc8c # v2.0.1
+        uses: docker/docker-agent-action@baf90543d81f5de59751dfd10e6cf45e21a5a982 # v2.0.3
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -240,14 +240,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Load GO version
         id: versions
         uses: ./.github/actions/load-go-version
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
@@ -270,7 +270,7 @@ jobs:
       SGLANG_VERSION: ${{ inputs.sglangVersion }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Format tags
         id: tags
@@ -339,14 +339,14 @@ jobs:
           echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
 
       - name: Set up Buildx
         id: buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
         with:
           version: "lab:latest"
           driver: cloud
@@ -362,7 +362,7 @@ jobs:
         run: docker buildx prune -af --builder ${{ steps.buildx.outputs.name }}
 
       - name: Build CPU image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -378,7 +378,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -394,7 +394,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-vllm
@@ -411,7 +411,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-sglang
@@ -428,7 +428,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -443,7 +443,7 @@ jobs:
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
       - name: Build MUSA image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -459,7 +459,7 @@ jobs:
           tags: ${{ steps.tags.outputs.musa }}
 
       - name: Build OpenVINO image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -485,7 +485,32 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Idempotency guard: a re-run of the release for a tag that was already
+      # published must NOT re-trigger the downstream release. The desktop
+      # release re-pushes docker/docker-model-cli-desktop-module:<tag>, and
+      # pushing an already-existing tag fails with "403 denied". Detect the
+      # already-published tag on Docker Hub and skip the trigger instead.
+      - name: Log in to DockerHub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          username: "docker"
+          password: ${{ secrets.ORG_ACCESS_TOKEN }}
+
+      - name: Check whether desktop module is already published
+        id: published
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          if docker manifest inspect \
+              "docker/docker-model-cli-desktop-module:$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "✅ desktop-module:$RELEASE_TAG already exists — skipping trigger"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Trigger Desktop CLI release and wait for completion
+        if: steps.published.outputs.already != 'true'
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -493,35 +518,57 @@ jobs:
         run: |
           echo "🚀 Triggering Desktop CLI release workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-cli-dd.yml \
+          # Record the newest existing run BEFORE dispatch so we can identify
+          # the run WE trigger. `gh workflow run` prints nothing usable on
+          # stdout, and "query the latest run" races: it can return a run
+          # started by someone else, or a stale completed run (which is how a
+          # trigger job can "succeed" while watching the wrong run). Run IDs are
+          # monotonically increasing, so the first run with a strictly greater
+          # ID than BEFORE_ID is ours.
+          BEFORE_ID=$(gh run list \
+            --repo docker/inference-engine-llama.cpp \
+            --workflow release-cli-dd.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-cli-dd.yml"
+              exit 1
+              ;;
+          esac
+
+          gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION")
+            -f tag="v$VERSION"
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
-
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
+          RUN_ID=""
+          LAST_SEEN=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine workflow run ID"
+            echo "::error::Failed to determine Desktop CLI release run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Desktop CLI release workflow triggered"
 
           echo "⏳ Waiting for Desktop CLI release to complete..."
@@ -556,34 +603,54 @@ jobs:
         run: |
           echo "📦 Triggering packaging workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-model.yml \
+          # Identify the run WE trigger by its ID, not by "the latest run".
+          # `gh workflow run` prints nothing usable on stdout and querying the
+          # newest run right after dispatch races with concurrent/stale runs.
+          # Run IDs increase monotonically, so the first run with an ID greater
+          # than the pre-dispatch newest is ours. (See release-cli-desktop.)
+          BEFORE_ID=$(gh run list \
             --repo docker/packaging \
-            -f ref="$RELEASE_TAG")
+            --workflow release-model.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-model.yml"
+              exit 1
+              ;;
+          esac
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+          gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f ref="$RELEASE_TAG"
 
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
+          RUN_ID=""
+          LAST_SEEN=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine packaging workflow run ID"
+            echo "::error::Failed to determine packaging workflow run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Packaging workflow triggered"
 
           echo "⏳ Waiting for packaging to complete..."
@@ -634,7 +701,7 @@ jobs:
     environment: release-repo-deploy
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Verify client and server versions
         run: |
@@ -662,6 +729,12 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          # Idempotency: a re-run for an already-released tag must not fail here.
+          if gh release view "$RELEASE_TAG" --repo docker/model-runner >/dev/null 2>&1; then
+            echo "✅ GitHub Release $RELEASE_TAG already exists — skipping creation"
+            exit 0
+          fi
+
           echo "Creating GitHub Release for $RELEASE_TAG"
           gh release create "$RELEASE_TAG" \
             --repo docker/model-runner \

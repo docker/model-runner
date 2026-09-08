@@ -200,6 +200,28 @@ func getAuthFromConfig(registry string) (Authenticator, error) {
 	return nil, nil
 }
 
+// FromDockerConfig resolves credentials for registry from ~/.docker/config.json
+// alone — credential helpers (credHelpers), then the credential store
+// (credsStore), then inline auths entries.
+//
+// Unlike DefaultKeychain.Resolve it deliberately does not consult the
+// DOCKER_USERNAME/DOCKER_HUB_USER environment variables, so a caller that must
+// not offer Hub credentials to an unrelated host (for example a corporate
+// registry mirror) can scope that decision itself.
+//
+// A nil Authenticator with a nil error means no credentials were found. That is
+// not an error: the registry may allow anonymous access.
+func FromDockerConfig(registry string) (Authenticator, error) {
+	auth, err := getAuthFromConfig(registry)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return auth, nil
+}
+
 // getServerAddressForRegistry returns the server address used for credential lookup.
 // Docker Hub credentials are stored under "https://index.docker.io/v1/".
 func getServerAddressForRegistry(registry string) string {
