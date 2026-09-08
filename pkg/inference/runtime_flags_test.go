@@ -92,6 +92,13 @@ func TestValidateRuntimeFlags(t *testing.T) {
 			description: "Sampling flags should be allowed",
 		},
 		{
+			name:        "llama.cpp: reasoning preservation flags allowed",
+			backend:     "llama.cpp",
+			flags:       []string{"--reasoning-preserve", "--no-reasoning-preserve"},
+			expectError: false,
+			description: "Reasoning preservation flags should be allowed",
+		},
+		{
 			name:    "llama.cpp: real-world flags from issue 515",
 			backend: "llama.cpp",
 			flags: []string{
