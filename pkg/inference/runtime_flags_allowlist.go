@@ -171,6 +171,7 @@ var LlamaCppAllowedFlags = map[string]bool{
 	"--chat-template-kwargs": true,
 	"--jinja":                true, "--no-jinja": true,
 	"--pooling":              true,
+	"--reasoning":            true,
 	"--reasoning-format":     true,
 	"--reasoning-budget":     true,
 	"--prefill-assistant":    true,
