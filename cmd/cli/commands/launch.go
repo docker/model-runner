@@ -152,7 +152,7 @@ Examples:
 					return err
 				}
 
-				if sandboxTool != "" {
+if sandboxTool != "" && !configOnly {
 					return launchSandboxedHostApp(cmd, sandboxTool, app, appArgs, dryRun)
 				}
 			}
