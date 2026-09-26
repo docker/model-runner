@@ -1260,6 +1260,92 @@ func TestHandler_CreateResponse_Streaming_Persistence(t *testing.T) {
 	}
 }
 
+func TestHandler_CreateResponse_Streaming_ToolCallArgumentChunks(t *testing.T) {
+	// Chat completion streams send the id and name only in the first chunk of
+	// each tool call. The argument chunks that follow carry just the index
+	// (this is what llama.cpp and OpenAI send).
+	chunk := func(delta string) string {
+		return "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":" + delta + ",\"finish_reason\":null}]}\n\n"
+	}
+	mock := &mockSchedulerHTTP{
+		streaming: true,
+		streamChunks: []string{
+			chunk(`{"role":"assistant","content":null}`),
+			chunk(`{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_weather"}}]}`),
+			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}`),
+			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]}`),
+			chunk(`{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"get_time"}}]}`),
+			chunk(`{"tool_calls":[{"index":1,"function":{"arguments":"{\"tz\":\"CET\"}"}}]}`),
+			"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+			"data: [DONE]\n\n",
+		},
+	}
+
+	handler := newTestHandler(t, mock)
+
+	reqBody := `{"model": "gpt-4", "input": "Weather and time in Paris?", "stream": true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.handleCreate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	ids := handler.store.GetResponseIDs()
+	if len(ids) != 1 {
+		t.Fatalf("expected one stored response, got %d", len(ids))
+	}
+	persisted, ok := handler.store.Get(ids[0])
+	if !ok {
+		t.Fatal("stored response not found")
+	}
+
+	type call struct{ callID, name, args string }
+	var got []call
+	for _, item := range persisted.Output {
+		if item.Type == ItemTypeFunctionCall {
+			got = append(got, call{item.CallID, item.Name, item.Arguments})
+		}
+	}
+	want := []call{
+		{"call_a", "get_weather", `{"city":"Paris"}`},
+		{"call_b", "get_time", `{"tz":"CET"}`},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("function_call items = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("function_call[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	// Argument deltas must point at the output item they belong to.
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		data, found := strings.CutPrefix(line, "data: ")
+		if !found {
+			continue
+		}
+		var ev StreamEvent
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			t.Fatalf("bad event %q: %v", data, err)
+		}
+		if ev.Type != EventFunctionCallArgsDelta {
+			continue
+		}
+		wantIndex := 0
+		if strings.Contains(ev.Delta, "tz") {
+			wantIndex = 1
+		}
+		if ev.OutputIndex != wantIndex {
+			t.Errorf("delta %q has output_index %d, want %d", ev.Delta, ev.OutputIndex, wantIndex)
+		}
+	}
+}
+
 // Benchmark for response creation
 func BenchmarkHandler_CreateResponse(b *testing.B) {
 	mock := &mockSchedulerHTTP{
