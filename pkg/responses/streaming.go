@@ -322,13 +322,15 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) {
 	for _, tc := range toolCalls {
 		// Find or create the tool call item. Argument deltas after the first
-		// one carry only the index (no ID), so match on the index when present.
+		// one carry only the index (no ID), so match on the index first and
+		// fall back to the ID.
 		pos := -1
 		if tc.Index != nil {
 			if p, ok := s.toolCallPos[*tc.Index]; ok {
 				pos = p
 			}
-		} else if tc.ID != "" {
+		}
+		if pos < 0 && tc.ID != "" {
 			for i := range s.toolCalls {
 				if s.toolCalls[i].CallID == tc.ID {
 					pos = i
@@ -343,6 +345,7 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 			if item.Name == "" {
 				item.Name = tc.Function.Name
 			}
+			s.rememberToolCallIndex(tc.Index, pos)
 		} else {
 			// New tool call
 			callID := tc.ID
@@ -360,12 +363,7 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 			s.toolCalls = append(s.toolCalls, newItem)
 			pos = len(s.toolCalls) - 1
 			item = &s.toolCalls[pos]
-			if tc.Index != nil {
-				if s.toolCallPos == nil {
-					s.toolCallPos = make(map[int]int)
-				}
-				s.toolCallPos[*tc.Index] = pos
-			}
+			s.rememberToolCallIndex(tc.Index, pos)
 
 			// Send output_item.added for function call
 			s.sendEvent(EventOutputItemAdded, &StreamEvent{
@@ -390,6 +388,17 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 			})
 		}
 	}
+}
+
+// rememberToolCallIndex records which item a streaming tool call index refers to.
+func (s *StreamingResponseWriter) rememberToolCallIndex(index *int, pos int) {
+	if index == nil {
+		return
+	}
+	if s.toolCallPos == nil {
+		s.toolCallPos = make(map[int]int)
+	}
+	s.toolCallPos[*index] = pos
 }
 
 // finalize completes the streaming response.

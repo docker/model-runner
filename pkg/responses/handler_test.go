@@ -1346,6 +1346,24 @@ func TestHandler_CreateResponse_Streaming_ToolCallArgumentChunks(t *testing.T) {
 	}
 }
 
+func TestStreamingResponseWriter_ToolCallMatchedByIDThenIndex(t *testing.T) {
+	// A delta that adds the index to a call first seen by ID must extend
+	// that call, and later index-only deltas must go to the same call.
+	w := httptest.NewRecorder()
+	s := NewStreamingResponseWriter(w, &Response{}, nil)
+	idx := 0
+	s.handleToolCallDelta([]ChatToolCall{{ID: "call_a", Function: ChatFunctionCall{Name: "get_weather"}}})
+	s.handleToolCallDelta([]ChatToolCall{{Index: &idx, ID: "call_a", Function: ChatFunctionCall{Arguments: `{"city":`}}})
+	s.handleToolCallDelta([]ChatToolCall{{Index: &idx, Function: ChatFunctionCall{Arguments: `"Paris"}`}}})
+
+	if len(s.toolCalls) != 1 {
+		t.Fatalf("tool calls = %+v, want one", s.toolCalls)
+	}
+	if got := s.toolCalls[0]; got.CallID != "call_a" || got.Name != "get_weather" || got.Arguments != `{"city":"Paris"}` {
+		t.Errorf("tool call = %+v", got)
+	}
+}
+
 // Benchmark for response creation
 func BenchmarkHandler_CreateResponse(b *testing.B) {
 	mock := &mockSchedulerHTTP{
