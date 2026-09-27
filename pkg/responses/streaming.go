@@ -370,7 +370,7 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Type:           EventOutputItemAdded,
 				SequenceNumber: s.nextSeq(),
 				Item:           item,
-				OutputIndex:    pos,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 			})
 		}
 
@@ -383,11 +383,20 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Type:           EventFunctionCallArgsDelta,
 				SequenceNumber: s.nextSeq(),
 				ItemID:         item.ID,
-				OutputIndex:    pos,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 				Delta:          tc.Function.Arguments,
 			})
 		}
 	}
+}
+
+// toolCallOutputIndex converts a position in toolCalls to the corresponding
+// position in response.Output. The assistant message, when present, is first.
+func (s *StreamingResponseWriter) toolCallOutputIndex(pos int) int {
+	if s.currentItemID != "" {
+		return pos + 1
+	}
+	return pos
 }
 
 // rememberToolCallIndex records which item a streaming tool call index refers to.
@@ -475,7 +484,7 @@ func (s *StreamingResponseWriter) finalize() {
 			Type:           EventFunctionCallArgsDone,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         tc.ID,
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Delta:          tc.Arguments,
 		})
 
@@ -484,7 +493,7 @@ func (s *StreamingResponseWriter) finalize() {
 		s.sendEvent(EventOutputItemDone, &StreamEvent{
 			Type:           EventOutputItemDone,
 			SequenceNumber: s.nextSeq(),
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Item:           &tc,
 		})
 

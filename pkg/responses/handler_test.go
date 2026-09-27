@@ -1270,7 +1270,7 @@ func TestHandler_CreateResponse_Streaming_ToolCallArgumentChunks(t *testing.T) {
 	mock := &mockSchedulerHTTP{
 		streaming: true,
 		streamChunks: []string{
-			chunk(`{"role":"assistant","content":null}`),
+			chunk(`{"role":"assistant","content":"Checking the weather."}`),
 			chunk(`{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_weather"}}]}`),
 			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}`),
 			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]}`),
@@ -1329,6 +1329,9 @@ func TestHandler_CreateResponse_Streaming_ToolCallArgumentChunks(t *testing.T) {
 		if !found {
 			continue
 		}
+		if data == "[DONE]" {
+			continue
+		}
 		var ev StreamEvent
 		if err := json.Unmarshal([]byte(data), &ev); err != nil {
 			t.Fatalf("bad event %q: %v", data, err)
@@ -1336,9 +1339,9 @@ func TestHandler_CreateResponse_Streaming_ToolCallArgumentChunks(t *testing.T) {
 		if ev.Type != EventFunctionCallArgsDelta {
 			continue
 		}
-		wantIndex := 0
+		wantIndex := 1 // The assistant text item precedes the tool calls.
 		if strings.Contains(ev.Delta, "tz") {
-			wantIndex = 1
+			wantIndex = 2
 		}
 		if ev.OutputIndex != wantIndex {
 			t.Errorf("delta %q has output_index %d, want %d", ev.Delta, ev.OutputIndex, wantIndex)
