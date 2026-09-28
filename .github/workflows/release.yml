@@ -199,7 +199,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/docker-agent-action@b08367e7e9a471822464be2bb9fdaa1c0fb6061b # v2.0.4
+        uses: docker/docker-agent-action@3654ec391b070e247de2e2e3c1ff2519b6378b3a # v2.0.9
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -346,7 +346,7 @@ jobs:
 
       - name: Set up Buildx
         id: buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
         with:
           version: "lab:latest"
           driver: cloud
@@ -362,7 +362,7 @@ jobs:
         run: docker buildx prune -af --builder ${{ steps.buildx.outputs.name }}
 
       - name: Build CPU image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -378,7 +378,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -394,7 +394,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-vllm
@@ -411,7 +411,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-sglang
@@ -428,7 +428,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -443,7 +443,7 @@ jobs:
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
       - name: Build MUSA image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -459,7 +459,7 @@ jobs:
           tags: ${{ steps.tags.outputs.musa }}
 
       - name: Build OpenVINO image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
