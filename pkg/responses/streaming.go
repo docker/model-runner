@@ -22,6 +22,8 @@ type StreamingResponseWriter struct {
 	currentContentIdx  int
 	accumulatedContent strings.Builder
 	toolCalls          []OutputItem
+	// toolCallPos maps a streaming tool call index to its position in toolCalls.
+	toolCallPos map[int]int
 }
 
 // NewStreamingResponseWriter creates a new streaming response writer.
@@ -319,16 +321,32 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 // handleToolCallDelta handles tool call deltas from the chat completion stream.
 func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) {
 	for _, tc := range toolCalls {
-		// Find or create the tool call item
-		var item *OutputItem
-		for i := range s.toolCalls {
-			if s.toolCalls[i].CallID == tc.ID {
-				item = &s.toolCalls[i]
-				break
+		// Find or create the tool call item. Argument deltas after the first
+		// one carry only the index (no ID), so match on the index first and
+		// fall back to the ID.
+		pos := -1
+		if tc.Index != nil {
+			if p, ok := s.toolCallPos[*tc.Index]; ok {
+				pos = p
+			}
+		}
+		if pos < 0 && tc.ID != "" {
+			for i := range s.toolCalls {
+				if s.toolCalls[i].CallID == tc.ID {
+					pos = i
+					break
+				}
 			}
 		}
 
-		if item == nil {
+		var item *OutputItem
+		if pos >= 0 {
+			item = &s.toolCalls[pos]
+			if item.Name == "" {
+				item.Name = tc.Function.Name
+			}
+			s.rememberToolCallIndex(tc.Index, pos)
+		} else {
 			// New tool call
 			callID := tc.ID
 			if callID == "" {
@@ -343,14 +361,16 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Status:    StatusInProgress,
 			}
 			s.toolCalls = append(s.toolCalls, newItem)
-			item = &s.toolCalls[len(s.toolCalls)-1]
+			pos = len(s.toolCalls) - 1
+			item = &s.toolCalls[pos]
+			s.rememberToolCallIndex(tc.Index, pos)
 
 			// Send output_item.added for function call
 			s.sendEvent(EventOutputItemAdded, &StreamEvent{
 				Type:           EventOutputItemAdded,
 				SequenceNumber: s.nextSeq(),
 				Item:           item,
-				OutputIndex:    len(s.toolCalls) - 1,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 			})
 		}
 
@@ -363,11 +383,31 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Type:           EventFunctionCallArgsDelta,
 				SequenceNumber: s.nextSeq(),
 				ItemID:         item.ID,
-				OutputIndex:    len(s.toolCalls) - 1,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 				Delta:          tc.Function.Arguments,
 			})
 		}
 	}
+}
+
+// toolCallOutputIndex converts a position in toolCalls to the corresponding
+// position in response.Output. The assistant message, when present, is first.
+func (s *StreamingResponseWriter) toolCallOutputIndex(pos int) int {
+	if s.currentItemID != "" {
+		return pos + 1
+	}
+	return pos
+}
+
+// rememberToolCallIndex records which item a streaming tool call index refers to.
+func (s *StreamingResponseWriter) rememberToolCallIndex(index *int, pos int) {
+	if index == nil {
+		return
+	}
+	if s.toolCallPos == nil {
+		s.toolCallPos = make(map[int]int)
+	}
+	s.toolCallPos[*index] = pos
 }
 
 // finalize completes the streaming response.
@@ -444,7 +484,7 @@ func (s *StreamingResponseWriter) finalize() {
 			Type:           EventFunctionCallArgsDone,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         tc.ID,
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Delta:          tc.Arguments,
 		})
 
@@ -453,7 +493,7 @@ func (s *StreamingResponseWriter) finalize() {
 		s.sendEvent(EventOutputItemDone, &StreamEvent{
 			Type:           EventOutputItemDone,
 			SequenceNumber: s.nextSeq(),
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Item:           &tc,
 		})
 

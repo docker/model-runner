@@ -75,6 +75,9 @@ type ChatFunction struct {
 
 // ChatToolCall represents a tool call in chat format.
 type ChatToolCall struct {
+	// Index identifies the tool call in streaming deltas. Only the first
+	// delta of a call carries its ID; later argument deltas carry only Index.
+	Index    *int             `json:"index,omitempty"`
 	ID       string           `json:"id"`
 	Type     string           `json:"type"`
 	Function ChatFunctionCall `json:"function"`
