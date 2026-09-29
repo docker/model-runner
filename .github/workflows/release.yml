@@ -31,14 +31,8 @@ on:
         description: "SGLang version"
         required: false
         type: string
-      # This can be removed once we have llama.cpp built for MUSA and CANN.
-      buildMusaCann:
-        description: "Build MUSA and CANN images"
-        required: false
-        type: boolean
-        default: false
       imagesOnly:
-        description: "Only build and push Docker images (skip CLI releases, pinata bump, docs update, and CE packaging)"
+        description: "Only build and push Docker images (skip CLI releases and CE packaging)"
         required: false
         type: boolean
         default: false
@@ -58,7 +52,7 @@ jobs:
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
@@ -67,14 +61,54 @@ jobs:
         env:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           BUMP_TYPE: ${{ inputs.bumpType || 'patch' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --- Find the latest existing v* tag ---
-          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          echo "Latest existing tag: ${LATEST_TAG:-<none>}"
+          # Strict semver (vX.Y.Z) pattern for this workflow's release track.
+          # Defined once and reused for release discovery, explicit-tag
+          # validation, and the final guard so the rule can't drift.
+          RELEASE_TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
+
+          # --- Find the latest published GitHub Release tag ---
+          # This workflow owns the container-image / docker-model-plugin track,
+          # which uses strict semver tags (vX.Y.Z). The standalone `dmr` binary
+          # is released separately via release-dmr.yml on `dmr-v*` tags. Filter
+          # to our own scheme so we never pick up the other track's release
+          # (gh release list is newest-first by creation, so `first` = newest).
+          # 100 comfortably covers this repo's release cadence; if the latest
+          # vX.Y.Z ever falls outside that window (e.g. a burst of off-track
+          # dmr-v* releases), the git-tag fallback below still finds it.
+          LATEST_RELEASE_TAG=""
+          GH_ERR=$(mktemp)
+          if RELEASES_JSON=$(gh release list --limit 100 --json tagName 2>"$GH_ERR"); then
+            LATEST_RELEASE_TAG=$(printf '%s' "$RELEASES_JSON" \
+              | jq -r --arg pat "$RELEASE_TAG_PATTERN" \
+                  'map(.tagName) | map(select(test($pat))) | first // ""')
+          else
+            # Surface the failure instead of silently degrading, then fall back.
+            echo "::warning::gh release list failed; falling back to git tags: $(cat "$GH_ERR")"
+          fi
+          rm -f "$GH_ERR"
+
+          # Fall back to git tags when the release lookup found no semver match —
+          # because it failed, because no GitHub Releases exist yet, or because
+          # the newest 100 releases were all off-track and the true latest
+          # vX.Y.Z release fell outside that window. `git tag` is unbounded, so
+          # this always finds the real latest semver tag. Match only strict
+          # semver — the 'v*' glob would also match stray tags like
+          # 'vdmr-v0.1.1'. `|| true` keeps a no-match grep from tripping
+          # pipefail (a fresh repo with no semver tags is valid — see below).
+          if [ -n "$LATEST_RELEASE_TAG" ]; then
+            LATEST_TAG="$LATEST_RELEASE_TAG"
+            echo "Latest published GitHub Release tag: $LATEST_TAG"
+          else
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname \
+              | { grep -E "$RELEASE_TAG_PATTERN" || true; } | head -1)
+            echo "No matching GitHub Release found, falling back to latest git tag: ${LATEST_TAG:-<none>}"
+          fi
 
           if [ -n "$EXPLICIT_TAG" ]; then
             # Validate explicit tag format
-            if ! echo "$EXPLICIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            if ! echo "$EXPLICIT_TAG" | grep -qE "$RELEASE_TAG_PATTERN"; then
               echo "::error::Invalid release tag format: '$EXPLICIT_TAG'. Expected format: v<MAJOR>.<MINOR>.<PATCH> (e.g., v1.2.3)"
               exit 1
             fi
@@ -120,6 +154,13 @@ jobs:
             fi
           fi
 
+          # Guard: never let a malformed tag reach the image build or the
+          # downstream release triggers. Must be strict semver (vX.Y.Z).
+          if ! echo "$RELEASE_TAG" | grep -qE "$RELEASE_TAG_PATTERN"; then
+            echo "::error::Resolved release tag '$RELEASE_TAG' is not valid vX.Y.Z. Aborting."
+            exit 1
+          fi
+
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "previous_tag=${PREVIOUS_TAG:-}" >> "$GITHUB_OUTPUT"
@@ -153,12 +194,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
       - name: Generate release notes
-        uses: docker/cagent-action@ec4865576952df6285652f2cf8ffb4ad45ff5f80
+        uses: docker/docker-agent-action@3654ec391b070e247de2e2e3c1ff2519b6378b3a # v2.0.9
         with:
           agent: .github/agents/release-notes-generator.yaml
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -199,14 +240,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Load GO version
         id: versions
         uses: ./.github/actions/load-go-version
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
@@ -227,10 +268,9 @@ jobs:
       LLAMA_SERVER_VERSION: ${{ inputs.llamaServerVersion }}
       VLLM_VERSION: ${{ inputs.vllmVersion }}
       SGLANG_VERSION: ${{ inputs.sglangVersion }}
-      BUILD_MUSA_CANN: ${{ inputs.buildMusaCann || 'false' }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Format tags
         id: tags
@@ -252,19 +292,19 @@ jobs:
           echo "docker/model-runner:$RELEASE_TAG-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-sglang-cuda" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
           echo "musa<<EOF" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:$RELEASE_TAG-musa" >> "$GITHUB_OUTPUT"
           echo "docker/model-runner:latest-musa" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          echo "cann<<EOF" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:$RELEASE_TAG-cann" >> "$GITHUB_OUTPUT"
-          echo "docker/model-runner:latest-cann" >> "$GITHUB_OUTPUT"
+          echo "openvino<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-openvino" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-openvino" >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
-          
+          echo "rocm<<EOF" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:$RELEASE_TAG-rocm" >> "$GITHUB_OUTPUT"
+          echo "docker/model-runner:latest-rocm" >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+
       - name: Load versions
         shell: bash
         run: |
@@ -277,28 +317,60 @@ jobs:
           echo "VLLM_VERSION=${VLLM_VERSION:-$VERSIONS_VLLM}"                   >> "$GITHUB_ENV"
           echo "SGLANG_VERSION=${SGLANG_VERSION:-$VERSIONS_SGLANG}"             >> "$GITHUB_ENV"
 
+      - name: Resolve llama.cpp upstream images
+        id: llama-images
+        shell: bash
+        run: |
+          CPU_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cpu)
+          CUDA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" cuda)
+          ROCM_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" rocm)
+          MUSA_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" musa)
+          OPENVINO_IMAGE=$(bash scripts/resolve-llama-upstream-image.sh \
+            "$LLAMA_SERVER_VERSION" openvino)
+
+          echo "cpu=$CPU_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "cuda=$CUDA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "rocm=$ROCM_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "musa=$MUSA_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
+
       - name: Log in to DockerHub
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
         with:
           version: "lab:latest"
           driver: cloud
           endpoint: "docker/make-product-smarter"
           install: true
 
+      # Purge the shared cloud builder's cache before building. The release
+      # builds 7 image variants (cpu/cuda on amd64+arm64) on one cloud builder,
+      # and accumulated cache from previous runs eventually fills its disk —
+      # surfacing as "no space left on device" while unpacking the (growing)
+      # upstream llama.cpp image snapshots. Starting clean avoids that.
+      - name: Free build cache on cloud builder
+        run: docker buildx prune -af --builder ${{ steps.buildx.outputs.name }}
+
       - name: Build CPU image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
           platforms: linux/amd64, linux/arm64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
+            "LLAMA_SERVER_VARIANT=cpu"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cpu }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -306,7 +378,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cpu }}
 
       - name: Build CUDA image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -314,7 +386,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
@@ -322,7 +394,7 @@ jobs:
           tags: ${{ steps.tags.outputs.cuda }}
 
       - name: Build vLLM CUDA image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-vllm
@@ -330,7 +402,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:13.0.2-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "VLLM_VERSION=${{ env.VLLM_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
@@ -339,7 +411,7 @@ jobs:
           tags: ${{ steps.tags.outputs.vllm-cuda }}
 
       - name: Build SGLang CUDA image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-sglang
@@ -347,7 +419,7 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=cuda"
-            "BASE_IMAGE=nvidia/cuda:12.9.0-runtime-ubuntu24.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.cuda }}"
             "SGLANG_VERSION=${{ env.SGLANG_VERSION }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
@@ -356,7 +428,7 @@ jobs:
           tags: ${{ steps.tags.outputs.sglang-cuda }}
 
       - name: Build ROCm image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -364,16 +436,14 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=rocm"
-            "BASE_IMAGE=rocm/dev-ubuntu-22.04"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.rocm }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.rocm }}
-
       - name: Build MUSA image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
@@ -381,29 +451,29 @@ jobs:
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
             "LLAMA_SERVER_VARIANT=musa"
-            "BASE_IMAGE=mthreads/musa:rc4.3.0-runtime-ubuntu22.04-amd64"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.musa }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
           tags: ${{ steps.tags.outputs.musa }}
 
-      - name: Build CANN image
-        if: ${{ env.BUILD_MUSA_CANN == 'true' }}
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+      - name: Build OpenVINO image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           file: Dockerfile
           target: final-llamacpp
-          platforms: linux/arm64, linux/amd64
+          platforms: linux/amd64
           build-args: |
             "LLAMA_SERVER_VERSION=${{ env.LLAMA_SERVER_VERSION }}"
-            "LLAMA_SERVER_VARIANT=cann"
-            "BASE_IMAGE=ascendai/cann:8.2.rc2-910b-ubuntu22.04-py3.11"
+            "LLAMA_SERVER_VARIANT=openvino"
+            "LLAMA_UPSTREAM_IMAGE=${{ steps.llama-images.outputs.openvino }}"
             "VERSION=${{ env.RELEASE_TAG }}"
           push: true
           sbom: true
           provenance: mode=max
-          tags: ${{ steps.tags.outputs.cann }}
+          tags: ${{ steps.tags.outputs.openvino }}
+
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker Desktop — build, sign & push CLI + Desktop module image
@@ -415,7 +485,32 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Idempotency guard: a re-run of the release for a tag that was already
+      # published must NOT re-trigger the downstream release. The desktop
+      # release re-pushes docker/docker-model-cli-desktop-module:<tag>, and
+      # pushing an already-existing tag fails with "403 denied". Detect the
+      # already-published tag on Docker Hub and skip the trigger instead.
+      - name: Log in to DockerHub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          username: "docker"
+          password: ${{ secrets.ORG_ACCESS_TOKEN }}
+
+      - name: Check whether desktop module is already published
+        id: published
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          if docker manifest inspect \
+              "docker/docker-model-cli-desktop-module:$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "✅ desktop-module:$RELEASE_TAG already exists — skipping trigger"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Trigger Desktop CLI release and wait for completion
+        if: steps.published.outputs.already != 'true'
         env:
           GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -423,35 +518,57 @@ jobs:
         run: |
           echo "🚀 Triggering Desktop CLI release workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-cli-dd.yml \
+          # Record the newest existing run BEFORE dispatch so we can identify
+          # the run WE trigger. `gh workflow run` prints nothing usable on
+          # stdout, and "query the latest run" races: it can return a run
+          # started by someone else, or a stale completed run (which is how a
+          # trigger job can "succeed" while watching the wrong run). Run IDs are
+          # monotonically increasing, so the first run with a strictly greater
+          # ID than BEFORE_ID is ours.
+          BEFORE_ID=$(gh run list \
+            --repo docker/inference-engine-llama.cpp \
+            --workflow release-cli-dd.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-cli-dd.yml"
+              exit 1
+              ;;
+          esac
+
+          gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
             -f model-cli-ref="$RELEASE_TAG" \
-            -f tag="v$VERSION")
+            -f tag="v$VERSION"
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
-
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
+          RUN_ID=""
+          LAST_SEEN=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine workflow run ID"
+            echo "::error::Failed to determine Desktop CLI release run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Desktop CLI release workflow triggered"
 
           echo "⏳ Waiting for Desktop CLI release to complete..."
@@ -459,189 +576,6 @@ jobs:
             --repo docker/inference-engine-llama.cpp \
             --exit-status
           echo "✅ Desktop CLI release completed successfully"
-
-  # ---------------------------------------------------------------------------
-  # Bump docker-model version in pinata and open a PR
-  # ---------------------------------------------------------------------------
-  bump-pinata:
-    if: ${{ !inputs.imagesOnly }}
-    needs: [prepare, release-cli-desktop]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout pinata
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: docker/pinata
-          token: ${{ secrets.CLI_RELEASE_PAT }}
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Fetch latest llamacpp version from Docker Hub
-        id: llamacpp
-        run: |
-          TAGS_JSON=$(curl -s "https://hub.docker.com/v2/repositories/docker/docker-model-backend-llamacpp/tags?page_size=25&ordering=last_updated")
-          LLAMACPP_VERSION=$(echo "$TAGS_JSON" | jq -r '
-            (.results[] | select(.name == "latest-cpu") | .digest) as $d |
-            .results[] | select(.name != "latest-cpu" and (.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-cpu$")) and .digest == $d) | .name | split("-")[0]
-          ')
-          if [ -z "$LLAMACPP_VERSION" ] || [ "$LLAMACPP_VERSION" = "null" ]; then
-            echo "::error::Failed to fetch latest llamacpp version from Docker Hub"
-            exit 1
-          fi
-          echo "version=$LLAMACPP_VERSION" >> "$GITHUB_OUTPUT"
-          echo "📦 Latest llamacpp version: $LLAMACPP_VERSION"
-
-      - name: Bump docker-model and llamacpp versions in build.json
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          LLAMACPP_VERSION: ${{ steps.llamacpp.outputs.version }}
-        run: |
-          NEW_VERSION="v${VERSION}"
-          jq --arg model_v "$NEW_VERSION" --arg llama_v "$LLAMACPP_VERSION" '
-            .["docker-model"].version = $model_v |
-            .["llamacpp"].version = $llama_v
-          ' build.json > build.json.tmp
-          mv build.json.tmp build.json
-
-      - name: Bump model-runner Go dependency
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          go get github.com/docker/model-runner@v${VERSION}
-          go mod tidy
-          go mod vendor
-
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
-        with:
-          token: ${{ secrets.CLI_RELEASE_PAT }}
-          base: main
-          commit-message: "chore: bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
-          branch: bump-docker-model-v${{ needs.prepare.outputs.version }}
-          title: "Bump docker-model to v${{ needs.prepare.outputs.version }} and llamacpp to ${{ steps.llamacpp.outputs.version }}"
-          body: |
-            ### Ticket(s)
-
-            N/A — automated version bump
-
-            ### What this PR does
-
-            - Bumps docker-model version to v${{ needs.prepare.outputs.version }} in build.json.
-            - Bumps llamacpp version to ${{ steps.llamacpp.outputs.version }} in build.json (latest from [Docker Hub](https://hub.docker.com/r/docker/docker-model-backend-llamacpp/tags)).
-            - Updates `github.com/docker/model-runner` Go module to v${{ needs.prepare.outputs.version }} (go get + go mod tidy + go mod vendor).
-
-            ### Notes for the reviewer
-
-            Automated PR created by the model-runner release workflow.
-
-          draft: true
-
-  # ---------------------------------------------------------------------------
-  # Update CLI reference docs in docker/docs
-  # ---------------------------------------------------------------------------
-  update-docs:
-    if: ${{ !inputs.imagesOnly }}
-    needs: [prepare]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check if CLI docs changed
-        id: check-docs
-        env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
-        run: |
-          if [ -z "$PREVIOUS_TAG" ]; then
-            echo "No previous tag — assuming docs changed"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          CHANGED=$(gh api repos/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG} \
-            --jq '[.files[].filename | select(startswith("cmd/cli/docs/reference/"))] | length')
-          if [ "$CHANGED" -gt 0 ]; then
-            echo "CLI docs changed ($CHANGED files)"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No CLI docs changes between $PREVIOUS_TAG and $RELEASE_TAG — skipping"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout model-runner
-        if: steps.check-docs.outputs.changed == 'true'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Load GO version
-        if: steps.check-docs.outputs.changed == 'true'
-        id: versions
-        uses: ./.github/actions/load-go-version
-
-      - name: Checkout docs
-        if: steps.check-docs.outputs.changed == 'true'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: docker/docs
-          token: ${{ secrets.CLI_RELEASE_PAT }}
-          fetch-depth: 0
-
-      - name: Set up Go
-        if: steps.check-docs.outputs.changed == 'true'
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
-        with:
-          go-version: ${{ steps.versions.outputs.go-version }}
-          cache: true
-
-      - name: Vendor model-runner CLI docs
-        if: steps.check-docs.outputs.changed == 'true'
-        env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-        run: |
-          VENDOR_MODULE=github.com/docker/model-runner@${RELEASE_TAG} make vendor
-          # Remove the second require block added by `go get` — the docs repo
-          # only needs the direct dependency in the first require block.
-          awk '/^require \(/{n++} n==2{if(/^\)/) n=3; next} n!=2' go.mod > go.mod.tmp && mv go.mod.tmp go.mod
-          cat -s go.mod > go.mod.tmp && mv go.mod.tmp go.mod
-
-      - name: Create pull request
-        if: steps.check-docs.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
-        with:
-          token: ${{ secrets.DOCKER_DOCS }}
-          base: main
-          push-to-fork: ilopezluna/docs
-          commit-message: |
-            vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}
-
-            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
-          branch: update-model-runner-${{ needs.prepare.outputs.release_tag }}
-          title: "vendor: github.com/docker/model-runner ${{ needs.prepare.outputs.release_tag }}"
-          body: |
-            ## Description
-
-            Update Model Runner CLI docs.
-            See changes in https://github.com/docker/model-runner/compare/${{ needs.prepare.outputs.previous_tag }}...${{ needs.prepare.outputs.release_tag }}.
-
-            ```
-            VENDOR_MODULE=github.com/docker/model-runner@${{ needs.prepare.outputs.release_tag }} make vendor
-            ```
-
-            ## Reviews
-
-            <!-- Notes for reviewers here -->
-            <!-- List applicable reviews (optionally @tag reviewers) -->
-
-            - [ ] Technical review
-            - [ ] Editorial review
-            - [ ] Product review
-          draft: true
 
   # ---------------------------------------------------------------------------
   # Release CLI for Docker CE — build .deb/.rpm packages and deploy
@@ -669,34 +603,54 @@ jobs:
         run: |
           echo "📦 Triggering packaging workflow"
 
-          # gh workflow run returns run URL on stdout (gh v2.87.0+)
-          OUTPUT=$(gh workflow run release-model.yml \
+          # Identify the run WE trigger by its ID, not by "the latest run".
+          # `gh workflow run` prints nothing usable on stdout and querying the
+          # newest run right after dispatch races with concurrent/stale runs.
+          # Run IDs increase monotonically, so the first run with an ID greater
+          # than the pre-dispatch newest is ours. (See release-cli-desktop.)
+          BEFORE_ID=$(gh run list \
             --repo docker/packaging \
-            -f ref="$RELEASE_TAG")
+            --workflow release-model.yml \
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+          case "$BEFORE_ID" in
+            ''|*[!0-9]*)
+              echo "::error::Could not read the pre-dispatch run ID for release-model.yml"
+              exit 1
+              ;;
+          esac
 
-          RUN_URL=$(echo "$OUTPUT" \
-            | grep -o 'https://github.com/[^ ]*/actions/runs/[0-9]*') || true
+          gh workflow run release-model.yml \
+            --repo docker/packaging \
+            -f ref="$RELEASE_TAG"
 
-          if [ -z "$RUN_URL" ]; then
-            echo "⚠️ Could not extract run URL from gh output, querying latest run..."
-            sleep 5
-            RUN_ID=$(gh run list \
+          # Poll for the run WE just triggered: the first run whose ID exceeds
+          # BEFORE_ID. Tolerate transient `gh` failures mid-poll (empty or
+          # non-numeric CANDIDATE) by skipping the iteration — a flaky query
+          # must not abort the release on `integer expression expected`.
+          RUN_ID=""
+          LAST_SEEN=""
+          for _ in $(seq 1 30); do
+            sleep 3
+            CANDIDATE=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-          else
-            RUN_ID=$(echo "$RUN_URL" | grep -o '[0-9]*$')
-          fi
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            case "$CANDIDATE" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            LAST_SEEN="$CANDIDATE"
+            if [ "$CANDIDATE" -gt "$BEFORE_ID" ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+          done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Failed to determine packaging workflow run ID"
+            echo "::error::Failed to determine packaging workflow run ID after ~90s (before=$BEFORE_ID, last seen=${LAST_SEEN:-none})"
             exit 1
           fi
 
           echo "::add-mask::$RUN_ID"
-          echo "::add-mask::$RUN_URL"
           echo "✅ Packaging workflow triggered"
 
           echo "⏳ Waiting for packaging to complete..."
@@ -747,7 +701,7 @@ jobs:
     environment: release-repo-deploy
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Verify client and server versions
         run: |
@@ -758,7 +712,7 @@ jobs:
   # Create GitHub Release with AI-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, bump-pinata, update-docs, verify-docker-ce]
+    needs: [prepare, release-notes, build, release-cli-desktop, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
@@ -775,6 +729,12 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          # Idempotency: a re-run for an already-released tag must not fail here.
+          if gh release view "$RELEASE_TAG" --repo docker/model-runner >/dev/null 2>&1; then
+            echo "✅ GitHub Release $RELEASE_TAG already exists — skipping creation"
+            exit 0
+          fi
+
           echo "Creating GitHub Release for $RELEASE_TAG"
           gh release create "$RELEASE_TAG" \
             --repo docker/model-runner \

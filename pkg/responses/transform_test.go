@@ -2,6 +2,7 @@ package responses
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -223,6 +224,41 @@ func TestTransformRequestToChatCompletion_FunctionCallOutput(t *testing.T) {
 	}
 }
 
+func TestTransformRequestToChatCompletion_PreviousResponseNotFound(t *testing.T) {
+	store := NewStore(DefaultTTL)
+	t.Cleanup(store.Close)
+
+	req := &CreateRequest{
+		Model:              "gpt-4",
+		Input:              json.RawMessage(`"Hello"`),
+		PreviousResponseID: "resp_missing",
+	}
+
+	_, err := TransformRequestToChatCompletion(req, store)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), `previous_response_id "resp_missing" was not found`) {
+		t.Fatalf("error = %q, want previous_response_id not found", err.Error())
+	}
+}
+
+func TestTransformRequestToChatCompletion_PreviousResponseWithoutStore(t *testing.T) {
+	req := &CreateRequest{
+		Model:              "gpt-4",
+		Input:              json.RawMessage(`"Hello"`),
+		PreviousResponseID: "resp_missing",
+	}
+
+	_, err := TransformRequestToChatCompletion(req, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "response storage is unavailable") {
+		t.Fatalf("error = %q, want storage unavailable", err.Error())
+	}
+}
+
 func TestTransformRequestToChatCompletion_WithParameters(t *testing.T) {
 	temp := 0.7
 	topP := 0.9
@@ -253,6 +289,156 @@ func TestTransformRequestToChatCompletion_WithParameters(t *testing.T) {
 	}
 	if !chatReq.Stream {
 		t.Error("stream should be true")
+	}
+}
+
+func TestTransformRequestToChatCompletion_TextFormatJSONSchema(t *testing.T) {
+	strict := true
+	schema := json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":false}`)
+	req := &CreateRequest{
+		Model: "gpt-4",
+		Input: json.RawMessage(`"Answer in JSON"`),
+		Text: &ResponseTextConfig{
+			Format: &ResponseTextFormat{
+				Type:        "json_schema",
+				Name:        "answer_prompt",
+				Description: "Answer payload",
+				Schema:      schema,
+				Strict:      &strict,
+			},
+		},
+	}
+
+	chatReq, err := TransformRequestToChatCompletion(req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if chatReq.ResponseFormat == nil {
+		t.Fatal("response_format is nil")
+	}
+	if chatReq.ResponseFormat.Type != "json_schema" {
+		t.Errorf("response_format.type = %s, want json_schema", chatReq.ResponseFormat.Type)
+	}
+	if chatReq.ResponseFormat.JSONSchema == nil {
+		t.Fatal("response_format.json_schema is nil")
+	}
+	if chatReq.ResponseFormat.JSONSchema.Name != "answer_prompt" {
+		t.Errorf("json_schema.name = %s, want answer_prompt", chatReq.ResponseFormat.JSONSchema.Name)
+	}
+	if chatReq.ResponseFormat.JSONSchema.Description != "Answer payload" {
+		t.Errorf("json_schema.description = %s, want Answer payload", chatReq.ResponseFormat.JSONSchema.Description)
+	}
+	if string(chatReq.ResponseFormat.JSONSchema.Schema) != string(schema) {
+		t.Errorf("json_schema.schema = %s, want %s", chatReq.ResponseFormat.JSONSchema.Schema, schema)
+	}
+	if chatReq.ResponseFormat.JSONSchema.Strict == nil || !*chatReq.ResponseFormat.JSONSchema.Strict {
+		t.Errorf("json_schema.strict = %v, want true", chatReq.ResponseFormat.JSONSchema.Strict)
+	}
+}
+
+func TestTransformRequestToChatCompletion_TextFormatJSONObject(t *testing.T) {
+	req := &CreateRequest{
+		Model: "gpt-4",
+		Input: json.RawMessage(`"Answer with a JSON object"`),
+		Text: &ResponseTextConfig{
+			Format: &ResponseTextFormat{
+				Type: "json_object",
+			},
+		},
+	}
+
+	chatReq, err := TransformRequestToChatCompletion(req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chatReq.ResponseFormat == nil {
+		t.Fatal("response_format is nil")
+	}
+	if chatReq.ResponseFormat.Type != "json_object" {
+		t.Errorf("response_format.type = %s, want json_object", chatReq.ResponseFormat.Type)
+	}
+	if chatReq.ResponseFormat.JSONSchema != nil {
+		t.Errorf("response_format.json_schema = %v, want nil", chatReq.ResponseFormat.JSONSchema)
+	}
+}
+
+func TestTransformRequestToChatCompletion_TextFormatTextOmitted(t *testing.T) {
+	req := &CreateRequest{
+		Model: "gpt-4",
+		Input: json.RawMessage(`"Hello"`),
+		Text: &ResponseTextConfig{
+			Format: &ResponseTextFormat{
+				Type: "text",
+			},
+		},
+	}
+
+	chatReq, err := TransformRequestToChatCompletion(req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chatReq.ResponseFormat != nil {
+		t.Errorf("response_format = %v, want nil", chatReq.ResponseFormat)
+	}
+}
+
+func TestTransformRequestToChatCompletion_TextFormatValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  ResponseTextFormat
+		wantErr string
+	}{
+		{
+			name:    "invalid type",
+			format:  ResponseTextFormat{Type: "xml"},
+			wantErr: "unsupported text.format.type",
+		},
+		{
+			name:    "json schema requires name",
+			format:  ResponseTextFormat{Type: "json_schema", Schema: json.RawMessage(`{"type":"object"}`)},
+			wantErr: "text.format.name is required",
+		},
+		{
+			name:    "json schema validates name",
+			format:  ResponseTextFormat{Type: "json_schema", Name: "not valid", Schema: json.RawMessage(`{"type":"object"}`)},
+			wantErr: "text.format.name must contain",
+		},
+		{
+			name:    "json schema requires schema",
+			format:  ResponseTextFormat{Type: "json_schema", Name: "answer"},
+			wantErr: "text.format.schema is required",
+		},
+		{
+			name:    "json schema must be valid JSON",
+			format:  ResponseTextFormat{Type: "json_schema", Name: "answer", Schema: json.RawMessage(`{invalid`)},
+			wantErr: "text.format.schema must be a valid JSON object",
+		},
+		{
+			name:    "json schema must be object",
+			format:  ResponseTextFormat{Type: "json_schema", Name: "answer", Schema: json.RawMessage(`[]`)},
+			wantErr: "text.format.schema must be a JSON object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &CreateRequest{
+				Model: "gpt-4",
+				Input: json.RawMessage(`"Hello"`),
+				Text: &ResponseTextConfig{
+					Format: &tt.format,
+				},
+			}
+
+			_, err := TransformRequestToChatCompletion(req, nil)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want to contain %q", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }
 

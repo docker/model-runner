@@ -26,7 +26,8 @@ const (
 	Name              = "diffusers"
 	defaultInstallDir = ".docker/model-runner/diffusers"
 	// diffusersVersion is the diffusers release tag to download from Docker Hub.
-	diffusersVersion = "v0.1.0-20260216-000000"
+	// Keep in sync with DIFFUSERS_RELEASE in .versions.
+	diffusersVersion = "v0.1.0-20260617-000000"
 )
 
 var (
@@ -53,11 +54,18 @@ type diffusers struct {
 	customPythonPath string
 	// installDir is the directory where diffusers is installed.
 	installDir string
+	// registryMirrors is the list of registry mirrors to try before registry-1.docker.io.
+	registryMirrors []string
+	// registryCredentials, if non-nil, resolves credentials for the registry (or
+	// mirror) the backend image is fetched from.
+	registryCredentials inference.RegistryCredentials
+	// commandModifier, if non-nil, is applied to the server process before it starts.
+	commandModifier func(*exec.Cmd)
 }
 
 // New creates a new diffusers-based backend for image generation.
 // customPythonPath is an optional path to a custom python3 binary; if empty, the default installation is used.
-func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string) (inference.Backend, error) {
+func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Logger, conf *Config, customPythonPath string, registryMirrors []string, registryCredentials inference.RegistryCredentials, commandModifier func(*exec.Cmd)) (inference.Backend, error) {
 	// If no config is provided, use the default configuration
 	if conf == nil {
 		conf = NewDefaultConfig()
@@ -70,13 +78,16 @@ func New(log logging.Logger, modelManager *models.Manager, serverLog logging.Log
 	installDir := filepath.Join(homeDir, defaultInstallDir)
 
 	return &diffusers{
-		log:              log,
-		modelManager:     modelManager,
-		serverLog:        serverLog,
-		config:           conf,
-		status:           inference.FormatNotInstalled(""),
-		customPythonPath: customPythonPath,
-		installDir:       installDir,
+		log:                 log,
+		modelManager:        modelManager,
+		serverLog:           serverLog,
+		config:              conf,
+		status:              inference.FormatNotInstalled(""),
+		customPythonPath:    customPythonPath,
+		installDir:          installDir,
+		registryMirrors:     registryMirrors,
+		registryCredentials: registryCredentials,
+		commandModifier:     commandModifier,
 	}, nil
 }
 
@@ -151,7 +162,7 @@ func (d *diffusers) downloadAndExtract(ctx context.Context) error {
 
 	// Pull the image
 	image := fmt.Sprintf("registry-1.docker.io/docker/model-runner:diffusers-%s", diffusersVersion)
-	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH); err != nil {
+	if err := dockerhub.PullPlatform(ctx, image, filepath.Join(downloadDir, "image.tar"), runtime.GOOS, runtime.GOARCH, d.registryMirrors, d.registryCredentials); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
@@ -255,12 +266,13 @@ func (d *diffusers) Run(ctx context.Context, socket, model string, modelRef stri
 		BackendName:      "Diffusers",
 		Socket:           socket,
 		BinaryPath:       d.pythonPath,
-		SandboxPath:      "",
+		SandboxPath:      d.installDir,
 		SandboxConfig:    sandbox.ConfigurationPython,
 		Args:             args,
 		Logger:           d.log,
 		ServerLogWriter:  logging.NewWriter(d.serverLog),
 		ErrorTransformer: ExtractPythonError,
+		CommandModifier:  d.commandModifier,
 	})
 }
 

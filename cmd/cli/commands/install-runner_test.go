@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -152,5 +153,143 @@ func TestInstallRunnerValidArgsFunction(t *testing.T) {
 	// So ValidArgsFunction should be set to handle no arguments
 	if cmd.ValidArgsFunction == nil {
 		t.Error("Expected ValidArgsFunction to be set")
+	}
+}
+
+func TestExistingRunnerOptionsHintNoExplicitOptions(t *testing.T) {
+	cmd := newInstallRunner()
+
+	// Default install-runner options should not print a reinstall hint.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		backend: "",
+		gpuMode: "auto",
+	})
+
+	if got != "" {
+		t.Fatalf("expected no hint when backend/gpu flags are not explicitly changed, got %q", got)
+	}
+}
+
+func TestExistingRunnerOptionsHintWithBackendOnly(t *testing.T) {
+	cmd := newInstallRunner()
+
+	if err := cmd.Flags().Set("backend", vllm.Name); err != nil {
+		t.Fatal(err)
+	}
+
+	// A backend-only request should preserve only the explicit backend flag.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		backend: vllm.Name,
+		gpuMode: "auto",
+	})
+
+	if !strings.Contains(got, `docker model reinstall-runner --backend "vllm"`) {
+		t.Fatalf("expected backend-only reinstall hint, got %q", got)
+	}
+	if strings.Contains(got, "--gpu") {
+		t.Fatalf("did not expect gpu flag in backend-only hint, got %q", got)
+	}
+}
+
+func TestExistingRunnerOptionsHintWithCUDA(t *testing.T) {
+	cmd := newInstallRunner()
+
+	if err := cmd.Flags().Set("gpu", "cuda"); err != nil {
+		t.Fatal(err)
+	}
+
+	// This fakes a user explicitly requesting CUDA without requiring local GPU hardware.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		gpuMode: "cuda",
+	})
+
+	if !strings.Contains(got, `docker model reinstall-runner --gpu "cuda"`) {
+		t.Fatalf("expected cuda reinstall hint, got %q", got)
+	}
+	if strings.Contains(got, "--backend") {
+		t.Fatalf("did not expect backend flag in cuda-only hint, got %q", got)
+	}
+}
+
+func TestExistingRunnerOptionsHintWithBackendAndCUDA(t *testing.T) {
+	cmd := newInstallRunner()
+
+	if err := cmd.Flags().Set("backend", vllm.Name); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("gpu", "cuda"); err != nil {
+		t.Fatal(err)
+	}
+
+	// This covers the WSL2/vLLM issue path: the existing runner needs reinstall-runner.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		backend: vllm.Name,
+		gpuMode: "cuda",
+	})
+
+	expectedFragments := []string{
+		"The requested runner options were not applied",
+		`docker model reinstall-runner --backend "vllm" --gpu "cuda"`,
+	}
+
+	for _, fragment := range expectedFragments {
+		if !strings.Contains(got, fragment) {
+			t.Fatalf("expected hint to contain %q, got %q", fragment, got)
+		}
+	}
+}
+
+func TestExistingRunnerOptionsHintWithNoGPU(t *testing.T) {
+	cmd := newInstallRunner()
+
+	if err := cmd.Flags().Set("gpu", "none"); err != nil {
+		t.Fatal(err)
+	}
+
+	// An explicit CPU/no-GPU request should be preserved in the reinstall command.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		gpuMode: "none",
+	})
+
+	if !strings.Contains(got, `docker model reinstall-runner --gpu "none"`) {
+		t.Fatalf("expected no-gpu reinstall hint, got %q", got)
+	}
+	if strings.Contains(got, "--backend") {
+		t.Fatalf("did not expect backend flag in no-gpu hint, got %q", got)
+	}
+}
+
+func TestExistingRunnerOptionsHintQuotesFlagValues(t *testing.T) {
+	cmd := newInstallRunner()
+
+	if err := cmd.Flags().Set("gpu", "cuda; echo bad"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Suggested command values should be quoted before being shown to the user.
+	got := existingRunnerOptionsHint(cmd, runnerOptions{
+		gpuMode: "cuda; echo bad",
+	})
+
+	if !strings.Contains(got, `docker model reinstall-runner --gpu "cuda; echo bad"`) {
+		t.Fatalf("expected quoted gpu reinstall hint, got %q", got)
+	}
+	if strings.Contains(got, "--gpu cuda;") {
+		t.Fatalf("expected gpu value to be quoted in reinstall hint, got %q", got)
+	}
+}
+
+func TestCommandFlagChangedDefensiveCases(t *testing.T) {
+	cmd := newInstallRunner()
+
+	// Missing commands and flags should be treated as unchanged.
+	if commandFlagChanged(nil, "gpu") {
+		t.Fatal("expected nil command to report unchanged flag")
+	}
+	if commandFlagChanged(cmd, "missing") {
+		t.Fatal("expected missing flag to report unchanged")
+	}
+	if commandFlagChanged(cmd, "gpu") {
+		t.Fatal("expected default gpu flag to report unchanged")
 	}
 }

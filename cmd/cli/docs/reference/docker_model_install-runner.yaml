@@ -55,6 +55,16 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: llama-server-version
+      value_type: string
+      description: |
+        Override the llama.cpp version to install on macOS/Windows (e.g. "latest" or "v0.0.34"); defaults to the version pinned to this release
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
     - option: port
       value_type: uint16
       default_value: "0"

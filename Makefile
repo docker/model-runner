@@ -3,30 +3,49 @@ include .versions
 
 APP_NAME := model-runner
 LLAMA_SERVER_VARIANT := cpu
-VLLM_BASE_IMAGE := nvidia/cuda:13.0.2-runtime-ubuntu24.04
+# Resolved lazily — only evaluated when a Docker target references it.
+LLAMA_UPSTREAM_IMAGE ?= $(shell \
+	bash scripts/resolve-llama-upstream-image.sh \
+	"$(LLAMA_SERVER_VERSION)" "$(LLAMA_SERVER_VARIANT)")
 DOCKER_IMAGE := docker/model-runner:latest
 DOCKER_IMAGE_VLLM := docker/model-runner:latest-vllm-cuda
+DOCKER_IMAGE_VLLM_ROCM := docker/model-runner:latest-vllm-rocm
 DOCKER_IMAGE_SGLANG := docker/model-runner:latest-sglang
+DOCKER_IMAGE_MUSA := docker/model-runner:latest-musa
+DOCKER_IMAGE_OPENVINO := docker/model-runner:latest-openvino
 DOCKER_TARGET ?= final-llamacpp
 PORT := 8080
 LLAMA_ARGS ?=
-DOCKER_BUILD_ARGS := \
-	--load \
-	--platform linux/$(shell docker version --format '{{.Server.Arch}}') \
+E2E_TIMEOUT ?= 30m
+
+define check-llama-image
+$(if $(LLAMA_UPSTREAM_IMAGE),,$(error Failed to resolve llama.cpp upstream image. Check LLAMA_SERVER_VERSION and LLAMA_SERVER_VARIANT or set LLAMA_UPSTREAM_IMAGE directly.))
+endef
+
+ifneq (,$(filter $(LLAMA_SERVER_VARIANT),rocm musa openvino))
+DOCKER_BUILD_PLATFORMS := linux/amd64
+else
+DOCKER_BUILD_PLATFORMS := linux/amd64,linux/arm64
+endif
+
+LOCAL_DOCKER_PLATFORM ?= linux/$(shell docker version --format '{{.Server.Arch}}')
+
+DOCKER_BUILD_COMMON_ARGS = \
 	--build-arg GO_VERSION=$(GO_VERSION) \
 	--build-arg LLAMA_SERVER_VERSION=$(LLAMA_SERVER_VERSION) \
 	--build-arg LLAMA_SERVER_VARIANT=$(LLAMA_SERVER_VARIANT) \
+	--build-arg LLAMA_UPSTREAM_IMAGE=$(LLAMA_UPSTREAM_IMAGE) \
 	--build-arg SGLANG_VERSION=$(SGLANG_VERSION) \
-	--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 	--build-arg VLLM_VERSION='$(VLLM_VERSION)' \
 	--target $(DOCKER_TARGET) \
 	-t $(DOCKER_IMAGE)
 
 # Phony targets grouped by category
-.PHONY: build build-cli build-dmr build-llamacpp install-cli run clean test integration-tests e2e
+.PHONY: build build-cli build-dmr build-dmr-cross build-llamacpp install-cli run clean test integration-tests e2e
 .PHONY: validate validate-versions validate-all lint help
 .PHONY: docker-build docker-build-multiplatform docker-run docker-run-impl
-.PHONY: docker-build-vllm docker-run-vllm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-vllm docker-run-vllm docker-build-vllm-rocm docker-run-vllm-rocm docker-build-sglang docker-run-sglang
+.PHONY: docker-build-musa docker-run-musa docker-build-openvino docker-run-openvino
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
 .PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
@@ -41,8 +60,37 @@ build-server:
 build-cli:
 	$(MAKE) -C cmd/cli
 
+DMR_VERSION := $(shell git describe --tags --always --dirty --match 'dmr-v*' | sed 's/^dmr-//')
+DMR_LDFLAGS := -s -w \
+	-X main.Version=$(DMR_VERSION) \
+	-X github.com/docker/model-runner/cmd/cli/desktop.Version=$(DMR_VERSION)
+
+# Add .exe on windows, nothing elsewhere
+DMR_EXE := dmr
+ifeq ($(OS),Windows_NT)
+DMR_EXE := dmr.exe
+endif
+
+# build-dmr builds a native dmr binary. dmr has no cgo dependencies, so
+# CGO_ENABLED=0 keeps the binary statically linked and trivial to
+# cross-compile (see build-dmr-cross).
 build-dmr:
-	go build -ldflags="-s -w" -o dmr ./cmd/dmr
+	CGO_ENABLED=0 go build -ldflags="$(DMR_LDFLAGS)" -o $(DMR_EXE) ./cmd/dmr
+
+# build-dmr-cross builds standalone dmr binaries for every platform we
+# publish packages for (see packaging/), into dist/dmr/<os>-<arch>/dmr.
+DMR_CROSS_TARGETS := darwin-arm64 linux-amd64 linux-arm64 windows-amd64
+
+build-dmr-cross:
+	@for target in $(DMR_CROSS_TARGETS); do \
+		os=$${target%-*}; arch=$${target#*-}; \
+		ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
+		echo "Building dmr for $$os/$$arch..."; \
+		mkdir -p dist/dmr/$$target; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath \
+			-ldflags="$(DMR_LDFLAGS)" \
+			-o dist/dmr/$$target/dmr$$ext ./cmd/dmr; \
+	done
 
 build-llamacpp:
 	git submodule update --init llamacpp/native
@@ -66,7 +114,7 @@ run: build
 # Clean build artifacts
 clean:
 	rm -f $(APP_NAME)
-	rm -f dmr
+	rm -f $(DMR_EXE)
 	rm -f model-runner.sock
 
 # Run tests
@@ -95,13 +143,13 @@ e2e:
 		echo "$$INVALID_TESTS" | sed 's/.*func \([^(]*\).*/\1/'; \
 		exit 1; \
 	fi
-	go test -v -count=1 -tags=e2e -run "^TestE2E" -timeout=15m ./e2e/
+	go test -v -count=1 -tags=e2e -run "^TestE2E" -timeout=$(E2E_TIMEOUT) ./e2e/
 	@echo "E2E tests completed!"
 
 test-docker-ce-installation:
 	@echo "Testing Docker CE installation..."
 	@echo "Note: This requires Docker to be running"
-	BASE_IMAGE=$(BASE_IMAGE) scripts/test-docker-ce-installation.sh
+	scripts/test-docker-ce-installation.sh
 
 validate:
 	find . -type f -name "*.sh" | grep -v "pkg/go-containerregistry\|llamacpp/native/vendor" | xargs shellcheck
@@ -153,11 +201,13 @@ validate-all:
 
 # Build Docker image
 docker-build:
-	docker buildx build $(DOCKER_BUILD_ARGS) .
+	$(call check-llama-image)
+	docker buildx build --load --platform $(LOCAL_DOCKER_PLATFORM) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Build multi-platform Docker image
 docker-build-multiplatform:
-	docker buildx build --platform linux/amd64,linux/arm64 $(DOCKER_BUILD_ARGS) .
+	$(call check-llama-image)
+	docker buildx build --platform $(DOCKER_BUILD_PLATFORMS) $(DOCKER_BUILD_COMMON_ARGS) .
 
 # Run in Docker container with TCP port access and mounted model storage
 docker-run: docker-build
@@ -168,24 +218,60 @@ docker-build-vllm:
 	@$(MAKE) docker-build \
 		DOCKER_TARGET=final-vllm \
 		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM) \
-		LLAMA_SERVER_VARIANT=cuda \
-		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+		LLAMA_SERVER_VARIANT=cuda
 
 # Run vLLM Docker container with TCP port access and mounted model storage
 docker-run-vllm: docker-build-vllm
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM)
+
+# Build vLLM Docker image with ROCm (AMD GPU) support.
+# Installs upstream vLLM ROCm wheels from https://wheels.vllm.ai/rocm/ on
+# top of the llama.cpp ROCm base, so the image keeps llama.cpp available
+# (mirrors the CUDA vllm variant shape).
+# LLAMA_SERVER_VARIANT=rocm restricts DOCKER_BUILD_PLATFORMS to linux/amd64
+# (vLLM ROCm has no aarch64 support).
+docker-build-vllm-rocm:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-vllm-rocm \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM) \
+		LLAMA_SERVER_VARIANT=rocm
+
+# Run vLLM ROCm Docker container with TCP port access and mounted model storage
+docker-run-vllm-rocm: docker-build-vllm-rocm
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_VLLM_ROCM)
 
 # Build SGLang Docker image
 docker-build-sglang:
 	@$(MAKE) docker-build \
 		DOCKER_TARGET=final-sglang \
 		DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG) \
-		LLAMA_SERVER_VARIANT=cuda \
-		BASE_IMAGE=$(VLLM_BASE_IMAGE)
+		LLAMA_SERVER_VARIANT=cuda
 
 # Run SGLang Docker container with TCP port access and mounted model storage
 docker-run-sglang: docker-build-sglang
 	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_SGLANG)
+
+# Build MUSA Docker image
+docker-build-musa:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA) \
+		LLAMA_SERVER_VARIANT=musa
+
+# Run MUSA Docker container with TCP port access and mounted model storage
+docker-run-musa: docker-build-musa
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_MUSA)
+
+# Build OpenVINO Docker image
+docker-build-openvino:
+	@$(MAKE) docker-build \
+		DOCKER_TARGET=final-llamacpp \
+		DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO) \
+		LLAMA_SERVER_VARIANT=openvino
+
+# Run OpenVINO Docker container with TCP port access and mounted model storage
+docker-run-openvino: docker-build-openvino
+	@$(MAKE) -s docker-run-impl DOCKER_IMAGE=$(DOCKER_IMAGE_OPENVINO)
 
 # Common implementation for running Docker container
 docker-run-impl:
@@ -285,8 +371,13 @@ diffusers-build:
 	@if [ -f "$(DIFFUSERS_TARBALL)" ]; then \
 		echo "Tarball already exists: $(DIFFUSERS_TARBALL)"; \
 	else \
+		set -e; \
 		echo "Building diffusers tarball..."; \
 		scripts/build-diffusers-tarball.sh $(DIFFUSERS_RELEASE) $(DIFFUSERS_TARBALL); \
+		if [ ! -f "$(DIFFUSERS_TARBALL)" ]; then \
+			echo "Error: $(DIFFUSERS_TARBALL) was not created"; \
+			exit 1; \
+		fi; \
 		echo "Tarball created: $(DIFFUSERS_TARBALL)"; \
 	fi
 
@@ -312,7 +403,8 @@ diffusers-dev:
 		echo "Usage: make diffusers-dev DIFFUSERS_PATH=../path-to-diffusers-server"; \
 		exit 1; \
 	fi
-	@PYTHON_BIN=""; \
+	@set -e; \
+	PYTHON_BIN=""; \
 	if command -v python3.12 >/dev/null 2>&1; then \
 		PYTHON_BIN="python3.12"; \
 	elif command -v python3 >/dev/null 2>&1; then \
@@ -329,11 +421,11 @@ diffusers-dev:
 	echo "Installing diffusers from $(DIFFUSERS_PATH)..."; \
 	rm -rf "$(DIFFUSERS_INSTALL_DIR)"; \
 	$$PYTHON_BIN -m venv "$(DIFFUSERS_INSTALL_DIR)"; \
-	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate" && \
-		pip install "diffusers==0.36.0" "torch==2.9.1" "transformers==4.57.5" "accelerate==1.3.0" "safetensors==0.5.2" "huggingface_hub==0.34.0" "bitsandbytes==0.49.1" "fastapi==0.115.12" "uvicorn[standard]==0.34.1" "pillow==11.2.1" && \
-		SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages" && \
-		cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server" && \
-		echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
+	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate"; \
+	pip install "diffusers==0.38.0" "torch==2.9.1" "transformers==4.57.5" "accelerate==1.3.0" "safetensors==0.8.0" "huggingface_hub==0.34.0" "bitsandbytes==0.49.1" "fastapi==0.115.12" "uvicorn[standard]==0.34.1" "pillow==11.2.1"; \
+	SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages"; \
+	cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server"; \
+	echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
 	echo "diffusers dev installed from $(DIFFUSERS_PATH)"
 
 diffusers-clean:
@@ -347,6 +439,7 @@ help:
 	@echo "  build				- Build server, CLI plugin, and dmr wrapper (default)"
 	@echo "  build-server			- Build the model-runner server"
 	@echo "  build-cli			- Build the CLI (docker-model plugin)"
+	@echo "  build-dmr-cross		- Cross-compile dmr for all published platforms into dist/dmr/"
 	@echo "  install-cli			- Build and install the CLI as a Docker plugin"
 	@echo "  docs				- Generate CLI documentation"
 	@echo "  run				- Run the application locally"
@@ -362,10 +455,16 @@ help:
 	@echo "  docker-build			- Build Docker image for current platform"
 	@echo "  docker-build-multiplatform	- Build Docker image for multiple platforms"
 	@echo "  docker-run			- Run in Docker container with TCP port access and mounted model storage"
-	@echo "  docker-build-vllm		- Build vLLM Docker image"
-	@echo "  docker-run-vllm		- Run vLLM Docker container"
+	@echo "  docker-build-vllm		- Build vLLM Docker image (CUDA)"
+	@echo "  docker-run-vllm		- Run vLLM Docker container (CUDA)"
+	@echo "  docker-build-vllm-rocm	- Build vLLM Docker image (ROCm / AMD GPU)"
+	@echo "  docker-run-vllm-rocm		- Run vLLM Docker container (ROCm / AMD GPU)"
 	@echo "  docker-build-sglang		- Build SGLang Docker image"
 	@echo "  docker-run-sglang		- Run SGLang Docker container"
+	@echo "  docker-build-musa		- Build MUSA Docker image"
+	@echo "  docker-run-musa		- Run MUSA Docker container"
+	@echo "  docker-build-openvino		- Build OpenVINO Docker image"
+	@echo "  docker-run-openvino		- Run OpenVINO Docker container"
 	@echo "  vllm-metal-build		- Build vllm-metal tarball locally (macOS ARM64)"
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"
@@ -378,6 +477,9 @@ help:
 	@echo ""
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
+	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest or bNNNN)"
+	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, musa, openvino, or rocm)"
+	@echo "  LLAMA_UPSTREAM_IMAGE - Override the resolved upstream image directly"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"
 	@echo ""
 	@echo "Example usage:"

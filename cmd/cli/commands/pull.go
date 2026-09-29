@@ -22,6 +22,7 @@ func newPullCmd() *cobra.Command {
 
 func pullModel(cmd *cobra.Command, desktopClient *desktop.Client, model string) error {
 	printer := asPrinter(cmd)
+	syncDockerConfigForRegistry(cmd.Context(), printer)
 	response, _, err := desktopClient.Pull(model, printer)
 
 	if err != nil {

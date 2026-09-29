@@ -47,10 +47,11 @@ type ImageURL struct {
 }
 
 type OpenAIChatRequest struct {
-	Model    string              `json:"model"`
-	Messages []OpenAIChatMessage `json:"messages"`
-	Stream   bool                `json:"stream"`
-	Tools    []Tool              `json:"tools,omitempty"`
+	Model     string              `json:"model"`
+	Messages  []OpenAIChatMessage `json:"messages"`
+	Stream    bool                `json:"stream"`
+	Tools     []Tool              `json:"tools,omitempty"`
+	MaxTokens *int                `json:"max_tokens,omitempty"`
 }
 
 type OpenAIChatResponse struct {

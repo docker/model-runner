@@ -231,18 +231,52 @@ func getStandaloneRunner(ctx context.Context) (*standaloneRunner, error) {
 
 // runnerOptions holds common configuration for install/start/reinstall commands
 type runnerOptions struct {
-	port            uint16
-	host            string
-	gpuMode         string
-	backend         string
-	doNotTrack      bool
-	pullImage       bool
-	pruneContainers bool
-	proxyCert       string
-	tls             bool
-	tlsPort         uint16
-	tlsCert         string
-	tlsKey          string
+	port               uint16
+	host               string
+	gpuMode            string
+	backend            string
+	llamaServerVersion string
+	doNotTrack         bool
+	pullImage          bool
+	pruneContainers    bool
+	proxyCert          string
+	tls                bool
+	tlsPort            uint16
+	tlsCert            string
+	tlsKey             string
+}
+
+func commandFlagChanged(cmd *cobra.Command, name string) bool {
+	if cmd == nil {
+		return false
+	}
+	flag := cmd.Flags().Lookup(name)
+	return flag != nil && flag.Changed
+}
+
+func existingRunnerOptionsHint(cmd *cobra.Command, opts runnerOptions) string {
+	backendChanged := commandFlagChanged(cmd, "backend")
+	gpuChanged := commandFlagChanged(cmd, "gpu")
+
+	if !backendChanged && !gpuChanged {
+		return ""
+	}
+
+	reinstallArgs := []string{"docker", "model", "reinstall-runner"}
+
+	if backendChanged && opts.backend != "" {
+		reinstallArgs = append(reinstallArgs, "--backend", fmt.Sprintf("%q", opts.backend))
+	}
+	if gpuChanged && opts.gpuMode != "" {
+		reinstallArgs = append(reinstallArgs, "--gpu", fmt.Sprintf("%q", opts.gpuMode))
+	}
+
+	return fmt.Sprintf(
+		"\nThe requested runner options were not applied because the Model Runner container is already running.\n"+
+			"To recreate the runner with the requested options, run:\n\n"+
+			"  %s\n",
+		strings.Join(reinstallArgs, " "),
+	)
 }
 
 // runInstallOrStart is shared logic for install-runner and start-runner commands
@@ -251,10 +285,22 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 	// (on-demand via the running model runner), not as a standalone container.
 	if opts.backend == vllm.Name && platform.SupportsVLLMMetal() {
 		cmd.Println("Installing vllm backend...")
-		if err := desktopClient.InstallBackend(vllm.Name); err != nil {
+		if err := desktopClient.InstallBackend(vllm.Name, ""); err != nil {
 			return fmt.Errorf("failed to install vllm backend: %w", err)
 		}
 		cmd.Println("vllm backend installed successfully")
+		return nil
+	}
+
+	// On macOS/Windows the llama.cpp backend is installed on demand: its binary
+	// is downloaded rather than bundled at build time. Trigger installation via
+	// the running model runner, the same way vllm-metal is handled above.
+	if opts.backend == llamacpp.Name && llamacpp.NeedsDeferredInstall() {
+		cmd.Println("Installing llama.cpp backend...")
+		if err := desktopClient.InstallBackend(llamacpp.Name, opts.llamaServerVersion); err != nil {
+			return fmt.Errorf("failed to install llama.cpp backend: %w", err)
+		}
+		cmd.Println("llama.cpp backend installed successfully")
 		return nil
 	}
 
@@ -273,7 +319,7 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 		}
 
 		cmd.Println("Installing diffusers backend...")
-		if err := desktopClient.InstallBackend(diffusers.Name); err != nil {
+		if err := desktopClient.InstallBackend(diffusers.Name, ""); err != nil {
 			return fmt.Errorf("failed to install diffusers backend: %w", err)
 		}
 		cmd.Println("diffusers backend installed successfully")
@@ -343,6 +389,9 @@ func runInstallOrStart(cmd *cobra.Command, opts runnerOptions, debug bool) error
 			} else {
 				cmd.Printf("Model Runner container %s is already running\n", ctrID[:12])
 			}
+
+			cmd.Print(existingRunnerOptionsHint(cmd, opts))
+
 			return nil
 		}
 	}
@@ -421,6 +470,7 @@ func newInstallRunner() *cobra.Command {
 	var host string
 	var gpuMode string
 	var backend string
+	var llamaServerVersion string
 	var doNotTrack bool
 	var debug bool
 	var proxyCert string
@@ -433,34 +483,36 @@ func newInstallRunner() *cobra.Command {
 		Short: "Install Docker Model Runner (Docker Engine only)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstallOrStart(cmd, runnerOptions{
-				port:            port,
-				host:            host,
-				gpuMode:         gpuMode,
-				backend:         backend,
-				doNotTrack:      doNotTrack,
-				pullImage:       true,
-				pruneContainers: false,
-				proxyCert:       proxyCert,
-				tls:             tlsEnabled,
-				tlsPort:         tlsPort,
-				tlsCert:         tlsCert,
-				tlsKey:          tlsKey,
+				port:               port,
+				host:               host,
+				gpuMode:            gpuMode,
+				backend:            backend,
+				llamaServerVersion: llamaServerVersion,
+				doNotTrack:         doNotTrack,
+				pullImage:          true,
+				pruneContainers:    false,
+				proxyCert:          proxyCert,
+				tls:                tlsEnabled,
+				tlsPort:            tlsPort,
+				tlsCert:            tlsCert,
+				tlsKey:             tlsKey,
 			}, debug)
 		},
 		ValidArgsFunction: completion.NoComplete,
 	}
 	addRunnerFlags(c, runnerFlagOptions{
-		Port:       &port,
-		Host:       &host,
-		GpuMode:    &gpuMode,
-		Backend:    &backend,
-		DoNotTrack: &doNotTrack,
-		Debug:      &debug,
-		ProxyCert:  &proxyCert,
-		TLS:        &tlsEnabled,
-		TLSPort:    &tlsPort,
-		TLSCert:    &tlsCert,
-		TLSKey:     &tlsKey,
+		Port:               &port,
+		Host:               &host,
+		GpuMode:            &gpuMode,
+		Backend:            &backend,
+		LlamaServerVersion: &llamaServerVersion,
+		DoNotTrack:         &doNotTrack,
+		Debug:              &debug,
+		ProxyCert:          &proxyCert,
+		TLS:                &tlsEnabled,
+		TLSPort:            &tlsPort,
+		TLSCert:            &tlsCert,
+		TLSKey:             &tlsKey,
 	})
 	return c
 }

@@ -161,10 +161,20 @@ func TestLlamaCppAllowedFlags_Categories(t *testing.T) {
 			"--embeddings", "--embedding", "--reranking", "--rerank",
 			"--metrics", "--no-metrics", "--jinja", "--no-jinja",
 		},
+		"reasoning": {
+			"--reasoning", "--reasoning-format", "--reasoning-budget",
+		},
 		"speculative": {
-			"--draft", "--draft-max", "--draft-min",
+			"--spec-draft-n-max", "--draft-n-max", "--draft-max", "--spec-draft-n-min", "--draft-n-min", "--draft-min",
+			"--spec-draft-p-min", "--draft-p-min",
+			"--spec-draft-p-split", "--draft-p-split",
+			"--spec-draft-threads", "-td", "--threads-draft",
+			"--spec-draft-ngl", "-ngld", "--gpu-layers-draft", "--n-gpu-layers-draft",
+			"--spec-draft-device", "-devd", "--device-draft",
+			"--spec-type",
 			"-cd", "--ctx-size-draft",
-			"-ngld", "--gpu-layers-draft",
+			"--spec-draft-type-k", "-ctkd", "--cache-type-k-draft",
+			"--spec-draft-type-v", "-ctvd", "--cache-type-v-draft",
 		},
 	}
 

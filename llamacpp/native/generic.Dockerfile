@@ -50,7 +50,7 @@ RUN cmake $(cat cmake-flags)
 RUN cmake --build build --config Release -j 4
 RUN cmake --install build --config Release --prefix install
 
-RUN rm install/bin/*.py
+RUN rm -f install/bin/*.py
 RUN rm -r install/lib/cmake
 RUN rm -r install/lib/pkgconfig
 RUN rm -r install/include

@@ -323,3 +323,13 @@ type Backend interface {
 	// GetDiskUsage returns the disk usage of the backend.
 	GetDiskUsage() (int64, error)
 }
+
+// BackendVersionSelector is an optional interface implemented by backends whose
+// install version can be overridden at install time (e.g. to pull a specific
+// build or the latest one on demand instead of the version pinned to this
+// model-runner release). The override takes effect on the next Install.
+type BackendVersionSelector interface {
+	// SetInstallVersion sets the version the backend should install. An empty
+	// string leaves the current selection unchanged.
+	SetInstallVersion(version string)
+}

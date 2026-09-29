@@ -48,7 +48,13 @@ var containerApps = map[string]containerApp{
 		envFn:           anythingllmEnv,
 		extraDockerArgs: []string{"-v", "anythingllm_storage:/app/server/storage"},
 	},
-	"openwebui": {defaultImage: "ghcr.io/open-webui/open-webui:latest", defaultHostPort: 3000, containerPort: 8080, envFn: openwebuiEnv},
+	"openwebui": {
+		defaultImage:    "ghcr.io/open-webui/open-webui:latest",
+		defaultHostPort: 3000,
+		containerPort:   8080,
+		envFn:           openwebuiEnv,
+		extraDockerArgs: []string{"-v", "openwebui_data:/app/backend/data"},
+	},
 }
 
 // hostApp describes a native CLI app launched on the host.

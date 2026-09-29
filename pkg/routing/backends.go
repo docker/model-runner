@@ -1,6 +1,8 @@
 package routing
 
 import (
+	"os/exec"
+
 	"github.com/docker/model-runner/pkg/inference"
 	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
@@ -21,9 +23,8 @@ type BackendsConfig struct {
 	ServerLogFactory func(backendName string) logging.Logger
 
 	// LlamaCpp settings (always included).
-	LlamaCppVendoredPath string
-	LlamaCppUpdatedPath  string
-	LlamaCppConfig       config.BackendConfig
+	LlamaCppPath   string
+	LlamaCppConfig config.BackendConfig
 
 	// Optional backends and their custom server paths.
 	IncludeMLX bool
@@ -35,6 +36,27 @@ type BackendsConfig struct {
 
 	IncludeDiffusers bool
 	DiffusersPath    string
+
+	// RegistryMirrors is a list of registry mirrors tried before registry-1.docker.io
+	// when pulling backend images. Populated from MODEL_RUNNER_REGISTRY_MIRRORS or
+	// injected by Docker Desktop from daemon.json registry-mirrors.
+	RegistryMirrors []string
+
+	// RegistryCredentials, if non-nil, resolves credentials for the registry (or
+	// mirror) that backend images are pulled from. Embedders that already hold
+	// registry credentials in process — Docker Desktop, which is itself the
+	// credential backend — supply one so pulls authenticate without shelling out
+	// to a docker-credential-* helper.
+	//
+	// When nil, credentials are resolved from the environment and
+	// ~/.docker/config.json, including credHelpers and credsStore.
+	RegistryCredentials inference.RegistryCredentials
+
+	// CommandModifier, if non-nil, is applied to every backend runner process
+	// immediately before it starts (see backends.RunnerConfig.CommandModifier).
+	// Embedders use it to customize process attributes such as credentials or
+	// environment; nil leaves the process unchanged.
+	CommandModifier func(*exec.Cmd)
 }
 
 // DefaultBackendDefs returns BackendDef entries for the configured backends.
@@ -49,14 +71,14 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 	}
 
 	defs := []BackendDef{
-		{Name: llamacpp.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppVendoredPath, cfg.LlamaCppUpdatedPath, cfg.LlamaCppConfig)
+		{Name: llamacpp.Name, Deferred: llamacpp.NeedsDeferredInstall(), Init: func(mm *models.Manager) (inference.Backend, error) {
+			return llamacpp.New(cfg.Log, mm, sl(llamacpp.Name), cfg.LlamaCppPath, cfg.LlamaCppConfig, cfg.RegistryMirrors, cfg.RegistryCredentials, cfg.CommandModifier)
 		}},
 	}
 
 	if cfg.IncludeMLX {
 		defs = append(defs, BackendDef{Name: mlx.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
-			return mlx.New(cfg.Log, mm, sl(mlx.Name), nil, cfg.MLXPath)
+			return mlx.New(cfg.Log, mm, sl(mlx.Name), nil, cfg.MLXPath, cfg.CommandModifier)
 		}})
 	}
 
@@ -68,6 +90,8 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 				return vllm.New(cfg.Log, mm, sl(vllm.Name), vllm.Options{
 					LinuxBinaryPath: cfg.VLLMPath,
 					MetalPythonPath: cfg.VLLMMetalPath,
+					RegistryMirrors: cfg.RegistryMirrors,
+					CommandModifier: cfg.CommandModifier,
 				})
 			},
 		})
@@ -78,7 +102,7 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 			Name:     diffusers.Name,
 			Deferred: true,
 			Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath)
+				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors, cfg.RegistryCredentials, cfg.CommandModifier)
 			},
 		})
 	}

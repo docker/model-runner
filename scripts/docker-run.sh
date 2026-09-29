@@ -63,7 +63,7 @@ main() {
   set -eux -o pipefail
 
   local models_path="${MODELS_PATH:-$HOME/.docker/models}"
-  local args=(docker run --rm -e LLAMA_SERVER_PATH=/app/bin)
+  local args=(docker run --rm -e LLAMA_SERVER_PATH=/app)
   add_optional_args
   mkdir -p "$models_path"
   chmod a+rwx "$models_path"

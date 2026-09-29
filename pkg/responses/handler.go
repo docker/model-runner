@@ -33,21 +33,23 @@ func NewHTTPHandler(log logging.Logger, schedulerHTTP http.Handler, allowedOrigi
 		maxRequestBodyBytes: 10 * 1024 * 1024, // Default to 10MB
 	}
 
-	// Register routes
-	h.router.HandleFunc("POST "+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET "+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET "+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE "+APIPrefix+"/{id}", h.handleDelete)
-	// Also register /v1/responses routes
-	h.router.HandleFunc("POST /v1"+APIPrefix, h.handleCreate)
-	h.router.HandleFunc("GET /v1"+APIPrefix+"/{id}", h.handleGet)
-	h.router.HandleFunc("GET /v1"+APIPrefix+"/{id}/input_items", h.handleListInputItems)
-	h.router.HandleFunc("DELETE /v1"+APIPrefix+"/{id}", h.handleDelete)
+	h.registerRoutes(APIPrefix)
+	h.registerRoutes("/v1" + APIPrefix)
+	h.registerRoutes("/engines" + APIPrefix)
+	h.registerRoutes("/engines/v1" + APIPrefix)
+	h.registerRoutes("/engines/{backend}/v1" + APIPrefix)
 
 	// Apply CORS middleware
 	h.httpHandler = middleware.CorsMiddleware(allowedOrigins, h.router)
 
 	return h
+}
+
+func (h *HTTPHandler) registerRoutes(prefix string) {
+	h.router.HandleFunc("POST "+prefix, h.handleCreate)
+	h.router.HandleFunc("GET "+prefix+"/{id}", h.handleGet)
+	h.router.HandleFunc("GET "+prefix+"/{id}/input_items", h.handleListInputItems)
+	h.router.HandleFunc("DELETE "+prefix+"/{id}", h.handleDelete)
 }
 
 // Close releases resources held by the handler, including the background
@@ -97,14 +99,21 @@ func (h *HTTPHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		h.sendError(w, http.StatusBadRequest, "invalid_request", "model is required")
 		return
 	}
+	if err := validateUnsupportedRequestFields(&req); err != nil {
+		h.sendError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
 
 	// Create a new response
 	respID := GenerateResponseID()
 	resp := NewResponse(respID, req.Model)
+	store := shouldStore(&req)
 	resp.Instructions = nilIfEmpty(req.Instructions)
 	resp.Temperature = req.Temperature
 	resp.TopP = req.TopP
 	resp.MaxOutputTokens = req.MaxOutputTokens
+	resp.Store = &store
+	resp.Text = req.Text
 	resp.Tools = req.Tools
 	resp.ToolChoice = req.ToolChoice
 	resp.ParallelToolCalls = req.ParallelToolCalls
@@ -134,7 +143,7 @@ func (h *HTTPHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create upstream request
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, "/engines/v1/chat/completions", bytes.NewReader(chatBody))
+	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, chatCompletionPathForRequest(r), bytes.NewReader(chatBody))
 	if err != nil {
 		h.sendError(w, http.StatusInternalServerError, "internal_error", "Failed to create request")
 		return
@@ -147,24 +156,29 @@ func (h *HTTPHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	if req.Stream {
 		// Handle streaming response
-		h.handleStreaming(w, upstreamReq, resp)
+		h.handleStreaming(w, upstreamReq, resp, store)
 	} else {
 		// Handle non-streaming response
-		h.handleNonStreaming(w, upstreamReq, resp)
+		h.handleNonStreaming(w, upstreamReq, resp, store)
 	}
 }
 
 // handleStreaming handles streaming responses.
-func (h *HTTPHandler) handleStreaming(w http.ResponseWriter, upstreamReq *http.Request, resp *Response) {
+func (h *HTTPHandler) handleStreaming(w http.ResponseWriter, upstreamReq *http.Request, resp *Response, store bool) {
+	responseStore := h.store
+	if !store {
+		responseStore = nil
+	}
+
 	// Create streaming writer
-	streamWriter := NewStreamingResponseWriter(w, resp, h.store)
+	streamWriter := NewStreamingResponseWriter(w, resp, responseStore)
 
 	// Forward to scheduler
 	h.schedulerHTTP.ServeHTTP(streamWriter, upstreamReq)
 }
 
 // handleNonStreaming handles non-streaming responses.
-func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *http.Request, resp *Response) {
+func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *http.Request, resp *Response, store bool) {
 	// Capture upstream response
 	capture := NewNonStreamingResponseCapture()
 
@@ -187,7 +201,9 @@ func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *htt
 				Code:    errResp.Error.Code,
 				Message: errResp.Error.Message,
 			}
-			h.store.Save(resp)
+			if store {
+				h.store.Save(resp)
+			}
 			h.sendJSON(w, capture.StatusCode, resp)
 			return
 		}
@@ -197,7 +213,9 @@ func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *htt
 			Code:    "upstream_error",
 			Message: capture.Body.String(),
 		}
-		h.store.Save(resp)
+		if store {
+			h.store.Save(resp)
+		}
 		h.sendJSON(w, capture.StatusCode, resp)
 		return
 	}
@@ -210,7 +228,9 @@ func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *htt
 			Code:    "parse_error",
 			Message: "Failed to parse upstream response",
 		}
-		h.store.Save(resp)
+		if store {
+			h.store.Save(resp)
+		}
 		h.sendJSON(w, http.StatusInternalServerError, resp)
 		return
 	}
@@ -222,6 +242,8 @@ func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *htt
 	finalResp.Temperature = resp.Temperature
 	finalResp.TopP = resp.TopP
 	finalResp.MaxOutputTokens = resp.MaxOutputTokens
+	finalResp.Store = resp.Store
+	finalResp.Text = resp.Text
 	finalResp.Tools = resp.Tools
 	finalResp.ToolChoice = resp.ToolChoice
 	finalResp.ParallelToolCalls = resp.ParallelToolCalls
@@ -232,7 +254,9 @@ func (h *HTTPHandler) handleNonStreaming(w http.ResponseWriter, upstreamReq *htt
 	finalResp.CreatedAt = resp.CreatedAt
 
 	// Store the response
-	h.store.Save(finalResp)
+	if store {
+		h.store.Save(finalResp)
+	}
 
 	// Send response
 	h.sendJSON(w, http.StatusOK, finalResp)
@@ -330,6 +354,58 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func shouldStore(req *CreateRequest) bool {
+	return req.Store == nil || *req.Store
+}
+
+func chatCompletionPathForRequest(r *http.Request) string {
+	if backend := r.PathValue("backend"); backend != "" {
+		return "/engines/" + backend + "/v1/chat/completions"
+	}
+	return "/engines/v1/chat/completions"
+}
+
+func validateUnsupportedRequestFields(req *CreateRequest) error {
+	if len(req.Include) > 0 {
+		return unsupportedFieldError("include")
+	}
+	if req.StreamOptions != nil && !isNullJSON(req.StreamOptions) {
+		return unsupportedFieldError("stream_options")
+	}
+	if req.TopLogprobs != nil {
+		return unsupportedFieldError("top_logprobs")
+	}
+	switch req.Truncation {
+	case "", "disabled":
+	default:
+		return fmt.Errorf("truncation value %q is not supported by Docker Model Runner Responses compatibility layer", req.Truncation)
+	}
+	if req.Background != nil && *req.Background {
+		return fmt.Errorf("background responses are not supported by Docker Model Runner Responses compatibility layer")
+	}
+	if req.Conversation != nil && !isNullJSON(req.Conversation) {
+		return fmt.Errorf("conversation is not supported by Docker Model Runner Responses compatibility layer; use previous_response_id instead")
+	}
+	if req.Prompt != nil && !isNullJSON(req.Prompt) {
+		return unsupportedFieldError("prompt")
+	}
+	if req.ServiceTier != "" {
+		return unsupportedFieldError("service_tier")
+	}
+	if req.SafetyIdentifier != "" {
+		return unsupportedFieldError("safety_identifier")
+	}
+	return nil
+}
+
+func unsupportedFieldError(field string) error {
+	return fmt.Errorf("%s is not supported by Docker Model Runner Responses compatibility layer", field)
+}
+
+func isNullJSON(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
 }
 
 // GetStore returns the response store (for testing).

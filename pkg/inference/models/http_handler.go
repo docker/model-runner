@@ -71,6 +71,8 @@ type ClientConfig struct {
 	UserAgent string
 	// PlainHTTP enables plain HTTP connections to registries (for testing).
 	PlainHTTP bool
+	// RegistryMirrors is a list of registry mirrors tried before registry-1.docker.io.
+	RegistryMirrors []string
 }
 
 // NewHTTPHandler creates a new model's handler.

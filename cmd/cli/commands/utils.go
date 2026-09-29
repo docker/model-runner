@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/docker/model-runner/cmd/cli/desktop"
 	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
+	"github.com/docker/model-runner/cmd/cli/pkg/types"
 	"github.com/docker/model-runner/pkg/distribution/distribution"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -195,17 +197,18 @@ func requireMinArgs(n int, cmdName string, usageArgs string) cobra.PositionalArg
 
 // runnerFlagOptions holds common runner configuration options
 type runnerFlagOptions struct {
-	Port       *uint16
-	Host       *string
-	GpuMode    *string
-	Backend    *string
-	DoNotTrack *bool
-	Debug      *bool
-	ProxyCert  *string
-	TLS        *bool
-	TLSPort    *uint16
-	TLSCert    *string
-	TLSKey     *string
+	Port               *uint16
+	Host               *string
+	GpuMode            *string
+	Backend            *string
+	LlamaServerVersion *string
+	DoNotTrack         *bool
+	Debug              *bool
+	ProxyCert          *string
+	TLS                *bool
+	TLSPort            *uint16
+	TLSCert            *string
+	TLSKey             *string
 }
 
 // addRunnerFlags adds common runner flags to a command
@@ -222,6 +225,10 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.Backend != nil {
 		cmd.Flags().StringVar(opts.Backend, "backend", "", backendUsage)
+	}
+	if opts.LlamaServerVersion != nil {
+		cmd.Flags().StringVar(opts.LlamaServerVersion, "llama-server-version", "",
+			`Override the llama.cpp version to install on macOS/Windows (e.g. "latest" or "v0.0.34"); defaults to the version pinned to this release`)
 	}
 	if opts.DoNotTrack != nil {
 		cmd.Flags().BoolVar(opts.DoNotTrack, "do-not-track", false, "Do not track models usage in Docker Model Runner")
@@ -244,6 +251,40 @@ func addRunnerFlags(cmd *cobra.Command, opts runnerFlagOptions) {
 	}
 	if opts.TLSKey != nil {
 		cmd.Flags().StringVar(opts.TLSKey, "tls-key", "", "Path to TLS private key file (auto-generated if not provided)")
+	}
+}
+
+// syncDockerConfigForRegistry copies the host's Docker config into the running
+// container. Only applicable for Moby engine setups; a no-op otherwise.
+func syncDockerConfigForRegistry(ctx context.Context, printer standalone.StatusPrinter) {
+	if modelRunner == nil {
+		return
+	}
+	engineKind := modelRunner.EngineKind()
+	if engineKind != types.ModelRunnerEngineKindMoby {
+		return
+	}
+	if desktop.IsDesktopWSLContext(ctx, dockerCLI) {
+		return
+	}
+	dockerClient, err := desktop.DockerClientForContext(dockerCLI, dockerCLI.CurrentContext())
+	if err != nil {
+		printer.Printf("Warning: failed to create Docker client for credential sync: %v\n", err)
+		return
+	}
+	defer dockerClient.Close()
+
+	containerID, _, _, err := standalone.FindControllerContainer(ctx, dockerClient)
+	if err != nil {
+		printer.Printf("Warning: failed to find model runner container for credential sync: %v\n", err)
+		return
+	}
+	if containerID == "" {
+		return
+	}
+
+	if err := standalone.SyncDockerConfigToContainer(ctx, dockerClient, containerID, engineKind); err != nil {
+		printer.Printf("Warning: failed to sync Docker credentials to runner: %v\n", err)
 	}
 }
 

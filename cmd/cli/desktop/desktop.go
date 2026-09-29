@@ -1076,11 +1076,12 @@ func (c *Client) ShowConfigs(modelFilter string) ([]scheduling.ModelConfigEntry,
 }
 
 // InstallBackend triggers on-demand installation of a deferred backend
-func (c *Client) InstallBackend(backend string) error {
+func (c *Client) InstallBackend(backend, version string) error {
 	installPath := inference.InferencePrefix + "/install-backend"
 	jsonData, err := json.Marshal(struct {
 		Backend string `json:"backend"`
-	}{Backend: backend})
+		Version string `json:"version,omitempty"`
+	}{Backend: backend, Version: version})
 	if err != nil {
 		return fmt.Errorf("error marshaling request: %w", err)
 	}

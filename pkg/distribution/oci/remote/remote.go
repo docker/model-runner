@@ -22,6 +22,7 @@ import (
 	"github.com/docker/model-runner/pkg/distribution/oci"
 	"github.com/docker/model-runner/pkg/distribution/oci/authn"
 	"github.com/docker/model-runner/pkg/distribution/oci/reference"
+	"github.com/docker/model-runner/pkg/internal/registryutil"
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -41,12 +42,13 @@ const (
 type Option func(*options)
 
 type options struct {
-	ctx       context.Context
-	transport http.RoundTripper
-	userAgent string
-	auth      authn.Authenticator
-	keychain  authn.Keychain
-	plainHTTP bool
+	ctx             context.Context
+	transport       http.RoundTripper
+	userAgent       string
+	auth            authn.Authenticator
+	keychain        authn.Keychain
+	plainHTTP       bool
+	registryMirrors []string
 }
 
 // WithContext sets the context for remote operations.
@@ -88,6 +90,13 @@ func WithAuthFromKeychain(kc authn.Keychain) Option {
 func WithPlainHTTP(plain bool) Option {
 	return func(o *options) {
 		o.plainHTTP = plain
+	}
+}
+
+// WithRegistryMirrors sets registry mirrors to try before registry-1.docker.io for model pulls.
+func WithRegistryMirrors(mirrors []string) Option {
+	return func(o *options) {
+		o.registryMirrors = mirrors
 	}
 }
 
@@ -415,7 +424,8 @@ type resolverComponents struct {
 // createResolver creates a docker resolver with the given options.
 func createResolver(o *options, ref reference.Reference) resolverComponents {
 	authorizer := docker.NewDockerAuthorizer(
-		docker.WithAuthCreds(credentialsFunc(o, ref)))
+		docker.WithAuthCreds(credentialsFunc(o, ref)),
+		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
 
 	// Wrap transport with Range header support for resumable downloads
 	// and User-Agent header for registry compatibility (required by HuggingFace)
@@ -444,9 +454,7 @@ func createResolver(o *options, ref reference.Reference) resolverComponents {
 		})
 	} else {
 		resolver = docker.NewResolver(docker.ResolverOptions{
-			Hosts: docker.ConfigureDefaultRegistries(
-				docker.WithAuthorizer(authorizer),
-				docker.WithClient(client)),
+			Hosts: registryutil.RegistryHosts(o.registryMirrors, authorizer, client),
 		})
 	}
 
@@ -521,7 +529,8 @@ func createResolverWithPushScope(o *options, ref reference.Reference) (resolverC
 				return "", cfg.RegistryToken, nil
 			}
 			return cfg.Username, cfg.Password, nil
-		}))
+		}),
+		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
 		Hosts: docker.ConfigureDefaultRegistries(

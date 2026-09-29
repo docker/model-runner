@@ -2,7 +2,6 @@ package remote
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,57 +90,51 @@ func isDisallowedIP(ip net.IP) bool {
 	return false
 }
 
-// resolveAndValidateRealm parses the realm URL, validates the hostname against
-// a static blocklist, and resolves it to a dial address (ip:port) that is safe
-// to connect to. By returning the resolved IP, callers can use a custom
-// DialContext to connect to that exact address — preventing DNS-rebinding
-// attacks where a malicious DNS server could return different IPs for
-// successive lookups (TOCTOU).
-//
-// If hostname is a literal IP address it is validated directly without
-// triggering a DNS lookup.
-func resolveAndValidateRealm(rawURL string) (dialAddr, hostname string, err error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid realm URL: %w", err)
-	}
-
-	hostname = u.Hostname()
+// validateTokenEndpointURL validates the host of a token-endpoint URL against
+// the internal-hostname blocklist and the private/loopback/link-local ranges.
+// The local DNS resolution this performs is deliberate even when a proxy will
+// resolve the name itself: checking the resolved IPs is the validation, and a
+// name that cannot be resolved locally is rejected (fail closed) rather than
+// forwarded unchecked.
+func validateTokenEndpointURL(u *url.URL) error {
 	port := u.Port()
 	if port == "" {
-		switch u.Scheme {
-		case "https":
+		if u.Scheme == "https" {
 			port = "443"
-		default:
+		} else {
 			port = "80"
 		}
 	}
+	_, err := resolveAndValidateHost(u.Hostname(), port)
+	return err
+}
 
-	// Block well-known internal hostnames regardless of DNS resolution.
+// resolveAndValidateHost validates hostname against the internal-hostname
+// blocklist and the private/loopback/link-local IP ranges, returning a dial
+// address (ip:port) that is safe to connect to. Returning the resolved IP lets
+// callers dial that exact address, closing the DNS-rebinding (TOCTOU) window
+// between validation and connection. A literal IP hostname is validated
+// directly without a DNS lookup.
+func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) {
 	for _, internal := range internalHostnames {
 		if strings.EqualFold(hostname, internal) {
-			return "", "", fmt.Errorf("realm URL hostname %q is not allowed", hostname)
+			return "", fmt.Errorf("realm URL hostname %q is not allowed", hostname)
 		}
 	}
 
-	// If the hostname is a literal IP address, validate it directly without a
-	// DNS lookup — there is no DNS to rebind.
 	if ip := net.ParseIP(hostname); ip != nil {
 		if isDisallowedIP(ip) {
-			return "", "", fmt.Errorf("realm URL contains a disallowed IP address %s", hostname)
+			return "", fmt.Errorf("realm URL contains a disallowed IP address %s", hostname)
 		}
-		return net.JoinHostPort(hostname, port), hostname, nil
+		return net.JoinHostPort(hostname, port), nil
 	}
 
-	// Resolve the hostname and validate every returned address. Using the
-	// resolved IP as the dial address prevents DNS rebinding: the same IP that
-	// passed validation is the one that will be used for the connection.
 	ips, err := net.LookupHost(hostname)
 	if err != nil {
-		return "", "", fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
+		return "", fmt.Errorf("resolving realm hostname %q: %w", hostname, err)
 	}
 	if len(ips) == 0 {
-		return "", "", fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
+		return "", fmt.Errorf("realm hostname %q resolved to no addresses", hostname)
 	}
 	for _, ipStr := range ips {
 		ip := net.ParseIP(ipStr)
@@ -149,43 +142,81 @@ func resolveAndValidateRealm(rawURL string) (dialAddr, hostname string, err erro
 			continue
 		}
 		if isDisallowedIP(ip) {
-			return "", "", fmt.Errorf("realm URL resolves to a disallowed address %s", ipStr)
+			return "", fmt.Errorf("realm URL resolves to a disallowed address %s", ipStr)
 		}
 	}
 
-	// All resolved IPs passed validation. Use the first one as the dial
-	// address so the HTTP client never performs a second DNS lookup.
-	return net.JoinHostPort(ips[0], port), hostname, nil
+	return net.JoinHostPort(ips[0], port), nil
 }
 
-// buildSafeTransport wraps base with a custom DialContext that connects
-// directly to dialAddr (a pre-validated "ip:port") instead of relying on DNS
-// resolution. This closes the TOCTOU window between realm URL validation and
-// the actual connection. For TLS connections, serverName is set as the SNI
-// value so that certificate validation still uses the original hostname.
-func buildSafeTransport(base http.RoundTripper, dialAddr, serverName string) (http.RoundTripper, error) {
-	if base == nil {
-		base = http.DefaultTransport
+// newGuardedAuthClient returns the HTTP client used to fetch bearer tokens,
+// both by containerd's authorizer (via docker.WithAuthClient) and by the
+// hand-rolled Exchange(). The realm URL in a registry's WWW-Authenticate
+// challenge is attacker-controlled, so every request this client makes is
+// validated against the internal-hostname blocklist and the private/loopback/
+// link-local IP ranges before a connection is established.
+//
+// How the connection is guarded depends on whether a proxy applies to the
+// request (see guardedAuthTransport). A dial-time-only guard would break every
+// proxied deployment: with a proxy configured, the dialer sees the proxy's
+// address — commonly a private or loopback IP — rather than the realm's, and
+// would reject the proxy itself.
+func newGuardedAuthClient(base http.RoundTripper) *http.Client {
+	var proxied *http.Transport
+	if t, ok := base.(*http.Transport); ok {
+		proxied = t.Clone()
+	} else if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		proxied = dt.Clone()
+	} else {
+		proxied = &http.Transport{}
 	}
 
-	t, ok := base.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("cannot build safe transport from base of type %T; only *http.Transport is supported", base)
-	}
-
-	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+	direct := proxied.Clone()
+	direct.Proxy = nil
+	direct.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid token endpoint address %q: %w", addr, err)
+		}
+		dialAddr, err := resolveAndValidateHost(host, port)
+		if err != nil {
+			return nil, err
+		}
 		return (&net.Dialer{}).DialContext(ctx, network, dialAddr)
 	}
 
-	cloned := t.Clone()
-	cloned.DialContext = dial
-	if cloned.TLSClientConfig == nil {
-		cloned.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12} //nolint:gosec
-	} else {
-		cloned.TLSClientConfig = cloned.TLSClientConfig.Clone()
+	return &http.Client{Transport: &guardedAuthTransport{proxied: proxied, direct: direct}}
+}
+
+// guardedAuthTransport validates every token-endpoint request against the SSRF
+// blocklist, choosing the enforcement point per request:
+//
+//   - Direct connections use a transport whose dialer validates the resolved
+//     IP just before connecting and dials that exact address, so DNS rebinding
+//     cannot slip an internal address past the check.
+//   - Proxied connections go through a transport with the proxy configuration
+//     intact and a stock dialer: the proxy is the one connecting to the realm,
+//     so pinning the dial address is neither possible nor meaningful. The
+//     realm host is validated here at the request level instead.
+type guardedAuthTransport struct {
+	proxied *http.Transport // proxy settings intact, stock dialer
+	direct  *http.Transport // no proxy, validating dialer pinned to the resolved IP
+}
+
+func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if g.proxied.Proxy != nil {
+		proxyURL, err := g.proxied.Proxy(req)
+		if err != nil {
+			return nil, fmt.Errorf("determining proxy for token endpoint: %w", err)
+		}
+		if proxyURL != nil {
+			if err := validateTokenEndpointURL(req.URL); err != nil {
+				return nil, fmt.Errorf("realm URL rejected: %w", err)
+			}
+			return g.proxied.RoundTrip(req)
+		}
 	}
-	cloned.TLSClientConfig.ServerName = serverName
-	return cloned, nil
+	return g.direct.RoundTrip(req)
 }
 
 // Ping pings a registry and returns authentication information.
@@ -253,27 +284,24 @@ func parseWWWAuthenticate(header string) WWWAuthenticate {
 	return result
 }
 
-// Exchange exchanges credentials for a bearer token.
+// Exchange exchanges credentials for a bearer token. The realm URL comes from
+// the registry's WWW-Authenticate challenge and is therefore untrusted; the
+// guarded client rejects realms on internal hostnames or private/loopback
+// addresses and honors any configured proxy.
 func Exchange(ctx context.Context, _ reference.Registry, auth authn.Authenticator, transport http.RoundTripper, scopes []string, pr *PingResponse) (*Token, error) {
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-
-	dialAddr, hostname, err := resolveAndValidateRealm(pr.WWWAuthenticate.Realm)
-	if err != nil {
-		return nil, fmt.Errorf("realm URL rejected: %w", err)
-	}
-
-	safeTransport, err := buildSafeTransport(transport, dialAddr, hostname)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build safe transport: %w", err)
-	}
-	client := &http.Client{Transport: safeTransport}
+	client := newGuardedAuthClient(transport)
 
 	// Build token request URL
 	tokenURL, err := url.Parse(pr.WWWAuthenticate.Realm)
 	if err != nil {
 		return nil, fmt.Errorf("parsing realm URL: %w", err)
+	}
+
+	// Validate the realm before any request is made so a blocked realm fails
+	// fast with a clear error. The guarded client re-validates at connection
+	// time (or per request when proxied), closing the TOCTOU window.
+	if err := validateTokenEndpointURL(tokenURL); err != nil {
+		return nil, fmt.Errorf("realm URL rejected: %w", err)
 	}
 
 	q := tokenURL.Query()

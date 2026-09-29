@@ -103,8 +103,11 @@ func formatParameters(params int64) string {
 	return units.CustomSize("%.2f%s", float64(params), 1000.0, []string{"", "K", "M", "B", "T"})
 }
 
-// formatSize converts bytes to human-readable format matching Docker's style
-// Returns format like "256MB" (decimal units, no space, matching `docker images`)
-func formatSize(bytes int64) string {
+// FormatSize converts bytes to human-readable format matching Docker's style.
+// Returns "n/a" for zero or negative sizes, otherwise formats like "256MB".
+func FormatSize(bytes int64) string {
+	if bytes <= 0 {
+		return "n/a"
+	}
 	return units.CustomSize("%.2f%s", float64(bytes), 1000.0, []string{"B", "kB", "MB", "GB", "TB", "PB", "EB"})
 }

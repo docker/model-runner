@@ -459,7 +459,7 @@ func TestRangeTransport_MaxRedirectsExceeded(t *testing.T) {
 
 	// Server that always redirects to itself (infinite redirect loop).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, r.URL.String(), http.StatusFound)
+		http.Redirect(w, r, r.URL.String(), http.StatusFound) //nolint:gosec // G710: intentional self-redirect to test redirect-limit logic
 	}))
 	defer srv.Close()
 

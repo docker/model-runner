@@ -98,13 +98,13 @@ func TCPPort() string {
 	return Var("MODEL_RUNNER_PORT")
 }
 
-// LlamaServerPath returns the path to the llama.cpp server binary.
-// Configured via LLAMA_SERVER_PATH; defaults to the Docker Desktop bundle location.
+// LlamaServerPath returns the directory that holds the llama.cpp server binary.
+// Configured via LLAMA_SERVER_PATH. On Linux the container image sets this to
+// the bundled binary's location. When it is unset (macOS/Windows), an empty
+// string is returned and the llama.cpp backend falls back to a writable
+// per-user directory into which it downloads the pinned release on demand.
 func LlamaServerPath() string {
-	if s := Var("LLAMA_SERVER_PATH"); s != "" {
-		return s
-	}
-	return "/Applications/Docker.app/Contents/Resources/model-runner/bin"
+	return Var("LLAMA_SERVER_PATH")
 }
 
 // LlamaArgs returns custom arguments to pass to the llama.cpp server.
@@ -190,3 +190,19 @@ func TLSKey() string {
 // TLSAutoCert is true (default) unless MODEL_RUNNER_TLS_AUTO_CERT is set to a falsy value.
 // Call as TLSAutoCert(true) to get the default-true behaviour.
 var TLSAutoCert = BoolWithDefault("MODEL_RUNNER_TLS_AUTO_CERT")
+
+// RegistryMirrors returns registry mirrors from MODEL_RUNNER_REGISTRY_MIRRORS (comma-separated URLs).
+// Mirrors are tried before registry-1.docker.io when pulling backend images.
+func RegistryMirrors() []string {
+	s := Var("MODEL_RUNNER_REGISTRY_MIRRORS")
+	if s == "" {
+		return nil
+	}
+	var mirrors []string
+	for _, m := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(m); trimmed != "" {
+			mirrors = append(mirrors, trimmed)
+		}
+	}
+	return mirrors
+}

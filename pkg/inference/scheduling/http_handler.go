@@ -378,6 +378,10 @@ func (h *HTTPHandler) Unload(w http.ResponseWriter, r *http.Request) {
 // installBackendRequest is the JSON body for the install-backend endpoint.
 type installBackendRequest struct {
 	Backend string `json:"backend"`
+	// Version optionally overrides the backend version to install (e.g.
+	// "latest" or a specific "vX.Y.Z"). Empty means use the version pinned to
+	// this model-runner release. Only honored by backends that support it.
+	Version string `json:"version,omitempty"`
 }
 
 // InstallBackend handles POST <inference-prefix>/install-backend requests.
@@ -394,7 +398,7 @@ func (h *HTTPHandler) InstallBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.scheduler.InstallBackend(r.Context(), req.Backend); err != nil {
+	if err := h.scheduler.InstallBackend(r.Context(), req.Backend, req.Version); err != nil {
 		if errors.Is(err, ErrBackendNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
@@ -483,7 +487,8 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 
 	// Preload the model in the background by calling handleOpenAIInference with preload-only context.
 	// This makes Compose preload the model as well as it calls `configure` by default.
-	go func() {
+	userAgent := r.UserAgent()
+	go func() { //nolint:gosec // G118: context.Background intentional — preload must outlive the request context
 		preloadBody, err := json.Marshal(OpenAIInferenceRequest{Model: configureRequest.Model})
 		if err != nil {
 			h.scheduler.log.Warn("failed to marshal preload request body", "error", err)
@@ -501,7 +506,7 @@ func (h *HTTPHandler) Configure(w http.ResponseWriter, r *http.Request) {
 			h.scheduler.log.Warn("failed to create preload request", "error", err)
 			return
 		}
-		preloadReq.Header.Set("User-Agent", r.UserAgent())
+		preloadReq.Header.Set("User-Agent", userAgent)
 		if backend != nil {
 			preloadReq.SetPathValue("backend", backend.Name())
 		}

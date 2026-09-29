@@ -29,18 +29,21 @@ func (w *tailBuffer) Write(buffer []byte) (int, error) {
 	defer w.lock.Unlock()
 
 	written := 0
-	shouldPushRead := false
 	si := 0
 	if len(buffer) > int(w.capacity) {
 		si = len(buffer) - int(w.capacity)
 	}
 	for _, b := range buffer[si:] {
-		if shouldPushRead {
+		// When the buffer is full, the byte at w.write is the oldest one.
+		// Drop it by moving the read position past it before overwriting.
+		if w.size == w.capacity {
 			if w.read+1 < w.capacity {
 				w.read++
 			} else {
 				w.read = 0
 			}
+		} else {
+			w.size++
 		}
 		w.buf[w.write] = b
 		if w.write+1 < w.capacity {
@@ -48,11 +51,6 @@ func (w *tailBuffer) Write(buffer []byte) (int, error) {
 		} else {
 			w.write = 0
 		}
-		w.size++
-		if w.size > w.capacity {
-			w.size = w.capacity
-		}
-		shouldPushRead = w.write == w.read
 		written++
 	}
 	return si + written, nil

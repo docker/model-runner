@@ -10,6 +10,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   e2e-test:
     strategy:
@@ -19,11 +22,13 @@ jobs:
           - os: macos-latest
           - os: ubuntu-latest
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Must exceed the Go test timeout (E2E_TIMEOUT in the Makefile, currently
+    # 30 min) to allow for setup steps (checkout, Go/Rust toolchain, build).
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
 
@@ -32,14 +37,14 @@ jobs:
         uses: ./.github/actions/load-go-version
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ steps.versions.outputs.go-version }}
           cache: true
 
       - name: Set up Docker
         if: matrix.os == 'ubuntu-latest'
-        uses: docker/setup-docker-action@b2189fbf2a6592b51fee7cdd93ee2bfaeba733db
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
 
       - name: Install build dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'

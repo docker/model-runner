@@ -1,13 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION=1.25
-ARG LLAMA_SERVER_VERSION=latest
+ARG LLAMA_SERVER_VERSION=b9879
 ARG LLAMA_SERVER_VARIANT=cpu
-ARG LLAMA_BINARY_PATH=/com.docker.llama-server.native.linux.${LLAMA_SERVER_VARIANT}.${TARGETARCH}
-
-# only 26.04 for cpu variant for max hardware support with vulkan
-# use 22.04 for gpu variants to match ROCm/CUDA base images
-ARG BASE_IMAGE=ubuntu:26.04
+ARG LLAMA_UPSTREAM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b9879
 
 ARG VERSION=dev
 
@@ -43,11 +39,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux go build -tags=novllm -ldflags="-s -w -X main.Version=${VERSION}" -o model-runner .
 
-# --- Get llama.cpp binary ---
-FROM docker/docker-model-backend-llamacpp:${LLAMA_SERVER_VERSION}-${LLAMA_SERVER_VARIANT} AS llama-server
-
-# --- Final image ---
-FROM docker.io/${BASE_IMAGE} AS llamacpp
+# --- Final image: directly FROM the upstream llama.cpp image ---
+FROM ${LLAMA_UPSTREAM_IMAGE} AS llamacpp
 
 ARG LLAMA_SERVER_VARIANT
 
@@ -57,33 +50,41 @@ RUN groupadd --system modelrunner && useradd --system --gid modelrunner -G video
 
 COPY scripts/ /scripts/
 
-# Install ca-certificates for HTTPS and vulkan
+# Install additional packages not shipped by the upstream image
+# (e.g. ca-certificates for HTTPS, mesa patches for aarch64 virtio-vulkan).
 RUN /scripts/apt-install.sh && rm -rf /scripts
 
 WORKDIR /app
 
-# Create directories for the socket file and llama.cpp binary, and set proper permissions
-RUN mkdir -p /var/run/model-runner /app/bin /models && \
+# Create directories for the socket file and set proper permissions
+RUN mkdir -p /var/run/model-runner /models && \
     chown -R modelrunner:modelrunner /var/run/model-runner /app /models && \
     chmod -R 755 /models
 
-# Copy the llama.cpp binary from the llama-server stage
-ARG LLAMA_BINARY_PATH
-COPY --from=llama-server ${LLAMA_BINARY_PATH}/ /app/.
-RUN chmod +x /app/bin/com.docker.llama-server
-
 USER modelrunner
 
-# Set the environment variable for the socket path and LLaMA server binary path
+# Set the environment variable for the socket path and LLamA server binary path.
+# LLAMA_SERVER_PATH points at the directory containing the llama-server binary
+# and its ggml backend plugins — keeping them together lets llama.cpp discover
+# backends via its default search path (relative to the binary).
 ENV MODEL_RUNNER_SOCK=/var/run/model-runner/model-runner.sock
 ENV MODEL_RUNNER_PORT=12434
-ENV LLAMA_SERVER_PATH=/app/bin
+ENV LLAMA_SERVER_PATH=/app
+# LD_LIBRARY_PATH is required so that backend plugins loaded via dlopen()
+# (e.g. libggml-cpu-*.so, libggml-vulkan.so) can resolve their transitive
+# dependencies on libggml-base.so and other shared libraries in /app.
+ENV LD_LIBRARY_PATH=/app
 ENV HOME=/home/modelrunner
 ENV MODELS_PATH=/models
-ENV LD_LIBRARY_PATH=/app/lib
 
 # Label the image so that it's hidden on cloud engines.
 LABEL com.docker.desktop.service="model-runner"
+
+EXPOSE ${MODEL_RUNNER_PORT}
+
+# Override the healthcheck inherited from the upstream llama.cpp image.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f "http://localhost:${MODEL_RUNNER_PORT}/engines/status" || exit 1
 
 ENTRYPOINT ["/app/model-runner"]
 
@@ -107,10 +108,7 @@ USER modelrunner
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ~/.local/bin/uv venv --python 3.12 /opt/vllm-env \
     && . /opt/vllm-env/bin/activate \
-    && ~/.local/bin/uv pip install vllm \
-         --extra-index-url https://wheels.vllm.ai/${VLLM_VERSION}/cu130 \
-         --extra-index-url https://download.pytorch.org/whl/cu130 \
-         --index-strategy unsafe-best-match
+    && ~/.local/bin/uv pip install vllm --torch-backend auto
 
 RUN /opt/vllm-env/bin/python3.12 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
 
@@ -160,3 +158,40 @@ COPY --from=builder /app/model-runner /app/model-runner
 FROM sglang AS final-sglang
 # Copy the built binary from builder-sglang (without vLLM)
 COPY --from=builder-sglang /app/model-runner /app/model-runner
+
+# --- vLLM ROCm variant ---
+# Installs upstream vLLM ROCm wheels published by the vLLM project at
+# https://wheels.vllm.ai/rocm/. These wheels bundle PyTorch ROCm, Triton ROCm,
+# flash-attention ROCm, and AITER, so we can stay on the llama.cpp ROCm base
+# (keeping llama.cpp available as a fallback inside the image, like the CUDA
+# variant does).
+#
+# Note: vLLM ROCm wheels follow a separate release cadence from CUDA — only
+# specific vLLM versions are published with ROCm support, so VLLM_ROCM_VERSION
+# is tracked independently from VLLM_VERSION (CUDA).
+FROM llamacpp AS vllm-rocm
+
+ARG VLLM_ROCM_VERSION=0.21.0
+ARG VLLM_ROCM_TARGET=rocm722
+
+USER root
+
+RUN apt update && apt install -y python3.12 python3.12-venv python3.12-dev curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/vllm-env && chown -R modelrunner:modelrunner /opt/vllm-env
+
+USER modelrunner
+
+# Install uv and vLLM with ROCm wheels as modelrunner user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ~/.local/bin/uv venv --python 3.12 /opt/vllm-env \
+    && . /opt/vllm-env/bin/activate \
+    && ~/.local/bin/uv pip install "vllm==${VLLM_ROCM_VERSION}" \
+         --extra-index-url https://wheels.vllm.ai/rocm/${VLLM_ROCM_VERSION}/${VLLM_ROCM_TARGET} \
+         --index-strategy unsafe-best-match
+
+RUN /opt/vllm-env/bin/python3.12 -c "import vllm; print(vllm.__version__)" > /opt/vllm-env/version
+
+FROM vllm-rocm AS final-vllm-rocm
+# Copy the built binary from builder
+COPY --from=builder /app/model-runner /app/model-runner

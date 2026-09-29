@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/distribution/builder"
@@ -68,6 +69,50 @@ func TestTarget(t *testing.T) {
 	hasFile(t, tr, "blobs/sha256/"+blobHash.Hex, blobContents)
 	hasFile(t, tr, "blobs/sha256/"+configDigest.Hex, configContents)
 	hasFile(t, tr, "manifest.json", manifestContents)
+}
+
+// TestTargetEntryNamesUseForwardSlashes verifies that all tar entry names
+// produced by Target.Write use forward slashes, even for models with multiple
+// layers (e.g., GGUF + chat template).
+//
+// This is a regression test for https://github.com/docker/model-runner/issues/894
+// where filepath.Join on Windows produced backslash-separated entry names
+// (e.g., "blobs\sha256\hex"), causing the daemon reader to skip the blobs.
+func TestTargetEntryNamesUseForwardSlashes(t *testing.T) {
+	b, err := builder.FromPath(filepath.Join("..", "assets", "dummy.gguf"))
+	if err != nil {
+		t.Fatalf("Failed to create builder from GGUF: %v", err)
+	}
+	b, err = b.WithChatTemplateFile(filepath.Join("..", "assets", "template.jinja"))
+	if err != nil {
+		t.Fatalf("Failed to add chat template: %v", err)
+	}
+
+	var buf bytes.Buffer
+	target, err := tarball.NewTarget(&buf)
+	if err != nil {
+		t.Fatalf("Failed to create target: %v", err)
+	}
+	if err := target.Write(t.Context(), b.Model(), nil); err != nil {
+		t.Fatalf("Failed to write model: %v", err)
+	}
+
+	// Read all tar entries and verify none contain backslashes.
+	tr := tar.NewReader(&buf)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Failed to read tar entry: %v", err)
+		}
+		if strings.Contains(hdr.Name, "\\") {
+			t.Errorf("Tar entry name contains backslash: %q — "+
+				"tar entry names must use forward slashes for cross-platform compatibility "+
+				"(see https://github.com/docker/model-runner/issues/894)", hdr.Name)
+		}
+	}
 }
 
 func hasFile(t *testing.T, tr *tar.Reader, name string, contents []byte) {

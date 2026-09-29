@@ -43,6 +43,7 @@ func NewManager(log logging.Logger, c ClientConfig) *Manager {
 		registry.WithTransport(c.Transport),
 		registry.WithUserAgent(c.UserAgent),
 		registry.WithPlainHTTP(c.PlainHTTP),
+		registry.WithRegistryMirrors(c.RegistryMirrors),
 	)
 
 	// Create the model distribution client.

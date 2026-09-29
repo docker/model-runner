@@ -53,14 +53,12 @@ func TestBracketWriter_MultipleLines(t *testing.T) {
 	}
 
 	expected := []string{"line one", "line two", "line three"}
-	for i, line := range lines {
-		matches := timestampRe.FindStringSubmatch(line)
+	for i, want := range expected {
+		matches := timestampRe.FindStringSubmatch(lines[i])
 		if len(matches) != 3 {
-			t.Errorf("line %d did not match format: %q", i, line)
-			continue
-		}
-		if matches[2] != expected[i] {
-			t.Errorf("line %d: expected %q, got %q", i, expected[i], matches[2])
+			t.Errorf("line %d did not match format: %q", i, lines[i])
+		} else if matches[2] != want {
+			t.Errorf("line %d: expected %q, got %q", i, want, matches[2])
 		}
 	}
 }
