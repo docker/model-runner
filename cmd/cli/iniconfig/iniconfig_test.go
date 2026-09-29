@@ -441,3 +441,36 @@ func TestLoad_LineLengthLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestSet_RejectsOverLongLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	f, _ := iniconfig.Load(path)
+	if err := f.Set("core.a", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Set("core.big", strings.Repeat("a", 1<<20)); err == nil {
+		t.Fatal("expected error for over-long value")
+	}
+	got, err := iniconfig.Load(path)
+	if err != nil {
+		t.Fatalf("config must stay loadable: %v", err)
+	}
+	if want := []iniconfig.Entry{{Key: "core.a", Value: "1"}}; !slices.Equal(got.Entries(), want) {
+		t.Errorf("got %q, want %q", got.Entries(), want)
+	}
+	if _, err := os.Stat(path + ".lock"); !os.IsNotExist(err) {
+		t.Errorf("lock file must be removed: %v", err)
+	}
+}
+
+func TestLoad_InvalidSectionName(t *testing.T) {
+	for _, content := range []string{"[co re]\nname = x\n", "[]\nname = x\n", "[co.re]\nname = x\n", "[co re \"sub\"]\nname = x\n"} {
+		path := filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := iniconfig.Load(path); err == nil {
+			t.Errorf("Load(%q): expected error", content)
+		}
+	}
+}

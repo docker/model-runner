@@ -159,10 +159,15 @@ func parseSectionHeader(line string) (section, subsection string, err error) {
 		if err2 != nil {
 			return "", "", fmt.Errorf("invalid subsection in %q: %w", line, err2)
 		}
-		return strings.ToLower(rawSection), sub, nil
+		section = strings.ToLower(rawSection)
+		subsection = sub
+	} else {
+		section = strings.ToLower(strings.TrimSpace(inner))
 	}
-
-	return strings.ToLower(strings.TrimSpace(inner)), "", nil
+	if err := validateSectionName(section); err != nil {
+		return "", "", fmt.Errorf("invalid section header %q: %w", line, err)
+	}
+	return section, subsection, nil
 }
 
 // closingBracket returns the index of the ']' that ends a section header,
@@ -307,6 +312,18 @@ func badNameRune(name string) (rune, bool) {
 	return 0, false
 }
 
+// validateSectionName ensures a section name is non-empty and contains only
+// [A-Za-z0-9-].
+func validateSectionName(name string) error {
+	if name == "" {
+		return fmt.Errorf("empty section")
+	}
+	if c, bad := badNameRune(name); bad {
+		return fmt.Errorf("invalid character %q in section name %q", c, name)
+	}
+	return nil
+}
+
 // validateVarName ensures a variable name contains only [A-Za-z0-9-] and
 // starts with a letter.
 func validateVarName(name string) error {
@@ -362,11 +379,8 @@ func ParseKey(key string) (section, subsection, variable string, err error) {
 	if strings.ContainsAny(subsection, "\n\r\x00") {
 		return "", "", "", fmt.Errorf("invalid key %q: control character in subsection", key)
 	}
-	if section == "" {
-		return "", "", "", fmt.Errorf("invalid key %q: empty section", key)
-	}
-	if c, bad := badNameRune(section); bad {
-		return "", "", "", fmt.Errorf("invalid key %q: invalid character %q in section name", key, c)
+	if err2 := validateSectionName(section); err2 != nil {
+		return "", "", "", fmt.Errorf("invalid key %q: %w", key, err2)
 	}
 	if variable == "" {
 		return "", "", "", fmt.Errorf("invalid key %q: empty variable", key)
@@ -487,7 +501,13 @@ func (f *File) writeAtomic(transform func([]Entry) []Entry) error {
 	current, err := readEntries(f.path)
 	if err == nil {
 		newEntries = transform(current)
-		_, err = lock.Write(serialise(newEntries))
+		data := serialise(newEntries)
+		// Never write a file that Load would reject.
+		if _, err = parse(data); err != nil {
+			err = fmt.Errorf("refusing to write invalid config: %w", err)
+		} else {
+			_, err = lock.Write(data)
+		}
 	}
 	if cerr := lock.Close(); err == nil {
 		err = cerr
