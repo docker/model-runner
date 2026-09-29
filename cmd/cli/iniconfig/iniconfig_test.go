@@ -3,6 +3,7 @@ package iniconfig_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,13 +23,8 @@ func roundTrip(t *testing.T, content string, wantEntries []iniconfig.Entry) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(f.Entries()) != len(wantEntries) {
-		t.Fatalf("got %d entries, want %d\nentries: %v", len(f.Entries()), len(wantEntries), f.Entries())
-	}
-	for i, e := range f.Entries() {
-		if e.Key != wantEntries[i].Key || e.Value != wantEntries[i].Value {
-			t.Errorf("entry[%d]: got {%q %q}, want {%q %q}", i, e.Key, e.Value, wantEntries[i].Key, wantEntries[i].Value)
-		}
+	if !slices.Equal(f.Entries(), wantEntries) {
+		t.Fatalf("got %q, want %q", f.Entries(), wantEntries)
 	}
 }
 
@@ -383,9 +379,65 @@ func TestSetSubsectionWithBracket(t *testing.T) {
 }
 
 func TestParseKey_Invalid(t *testing.T) {
-	for _, k := range []string{"core..name", "core.a\nb.name", "core.a\rb.name", "core.a\x00b.name"} {
+	for _, k := range []string{"core..name", "core.a\nb.name", "core.a\rb.name", "core.a\x00b.name", "core]x.name", `co"re.name`, "co re.name"} {
 		if _, _, _, err := iniconfig.ParseKey(k); err == nil {
 			t.Errorf("ParseKey(%q): expected error", k)
+		}
+	}
+}
+
+func TestSet_LockHeld(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path+".lock", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := iniconfig.Load(path)
+	if err := f.Set("core.bare", "true"); err == nil {
+		t.Fatal("expected error while lock is held")
+	}
+	if _, err := os.Stat(path + ".lock"); err != nil {
+		t.Errorf("foreign lock file must not be removed: %v", err)
+	}
+}
+
+func TestSet_KeepsConcurrentUpdate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	f1, _ := iniconfig.Load(path)
+	f2, _ := iniconfig.Load(path)
+	if err := f1.Set("core.a", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f2.Set("core.b", "2"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := iniconfig.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []iniconfig.Entry{{Key: "core.a", Value: "1"}, {Key: "core.b", Value: "2"}}
+	if !slices.Equal(got.Entries(), want) {
+		t.Errorf("got %q, want %q", got.Entries(), want)
+	}
+}
+
+func TestLoad_LineLengthLimit(t *testing.T) {
+	const limit = 1 << 20
+	head := "[core]\n\tk = "
+	for _, tt := range []struct {
+		name    string
+		content string
+		wantErr bool
+	}{
+		{"exact limit LF", head + strings.Repeat("a", limit-len("\tk = ")) + "\n", false},
+		{"exact limit CRLF", head + strings.Repeat("a", limit-len("\tk = ")) + "\r\n", false},
+		{"over limit", head + strings.Repeat("a", limit-len("\tk = ")+1) + "\n", true},
+	} {
+		path := filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := iniconfig.Load(path); (err != nil) != tt.wantErr {
+			t.Errorf("%s: err=%v, wantErr=%v", tt.name, err, tt.wantErr)
 		}
 	}
 }

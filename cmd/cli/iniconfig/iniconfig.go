@@ -56,10 +56,19 @@ func (f *File) Entries() []Entry { return f.entries }
 // Load reads the config file at path. If the file does not exist an empty File
 // is returned without error.
 func Load(path string) (*File, error) {
+	entries, err := readEntries(path)
+	if err != nil {
+		return nil, err
+	}
+	return &File{path: path, entries: entries}, nil
+}
+
+// readEntries parses the file at path; a missing file yields no entries.
+func readEntries(path string) ([]Entry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &File{path: path}, nil
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -67,7 +76,7 @@ func Load(path string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return &File{path: path, entries: entries}, nil
+	return entries, nil
 }
 
 // parse parses INI bytes into a slice of Entries.
@@ -79,11 +88,18 @@ func parse(data []byte) ([]Entry, error) {
 	var section, subsection string
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 0, 64*1024), maxConfigLineBytes)
+	// Allow room for the "\r\n" terminator; the content length is checked below.
+	scanner.Buffer(make([]byte, 0, 64*1024), maxConfigLineBytes+2)
+	tooLong := func(n int) error {
+		return fmt.Errorf("line %d: config line too long (max %d bytes)", n, maxConfigLineBytes)
+	}
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
+		if len(line) > maxConfigLineBytes {
+			return nil, tooLong(lineNum)
+		}
 		trimmed := strings.TrimSpace(line)
 
 		// Empty line or comment.
@@ -114,7 +130,7 @@ func parse(data []byte) ([]Entry, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		if errors.Is(err, bufio.ErrTooLong) {
-			return nil, fmt.Errorf("line %d: config line too long (max %d bytes)", lineNum+1, maxConfigLineBytes)
+			return nil, tooLong(lineNum + 1)
 		}
 		return nil, err
 	}
@@ -280,6 +296,17 @@ done:
 	return result[:keep] + strings.TrimRight(result[keep:], " \t"), nil
 }
 
+// badNameRune returns the first rune in name that is not a letter, digit or
+// '-'.
+func badNameRune(name string) (rune, bool) {
+	for _, c := range name {
+		if !unicode.IsLetter(c) && !unicode.IsDigit(c) && c != '-' {
+			return c, true
+		}
+	}
+	return 0, false
+}
+
 // validateVarName ensures a variable name contains only [A-Za-z0-9-] and
 // starts with a letter.
 func validateVarName(name string) error {
@@ -289,10 +316,8 @@ func validateVarName(name string) error {
 	if !unicode.IsLetter(rune(name[0])) {
 		return fmt.Errorf("variable name %q must start with a letter", name)
 	}
-	for _, c := range name {
-		if !unicode.IsLetter(c) && !unicode.IsDigit(c) && c != '-' {
-			return fmt.Errorf("invalid character %q in variable name %q", c, name)
-		}
+	if c, bad := badNameRune(name); bad {
+		return fmt.Errorf("invalid character %q in variable name %q", c, name)
 	}
 	return nil
 }
@@ -311,36 +336,37 @@ func canonicalKey(section, subsection, variable string) string {
 // Key parsing (for CLI inputs)
 // ----------------------------------------------------------------------------
 
-// ParseKey splits a dotted key "section.variable" or
-// "section.subsection.variable" into its components. Section and variable are
-// lowercased; subsection preserves case. The split point is the last dot.
-func ParseKey(key string) (section, subsection, variable string, err error) {
-	// The last dot separates the variable from the section[.subsection] part.
+// splitKey splits "section[.subsection].variable" on the first and last dots.
+func splitKey(key string) (section, subsection, variable string, err error) {
 	lastDot := strings.LastIndex(key, ".")
 	if lastDot < 0 {
 		return "", "", "", fmt.Errorf("invalid key %q: must contain at least one dot", key)
 	}
-	variable = strings.ToLower(key[lastDot+1:])
-	prefix := key[:lastDot]
-
-	// The first dot (if any) separates section from subsection.
-	firstDot := strings.Index(prefix, ".")
-	if firstDot < 0 {
-		section = strings.ToLower(prefix)
-		subsection = ""
-	} else {
-		section = strings.ToLower(prefix[:firstDot])
-		subsection = prefix[firstDot+1:] // subsection preserves case
-		if subsection == "" {
-			return "", "", "", fmt.Errorf("invalid key %q: empty subsection", key)
-		}
-		if strings.ContainsAny(subsection, "\n\r\x00") {
-			return "", "", "", fmt.Errorf("invalid key %q: control character in subsection", key)
-		}
+	variable = key[lastDot+1:]
+	section, subsection, hasSub := strings.Cut(key[:lastDot], ".")
+	if hasSub && subsection == "" {
+		return "", "", "", fmt.Errorf("invalid key %q: empty subsection", key)
 	}
+	return section, subsection, variable, nil
+}
 
+// ParseKey splits a dotted key "section.variable" or
+// "section.subsection.variable" into its components. Section and variable are
+// lowercased; subsection preserves case. The split point is the last dot.
+func ParseKey(key string) (section, subsection, variable string, err error) {
+	section, subsection, variable, err = splitKey(key)
+	if err != nil {
+		return "", "", "", err
+	}
+	section, variable = strings.ToLower(section), strings.ToLower(variable)
+	if strings.ContainsAny(subsection, "\n\r\x00") {
+		return "", "", "", fmt.Errorf("invalid key %q: control character in subsection", key)
+	}
 	if section == "" {
 		return "", "", "", fmt.Errorf("invalid key %q: empty section", key)
+	}
+	if c, bad := badNameRune(section); bad {
+		return "", "", "", fmt.Errorf("invalid key %q: invalid character %q in section name", key, c)
 	}
 	if variable == "" {
 		return "", "", "", fmt.Errorf("invalid key %q: empty variable", key)
@@ -395,7 +421,7 @@ func (f *File) GetAll(key string) []string {
 // ----------------------------------------------------------------------------
 
 // Set writes key=value to the file, replacing the last existing occurrence or
-// appending if absent. The file is written atomically via a lock file.
+// appending if absent. The file is written atomically under a lock file.
 func (f *File) Set(key, value string) error {
 	section, subsection, variable, err := ParseKey(key)
 	if err != nil {
@@ -436,8 +462,9 @@ func (f *File) Unset(key string) error {
 	})
 }
 
-// writeAtomic applies transform to the in-memory entries, serialises the
-// result to disk atomically (write to .lock, then rename), and updates f.entries.
+// writeAtomic takes an exclusive lock (O_EXCL create of path+".lock"), re-reads
+// the file, applies transform, and renames the lock file over the original.
+// It fails if the lock is held, so concurrent updates are never lost.
 func (f *File) writeAtomic(transform func([]Entry) []Entry) error {
 	if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 		return err
@@ -451,12 +478,22 @@ func (f *File) writeAtomic(transform func([]Entry) []Entry) error {
 		mode = info.Mode().Perm()
 	}
 
-	newEntries := transform(append([]Entry(nil), f.entries...))
+	lock, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return fmt.Errorf("cannot lock config (remove %s if stale): %w", lockPath, err)
+	}
 
-	data := serialise(newEntries)
-	err := os.WriteFile(lockPath, data, mode)
+	var newEntries []Entry
+	current, err := readEntries(f.path)
 	if err == nil {
-		// WriteFile applies the umask; set the exact mode.
+		newEntries = transform(current)
+		_, err = lock.Write(serialise(newEntries))
+	}
+	if cerr := lock.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		// OpenFile applies the umask; set the exact mode.
 		err = os.Chmod(lockPath, mode)
 	}
 	if err == nil {
@@ -490,7 +527,7 @@ func serialise(entries []Entry) []byte {
 	groups := map[sectionKey]*sectionEntry{}
 
 	for _, e := range entries {
-		sec, sub, _, _ := splitCanonical(e.Key)
+		sec, sub, _, _ := splitKey(e.Key)
 		sk := sectionKey{sec, sub}
 		if _, ok := groups[sk]; !ok {
 			order = append(order, sk)
@@ -503,31 +540,12 @@ func serialise(entries []Entry) []byte {
 		g := groups[sk]
 		buf.WriteString(formatSectionHeader(g.key.section, g.key.subsection))
 		for _, e := range g.items {
-			_, _, variable, _ := splitCanonical(e.Key)
+			_, _, variable, _ := splitKey(e.Key)
 			buf.WriteString(formatKeyValue(variable, e.Value))
 		}
 	}
 
 	return buf.Bytes()
-}
-
-// splitCanonical splits a canonical key "section[.subsection].variable" into
-// its three parts using the same last-dot logic as ParseKey.
-func splitCanonical(canonical string) (section, subsection, variable string, err error) {
-	lastDot := strings.LastIndex(canonical, ".")
-	if lastDot < 0 {
-		return "", "", "", fmt.Errorf("bad canonical key %q", canonical)
-	}
-	variable = canonical[lastDot+1:]
-	prefix := canonical[:lastDot]
-	firstDot := strings.Index(prefix, ".")
-	if firstDot < 0 {
-		section = prefix
-	} else {
-		section = prefix[:firstDot]
-		subsection = prefix[firstDot+1:]
-	}
-	return section, subsection, variable, nil
 }
 
 // formatSectionHeader formats a section header line.
