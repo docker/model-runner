@@ -43,14 +43,10 @@ func systemConfigPath() string {
 // Exactly one of global, system, or file may be set.
 func resolveConfigPath(global, system bool, file string) (string, error) {
 	count := 0
-	if global {
-		count++
-	}
-	if system {
-		count++
-	}
-	if file != "" {
-		count++
+	for _, set := range []bool{global, system, file != ""} {
+		if set {
+			count++
+		}
 	}
 	if count > 1 {
 		return "", fmt.Errorf("only one of --global, --system, or --file may be specified")
@@ -64,6 +60,15 @@ func resolveConfigPath(global, system bool, file string) (string, error) {
 		// --global is the default
 		return defaultConfigPath(), nil
 	}
+}
+
+// loadConfig resolves the config path from the location flags and loads it.
+func loadConfig(global, system bool, file string) (*iniconfig.File, error) {
+	path, err := resolveConfigPath(global, system, file)
+	if err != nil {
+		return nil, err
+	}
+	return iniconfig.Load(path)
 }
 
 // addLocationFlags adds the standard --global/--system/--file flags to a command.
@@ -138,48 +143,32 @@ Prints the value of the given key to stdout. If the key appears multiple times
 Exit status is 1 if the key is not found (unless --default is given).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveConfigPath(global, system, file)
-			if err != nil {
-				return err
-			}
-			f, err := iniconfig.Load(path)
+			f, err := loadConfig(global, system, file)
 			if err != nil {
 				return err
 			}
 
 			key := args[0]
-
+			var vals []string
 			if showAll {
-				vals := f.GetAll(key)
-				if len(vals) == 0 {
-					if hasDefault {
-						cmd.Println(defaultVal)
-						return nil
-					}
-					return fmt.Errorf("key not found: %s", key)
-				}
-				for _, v := range vals {
-					if showOrigin {
-						cmd.Printf("file:%s\t%s\n", path, v)
-					} else {
-						cmd.Println(v)
-					}
-				}
-				return nil
+				vals = f.GetAll(key)
+			} else if v, ok := f.Get(key); ok {
+				vals = []string{v}
 			}
 
-			v, ok := f.Get(key)
-			if !ok {
+			if len(vals) == 0 {
 				if hasDefault {
 					cmd.Println(defaultVal)
 					return nil
 				}
 				return fmt.Errorf("key not found: %s", key)
 			}
-			if showOrigin {
-				cmd.Printf("file:%s\t%s\n", path, v)
-			} else {
-				cmd.Println(v)
+			for _, v := range vals {
+				if showOrigin {
+					cmd.Printf("file:%s\t%s\n", f.Path(), v)
+				} else {
+					cmd.Println(v)
+				}
 			}
 			return nil
 		},
@@ -211,11 +200,7 @@ func newConfigSetCmd() *cobra.Command {
 If the key already exists its value is replaced. The file is written atomically.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveConfigPath(global, system, file)
-			if err != nil {
-				return err
-			}
-			f, err := iniconfig.Load(path)
+			f, err := loadConfig(global, system, file)
 			if err != nil {
 				return err
 			}
@@ -238,11 +223,7 @@ func newConfigUnsetCmd() *cobra.Command {
 		Long:  `Remove a config key (and all its values) from the file.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveConfigPath(global, system, file)
-			if err != nil {
-				return err
-			}
-			f, err := iniconfig.Load(path)
+			f, err := loadConfig(global, system, file)
 			if err != nil {
 				return err
 			}
@@ -267,17 +248,13 @@ func newConfigListCmd() *cobra.Command {
 		Long:    `List all key=value pairs from the config file, one per line.`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := resolveConfigPath(global, system, file)
-			if err != nil {
-				return err
-			}
-			f, err := iniconfig.Load(path)
+			f, err := loadConfig(global, system, file)
 			if err != nil {
 				return err
 			}
 			if showOrigin {
 				for _, e := range f.Entries() {
-					cmd.Printf("file:%s\t%s=%s\n", path, e.Key, e.Value)
+					cmd.Printf("file:%s\t%s=%s\n", f.Path(), e.Key, e.Value)
 				}
 				return nil
 			}
@@ -288,6 +265,20 @@ func newConfigListCmd() *cobra.Command {
 	addLocationFlags(c, &global, &system, &file)
 	c.Flags().BoolVar(&showOrigin, "show-origin", false, "show the origin (file path) of each value")
 	return c
+}
+
+// editorCommand returns the editor command and its args from VISUAL, then
+// EDITOR, skipping empty values, then the platform default.
+func editorCommand() []string {
+	for _, env := range []string{"VISUAL", "EDITOR"} {
+		if parts := strings.Fields(os.Getenv(env)); len(parts) > 0 {
+			return parts
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return []string{"notepad"}
+	}
+	return []string{"vi"}
 }
 
 // newConfigEditCmd implements "model-cli config edit".
@@ -314,7 +305,7 @@ falling back to vi on Unix and notepad on Windows.`,
 				return err
 			}
 			if _, err := os.Stat(path); os.IsNotExist(err) {
-				// Create with 0600 — config files may hold sensitive values.
+				// Create with 0600, config files may hold sensitive values.
 				f, err2 := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
 				if err2 != nil {
 					return err2
@@ -322,20 +313,8 @@ falling back to vi on Unix and notepad on Windows.`,
 				_ = f.Close()
 			}
 
-			editorStr := os.Getenv("VISUAL")
-			if editorStr == "" {
-				editorStr = os.Getenv("EDITOR")
-			}
-			if editorStr == "" {
-				if runtime.GOOS == "windows" {
-					editorStr = "notepad"
-				} else {
-					editorStr = "vi"
-				}
-			}
-
 			// VISUAL/EDITOR may contain arguments (e.g. "code --wait").
-			parts := strings.Fields(editorStr)
+			parts := editorCommand()
 			editorArgs := append(parts[1:], path)
 			//nolint:gosec // editor is a user-controlled input, which is intentional
 			editorCmd := exec.CommandContext(cmd.Context(), parts[0], editorArgs...)

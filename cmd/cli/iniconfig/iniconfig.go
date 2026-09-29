@@ -126,7 +126,7 @@ func parse(data []byte) ([]Entry, error) {
 // section is returned lowercased; subsection preserves case.
 func parseSectionHeader(line string) (section, subsection string, err error) {
 	// Find the closing bracket; ignore anything that follows (inline comment).
-	closeIdx := strings.IndexByte(line, ']')
+	closeIdx := closingBracket(line)
 	if closeIdx < 0 {
 		return "", "", fmt.Errorf("invalid section header: %q", line)
 	}
@@ -147,6 +147,23 @@ func parseSectionHeader(line string) (section, subsection string, err error) {
 	}
 
 	return strings.ToLower(strings.TrimSpace(inner)), "", nil
+}
+
+// closingBracket returns the index of the ']' that ends a section header,
+// skipping any ']' inside a quoted subsection, or -1 if there is none.
+func closingBracket(line string) int {
+	inQuotes := false
+	for i := 1; i < len(line); i++ {
+		switch c := line[i]; {
+		case inQuotes && c == '\\':
+			i++
+		case c == '"':
+			inQuotes = !inQuotes
+		case !inQuotes && c == ']':
+			return i
+		}
+	}
+	return -1
 }
 
 // unescapeSubsection handles backslash escapes inside subsection names.
@@ -174,11 +191,15 @@ func unescapeSubsection(s string) (string, error) {
 }
 
 // parseKeyValue parses a line of the form "   key = value  # comment" or a
-// boolean "   key". Supports line continuation with trailing backslash.
+// boolean "   key". Line continuation is not supported.
 func parseKeyValue(line string) (key, value string, err error) {
 	trimmed := strings.TrimLeft(line, " \t")
 
 	eqIdx := strings.IndexByte(trimmed, '=')
+	if c := strings.IndexAny(trimmed, "#;"); c >= 0 && (eqIdx < 0 || c < eqIdx) {
+		// A comment before any "=": strip it, this is a boolean key.
+		trimmed, eqIdx = trimmed[:c], -1
+	}
 	if eqIdx < 0 {
 		// Boolean key: no "=", value is implicitly "true".
 		key = strings.TrimRight(trimmed, " \t")
@@ -206,12 +227,15 @@ func parseKeyValue(line string) (key, value string, err error) {
 func parseValue(raw string) (string, error) {
 	var b strings.Builder
 	inQuotes := false
+	// keep is the length of b that must not be right-trimmed (quoted or
+	// escaped content).
+	keep := 0
 	i := 0
 	for i < len(raw) {
 		c := raw[i]
 		switch {
 		case !inQuotes && (c == '#' || c == ';'):
-			// Inline comment — stop.
+			// Inline comment, stop.
 			goto done
 		case !inQuotes && c == '"':
 			inQuotes = true
@@ -221,9 +245,7 @@ func parseValue(raw string) (string, error) {
 			i++
 		case c == '\\':
 			if i+1 >= len(raw) {
-				// Trailing backslash = line continuation (we don't handle
-				// multi-line here; treat as end of value).
-				goto done
+				return "", fmt.Errorf("trailing backslash (line continuation is not supported)")
 			}
 			i++
 			switch raw[i] {
@@ -241,8 +263,12 @@ func parseValue(raw string) (string, error) {
 				return "", fmt.Errorf("unknown escape sequence \\%c", raw[i])
 			}
 			i++
+			keep = b.Len()
 		default:
 			b.WriteByte(c)
+			if inQuotes {
+				keep = b.Len()
+			}
 			i++
 		}
 	}
@@ -251,10 +277,7 @@ done:
 		return "", fmt.Errorf("unterminated quoted string")
 	}
 	result := b.String()
-	if !inQuotes {
-		result = strings.TrimRight(result, " \t")
-	}
-	return result, nil
+	return result[:keep] + strings.TrimRight(result[keep:], " \t"), nil
 }
 
 // validateVarName ensures a variable name contains only [A-Za-z0-9-] and
@@ -308,6 +331,12 @@ func ParseKey(key string) (section, subsection, variable string, err error) {
 	} else {
 		section = strings.ToLower(prefix[:firstDot])
 		subsection = prefix[firstDot+1:] // subsection preserves case
+		if subsection == "" {
+			return "", "", "", fmt.Errorf("invalid key %q: empty subsection", key)
+		}
+		if strings.ContainsAny(subsection, "\n\r\x00") {
+			return "", "", "", fmt.Errorf("invalid key %q: control character in subsection", key)
+		}
 	}
 
 	if section == "" {
@@ -408,7 +437,7 @@ func (f *File) Unset(key string) error {
 }
 
 // writeAtomic applies transform to the in-memory entries, serialises the
-// result to disk atomically (write to .lock → rename), and updates f.entries.
+// result to disk atomically (write to .lock, then rename), and updates f.entries.
 func (f *File) writeAtomic(transform func([]Entry) []Entry) error {
 	if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 		return err
@@ -419,16 +448,21 @@ func (f *File) writeAtomic(transform func([]Entry) []Entry) error {
 	// so that config files containing sensitive values are not world-readable.
 	mode := os.FileMode(0o600)
 	if info, err := os.Stat(f.path); err == nil {
-		mode = info.Mode()
+		mode = info.Mode().Perm()
 	}
 
 	newEntries := transform(append([]Entry(nil), f.entries...))
 
 	data := serialise(newEntries)
-	if err := os.WriteFile(lockPath, data, mode); err != nil {
-		return err
+	err := os.WriteFile(lockPath, data, mode)
+	if err == nil {
+		// WriteFile applies the umask; set the exact mode.
+		err = os.Chmod(lockPath, mode)
 	}
-	if err := os.Rename(lockPath, f.path); err != nil {
+	if err == nil {
+		err = os.Rename(lockPath, f.path)
+	}
+	if err != nil {
 		_ = os.Remove(lockPath)
 		return err
 	}

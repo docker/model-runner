@@ -320,3 +320,72 @@ func TestQuotedValueWithSpecialChars(t *testing.T) {
 		t.Fatalf("got %q, %v", v, ok)
 	}
 }
+
+func TestParse_BracketInSubsection(t *testing.T) {
+	roundTrip(t, "[branch \"x]y\"]\n\tremote = origin\n", []iniconfig.Entry{
+		{Key: "branch.x]y.remote", Value: "origin"},
+	})
+}
+
+func TestParse_BooleanKeyInlineComment(t *testing.T) {
+	roundTrip(t, "[core]\n\tbare # enable this\n", []iniconfig.Entry{
+		{Key: "core.bare", Value: "true"},
+	})
+}
+
+func TestParse_TrailingBackslashRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path, []byte("[core]\n\tname = abc\\\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := iniconfig.Load(path); err == nil {
+		t.Fatal("expected error for trailing backslash")
+	}
+}
+
+func TestSetRoundTripSpecialValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	f, _ := iniconfig.Load(path)
+	vals := map[string]string{
+		"a.trail": "value ",
+		"a.lead":  " value",
+		"a.bs":    `C:\dir\`,
+	}
+	for k, v := range vals {
+		if err := f.Set(k, v); err != nil {
+			t.Fatalf("Set(%q): %v", k, err)
+		}
+	}
+	f2, err := iniconfig.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range vals {
+		if got, ok := f2.Get(k); !ok || got != want {
+			t.Errorf("Get(%q) = %q, %v; want %q", k, got, ok, want)
+		}
+	}
+}
+
+func TestSetSubsectionWithBracket(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	f, _ := iniconfig.Load(path)
+	if err := f.Set("branch.x]y.remote", "origin"); err != nil {
+		t.Fatal(err)
+	}
+	f2, err := iniconfig.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := f2.Get("branch.x]y.remote"); !ok || v != "origin" {
+		t.Fatalf("got %q, %v", v, ok)
+	}
+}
+
+func TestParseKey_Invalid(t *testing.T) {
+	for _, k := range []string{"core..name", "core.a\nb.name", "core.a\rb.name", "core.a\x00b.name"} {
+		if _, _, _, err := iniconfig.ParseKey(k); err == nil {
+			t.Errorf("ParseKey(%q): expected error", k)
+		}
+	}
+}
