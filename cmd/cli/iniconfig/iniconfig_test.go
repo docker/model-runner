@@ -250,6 +250,7 @@ func TestParseKey(t *testing.T) {
 		{"core.bare", "core", "", "bare", false},
 		{"branch.main.remote", "branch", "main", "remote", false},
 		{"url.https://example.com/.insteadof", "url", "https://example.com/", "insteadof", false},
+		{"core.\u05d0b", "core", "", "\u05d0b", false},
 		{"nokey", "", "", "", true},
 		{"section.", "", "", "", true},
 	}
@@ -379,7 +380,7 @@ func TestSetSubsectionWithBracket(t *testing.T) {
 }
 
 func TestParseKey_Invalid(t *testing.T) {
-	for _, k := range []string{"core..name", "core.a\nb.name", "core.a\rb.name", "core.a\x00b.name", "core]x.name", `co"re.name`, "co re.name"} {
+	for _, k := range []string{"core..name", "core.a\nb.name", "core.a\rb.name", "core.a\x00b.name", "core]x.name", `co"re.name`, "co re.name", "core.\u0663x"} {
 		if _, _, _, err := iniconfig.ParseKey(k); err == nil {
 			t.Errorf("ParseKey(%q): expected error", k)
 		}

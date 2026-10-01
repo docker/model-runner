@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // maxConfigLineBytes is the hard cap on a single config line length (1 MiB).
@@ -345,7 +346,7 @@ func validateVarName(name string) error {
 	if name == "" {
 		return fmt.Errorf("empty variable name")
 	}
-	if !unicode.IsLetter(rune(name[0])) {
+	if r, _ := utf8.DecodeRuneInString(name); !unicode.IsLetter(r) {
 		return fmt.Errorf("variable name %q must start with a letter", name)
 	}
 	if c, bad := badNameRune(name); bad {
