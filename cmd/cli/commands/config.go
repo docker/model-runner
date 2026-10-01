@@ -143,12 +143,16 @@ Prints the value of the given key to stdout. If the key appears multiple times
 Exit status is 1 if the key is not found (unless --default is given).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Get/GetAll treat a malformed key as missing; reject it up front.
+			key := args[0]
+			if _, _, _, err := iniconfig.ParseKey(key); err != nil {
+				return err
+			}
 			f, err := loadConfig(global, system, file)
 			if err != nil {
 				return err
 			}
 
-			key := args[0]
 			var vals []string
 			if showAll {
 				vals = f.GetAll(key)

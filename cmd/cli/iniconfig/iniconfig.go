@@ -159,6 +159,9 @@ func parseSectionHeader(line string) (section, subsection string, err error) {
 		if err2 != nil {
 			return "", "", fmt.Errorf("invalid subsection in %q: %w", line, err2)
 		}
+		if err2 := validateSubsection(sub); err2 != nil {
+			return "", "", fmt.Errorf("invalid section header %q: %w", line, err2)
+		}
 		section = strings.ToLower(rawSection)
 		subsection = sub
 	} else {
@@ -324,6 +327,18 @@ func validateSectionName(name string) error {
 	return nil
 }
 
+// validateSubsection rejects subsections that cannot round-trip: an empty one
+// (indistinguishable from no subsection) or one with control characters.
+func validateSubsection(sub string) error {
+	if sub == "" {
+		return fmt.Errorf("empty subsection")
+	}
+	if strings.ContainsAny(sub, "\n\r\x00") {
+		return fmt.Errorf("control character in subsection")
+	}
+	return nil
+}
+
 // validateVarName ensures a variable name contains only [A-Za-z0-9-] and
 // starts with a letter.
 func validateVarName(name string) error {
@@ -361,8 +376,10 @@ func splitKey(key string) (section, subsection, variable string, err error) {
 	}
 	variable = key[lastDot+1:]
 	section, subsection, hasSub := strings.Cut(key[:lastDot], ".")
-	if hasSub && subsection == "" {
-		return "", "", "", fmt.Errorf("invalid key %q: empty subsection", key)
+	if hasSub {
+		if err = validateSubsection(subsection); err != nil {
+			return "", "", "", fmt.Errorf("invalid key %q: %w", key, err)
+		}
 	}
 	return section, subsection, variable, nil
 }
@@ -376,9 +393,6 @@ func ParseKey(key string) (section, subsection, variable string, err error) {
 		return "", "", "", err
 	}
 	section, variable = strings.ToLower(section), strings.ToLower(variable)
-	if strings.ContainsAny(subsection, "\n\r\x00") {
-		return "", "", "", fmt.Errorf("invalid key %q: control character in subsection", key)
-	}
 	if err2 := validateSectionName(section); err2 != nil {
 		return "", "", "", fmt.Errorf("invalid key %q: %w", key, err2)
 	}

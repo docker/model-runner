@@ -65,6 +65,9 @@ func TestConfigGet(t *testing.T) {
 		{"default all", []string{"get", "-f", path, "--all", "--default", "d", "user.none"}, "d\n", false},
 		{"missing", []string{"get", "-f", path, "user.none"}, "", true},
 		{"missing all", []string{"get", "-f", path, "--all", "user.none"}, "", true},
+		{"bad key", []string{"get", "-f", path, "bad-key"}, "", true},
+		{"bad key default", []string{"get", "-f", path, "--default", "d", "bad-key"}, "", true},
+		{"bad key all default", []string{"get", "-f", path, "--all", "--default", "d", "user..name"}, "", true},
 	}
 	for _, tt := range tests {
 		out, err := runConfig(t, tt.args...)

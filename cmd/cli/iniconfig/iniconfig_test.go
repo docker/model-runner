@@ -464,7 +464,7 @@ func TestSet_RejectsOverLongLine(t *testing.T) {
 }
 
 func TestLoad_InvalidSectionName(t *testing.T) {
-	for _, content := range []string{"[co re]\nname = x\n", "[]\nname = x\n", "[co.re]\nname = x\n", "[co re \"sub\"]\nname = x\n"} {
+	for _, content := range []string{"[co re]\nname = x\n", "[]\nname = x\n", "[co.re]\nname = x\n", "[co re \"sub\"]\nname = x\n", "[branch \"\"]\nremote = x\n", "[branch \"a\x00b\"]\nremote = x\n"} {
 		path := filepath.Join(t.TempDir(), "config")
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
