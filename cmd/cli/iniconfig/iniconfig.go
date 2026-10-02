@@ -139,13 +139,16 @@ func parse(data []byte) ([]Entry, error) {
 }
 
 // parseSectionHeader parses "[section]" or `[section "subsection"]`.
-// Anything after the closing ']' (e.g. inline comments) is ignored.
+// Only whitespace and an optional #/; comment may follow the closing ']'.
 // section is returned lowercased; subsection preserves case.
 func parseSectionHeader(line string) (section, subsection string, err error) {
-	// Find the closing bracket; ignore anything that follows (inline comment).
 	closeIdx := closingBracket(line)
 	if closeIdx < 0 {
 		return "", "", fmt.Errorf("invalid section header: %q", line)
+	}
+	// Reject trailing junk that is not a comment.
+	if rest := strings.TrimLeft(line[closeIdx+1:], " \t"); rest != "" && rest[0] != '#' && rest[0] != ';' {
+		return "", "", fmt.Errorf("invalid section header %q: unexpected text after ']'", line)
 	}
 	inner := line[1:closeIdx]
 

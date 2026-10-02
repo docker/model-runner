@@ -135,6 +135,26 @@ func TestParse_SectionHeaderTrailingComment(t *testing.T) {
 	})
 }
 
+func TestParse_SectionHeaderSuffix(t *testing.T) {
+	for _, hdr := range []string{"[core]", "[core]  ", "[core]# c", "[core];c", "[core] \t# c"} {
+		roundTrip(t, hdr+"\n\tbare = false\n", []iniconfig.Entry{
+			{Key: "core.bare", Value: "false"},
+		})
+	}
+	roundTrip(t, "[core \"x\"] ; c\n\tbare = false\n", []iniconfig.Entry{
+		{Key: "core.x.bare", Value: "false"},
+	})
+	for _, hdr := range []string{"[core]typo", "[core] typo", "[core \"x\"]typo", "[core]]"} {
+		path := filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(path, []byte(hdr+"\n\tbare = false\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := iniconfig.Load(path); err == nil {
+			t.Errorf("Load(%q): expected error", hdr)
+		}
+	}
+}
+
 func TestParse_FilePermissionsPreserved(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config")
