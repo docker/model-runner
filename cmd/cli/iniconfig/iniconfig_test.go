@@ -369,6 +369,9 @@ func TestSetRoundTripSpecialValues(t *testing.T) {
 		"a.trail": "value ",
 		"a.lead":  " value",
 		"a.bs":    `C:\dir\`,
+		// Invalid UTF-8 must survive both the quoted and unquoted paths.
+		"a.badquoted": "\xff#\xc3",
+		"a.badplain":  "\xfe\x80",
 	}
 	for k, v := range vals {
 		if err := f.Set(k, v); err != nil {

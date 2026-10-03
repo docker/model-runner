@@ -624,8 +624,9 @@ func quoteValue(v string) string {
 	}
 	var b strings.Builder
 	b.WriteByte('"')
-	for _, c := range v {
-		switch c {
+	// Iterate bytes, not runes, so invalid UTF-8 is written back unchanged.
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; c {
 		case '\\':
 			b.WriteString(`\\`)
 		case '"':
@@ -637,7 +638,7 @@ func quoteValue(v string) string {
 		case '\t':
 			b.WriteString(`\t`)
 		default:
-			b.WriteRune(c)
+			b.WriteByte(c)
 		}
 	}
 	b.WriteByte('"')
