@@ -1,6 +1,8 @@
 package iniconfig_test
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -381,6 +383,76 @@ func TestSetRoundTripSpecialValues(t *testing.T) {
 		if got, ok := f2.Get(k); !ok || got != want {
 			t.Errorf("Get(%q) = %q, %v; want %q", k, got, ok, want)
 		}
+	}
+}
+
+// controlCharValues are values containing line-break characters.
+var controlCharValues = []string{
+	"a\nb", "a\rb", "a\r\nb", "\n", "\r", "tail\r", "tail\n", "\r\n\r\n", "x\ty\n#z",
+}
+
+func TestSetRoundTripControlChars(t *testing.T) {
+	for _, want := range controlCharValues {
+		t.Run(fmt.Sprintf("%q", want), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config")
+			f, _ := iniconfig.Load(path)
+			if err := f.Set("a.v", want); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.ContainsRune(raw, '\r') || bytes.Count(raw, []byte("\n")) != 2 {
+				t.Errorf("file has raw line breaks in value: %q", raw)
+			}
+			f2, err := iniconfig.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := f2.Get("a.v"); !ok || got != want {
+				t.Errorf("Get = %q, %v; want %q", got, ok, want)
+			}
+		})
+	}
+}
+
+func TestList_OneLinePerKey(t *testing.T) {
+	for _, want := range append([]string{"plain", "a b", " pad ", `q"uote`, `C:\dir`, "a#b"}, controlCharValues...) {
+		t.Run(fmt.Sprintf("%q", want), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config")
+			f, _ := iniconfig.Load(path)
+			if err := f.Set("a.v", want); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Set("a.w", "next"); err != nil {
+				t.Fatal(err)
+			}
+			var sb strings.Builder
+			if err := f.List(&sb); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSuffix(sb.String(), "\n"), "\n")
+			if len(lines) != 2 || strings.Contains(sb.String(), "\r") || lines[1] != "a.w=next" {
+				t.Fatalf("want one line per key, got %q", sb.String())
+			}
+			// The listed value must decode back to the original.
+			val, ok := strings.CutPrefix(lines[0], "a.v=")
+			if !ok {
+				t.Fatalf("unexpected line %q", lines[0])
+			}
+			rt := filepath.Join(t.TempDir(), "config")
+			if err := os.WriteFile(rt, []byte("[a]\n\tv = "+val+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f2, err := iniconfig.Load(rt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := f2.Get("a.v"); !ok || got != want {
+				t.Errorf("listed value decodes to %q, %v; want %q", got, ok, want)
+			}
+		})
 	}
 }
 

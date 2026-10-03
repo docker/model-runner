@@ -81,6 +81,40 @@ func TestConfigGet(t *testing.T) {
 	}
 }
 
+func TestConfigListOneLinePerKey(t *testing.T) {
+	for _, v := range []string{"plain", "a\nb", "a\rb", "a\r\nb", "\n", "tail\r", `q"uote`, "a#b"} {
+		path := filepath.Join(t.TempDir(), "config")
+		for _, args := range [][]string{{"set", "-f", path, "a.v", v}, {"set", "-f", path, "a.w", "next"}} {
+			if _, err := runConfig(t, args...); err != nil {
+				t.Fatalf("%q: %v", args, err)
+			}
+		}
+		plain, err := runConfig(t, "list", "-f", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		origin, err := runConfig(t, "list", "-f", path, "--show-origin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, out := range map[string]string{"list": plain, "show-origin": origin} {
+			if n := strings.Count(out, "\n"); n != 2 || strings.Contains(out, "\r") {
+				t.Errorf("%q %s: want one line per key, got %q", v, name, out)
+			}
+		}
+		// --show-origin must use the same value representation as list.
+		var want strings.Builder
+		for _, line := range strings.SplitAfter(plain, "\n") {
+			if line != "" {
+				want.WriteString("file:" + path + "\t" + line)
+			}
+		}
+		if origin != want.String() {
+			t.Errorf("%q: show-origin got %q, want %q", v, origin, want.String())
+		}
+	}
+}
+
 func TestConfigLocationFlagsConflict(t *testing.T) {
 	_, err := runConfig(t, "get", "--global", "--system", "user.name")
 	if err == nil || !strings.Contains(err.Error(), "only one of") {

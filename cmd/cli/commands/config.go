@@ -258,7 +258,7 @@ func newConfigListCmd() *cobra.Command {
 			}
 			if showOrigin {
 				for _, e := range f.Entries() {
-					cmd.Printf("file:%s\t%s=%s\n", f.Path(), e.Key, e.Value)
+					cmd.Printf("file:%s\t%s\n", f.Path(), e.Format())
 				}
 				return nil
 			}

@@ -279,6 +279,8 @@ func parseValue(raw string) (string, error) {
 			switch raw[i] {
 			case 'n':
 				b.WriteByte('\n')
+			case 'r':
+				b.WriteByte('\r')
 			case 't':
 				b.WriteByte('\t')
 			case 'b':
@@ -630,6 +632,8 @@ func quoteValue(v string) string {
 			b.WriteString(`\"`)
 		case '\n':
 			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
 		case '\t':
 			b.WriteString(`\t`)
 		default:
@@ -644,10 +648,17 @@ func quoteValue(v string) string {
 // Listing
 // ----------------------------------------------------------------------------
 
+// Format returns the entry as a single "key=value" line (without a newline).
+// The value is quoted and escaped as in the config file, so it never contains
+// a raw line break.
+func (e Entry) Format() string {
+	return e.Key + "=" + quoteValue(e.Value)
+}
+
 // List writes all key=value pairs to w, one per line.
 func (f *File) List(w io.Writer) error {
 	for _, e := range f.entries {
-		if _, err := fmt.Fprintf(w, "%s=%s\n", e.Key, e.Value); err != nil {
+		if _, err := fmt.Fprintln(w, e.Format()); err != nil {
 			return err
 		}
 	}
