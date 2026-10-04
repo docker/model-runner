@@ -115,6 +115,33 @@ func TestConfigListOneLinePerKey(t *testing.T) {
 	}
 }
 
+func TestConfigGetWritesToStdout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path, []byte("[user]\n\tname = a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newConfigCmd()
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"get", "-f", path, "user.name"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "a\n" || stderr.Len() != 0 {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestDefaultConfigPathNoHome(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	if p, err := defaultConfigPath(); err == nil {
+		t.Skipf("home directory still resolved: %q", p)
+	}
+}
+
 func TestConfigLocationFlagsConflict(t *testing.T) {
 	_, err := runConfig(t, "get", "--global", "--system", "user.name")
 	if err == nil || !strings.Contains(err.Error(), "only one of") {

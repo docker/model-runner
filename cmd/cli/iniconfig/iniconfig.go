@@ -411,6 +411,16 @@ func ParseKey(key string) (section, subsection, variable string, err error) {
 	return section, subsection, variable, nil
 }
 
+// canonicalFromKey validates a user-supplied dotted key and returns its
+// canonical form.
+func canonicalFromKey(key string) (string, error) {
+	section, subsection, variable, err := ParseKey(key)
+	if err != nil {
+		return "", err
+	}
+	return canonicalKey(section, subsection, variable), nil
+}
+
 // ----------------------------------------------------------------------------
 // Querying
 // ----------------------------------------------------------------------------
@@ -418,29 +428,19 @@ func ParseKey(key string) (section, subsection, variable string, err error) {
 // Get returns the last value for the given canonical key. The second return
 // value is false if the key is not present.
 func (f *File) Get(key string) (string, bool) {
-	section, subsection, variable, err := ParseKey(key)
-	if err != nil {
+	vals := f.GetAll(key)
+	if len(vals) == 0 {
 		return "", false
 	}
-	canonical := canonicalKey(section, subsection, variable)
-	found := false
-	last := ""
-	for _, e := range f.entries {
-		if e.Key == canonical {
-			last = e.Value
-			found = true
-		}
-	}
-	return last, found
+	return vals[len(vals)-1], true
 }
 
 // GetAll returns all values for the given canonical key.
 func (f *File) GetAll(key string) []string {
-	section, subsection, variable, err := ParseKey(key)
+	canonical, err := canonicalFromKey(key)
 	if err != nil {
 		return nil
 	}
-	canonical := canonicalKey(section, subsection, variable)
 	var vals []string
 	for _, e := range f.entries {
 		if e.Key == canonical {
@@ -457,11 +457,10 @@ func (f *File) GetAll(key string) []string {
 // Set writes key=value to the file, replacing the last existing occurrence or
 // appending if absent. The file is written atomically under a lock file.
 func (f *File) Set(key, value string) error {
-	section, subsection, variable, err := ParseKey(key)
+	canonical, err := canonicalFromKey(key)
 	if err != nil {
 		return err
 	}
-	canonical := canonicalKey(section, subsection, variable)
 	return f.writeAtomic(func(entries []Entry) []Entry {
 		replaced := false
 		for i := len(entries) - 1; i >= 0; i-- {
@@ -480,11 +479,10 @@ func (f *File) Set(key, value string) error {
 
 // Unset removes all occurrences of key from the file.
 func (f *File) Unset(key string) error {
-	section, subsection, variable, err := ParseKey(key)
+	canonical, err := canonicalFromKey(key)
 	if err != nil {
 		return err
 	}
-	canonical := canonicalKey(section, subsection, variable)
 	return f.writeAtomic(func(entries []Entry) []Entry {
 		out := entries[:0]
 		for _, e := range entries {
