@@ -1,0 +1,55 @@
+command: docker model config list
+aliases: docker model config list, docker model config ls
+short: List all config key/value pairs
+long: List all key=value pairs from the config file, one per line.
+usage: docker model config list
+pname: docker model config
+plink: docker_model_config.yaml
+options:
+    - option: file
+      shorthand: f
+      value_type: string
+      description: use a specific config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: global
+      value_type: bool
+      default_value: "false"
+      description: use the global (user-level) config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: show-origin
+      value_type: bool
+      default_value: "false"
+      description: show the origin (file path) of each value
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+    - option: system
+      value_type: bool
+      default_value: "false"
+      description: use the system-wide config file
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
