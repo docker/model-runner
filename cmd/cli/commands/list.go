@@ -13,7 +13,6 @@ import (
 	"github.com/docker/model-runner/cmd/cli/commands/completion"
 	"github.com/docker/model-runner/cmd/cli/commands/formatter"
 	"github.com/docker/model-runner/cmd/cli/desktop"
-	"github.com/docker/model-runner/cmd/cli/pkg/standalone"
 	"github.com/docker/model-runner/pkg/distribution/types"
 	dmrm "github.com/docker/model-runner/pkg/inference/models"
 	"github.com/olekukonko/tablewriter"
@@ -73,15 +72,6 @@ func newListCmd() *cobra.Command {
 				return nil
 			}
 
-			// If we're doing an automatic install, only show the installation
-			// status if it won't corrupt machine-readable output.
-			var standaloneInstallPrinter standalone.StatusPrinter
-			if !jsonFormat && !openai && !quiet {
-				standaloneInstallPrinter = asPrinter(cmd)
-			}
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), standaloneInstallPrinter, false); err != nil {
-				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
-			}
 			var modelFilter string
 			if len(args) > 0 {
 				modelFilter = args[0]
