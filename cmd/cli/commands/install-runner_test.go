@@ -1,11 +1,13 @@
 package commands
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
+	"github.com/spf13/cobra"
 )
 
 func TestInstallRunnerHostFlag(t *testing.T) {
@@ -291,5 +293,54 @@ func TestCommandFlagChangedDefensiveCases(t *testing.T) {
 	}
 	if commandFlagChanged(cmd, "gpu") {
 		t.Fatal("expected default gpu flag to report unchanged")
+	}
+}
+
+func TestInstallPrinterRespectsStructuredOutputFlags(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantOutput bool
+	}{
+		{name: "no flags", args: nil, wantOutput: true},
+		{name: "json", args: []string{"--json"}, wantOutput: false},
+		{name: "quiet", args: []string{"--quiet"}, wantOutput: false},
+		{name: "openai", args: []string{"--openai"}, wantOutput: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			cmd.Flags().Bool("json", false, "")
+			cmd.Flags().BoolP("quiet", "q", false, "")
+			cmd.Flags().Bool("openai", false, "")
+			var stdout bytes.Buffer
+			cmd.SetOut(&stdout)
+			if err := cmd.ParseFlags(tt.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+
+			p := installPrinter(cmd)
+			p.Printf("Pulling from docker/model-runner\n")
+			p.Println("done")
+			if _, err := p.Write([]byte("progress")); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+
+			if got := stdout.Len() > 0; got != tt.wantOutput {
+				t.Errorf("stdout = %q, want output: %v", stdout.String(), tt.wantOutput)
+			}
+		})
+	}
+}
+
+func TestInstallPrinterWithoutStructuredOutputFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	installPrinter(cmd).Printf("hello")
+
+	if stdout.String() != "hello" {
+		t.Errorf("stdout = %q, want %q", stdout.String(), "hello")
 	}
 }

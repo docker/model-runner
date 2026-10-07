@@ -177,6 +177,19 @@ func ensureStandaloneRunnerAvailable(ctx context.Context, printer standalone.Sta
 	return inspectStandaloneRunner(container), nil
 }
 
+// installPrinter returns the printer used to report automatic runner
+// installation progress. It is silent when the command was invoked with
+// --json, --quiet or --openai, so that stdout only carries the command's
+// machine-readable output.
+func installPrinter(cmd *cobra.Command) standalone.StatusPrinter {
+	for _, name := range []string{"json", "quiet", "openai"} {
+		if f := cmd.Flag(name); f != nil && f.Value.String() == "true" {
+			return standalone.NoopPrinter()
+		}
+	}
+	return asPrinter(cmd)
+}
+
 // withStandaloneRunner wraps a command's RunE to ensure the standalone runner
 // is available before executing the command. This is a no-op in unsupported
 // contexts (e.g., Docker Desktop) or if automatic installations have been disabled.
@@ -190,7 +203,7 @@ func withStandaloneRunner(cmd *cobra.Command) *cobra.Command {
 		// since those commands talk directly to an external endpoint and don't
 		// need (or have) a local Docker daemon.
 		if f := cmd.Flag("openaiurl"); f == nil || f.Value.String() == "" {
-			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), asPrinter(cmd), false); err != nil {
+			if _, err := ensureStandaloneRunnerAvailable(cmd.Context(), installPrinter(cmd), false); err != nil {
 				return fmt.Errorf("unable to initialize standalone model runner: %w", err)
 			}
 		}
