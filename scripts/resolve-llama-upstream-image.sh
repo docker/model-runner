@@ -175,7 +175,10 @@ validate_tag_exists() {
   local all_tags
   all_tags=$(ghcr_fetch_all_tags "$token")
 
-  if echo "$all_tags" | grep -qx "$candidate_tag"; then
+  # Use a here-string rather than a pipe: with pipefail, grep -q exiting on the
+  # first match makes echo die from SIGPIPE on a large tag list, which turns a
+  # successful match into a failure.
+  if grep -qx "$candidate_tag" <<< "$all_tags"; then
     # Tag exists — nothing to do.
     return 0
   fi
