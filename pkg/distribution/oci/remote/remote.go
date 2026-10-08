@@ -425,7 +425,7 @@ type resolverComponents struct {
 func createResolver(o *options, ref reference.Reference) resolverComponents {
 	authorizer := docker.NewDockerAuthorizer(
 		docker.WithAuthCreds(credentialsFunc(o, ref)),
-		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
+		docker.WithAuthClient(newGuardedAuthClient(o.transport, ref.Context().Registry.RegistryStr())))
 
 	// Wrap transport with Range header support for resumable downloads
 	// and User-Agent header for registry compatibility (required by HuggingFace)
@@ -530,7 +530,7 @@ func createResolverWithPushScope(o *options, ref reference.Reference) (resolverC
 			}
 			return cfg.Username, cfg.Password, nil
 		}),
-		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
+		docker.WithAuthClient(newGuardedAuthClient(o.transport, ref.Context().Registry.RegistryStr())))
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
 		Hosts: docker.ConfigureDefaultRegistries(

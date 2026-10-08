@@ -90,13 +90,29 @@ func isDisallowedIP(ip net.IP) bool {
 	return false
 }
 
-// validateTokenEndpointURL validates the host of a token-endpoint URL against
-// the internal-hostname blocklist and the private/loopback/link-local ranges.
-// The local DNS resolution this performs is deliberate even when a proxy will
-// resolve the name itself: checking the resolved IPs is the validation, and a
-// name that cannot be resolved locally is rejected (fail closed) rather than
-// forwarded unchecked.
-func validateTokenEndpointURL(u *url.URL) error {
+// isTrustedDockerTokenEndpoint recognizes Docker Hub's token endpoint only when
+// authenticating to Docker Hub. Exact HTTPS authority and path matching avoids
+// extending this exception to arbitrary hosts, ports, or authentication services.
+func isTrustedDockerTokenEndpoint(u *url.URL, registryHost string) bool {
+	switch strings.ToLower(registryHost) {
+	case "docker.io", "index.docker.io", "registry-1.docker.io":
+	default:
+		return false
+	}
+	return u.Scheme == "https" && u.User == nil && u.Fragment == "" &&
+		(strings.EqualFold(u.Host, "auth.docker.io") || strings.EqualFold(u.Host, "auth.docker.io:443")) &&
+		u.EscapedPath() == "/token"
+}
+
+// validateTokenEndpointURL validates untrusted token endpoints against the
+// internal-hostname and private/loopback/link-local blocklists. Docker Hub's
+// trusted HTTPS token endpoint does not require local DNS resolution: a proxy
+// may resolve it on networks where public DNS is unavailable to the client.
+// Direct connections still validate and pin the resolved IP in their dialer.
+func validateTokenEndpointURL(u *url.URL, registryHost string) error {
+	if isTrustedDockerTokenEndpoint(u, registryHost) {
+		return nil
+	}
 	port := u.Port()
 	if port == "" {
 		if u.Scheme == "https" {
@@ -153,15 +169,15 @@ func resolveAndValidateHost(hostname, port string) (dialAddr string, err error) 
 // both by containerd's authorizer (via docker.WithAuthClient) and by the
 // hand-rolled Exchange(). The realm URL in a registry's WWW-Authenticate
 // challenge is attacker-controlled, so every request this client makes is
-// validated against the internal-hostname blocklist and the private/loopback/
-// link-local IP ranges before a connection is established.
+// validated before a connection is established, with a narrow exception for
+// Docker Hub's trusted token endpoint when using a proxy.
 //
 // How the connection is guarded depends on whether a proxy applies to the
 // request (see guardedAuthTransport). A dial-time-only guard would break every
 // proxied deployment: with a proxy configured, the dialer sees the proxy's
 // address — commonly a private or loopback IP — rather than the realm's, and
 // would reject the proxy itself.
-func newGuardedAuthClient(base http.RoundTripper) *http.Client {
+func newGuardedAuthClient(base http.RoundTripper, registryHost string) *http.Client {
 	var proxied *http.Transport
 	if t, ok := base.(*http.Transport); ok {
 		proxied = t.Clone()
@@ -185,7 +201,7 @@ func newGuardedAuthClient(base http.RoundTripper) *http.Client {
 		return (&net.Dialer{}).DialContext(ctx, network, dialAddr)
 	}
 
-	return &http.Client{Transport: &guardedAuthTransport{proxied: proxied, direct: direct}}
+	return &http.Client{Transport: &guardedAuthTransport{proxied: proxied, direct: direct, registryHost: registryHost}}
 }
 
 // guardedAuthTransport validates every token-endpoint request against the SSRF
@@ -195,12 +211,14 @@ func newGuardedAuthClient(base http.RoundTripper) *http.Client {
 //     IP just before connecting and dials that exact address, so DNS rebinding
 //     cannot slip an internal address past the check.
 //   - Proxied connections go through a transport with the proxy configuration
-//     intact and a stock dialer: the proxy is the one connecting to the realm,
+//     intact and the supplied dialer: the proxy is the one connecting to the realm,
 //     so pinning the dial address is neither possible nor meaningful. The
-//     realm host is validated here at the request level instead.
+//     realm host is validated here at the request level instead, except for
+//     Docker Hub's trusted HTTPS token endpoint. Redirects are checked as well.
 type guardedAuthTransport struct {
-	proxied *http.Transport // proxy settings intact, stock dialer
-	direct  *http.Transport // no proxy, validating dialer pinned to the resolved IP
+	proxied      *http.Transport // proxy settings and supplied dialer intact
+	direct       *http.Transport // no proxy, validating dialer pinned to the resolved IP
+	registryHost string
 }
 
 func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -210,7 +228,7 @@ func (g *guardedAuthTransport) RoundTrip(req *http.Request) (*http.Response, err
 			return nil, fmt.Errorf("determining proxy for token endpoint: %w", err)
 		}
 		if proxyURL != nil {
-			if err := validateTokenEndpointURL(req.URL); err != nil {
+			if err := validateTokenEndpointURL(req.URL, g.registryHost); err != nil {
 				return nil, fmt.Errorf("realm URL rejected: %w", err)
 			}
 			return g.proxied.RoundTrip(req)
@@ -288,8 +306,8 @@ func parseWWWAuthenticate(header string) WWWAuthenticate {
 // the registry's WWW-Authenticate challenge and is therefore untrusted; the
 // guarded client rejects realms on internal hostnames or private/loopback
 // addresses and honors any configured proxy.
-func Exchange(ctx context.Context, _ reference.Registry, auth authn.Authenticator, transport http.RoundTripper, scopes []string, pr *PingResponse) (*Token, error) {
-	client := newGuardedAuthClient(transport)
+func Exchange(ctx context.Context, reg reference.Registry, auth authn.Authenticator, transport http.RoundTripper, scopes []string, pr *PingResponse) (*Token, error) {
+	client := newGuardedAuthClient(transport, reg.RegistryStr())
 
 	// Build token request URL
 	tokenURL, err := url.Parse(pr.WWWAuthenticate.Realm)
@@ -300,7 +318,7 @@ func Exchange(ctx context.Context, _ reference.Registry, auth authn.Authenticato
 	// Validate the realm before any request is made so a blocked realm fails
 	// fast with a clear error. The guarded client re-validates at connection
 	// time (or per request when proxied), closing the TOCTOU window.
-	if err := validateTokenEndpointURL(tokenURL); err != nil {
+	if err := validateTokenEndpointURL(tokenURL, reg.RegistryStr()); err != nil {
 		return nil, fmt.Errorf("realm URL rejected: %w", err)
 	}
 
