@@ -105,6 +105,7 @@ func NewRootCmd(cli *command.DockerCli) *cobra.Command {
 		newReinstallRunner(),
 		newSearchCmd(),
 		newSkillsCmd(),
+		newConfigCmd(),
 	)
 	rootCmd.AddCommand(newGatewayCmd())
 

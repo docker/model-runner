@@ -1,0 +1,44 @@
+command: docker model config
+short: Read and write model-runner config file values
+long: |-
+    Read and write model-runner config file values.
+
+    The config file uses an INI format with sections and key=value pairs:
+
+        [section]
+            key = value
+        [section "subsection"]
+            key = value
+
+    Keys are specified in dot notation: section.key or section.subsection.key.
+
+    The default file is $XDG_CONFIG_HOME/model-runner/config, falling back to
+    ~/.config/model-runner/config when XDG_CONFIG_HOME is not set.
+
+    Examples:
+        model-cli config set user.name "Alice"
+        model-cli config get user.name
+        model-cli config list
+        model-cli config unset user.name
+        model-cli config edit
+pname: docker model
+plink: docker_model.yaml
+cname:
+    - docker model config edit
+    - docker model config get
+    - docker model config list
+    - docker model config set
+    - docker model config unset
+clink:
+    - docker_model_config_edit.yaml
+    - docker_model_config_get.yaml
+    - docker_model_config_list.yaml
+    - docker_model_config_set.yaml
+    - docker_model_config_unset.yaml
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
