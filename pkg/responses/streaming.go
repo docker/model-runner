@@ -22,6 +22,14 @@ type StreamingResponseWriter struct {
 	currentContentIdx  int
 	accumulatedContent strings.Builder
 	toolCalls          []OutputItem
+	// toolCallPos maps a streaming tool call index to its position in toolCalls.
+	toolCallPos map[int]int
+
+	// Output indices are assigned when an item is added, in arrival order, and
+	// stay fixed for all of that item's events and its place in the output.
+	nextOutputIndex       int
+	messageOutputIndex    int
+	toolCallOutputIndices []int
 }
 
 // NewStreamingResponseWriter creates a new streaming response writer.
@@ -267,6 +275,7 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 	if s.currentItemID == "" {
 		s.currentItemID = GenerateMessageID()
 		s.currentContentIdx = 0
+		s.messageOutputIndex = s.allocOutputIndex()
 
 		// Send output_item.added
 		item := &OutputItem{
@@ -284,7 +293,7 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 			Type:           EventOutputItemAdded,
 			SequenceNumber: s.nextSeq(),
 			Item:           item,
-			OutputIndex:    0,
+			OutputIndex:    s.messageOutputIndex,
 		})
 
 		// Send content_part.added
@@ -292,7 +301,7 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 			Type:           EventContentPartAdded,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         s.currentItemID,
-			OutputIndex:    0,
+			OutputIndex:    s.messageOutputIndex,
 			ContentIndex:   0,
 			Part: &ContentPart{
 				Type:        ContentTypeOutputText,
@@ -310,7 +319,7 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 		Type:           EventOutputTextDelta,
 		SequenceNumber: s.nextSeq(),
 		ItemID:         s.currentItemID,
-		OutputIndex:    0,
+		OutputIndex:    s.messageOutputIndex,
 		ContentIndex:   0,
 		Delta:          content,
 	})
@@ -319,16 +328,37 @@ func (s *StreamingResponseWriter) handleContentDelta(content string) {
 // handleToolCallDelta handles tool call deltas from the chat completion stream.
 func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) {
 	for _, tc := range toolCalls {
-		// Find or create the tool call item
-		var item *OutputItem
-		for i := range s.toolCalls {
-			if s.toolCalls[i].CallID == tc.ID {
-				item = &s.toolCalls[i]
-				break
+		// Find or create the tool call item. Argument deltas after the first
+		// one carry only the index (no ID), so match on the index first and
+		// fall back to the ID.
+		pos := -1
+		if tc.Index != nil {
+			if p, ok := s.toolCallPos[*tc.Index]; ok {
+				pos = p
+				// Some servers reuse one index for several calls and tell them
+				// apart by ID, so an ID that differs starts a different call.
+				if tc.ID != "" && s.toolCalls[p].CallID != tc.ID {
+					pos = -1
+				}
+			}
+		}
+		if pos < 0 && tc.ID != "" {
+			for i := range s.toolCalls {
+				if s.toolCalls[i].CallID == tc.ID {
+					pos = i
+					break
+				}
 			}
 		}
 
-		if item == nil {
+		var item *OutputItem
+		if pos >= 0 {
+			item = &s.toolCalls[pos]
+			if item.Name == "" {
+				item.Name = tc.Function.Name
+			}
+			s.rememberToolCallIndex(tc.Index, pos)
+		} else {
 			// New tool call
 			callID := tc.ID
 			if callID == "" {
@@ -343,14 +373,17 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Status:    StatusInProgress,
 			}
 			s.toolCalls = append(s.toolCalls, newItem)
-			item = &s.toolCalls[len(s.toolCalls)-1]
+			s.toolCallOutputIndices = append(s.toolCallOutputIndices, s.allocOutputIndex())
+			pos = len(s.toolCalls) - 1
+			item = &s.toolCalls[pos]
+			s.rememberToolCallIndex(tc.Index, pos)
 
 			// Send output_item.added for function call
 			s.sendEvent(EventOutputItemAdded, &StreamEvent{
 				Type:           EventOutputItemAdded,
 				SequenceNumber: s.nextSeq(),
 				Item:           item,
-				OutputIndex:    len(s.toolCalls) - 1,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 			})
 		}
 
@@ -363,15 +396,41 @@ func (s *StreamingResponseWriter) handleToolCallDelta(toolCalls []ChatToolCall) 
 				Type:           EventFunctionCallArgsDelta,
 				SequenceNumber: s.nextSeq(),
 				ItemID:         item.ID,
-				OutputIndex:    len(s.toolCalls) - 1,
+				OutputIndex:    s.toolCallOutputIndex(pos),
 				Delta:          tc.Function.Arguments,
 			})
 		}
 	}
 }
 
+// allocOutputIndex returns the output index for a newly added item.
+func (s *StreamingResponseWriter) allocOutputIndex() int {
+	i := s.nextOutputIndex
+	s.nextOutputIndex++
+	return i
+}
+
+// toolCallOutputIndex returns the output index assigned to toolCalls[pos].
+func (s *StreamingResponseWriter) toolCallOutputIndex(pos int) int {
+	return s.toolCallOutputIndices[pos]
+}
+
+// rememberToolCallIndex records which item a streaming tool call index refers to.
+func (s *StreamingResponseWriter) rememberToolCallIndex(index *int, pos int) {
+	if index == nil {
+		return
+	}
+	if s.toolCallPos == nil {
+		s.toolCallPos = make(map[int]int)
+	}
+	s.toolCallPos[*index] = pos
+}
+
 // finalize completes the streaming response.
 func (s *StreamingResponseWriter) finalize() {
+	// Items go into the output at the index their events used.
+	output := make([]OutputItem, s.nextOutputIndex)
+
 	// Finalize any accumulated content
 	if s.currentItemID != "" {
 		finalText := s.accumulatedContent.String()
@@ -381,7 +440,7 @@ func (s *StreamingResponseWriter) finalize() {
 			Type:           EventOutputTextDone,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         s.currentItemID,
-			OutputIndex:    0,
+			OutputIndex:    s.messageOutputIndex,
 			ContentIndex:   0,
 			Part: &ContentPart{
 				Type:        ContentTypeOutputText,
@@ -395,7 +454,7 @@ func (s *StreamingResponseWriter) finalize() {
 			Type:           EventContentPartDone,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         s.currentItemID,
-			OutputIndex:    0,
+			OutputIndex:    s.messageOutputIndex,
 			ContentIndex:   0,
 			Part: &ContentPart{
 				Type:        ContentTypeOutputText,
@@ -408,7 +467,7 @@ func (s *StreamingResponseWriter) finalize() {
 		s.sendEvent(EventOutputItemDone, &StreamEvent{
 			Type:           EventOutputItemDone,
 			SequenceNumber: s.nextSeq(),
-			OutputIndex:    0,
+			OutputIndex:    s.messageOutputIndex,
 			Item: &OutputItem{
 				ID:   s.currentItemID,
 				Type: ItemTypeMessage,
@@ -423,7 +482,7 @@ func (s *StreamingResponseWriter) finalize() {
 		})
 
 		// Add to response output
-		s.response.Output = append(s.response.Output, OutputItem{
+		output[s.messageOutputIndex] = OutputItem{
 			ID:   s.currentItemID,
 			Type: ItemTypeMessage,
 			Role: "assistant",
@@ -433,7 +492,7 @@ func (s *StreamingResponseWriter) finalize() {
 				Annotations: []Annotation{},
 			}},
 			Status: StatusCompleted,
-		})
+		}
 		s.response.OutputText = finalText
 	}
 
@@ -444,7 +503,7 @@ func (s *StreamingResponseWriter) finalize() {
 			Type:           EventFunctionCallArgsDone,
 			SequenceNumber: s.nextSeq(),
 			ItemID:         tc.ID,
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Delta:          tc.Arguments,
 		})
 
@@ -453,13 +512,14 @@ func (s *StreamingResponseWriter) finalize() {
 		s.sendEvent(EventOutputItemDone, &StreamEvent{
 			Type:           EventOutputItemDone,
 			SequenceNumber: s.nextSeq(),
-			OutputIndex:    i,
+			OutputIndex:    s.toolCallOutputIndex(i),
 			Item:           &tc,
 		})
 
 		// Add to response output
-		s.response.Output = append(s.response.Output, tc)
+		output[s.toolCallOutputIndex(i)] = tc
 	}
+	s.response.Output = append(s.response.Output, output...)
 
 	// Update response status
 	s.response.Status = StatusCompleted
