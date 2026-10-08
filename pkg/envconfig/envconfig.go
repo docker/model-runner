@@ -152,6 +152,12 @@ func VLLMMetalServerPath() string {
 	return Var("VLLM_METAL_SERVER_PATH")
 }
 
+// OVMSServerPath returns the optional path to the OVMS server binary.
+// Configured via OVMS_SERVER_PATH.
+func OVMSServerPath() string {
+	return Var("OVMS_SERVER_PATH")
+}
+
 // LogDir returns the directory containing DMR log files.
 // Configured via MODEL_RUNNER_LOG_DIR. When empty, the server
 // auto-creates a default log directory so that the /logs API
