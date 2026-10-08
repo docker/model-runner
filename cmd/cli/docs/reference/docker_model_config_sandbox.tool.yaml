@@ -1,0 +1,13 @@
+command: docker model config sandbox.tool
+short: Set the sandbox tool
+long: Set the sandbox tool
+usage: docker model config sandbox.tool <tool>
+pname: docker model config
+plink: docker_model_config.yaml
+deprecated: false
+hidden: false
+experimental: false
+experimentalcli: false
+kubernetes: false
+swarm: false
+
