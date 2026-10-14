@@ -538,6 +538,54 @@ func TestGetArgs(t *testing.T) {
 				`{"max_model_len":32768}`,
 			},
 		},
+		{
+			name: "HFOverrides tensor_parallel_size does not override RuntimeFlags",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				RuntimeFlags: []string{"--tensor-parallel-size", "2"},
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"tensor_parallel_size": float64(4),
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--tensor-parallel-size",
+				"2",
+				"--hf-overrides",
+				`{"tensor_parallel_size":4}`,
+			},
+		},
+		{
+			name: "HFOverrides max_model_len does not override RuntimeFlags",
+			bundle: &mockModelBundle{
+				safetensorsPath: "/path/to/model",
+			},
+			config: &inference.BackendConfiguration{
+				RuntimeFlags: []string{"--max-model-len", "4096"},
+				VLLM: &inference.VLLMConfig{
+					HFOverrides: inference.HFOverrides{
+						"max_model_len": float64(32768),
+					},
+				},
+			},
+			expected: []string{
+				"serve",
+				"/path/to",
+				"--uds",
+				"/tmp/socket",
+				"--max-model-len",
+				"4096",
+				"--hf-overrides",
+				`{"max_model_len":32768}`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
