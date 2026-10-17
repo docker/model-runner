@@ -16,8 +16,12 @@ import (
 // end: a malicious registry answers every request with a 401 Bearer challenge
 // whose realm points at a loopback "internal service". The token fetch that
 // containerd's authorizer performs against that realm must be blocked, so the
-// internal service is never contacted. This is the code path (remote.Image ->
-// createResolver) that the original CVE-2026-33990 fix left unguarded.
+// internal service is never contacted.
+//
+// The internal service sits on the same IP as the registry but a different
+// port: trust is scoped to the exact authority (host and port) being contacted,
+// so advertising another service on the same host must not be enough to have
+// the token request followed there.
 func TestPullSSRF_RealmNotFollowedToInternalService(t *testing.T) {
 	var internalHits atomic.Int32
 	internalService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -29,7 +33,7 @@ func TestPullSSRF_RealmNotFollowedToInternalService(t *testing.T) {
 
 	maliciousRegistry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate",
-			fmt.Sprintf(`Bearer realm="%s/token",service="evil-registry"`, internalService.URL))
+			`Bearer realm="`+internalService.URL+`/token",service="evil-registry"`)
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer maliciousRegistry.Close()
@@ -42,7 +46,7 @@ func TestPullSSRF_RealmNotFollowedToInternalService(t *testing.T) {
 
 	_, err = remote.Image(ref, remote.WithContext(t.Context()), remote.WithPlainHTTP(true))
 	if err == nil {
-		t.Fatal("remote.Image should have failed: the token realm resolves to a loopback address and must be rejected")
+		t.Fatal("remote.Image should have failed: the token realm points at a different authority on the same host and must be rejected")
 	}
 	if hits := internalHits.Load(); hits != 0 {
 		t.Errorf("SSRF not blocked on the pull path: the internal service at %s was contacted %d time(s) via the token realm", internalService.URL, hits)

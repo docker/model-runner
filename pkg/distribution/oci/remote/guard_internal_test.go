@@ -17,7 +17,7 @@ func TestNewGuardedAuthClientBlocksLoopback(t *testing.T) {
 	}))
 	defer internalService.Close()
 
-	client := newGuardedAuthClient(nil)
+	client := newGuardedAuthClient(nil, "")
 	resp, err := client.Get(internalService.URL) //nolint:noctx
 	if err == nil {
 		resp.Body.Close()
@@ -50,7 +50,7 @@ func TestGuardedAuthClientHonorsProxyOnPrivateAddress(t *testing.T) {
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	base.Proxy = http.ProxyURL(proxyURL)
 
-	client := newGuardedAuthClient(base)
+	client := newGuardedAuthClient(base, "")
 
 	// A public realm must be reachable through the loopback proxy. 203.0.113.0/24
 	// is TEST-NET-3: never routable, so a hit proves the request went via the proxy.

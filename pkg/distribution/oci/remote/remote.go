@@ -421,11 +421,43 @@ type resolverComponents struct {
 	plainHTTP  bool
 }
 
+// perHostAuthorizers wraps a containerd hosts function so that every registry
+// host it returns — including configured mirrors — carries an authorizer whose
+// guarded auth client trusts that host's own authority (host and port).
+//
+// The realm in a 401 challenge is attacker-controlled, so trusting
+// ref.Context().Registry would misjudge every mirror: an internal Docker Hub
+// mirror on 127.0.0.1 or an RFC1918 address would have its own same-authority
+// realm rejected because it was compared against docker.io. Binding the trust
+// domain to the host actually being contacted keeps those mirrors working while
+// still blocking a realm that points anywhere else, including another service
+// on the same host but a different port.
+func perHostAuthorizers(base docker.RegistryHosts, creds func(string) (string, string, error), transport http.RoundTripper) docker.RegistryHosts {
+	if base == nil {
+		return nil
+	}
+	return func(host string) ([]docker.RegistryHost, error) {
+		hosts, err := base(host)
+		if err != nil {
+			return nil, err
+		}
+		for i := range hosts {
+			authority := normalizeAuthority(hosts[i].Host, hosts[i].Scheme)
+			hosts[i].Authorizer = docker.NewDockerAuthorizer(
+				docker.WithAuthCreds(creds),
+				docker.WithAuthClient(newGuardedAuthClient(transport, authority)))
+		}
+		return hosts, nil
+	}
+}
+
 // createResolver creates a docker resolver with the given options.
 func createResolver(o *options, ref reference.Reference) resolverComponents {
+	creds := credentialsFunc(o, ref)
 	authorizer := docker.NewDockerAuthorizer(
-		docker.WithAuthCreds(credentialsFunc(o, ref)),
-		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
+		docker.WithAuthCreds(creds),
+		docker.WithAuthClient(newGuardedAuthClient(o.transport,
+			normalizeAuthority(ref.Context().Registry.RegistryStr(), ref.Context().Registry.Scheme()))))
 
 	// Wrap transport with Range header support for resumable downloads
 	// and User-Agent header for registry compatibility (required by HuggingFace)
@@ -439,7 +471,7 @@ func createResolver(o *options, ref reference.Reference) resolverComponents {
 	if usePlainHTTP {
 		// For plain HTTP, use a custom hosts function
 		resolver = docker.NewResolver(docker.ResolverOptions{
-			Hosts: func(host string) ([]docker.RegistryHost, error) {
+			Hosts: perHostAuthorizers(func(host string) ([]docker.RegistryHost, error) {
 				return []docker.RegistryHost{
 					{
 						Host:         host,
@@ -450,11 +482,11 @@ func createResolver(o *options, ref reference.Reference) resolverComponents {
 						Client:       client,
 					},
 				}, nil
-			},
+			}, creds, o.transport),
 		})
 	} else {
 		resolver = docker.NewResolver(docker.ResolverOptions{
-			Hosts: registryutil.RegistryHosts(o.registryMirrors, authorizer, client),
+			Hosts: perHostAuthorizers(registryutil.RegistryHosts(o.registryMirrors, authorizer, client), creds, o.transport),
 		})
 	}
 
@@ -517,25 +549,29 @@ func createResolverWithPushScope(o *options, ref reference.Reference) (resolverC
 	// Create resolver with the pre-authorized token
 	// We keep the original auth available for re-challenges (e.g., token expiry, additional scope)
 	// The BearerTransport will handle the primary auth, but if challenged, we can re-exchange
+	creds := func(host string) (string, string, error) {
+		// Return original credentials to handle potential re-challenges
+		// (token refresh, additional scope requests)
+		cfg, err := auth.Authorization()
+		if err != nil {
+			return "", "", err
+		}
+		if cfg.RegistryToken != "" {
+			return "", cfg.RegistryToken, nil
+		}
+		return cfg.Username, cfg.Password, nil
+	}
 	authorizer := docker.NewDockerAuthorizer(
-		docker.WithAuthCreds(func(host string) (string, string, error) {
-			// Return original credentials to handle potential re-challenges
-			// (token refresh, additional scope requests)
-			cfg, err := auth.Authorization()
-			if err != nil {
-				return "", "", err
-			}
-			if cfg.RegistryToken != "" {
-				return "", cfg.RegistryToken, nil
-			}
-			return cfg.Username, cfg.Password, nil
-		}),
-		docker.WithAuthClient(newGuardedAuthClient(o.transport)))
+		docker.WithAuthCreds(creds),
+		docker.WithAuthClient(newGuardedAuthClient(o.transport,
+			normalizeAuthority(ref.Context().Registry.RegistryStr(), ref.Context().Registry.Scheme()))))
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
-		Hosts: docker.ConfigureDefaultRegistries(
-			docker.WithAuthorizer(authorizer),
-			docker.WithClient(client)),
+		Hosts: perHostAuthorizers(
+			docker.ConfigureDefaultRegistries(
+				docker.WithAuthorizer(authorizer),
+				docker.WithClient(client)),
+			creds, o.transport),
 	})
 
 	return resolverComponents{
