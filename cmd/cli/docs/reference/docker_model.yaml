@@ -7,6 +7,7 @@ pname: docker
 plink: docker.yaml
 cname:
     - docker model bench
+    - docker model config
     - docker model context
     - docker model df
     - docker model gateway
@@ -37,6 +38,7 @@ cname:
     - docker model version
 clink:
     - docker_model_bench.yaml
+    - docker_model_config.yaml
     - docker_model_context.yaml
     - docker_model_df.yaml
     - docker_model_gateway.yaml
