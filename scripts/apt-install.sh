@@ -16,6 +16,21 @@ enable_source_repos() {
   [ -f /etc/apt/sources.list ] && sed -i '/^#\s*deb-src/s/^#\s*//' /etc/apt/sources.list
 }
 
+apply_mesa_patch() {
+  local patch_file="$1"
+
+  # Newer Mesa releases may already contain a patch. Check both directions
+  # explicitly so patch never prompts or silently reverses an existing fix.
+  if patch -p1 --force --fuzz=0 --dry-run < "$patch_file"; then
+    patch -p1 --force --fuzz=0 < "$patch_file"
+  elif patch -p1 --force --fuzz=0 --reverse --dry-run < "$patch_file"; then
+    echo "Already applied: $patch_file"
+  else
+    echo "Mesa patch is incompatible with this source: $patch_file" >&2
+    return 1
+  fi
+}
+
 rebuild_and_install_mesa() {
   enable_source_repos
   apt-get update
@@ -31,9 +46,9 @@ rebuild_and_install_mesa() {
 
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  patch -p1 < "$script_dir/0001-Revert-venus-filter-out-venus-incapable-physical-dev.patch"
-  patch -p1 < "$script_dir/0001-virtio-vulkan-force-16k-alignment-for-allocations-HA.patch"
-  patch -p1 < "$script_dir/0002-virtio-vulkan-silence-stuck-in-wait-message-HACK.patch"
+  apply_mesa_patch "$script_dir/0001-Revert-venus-filter-out-venus-incapable-physical-dev.patch"
+  apply_mesa_patch "$script_dir/0001-virtio-vulkan-force-16k-alignment-for-allocations-HA.patch"
+  apply_mesa_patch "$script_dir/0002-virtio-vulkan-silence-stuck-in-wait-message-HACK.patch"
 
   dpkg-buildpackage -us -uc -b
 
