@@ -550,6 +550,7 @@ jobs:
 
           gh workflow run release-cli-dd.yml \
             --repo docker/inference-engine-llama.cpp \
+            --ref main \
             -f model-cli-ref="$RELEASE_TAG" \
             -f tag="v$VERSION"
 
@@ -656,6 +657,7 @@ jobs:
 
           gh workflow run release-model.yml \
             --repo docker/packaging \
+            --ref main \
             -f ref="$RELEASE_TAG"
 
           # Poll for the run WE just triggered: the first run whose ID exceeds
