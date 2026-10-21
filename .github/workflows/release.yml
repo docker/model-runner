@@ -509,10 +509,22 @@ jobs:
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate Desktop release token
+        id: desktop-token
+        if: steps.published.outputs.already != 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.CLI_RELEASE_APP_ID }}
+          private-key: ${{ secrets.CLI_RELEASE_APP_PRIVATE_KEY }}
+          owner: docker
+          repositories: inference-engine-llama.cpp
+          permission-actions: write
+
       - name: Trigger Desktop CLI release and wait for completion
+        timeout-minutes: 58
         if: steps.published.outputs.already != 'true'
         env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.desktop-token.outputs.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -528,7 +540,7 @@ jobs:
           BEFORE_ID=$(gh run list \
             --repo docker/inference-engine-llama.cpp \
             --workflow release-cli-dd.yml \
-            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' || echo "")
           case "$BEFORE_ID" in
             ''|*[!0-9]*)
               echo "::error::Could not read the pre-dispatch run ID for release-cli-dd.yml"
@@ -552,7 +564,7 @@ jobs:
             CANDIDATE=$(gh run list \
               --repo docker/inference-engine-llama.cpp \
               --workflow release-cli-dd.yml \
-              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' || echo "")
             case "$CANDIDATE" in
               ''|*[!0-9]*) continue ;;
             esac
@@ -572,9 +584,21 @@ jobs:
           echo "✅ Desktop CLI release workflow triggered"
 
           echo "⏳ Waiting for Desktop CLI release to complete..."
-          gh run watch "$RUN_ID" \
-            --repo docker/inference-engine-llama.cpp \
-            --exit-status
+          # Poll run metadata directly: gh run watch also needs Checks access.
+          # Finish before the installation token's one-hour expiry.
+          CONCLUSION=""
+          for _ in $(seq 1 330); do
+            RUN=$(gh api "repos/docker/inference-engine-llama.cpp/actions/runs/$RUN_ID")
+            if [ "$(jq -r '.status' <<< "$RUN")" = "completed" ]; then
+              CONCLUSION=$(jq -r '.conclusion' <<< "$RUN")
+              break
+            fi
+            sleep 10
+          done
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Downstream release $RUN_ID ended with ${CONCLUSION:-timeout after 55 minutes}"
+            exit 1
+          fi
           echo "✅ Desktop CLI release completed successfully"
 
   # ---------------------------------------------------------------------------
@@ -594,10 +618,21 @@ jobs:
     outputs:
       packaging_image: ${{ steps.packaging.outputs.packaging_image }}
     steps:
+      - name: Generate packaging token
+        id: packaging-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.CLI_RELEASE_APP_ID }}
+          private-key: ${{ secrets.CLI_RELEASE_APP_PRIVATE_KEY }}
+          owner: docker
+          repositories: packaging
+          permission-actions: write
+
       - name: Trigger packaging and wait for completion
+        timeout-minutes: 58
         id: packaging
         env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.packaging-token.outputs.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -611,7 +646,7 @@ jobs:
           BEFORE_ID=$(gh run list \
             --repo docker/packaging \
             --workflow release-model.yml \
-            --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+            --limit 1 --json databaseId --jq '.[0].databaseId // 0' || echo "")
           case "$BEFORE_ID" in
             ''|*[!0-9]*)
               echo "::error::Could not read the pre-dispatch run ID for release-model.yml"
@@ -634,7 +669,7 @@ jobs:
             CANDIDATE=$(gh run list \
               --repo docker/packaging \
               --workflow release-model.yml \
-              --limit 1 --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo "")
+              --limit 1 --json databaseId --jq '.[0].databaseId // 0' || echo "")
             case "$CANDIDATE" in
               ''|*[!0-9]*) continue ;;
             esac
@@ -654,9 +689,21 @@ jobs:
           echo "✅ Packaging workflow triggered"
 
           echo "⏳ Waiting for packaging to complete..."
-          gh run watch "$RUN_ID" \
-            --repo docker/packaging \
-            --exit-status
+          # Poll run metadata directly: gh run watch also needs Checks access.
+          # Finish before the installation token's one-hour expiry.
+          CONCLUSION=""
+          for _ in $(seq 1 330); do
+            RUN=$(gh api "repos/docker/packaging/actions/runs/$RUN_ID")
+            if [ "$(jq -r '.status' <<< "$RUN")" = "completed" ]; then
+              CONCLUSION=$(jq -r '.conclusion' <<< "$RUN")
+              break
+            fi
+            sleep 10
+          done
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Downstream release $RUN_ID ended with ${CONCLUSION:-timeout after 55 minutes}"
+            exit 1
+          fi
 
           # Get the run number to construct the image tag
           RUN_NUMBER=$(gh run view "$RUN_ID" \
@@ -669,9 +716,19 @@ jobs:
           echo "packaging_image=$PACKAGING_IMAGE" >> "$GITHUB_OUTPUT"
           echo "✅ Packaging workflow completed successfully"
 
+      - name: Generate deploy token
+        id: deploy-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.CLI_RELEASE_APP_ID }}
+          private-key: ${{ secrets.CLI_RELEASE_APP_PRIVATE_KEY }}
+          owner: docker
+          repositories: release-repo
+          permission-actions: write
+
       - name: Trigger deploy workflow
         env:
-          GH_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.deploy-token.outputs.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           PACKAGING_IMAGE: ${{ steps.packaging.outputs.packaging_image }}
         run: |
