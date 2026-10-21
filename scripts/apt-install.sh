@@ -16,6 +16,15 @@ enable_source_repos() {
   [ -f /etc/apt/sources.list ] && sed -i '/^#\s*deb-src/s/^#\s*//' /etc/apt/sources.list
 }
 
+apply_patch() {
+  local patch_file="$1"
+  if patch -p1 -R --dry-run -s < "$patch_file" >/dev/null 2>&1; then
+    echo "Skipping $(basename "$patch_file"): already applied upstream"
+    return
+  fi
+  patch -p1 < "$patch_file"
+}
+
 rebuild_and_install_mesa() {
   enable_source_repos
   apt-get update
@@ -31,9 +40,9 @@ rebuild_and_install_mesa() {
 
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  patch -p1 < "$script_dir/0001-Revert-venus-filter-out-venus-incapable-physical-dev.patch"
-  patch -p1 < "$script_dir/0001-virtio-vulkan-force-16k-alignment-for-allocations-HA.patch"
-  patch -p1 < "$script_dir/0002-virtio-vulkan-silence-stuck-in-wait-message-HACK.patch"
+  apply_patch "$script_dir/0001-Revert-venus-filter-out-venus-incapable-physical-dev.patch"
+  apply_patch "$script_dir/0001-virtio-vulkan-force-16k-alignment-for-allocations-HA.patch"
+  apply_patch "$script_dir/0002-virtio-vulkan-silence-stuck-in-wait-message-HACK.patch"
 
   dpkg-buildpackage -us -uc -b
 
