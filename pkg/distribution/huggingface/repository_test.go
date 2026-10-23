@@ -102,3 +102,53 @@ func TestIsSafetensorsModel(t *testing.T) {
 		})
 	}
 }
+
+func TestIsOpenVINOModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []RepoFile
+		want  bool
+	}{
+		{
+			name: "matching xml/bin pair at root",
+			files: []RepoFile{
+				{Type: "file", Path: "openvino_model.xml"},
+				{Type: "file", Path: "openvino_model.bin"},
+			},
+			want: true,
+		},
+		{
+			name: "matching xml/bin pair in subdirectory",
+			files: []RepoFile{
+				{Type: "file", Path: "int4/openvino_model.xml"},
+				{Type: "file", Path: "int4/openvino_model.bin"},
+				{Type: "file", Path: "int4/config.json"},
+			},
+			want: true,
+		},
+		{
+			name: "xml without matching bin",
+			files: []RepoFile{
+				{Type: "file", Path: "openvino_model.xml"},
+				{Type: "file", Path: "other_model.bin"},
+			},
+			want: false,
+		},
+		{
+			name: "no openvino files",
+			files: []RepoFile{
+				{Type: "file", Path: "model.safetensors"},
+				{Type: "file", Path: "config.json"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsOpenVINOModel(tt.files); got != tt.want {
+				t.Errorf("IsOpenVINOModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

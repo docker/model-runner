@@ -290,6 +290,12 @@ func (h *HTTPHandler) handleOpenAIInference(w http.ResponseWriter, r *http.Reque
 	// a 422 response.
 	upstreamRequest := r.Clone(r.Context())
 	upstreamRequest.Body = io.NopCloser(bytes.NewReader(body))
+	// OpenAI-compatible inference endpoints always expect JSON payloads.
+	// Some clients (for example curl without explicit headers) default to
+	// application/x-www-form-urlencoded for -d bodies, which breaks OVMS
+	// routing and causes path-based model resolution. Normalize to JSON.
+	upstreamRequest.Header.Set("Content-Type", "application/json")
+	// Ensure the backend always receives a Content-Length header.
 	upstreamRequest.ContentLength = int64(len(body))
 
 	// Perform the request.
