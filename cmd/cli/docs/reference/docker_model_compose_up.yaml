@@ -3,16 +3,6 @@ usage: docker model compose up
 pname: docker model compose
 plink: docker_model_compose.yaml
 options:
-    - option: backend
-      value_type: string
-      default_value: llama.cpp
-      description: inference backend to use
-      deprecated: false
-      hidden: false
-      experimental: false
-      experimentalcli: false
-      kubernetes: false
-      swarm: false
     - option: context-size
       value_type: int64
       default_value: "-1"
