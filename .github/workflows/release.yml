@@ -339,7 +339,7 @@ jobs:
           echo "openvino=$OPENVINO_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
@@ -491,7 +491,7 @@ jobs:
       # pushing an already-existing tag fails with "403 denied". Detect the
       # already-published tag on Docker Hub and skip the trigger instead.
       - name: Log in to DockerHub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           username: "docker"
           password: ${{ secrets.ORG_ACCESS_TOKEN }}
