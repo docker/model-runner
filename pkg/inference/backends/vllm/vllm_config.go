@@ -88,10 +88,60 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 				return nil, fmt.Errorf("failed to serialize hf-overrides: %w", err)
 			}
 			args = append(args, "--hf-overrides", string(hfOverridesJSON))
+
+			// Extract known server parameters from hf_overrides.
+			// vLLM ignores server parameters like tensor_parallel_size and max_model_len
+			// when passed via --hf-overrides, so we extract them and pass them as
+			// proper --tensor-parallel-size and --max-model-len flags.
+			// See https://github.com/docker/model-runner/issues/912
+			if ml, ok := config.VLLM.HFOverrides["max_model_len"]; ok {
+				if m, ok := toInt(ml); ok {
+					// Only add if not already added by GetMaxModelLen or RuntimeFlags
+					if maxLen := GetMaxModelLen(bundle.RuntimeConfig(), config); maxLen == nil && !hasRuntimeFlag(config.RuntimeFlags, "--max-model-len") {
+						args = append(args, "--max-model-len", strconv.Itoa(m))
+					}
+				}
+			}
+			if tpSize, ok := config.VLLM.HFOverrides["tensor_parallel_size"]; ok {
+				if tp, ok := toInt(tpSize); ok && !hasRuntimeFlag(config.RuntimeFlags, "--tensor-parallel-size") {
+					args = append(args, "--tensor-parallel-size", strconv.Itoa(tp))
+				}
+			}
 		}
 	}
 
 	return args, nil
+}
+
+// toInt converts a numeric value from HFOverrides to an int.
+// JSON numbers decode as float64, but programmatic construction may use int types.
+func toInt(v interface{}) (int, bool) {
+	switch val := v.(type) {
+	case float64:
+		return int(val), true
+	case int:
+		return val, true
+	case int32:
+		return int(val), true
+	case int64:
+		return int(val), true
+	default:
+		return 0, false
+	}
+}
+
+// hasRuntimeFlag checks whether the given flag key is already present in the
+// runtime flags list. It handles both "--flag value" and "--flag=value" forms.
+func hasRuntimeFlag(flags []string, flag string) bool {
+	for _, f := range flags {
+		if f == flag {
+			return true
+		}
+		if len(f) > len(flag) && f[:len(flag)] == flag && f[len(flag)] == '=' {
+			return true
+		}
+	}
+	return false
 }
 
 // GetMaxModelLen returns the max model length (context size) from backend config or model config.
