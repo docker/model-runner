@@ -51,6 +51,13 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
     steps:
+      - name: Verify release ref
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases must be dispatched from main; Docker Hub OIDC is scoped to main."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
