@@ -185,54 +185,6 @@ jobs:
           echo "✅ Tag $RELEASE_TAG created and pushed"
 
   # ---------------------------------------------------------------------------
-  # Generate release notes using cagent AI agent (runs in parallel with test)
-  # ---------------------------------------------------------------------------
-  release-notes:
-    needs: prepare
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Generate release notes
-        uses: docker/docker-agent-action@aaa657c53cc69ed15683cd8a985d86663a0e1594 # v2.1.0
-        with:
-          agent: .github/agents/release-notes-generator.yaml
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            **Release Tag:** ${{ needs.prepare.outputs.release_tag }}
-            **Previous Tag:** ${{ needs.prepare.outputs.previous_tag }}
-            **Repository:** docker/model-runner
-
-      - name: Verify release notes
-        env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
-        run: |
-          if [ ! -f "release-notes.md" ]; then
-            echo "::warning::Release notes were not generated. Using fallback."
-            echo "## What's Changed" > release-notes.md
-            echo "" >> release-notes.md
-            if [ -n "$PREVIOUS_TAG" ]; then
-              echo "**Full Changelog**: https://github.com/docker/model-runner/compare/${PREVIOUS_TAG}...${RELEASE_TAG}" >> release-notes.md
-            else
-              echo "**Full Changelog**: https://github.com/docker/model-runner/tree/${RELEASE_TAG}" >> release-notes.md
-            fi
-          fi
-          echo "✅ Release notes:"
-          cat release-notes.md
-
-      - name: Upload release notes
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: release-notes
-          path: release-notes.md
-
-  # ---------------------------------------------------------------------------
   # Run tests
   # ---------------------------------------------------------------------------
   test:
@@ -768,25 +720,21 @@ jobs:
           ./scripts/test-docker-ce-installation.sh "${{ needs.prepare.outputs.release_tag }}"
 
   # ---------------------------------------------------------------------------
-  # Create GitHub Release with AI-generated release notes
+  # Create GitHub Release with GitHub-generated release notes
   # ---------------------------------------------------------------------------
   github-release:
-    needs: [prepare, release-notes, build, release-cli-desktop, verify-docker-ce]
+    needs: [prepare, build, release-cli-desktop, verify-docker-ce]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download release notes
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: release-notes
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
         run: |
           # Idempotency: a re-run for an already-released tag must not fail here.
           if gh release view "$RELEASE_TAG" --repo docker/model-runner >/dev/null 2>&1; then
@@ -795,10 +743,14 @@ jobs:
           fi
 
           echo "Creating GitHub Release for $RELEASE_TAG"
+          notes_args=(--generate-notes)
+          if [ -n "$PREVIOUS_TAG" ]; then
+            notes_args+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
           gh release create "$RELEASE_TAG" \
             --repo docker/model-runner \
             --title "Docker Model Runner $RELEASE_TAG" \
-            --notes-file release-notes.md
+            "${notes_args[@]}"
 
       - name: Send Slack notification
         if: success()
