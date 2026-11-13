@@ -201,19 +201,40 @@ type mcpToolResponse struct {
 	} `json:"error"`
 }
 
+// sseEventPayloads returns the data of each event in an SSE stream. An event
+// may span several "data:" lines, which are joined with newlines as the SSE
+// spec says; a blank line ends an event. It returns nil when the text has no
+// "data:" lines, i.e. it is not an event stream.
+func sseEventPayloads(responseText string) []string {
+	var payloads []string
+	var current []string
+	flush := func() {
+		if len(current) > 0 {
+			payloads = append(payloads, strings.Join(current, "\n"))
+			current = nil
+		}
+	}
+	for _, line := range strings.Split(responseText, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case line == "":
+			flush()
+		case strings.HasPrefix(line, "data:"):
+			current = append(current, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	flush()
+	return payloads
+}
+
 // parseMCPToolResponse extracts the tool result text from an MCP tools/call
 // response. The response may be plain JSON or SSE (text/event-stream). An SSE
 // stream can carry notification messages before the result, so each event is
-// parsed and the one holding a result (or error) is used.
+// parsed and the one holding a result (or error) is used. A response with no
+// JSON-RPC result or error at all is an error, not an empty search.
 func parseMCPToolResponse(responseText string) (string, error) {
-	var payloads []string
-	for _, line := range strings.Split(responseText, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if strings.HasPrefix(line, "data:") {
-			payloads = append(payloads, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-		}
-	}
-	if len(payloads) == 0 {
+	payloads := sseEventPayloads(responseText)
+	if payloads == nil {
 		payloads = []string{responseText}
 	}
 
@@ -246,5 +267,5 @@ func parseMCPToolResponse(responseText string) (string, error) {
 	if parseErr != nil {
 		return "", fmt.Errorf("parsing response: %w", parseErr)
 	}
-	return "No search results found.", nil
+	return "", fmt.Errorf("search response ended without a result")
 }

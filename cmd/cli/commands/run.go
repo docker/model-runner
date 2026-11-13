@@ -707,10 +707,18 @@ func newRunCmd() *cobra.Command {
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			switch colorMode {
 			case "auto", "yes", "no":
-				return nil
 			default:
 				return fmt.Errorf("--color must be one of: auto, yes, no (got %q)", colorMode)
 			}
+			// Reject an unknown web search provider before RunE starts the runner or pulls a model.
+			if websearch, _ := cmd.Flags().GetBool("websearch"); websearch {
+				provider, err := cmd.Flags().GetString("websearch-provider")
+				if err != nil {
+					return fmt.Errorf("could not get websearch-provider flag: %w", err)
+				}
+				return tools.ValidateWebSearchProvider(provider)
+			}
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := args[0]

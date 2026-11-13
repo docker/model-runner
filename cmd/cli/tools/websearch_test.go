@@ -117,8 +117,9 @@ func TestWebSearchExaDefault(t *testing.T) {
 	if name, _ := toolCall(t, captured.body); name != "web_search_exa" {
 		t.Errorf("tool name = %q, want web_search_exa", name)
 	}
-	if got := captured.header.Get("User-Agent"); got == youcomUserAgent {
-		t.Error("Exa requests must not send the You.com User-Agent")
+	// Exa requests keep Go's default User-Agent, as before You.com was added.
+	if got := captured.header.Get("User-Agent"); got != "Go-http-client/1.1" {
+		t.Errorf("Exa User-Agent = %q, want Go-http-client/1.1", got)
 	}
 	url, _, _, err := (&WebSearchTool{}).buildRequest("q")
 	if err != nil {
@@ -149,6 +150,11 @@ func TestParseMCPToolResponse(t *testing.T) {
 		{"plain json", `{"result":{"content":[{"type":"text","text":"hi"}]}}`, "hi", false},
 		{"sse with notification first", youcomSSE, `{"results":{"web":[]}}`, false},
 		{"empty content", `{"result":{"content":[]}}`, "No search results found.", false},
+		{"sse empty result", "event: message\ndata: {\"result\":{\"content\":[]}}\n\n", "No search results found.", false},
+		{"sse event split across data lines", "event: message\ndata: {\"jsonrpc\":\"2.0\",\ndata: \"result\":{\"content\":[{\"type\":\"text\",\"text\":\"joined\"}]}}\n\n", "joined", false},
+		{"sse split event after notification", "data: {\"method\":\"notifications/message\"}\n\ndata: {\"result\":\ndata: {\"content\":[{\"type\":\"text\",\"text\":\"second\"}]}}\n\n", "second", false},
+		{"sse notifications only, no result", "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n\n", "", true},
+		{"empty body", "", "", true},
 		{"json-rpc error", `{"error":{"code":-32602,"message":"bad params"}}`, "", true},
 		{"invalid", `not json`, "", true},
 	}
