@@ -32,7 +32,14 @@ func getActiveTools(cmd *cobra.Command) ([]desktop.ClientTool, error) {
 		return nil, fmt.Errorf("could not get websearch flag: %w", err)
 	}
 	if websearch {
-		return []desktop.ClientTool{&tools.WebSearchTool{}}, nil
+		provider, err := cmd.Flags().GetString("websearch-provider")
+		if err != nil {
+			return nil, fmt.Errorf("could not get websearch-provider flag: %w", err)
+		}
+		if err := tools.ValidateWebSearchProvider(provider); err != nil {
+			return nil, err
+		}
+		return []desktop.ClientTool{&tools.WebSearchTool{Provider: provider}}, nil
 	}
 	return nil, nil
 }
@@ -885,6 +892,7 @@ func newRunCmd() *cobra.Command {
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 	c.Flags().StringVar(&openaiURL, "openaiurl", "", "OpenAI-compatible API endpoint URL to chat with")
 	c.Flags().Bool("websearch", false, "Enable web search tool during chat")
+	c.Flags().String("websearch-provider", tools.ProviderExa, "Web search provider used with --websearch (exa|youcom)")
 
 	return c
 }

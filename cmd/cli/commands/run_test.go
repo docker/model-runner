@@ -160,3 +160,46 @@ func TestRunCmdDetachFlag(t *testing.T) {
 		t.Errorf("Expected detach flag value to be true, got false")
 	}
 }
+
+func TestRunCmdWebSearchProviderFlag(t *testing.T) {
+	cmd := newRunCmd()
+
+	flag := cmd.Flags().Lookup("websearch-provider")
+	if flag == nil {
+		t.Fatal("--websearch-provider flag not found")
+		return // unreachable but satisfies staticcheck SA5011
+	}
+	if flag.DefValue != "exa" {
+		t.Errorf("Expected default websearch-provider to be 'exa', got '%s'", flag.DefValue)
+	}
+
+	// Without --websearch no tools are active, whatever the provider.
+	if err := cmd.Flags().Set("websearch-provider", "youcom"); err != nil {
+		t.Fatalf("Failed to set websearch-provider: %v", err)
+	}
+	activeTools, err := getActiveTools(cmd)
+	if err != nil {
+		t.Fatalf("getActiveTools: %v", err)
+	}
+	if len(activeTools) != 0 {
+		t.Errorf("Expected no tools without --websearch, got %d", len(activeTools))
+	}
+
+	if err := cmd.Flags().Set("websearch", "true"); err != nil {
+		t.Fatalf("Failed to set websearch: %v", err)
+	}
+	activeTools, err = getActiveTools(cmd)
+	if err != nil {
+		t.Fatalf("getActiveTools: %v", err)
+	}
+	if len(activeTools) != 1 || activeTools[0].Name() != "web_search" {
+		t.Fatalf("Expected one web_search tool, got %v", activeTools)
+	}
+
+	if err := cmd.Flags().Set("websearch-provider", "bing"); err != nil {
+		t.Fatalf("Failed to set websearch-provider: %v", err)
+	}
+	if _, err := getActiveTools(cmd); err == nil {
+		t.Error("Expected error for unknown websearch provider")
+	}
+}
