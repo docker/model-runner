@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/docker/model-runner/cmd/cli/tools"
 	"github.com/spf13/cobra"
 )
 
@@ -158,5 +159,86 @@ func TestRunCmdDetachFlag(t *testing.T) {
 
 	if !detachValue {
 		t.Errorf("Expected detach flag value to be true, got false")
+	}
+}
+
+func TestRunCmdWebSearchProviderFlag(t *testing.T) {
+	cmd := newRunCmd()
+
+	flag := cmd.Flags().Lookup("websearch-provider")
+	if flag == nil {
+		t.Fatal("--websearch-provider flag not found")
+		return // unreachable but satisfies staticcheck SA5011
+	}
+	if flag.DefValue != "exa" {
+		t.Errorf("Expected default websearch-provider to be 'exa', got '%s'", flag.DefValue)
+	}
+
+	// Without --websearch no tools are active, whatever the provider.
+	if err := cmd.Flags().Set("websearch-provider", "youcom"); err != nil {
+		t.Fatalf("Failed to set websearch-provider: %v", err)
+	}
+	activeTools, err := getActiveTools(cmd)
+	if err != nil {
+		t.Fatalf("getActiveTools: %v", err)
+	}
+	if len(activeTools) != 0 {
+		t.Errorf("Expected no tools without --websearch, got %d", len(activeTools))
+	}
+
+	if err := cmd.Flags().Set("websearch", "true"); err != nil {
+		t.Fatalf("Failed to set websearch: %v", err)
+	}
+	activeTools, err = getActiveTools(cmd)
+	if err != nil {
+		t.Fatalf("getActiveTools: %v", err)
+	}
+	if len(activeTools) != 1 || activeTools[0].Name() != "web_search" {
+		t.Fatalf("Expected one web_search tool, got %v", activeTools)
+	}
+	wsTool, ok := activeTools[0].(*tools.WebSearchTool)
+	if !ok {
+		t.Fatalf("Expected *tools.WebSearchTool, got %T", activeTools[0])
+	}
+	if wsTool.Provider != tools.ProviderYouCom {
+		t.Errorf("Expected provider %q, got %q", tools.ProviderYouCom, wsTool.Provider)
+	}
+
+	if err := cmd.Flags().Set("websearch-provider", "bing"); err != nil {
+		t.Fatalf("Failed to set websearch-provider: %v", err)
+	}
+	if _, err := getActiveTools(cmd); err == nil {
+		t.Error("Expected error for unknown websearch provider")
+	}
+}
+
+func TestRunCmdPreRunValidatesWebSearchProvider(t *testing.T) {
+	cases := []struct {
+		name      string
+		websearch string
+		provider  string
+		wantErr   bool
+	}{
+		{"unknown provider with websearch", "true", "bing", true},
+		{"youcom with websearch", "true", "youcom", false},
+		{"default provider with websearch", "true", "", false},
+		{"unknown provider without websearch is ignored", "false", "bing", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newRunCmd()
+			if err := cmd.Flags().Set("websearch", tc.websearch); err != nil {
+				t.Fatalf("Failed to set websearch: %v", err)
+			}
+			if tc.provider != "" {
+				if err := cmd.Flags().Set("websearch-provider", tc.provider); err != nil {
+					t.Fatalf("Failed to set websearch-provider: %v", err)
+				}
+			}
+			err := cmd.PreRunE(cmd, []string{"ai/smollm2"})
+			if (err != nil) != tc.wantErr {
+				t.Errorf("PreRunE error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }

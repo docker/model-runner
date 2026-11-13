@@ -60,6 +60,16 @@ options:
       experimentalcli: false
       kubernetes: false
       swarm: false
+    - option: websearch-provider
+      value_type: string
+      default_value: exa
+      description: Web search provider used with --websearch (exa|youcom)
+      deprecated: false
+      hidden: false
+      experimental: false
+      experimentalcli: false
+      kubernetes: false
+      swarm: false
 examples: |-
     ### One-time prompt
 
@@ -94,6 +104,22 @@ examples: |-
     ```
 
     This loads the model into memory without interaction, ensuring maximum performance for subsequent requests.
+
+    ### Chat with web search
+
+    ```console
+    docker model run --websearch ai/smollm2
+    ```
+
+    This gives the model a `web_search` tool. It uses Exa's hosted MCP server by default, with no API key needed.
+
+    To search with You.com instead, which also works with no API key:
+
+    ```console
+    docker model run --websearch --websearch-provider youcom ai/smollm2
+    ```
+
+    Set `YDC_API_KEY` to use your You.com API key for higher rate limits.
 deprecated: false
 hidden: false
 experimental: false

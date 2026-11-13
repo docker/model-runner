@@ -32,7 +32,14 @@ func getActiveTools(cmd *cobra.Command) ([]desktop.ClientTool, error) {
 		return nil, fmt.Errorf("could not get websearch flag: %w", err)
 	}
 	if websearch {
-		return []desktop.ClientTool{&tools.WebSearchTool{}}, nil
+		provider, err := cmd.Flags().GetString("websearch-provider")
+		if err != nil {
+			return nil, fmt.Errorf("could not get websearch-provider flag: %w", err)
+		}
+		if err := tools.ValidateWebSearchProvider(provider); err != nil {
+			return nil, err
+		}
+		return []desktop.ClientTool{&tools.WebSearchTool{Provider: provider}}, nil
 	}
 	return nil, nil
 }
@@ -700,10 +707,18 @@ func newRunCmd() *cobra.Command {
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			switch colorMode {
 			case "auto", "yes", "no":
-				return nil
 			default:
 				return fmt.Errorf("--color must be one of: auto, yes, no (got %q)", colorMode)
 			}
+			// Reject an unknown web search provider before RunE starts the runner or pulls a model.
+			if websearch, _ := cmd.Flags().GetBool("websearch"); websearch {
+				provider, err := cmd.Flags().GetString("websearch-provider")
+				if err != nil {
+					return fmt.Errorf("could not get websearch-provider flag: %w", err)
+				}
+				return tools.ValidateWebSearchProvider(provider)
+			}
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := args[0]
@@ -885,6 +900,7 @@ func newRunCmd() *cobra.Command {
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 	c.Flags().StringVar(&openaiURL, "openaiurl", "", "OpenAI-compatible API endpoint URL to chat with")
 	c.Flags().Bool("websearch", false, "Enable web search tool during chat")
+	c.Flags().String("websearch-provider", tools.ProviderExa, "Web search provider used with --websearch (exa|youcom)")
 
 	return c
 }

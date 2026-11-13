@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -17,10 +18,45 @@ const (
 	exaMCPURL         = "https://mcp.exa.ai/mcp"
 	searchTimeout     = 25 * time.Second
 	defaultNumResults = 8
+
+	// youcomFreeMCPURL is You.com's keyless MCP endpoint (no account or key needed).
+	youcomFreeMCPURL = "https://api.you.com/mcp?profile=free"
+	// youcomMCPURL is used instead when YDC_API_KEY is set, for higher limits.
+	youcomMCPURL = "https://api.you.com/mcp"
+	// youcomUserAgent is sent on You.com requests only.
+	youcomUserAgent = "youdotcom-integration/docker-model-runner"
 )
 
-// WebSearchTool implements web search via Exa's MCP API.
-type WebSearchTool struct{}
+// Supported web search providers.
+const (
+	ProviderExa    = "exa"
+	ProviderYouCom = "youcom"
+)
+
+// WebSearchProviders lists the accepted values for the web search provider.
+var WebSearchProviders = []string{ProviderExa, ProviderYouCom}
+
+// ValidateWebSearchProvider returns an error if provider is not supported.
+// An empty provider is accepted and means the default (Exa).
+func ValidateWebSearchProvider(provider string) error {
+	switch provider {
+	case "", ProviderExa, ProviderYouCom:
+		return nil
+	default:
+		return fmt.Errorf("unknown web search provider %q (supported: %s)", provider, strings.Join(WebSearchProviders, ", "))
+	}
+}
+
+// WebSearchTool implements web search via a hosted MCP search endpoint.
+// Exa is the default. Set Provider to "youcom" to use You.com instead.
+type WebSearchTool struct {
+	// Provider selects the search backend: "exa" (default) or "youcom".
+	Provider string
+	// endpoint overrides the provider URL (tests only).
+	endpoint string
+	// apiKey overrides YDC_API_KEY lookup (tests only).
+	apiKey *string
+}
 
 // Name returns the tool name.
 func (w *WebSearchTool) Name() string { return "web_search" }
@@ -46,26 +82,72 @@ func (w *WebSearchTool) Schema() desktop.Tool {
 	}
 }
 
-// Execute performs the web search using Exa's MCP endpoint.
+func (w *WebSearchTool) youcomAPIKey() string {
+	if w.apiKey != nil {
+		return *w.apiKey
+	}
+	return strings.TrimSpace(os.Getenv("YDC_API_KEY"))
+}
+
+// buildRequest returns the endpoint URL, JSON-RPC body and extra headers for the selected provider.
+func (w *WebSearchTool) buildRequest(query string) (string, map[string]any, map[string]string, error) {
+	switch w.Provider {
+	case "", ProviderExa:
+		url := exaMCPURL
+		if w.endpoint != "" {
+			url = w.endpoint
+		}
+		return url, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name": "web_search_exa",
+				"arguments": map[string]any{
+					"query":      query,
+					"numResults": defaultNumResults,
+					"type":       "auto",
+					"livecrawl":  "fallback",
+				},
+			},
+		}, nil, nil
+	case ProviderYouCom:
+		headers := map[string]string{"User-Agent": youcomUserAgent}
+		url := youcomFreeMCPURL
+		if key := w.youcomAPIKey(); key != "" {
+			url = youcomMCPURL
+			headers["Authorization"] = "Bearer " + key
+		}
+		if w.endpoint != "" {
+			url = w.endpoint
+		}
+		return url, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name": "you-search",
+				"arguments": map[string]any{
+					"query": query,
+					"count": defaultNumResults,
+				},
+			},
+		}, headers, nil
+	default:
+		return "", nil, nil, ValidateWebSearchProvider(w.Provider)
+	}
+}
+
+// Execute performs the web search using the selected provider's MCP endpoint.
 func (w *WebSearchTool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	query, ok := args["query"].(string)
 	if !ok || query == "" {
 		return "", fmt.Errorf("query parameter is required")
 	}
 
-	reqBody := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/call",
-		"params": map[string]any{
-			"name": "web_search_exa",
-			"arguments": map[string]any{
-				"query":      query,
-				"numResults": defaultNumResults,
-				"type":       "auto",
-				"livecrawl":  "fallback",
-			},
-		},
+	url, reqBody, headers, err := w.buildRequest(query)
+	if err != nil {
+		return "", err
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -76,12 +158,15 @@ func (w *WebSearchTool) Execute(ctx context.Context, args map[string]any) (strin
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, exaMCPURL, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -99,34 +184,88 @@ func (w *WebSearchTool) Execute(ctx context.Context, args map[string]any) (strin
 		return "", fmt.Errorf("reading response: %w", err)
 	}
 
-	// Response may be SSE or plain JSON — handle both.
-	responseText := string(body)
+	return parseMCPToolResponse(string(body))
+}
 
-	// For SSE (text/event-stream), accumulate all data: lines into a single payload.
-	var dataLines []string
-	for _, line := range strings.Split(responseText, "\n") {
-		if strings.HasPrefix(line, "data: ") {
-			dataLines = append(dataLines, strings.TrimPrefix(line, "data: "))
+type mcpToolResponse struct {
+	Result *struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	} `json:"result"`
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// sseEventPayloads returns the data of each event in an SSE stream. An event
+// may span several "data:" lines, which are joined with newlines as the SSE
+// spec says; a blank line ends an event. It returns nil when the text has no
+// "data:" lines, i.e. it is not an event stream.
+func sseEventPayloads(responseText string) []string {
+	var payloads []string
+	var current []string
+	flush := func() {
+		if len(current) > 0 {
+			payloads = append(payloads, strings.Join(current, "\n"))
+			current = nil
 		}
 	}
-	if len(dataLines) > 0 {
-		responseText = strings.Join(dataLines, "\n")
+	for _, line := range strings.Split(responseText, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case line == "":
+			flush()
+		case strings.HasPrefix(line, "data:"):
+			current = append(current, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	flush()
+	return payloads
+}
+
+// parseMCPToolResponse extracts the tool result text from an MCP tools/call
+// response. The response may be plain JSON or SSE (text/event-stream). An SSE
+// stream can carry notification messages before the result, so each event is
+// parsed and the one holding a result (or error) is used. A response with no
+// JSON-RPC result or error at all is an error, not an empty search.
+func parseMCPToolResponse(responseText string) (string, error) {
+	payloads := sseEventPayloads(responseText)
+	if payloads == nil {
+		payloads = []string{responseText}
 	}
 
-	var mcpResp struct {
-		Result struct {
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"result"`
+	var parseErr error
+	for _, payload := range payloads {
+		var mcpResp mcpToolResponse
+		if err := json.Unmarshal([]byte(payload), &mcpResp); err != nil {
+			parseErr = err
+			continue
+		}
+		if mcpResp.Error != nil {
+			return "", fmt.Errorf("search API error %d: %s", mcpResp.Error.Code, mcpResp.Error.Message)
+		}
+		if mcpResp.Result == nil {
+			// Notification or other non-result message.
+			continue
+		}
+		text := ""
+		if len(mcpResp.Result.Content) > 0 {
+			text = mcpResp.Result.Content[0].Text
+		}
+		if mcpResp.Result.IsError {
+			return "", fmt.Errorf("search failed: %s", text)
+		}
+		if text == "" {
+			return "No search results found.", nil
+		}
+		return text, nil
 	}
-	if err := json.Unmarshal([]byte(responseText), &mcpResp); err != nil {
-		return "", fmt.Errorf("parsing response: %w", err)
+	if parseErr != nil {
+		return "", fmt.Errorf("parsing response: %w", parseErr)
 	}
-
-	if len(mcpResp.Result.Content) > 0 {
-		return mcpResp.Result.Content[0].Text, nil
-	}
-	return "No search results found.", nil
+	return "", fmt.Errorf("search response ended without a result")
 }

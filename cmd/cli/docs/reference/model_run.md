@@ -5,13 +5,14 @@ Run a model and interact with it using a submitted prompt or chat mode
 
 ### Options
 
-| Name             | Type     | Default | Description                                          |
-|:-----------------|:---------|:--------|:-----------------------------------------------------|
-| `--color`        | `string` | `no`    | Use colored output (auto\|yes\|no)                   |
-| `--debug`        | `bool`   |         | Enable debug logging                                 |
-| `-d`, `--detach` | `bool`   |         | Load the model in the background without interaction |
-| `--openaiurl`    | `string` |         | OpenAI-compatible API endpoint URL to chat with      |
-| `--websearch`    | `bool`   |         | Enable web search tool during chat                   |
+| Name                   | Type     | Default | Description                                             |
+|:-----------------------|:---------|:--------|:--------------------------------------------------------|
+| `--color`              | `string` | `no`    | Use colored output (auto\|yes\|no)                      |
+| `--debug`              | `bool`   |         | Enable debug logging                                    |
+| `-d`, `--detach`       | `bool`   |         | Load the model in the background without interaction    |
+| `--openaiurl`          | `string` |         | OpenAI-compatible API endpoint URL to chat with         |
+| `--websearch`          | `bool`   |         | Enable web search tool during chat                      |
+| `--websearch-provider` | `string` | `exa`   | Web search provider used with --websearch (exa\|youcom) |
 
 
 <!---MARKER_GEN_END-->
@@ -59,3 +60,19 @@ docker model run --detach ai/smollm2
 ```
 
 This loads the model into memory without interaction, ensuring maximum performance for subsequent requests.
+
+### Chat with web search
+
+```console
+docker model run --websearch ai/smollm2
+```
+
+This gives the model a `web_search` tool. It uses Exa's hosted MCP server by default, with no API key needed.
+
+To search with You.com instead, which also works with no API key:
+
+```console
+docker model run --websearch --websearch-provider youcom ai/smollm2
+```
+
+Set `YDC_API_KEY` to use your You.com API key for higher rate limits.
