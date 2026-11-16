@@ -900,7 +900,7 @@ func newRunCmd() *cobra.Command {
 	c.Flags().BoolVarP(&detach, "detach", "d", false, "Load the model in the background without interaction")
 	c.Flags().StringVar(&openaiURL, "openaiurl", "", "OpenAI-compatible API endpoint URL to chat with")
 	c.Flags().Bool("websearch", false, "Enable web search tool during chat")
-	c.Flags().String("websearch-provider", tools.ProviderExa, "Web search provider used with --websearch (exa|youcom)")
+	c.Flags().String("websearch-provider", tools.ProviderExa, "Web search provider used with --websearch (exa|youcom|keenable)")
 
 	return c
 }

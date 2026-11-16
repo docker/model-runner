@@ -25,22 +25,28 @@ const (
 	youcomMCPURL = "https://api.you.com/mcp"
 	// youcomUserAgent is sent on You.com requests only.
 	youcomUserAgent = "youdotcom-integration/docker-model-runner"
+
+	// keenableFreeMCPURL is Keenable's keyless MCP endpoint (no account or key needed).
+	keenableFreeMCPURL = "https://api.keenable.ai/mcp-public"
+	// keenableMCPURL is used instead when KEENABLE_API_KEY is set, for higher limits.
+	keenableMCPURL = "https://api.keenable.ai/mcp"
 )
 
 // Supported web search providers.
 const (
-	ProviderExa    = "exa"
-	ProviderYouCom = "youcom"
+	ProviderExa      = "exa"
+	ProviderYouCom   = "youcom"
+	ProviderKeenable = "keenable"
 )
 
 // WebSearchProviders lists the accepted values for the web search provider.
-var WebSearchProviders = []string{ProviderExa, ProviderYouCom}
+var WebSearchProviders = []string{ProviderExa, ProviderYouCom, ProviderKeenable}
 
 // ValidateWebSearchProvider returns an error if provider is not supported.
 // An empty provider is accepted and means the default (Exa).
 func ValidateWebSearchProvider(provider string) error {
 	switch provider {
-	case "", ProviderExa, ProviderYouCom:
+	case "", ProviderExa, ProviderYouCom, ProviderKeenable:
 		return nil
 	default:
 		return fmt.Errorf("unknown web search provider %q (supported: %s)", provider, strings.Join(WebSearchProviders, ", "))
@@ -48,13 +54,13 @@ func ValidateWebSearchProvider(provider string) error {
 }
 
 // WebSearchTool implements web search via a hosted MCP search endpoint.
-// Exa is the default. Set Provider to "youcom" to use You.com instead.
+// Exa is the default. Set Provider to "youcom" or "keenable" to use You.com or Keenable instead.
 type WebSearchTool struct {
-	// Provider selects the search backend: "exa" (default) or "youcom".
+	// Provider selects the search backend: "exa" (default), "youcom" or "keenable".
 	Provider string
 	// endpoint overrides the provider URL (tests only).
 	endpoint string
-	// apiKey overrides YDC_API_KEY lookup (tests only).
+	// apiKey overrides the YDC_API_KEY / KEENABLE_API_KEY lookup (tests only).
 	apiKey *string
 }
 
@@ -87,6 +93,13 @@ func (w *WebSearchTool) youcomAPIKey() string {
 		return *w.apiKey
 	}
 	return strings.TrimSpace(os.Getenv("YDC_API_KEY"))
+}
+
+func (w *WebSearchTool) keenableAPIKey() string {
+	if w.apiKey != nil {
+		return *w.apiKey
+	}
+	return strings.TrimSpace(os.Getenv("KEENABLE_API_KEY"))
 }
 
 // buildRequest returns the endpoint URL, JSON-RPC body and extra headers for the selected provider.
@@ -130,6 +143,28 @@ func (w *WebSearchTool) buildRequest(query string) (string, map[string]any, map[
 				"arguments": map[string]any{
 					"query": query,
 					"count": defaultNumResults,
+				},
+			},
+		}, headers, nil
+	case ProviderKeenable:
+		url := keenableFreeMCPURL
+		var headers map[string]string
+		if key := w.keenableAPIKey(); key != "" {
+			url = keenableMCPURL
+			headers = map[string]string{"X-API-Key": key}
+		}
+		if w.endpoint != "" {
+			url = w.endpoint
+		}
+		return url, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name": "search_web_pages",
+				"arguments": map[string]any{
+					"query":       query,
+					"max_results": defaultNumResults,
 				},
 			},
 		}, headers, nil
