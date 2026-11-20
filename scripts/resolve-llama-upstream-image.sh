@@ -3,7 +3,7 @@
 # resolve_llama_upstream_image prints the official Linux image reference
 # for the requested llama.cpp version and variant.
 #
-# When a specific bNNNN version is requested the script validates that the
+# When a pinned nightly or stable version is requested the script validates that the
 # corresponding tag exists in GHCR.  If the tag is missing it lists the
 # closest available versions and exits with an error.
 #
@@ -30,6 +30,7 @@ Usage: resolve-llama-upstream-image.sh <version> <variant>
 Supported versions:
   - latest
   - bNNNN
+  - vX.Y.Z-bNNNN-<commit> (published stable image suffix)
 
 Supported variants:
   - cpu
@@ -78,7 +79,7 @@ resolve_version_suffix() {
     return
   fi
 
-  if [[ "$version" =~ ^b[0-9]+$ ]]; then
+  if [[ "$version" =~ ^b[0-9]+$ || "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-b[0-9]+-[0-9a-f]{7,40}$ ]]; then
     printf -- '-%s\n' "$version"
     return
   fi
@@ -178,9 +179,14 @@ validate_tag_exists() {
   # Use a here-string rather than a pipe: with pipefail, grep -q exiting on the
   # first match makes echo die from SIGPIPE on a large tag list, which turns a
   # successful match into a failure.
-  if grep -qx "$candidate_tag" <<< "$all_tags"; then
+  if grep -Fxq "$candidate_tag" <<< "$all_tags"; then
     # Tag exists — nothing to do.
     return 0
+  fi
+
+  if [[ "$version" == v* ]]; then
+    echo "Error: stable tag '${candidate_tag}' not found in ${REGISTRY}/${REPO}." >&2
+    return 1
   fi
 
   # Tag does not exist.  Extract available bNNNN numbers for this variant.
