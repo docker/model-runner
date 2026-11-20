@@ -477,7 +477,7 @@ help:
 	@echo ""
 	@echo "Backend configuration options:"
 	@echo "  LLAMA_ARGS    - Arguments for llama.cpp (e.g., \"--verbose --jinja -ngl 999 --ctx-size 2048\")"
-	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest or bNNNN)"
+	@echo "  LLAMA_SERVER_VERSION - Upstream llama.cpp version (latest, bNNNN, or vX.Y.Z-bNNNN-commit)"
 	@echo "  LLAMA_SERVER_VARIANT - Linux backend flavor (cpu, cuda, musa, openvino, or rocm)"
 	@echo "  LLAMA_UPSTREAM_IMAGE - Override the resolved upstream image directly"
 	@echo "  LOCAL_LLAMA   - Use local llama.cpp build from llamacpp/install/bin (set to 1 to enable)"

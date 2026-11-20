@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'llama.cpp tag to bump to (e.g. b8068). Defaults to latest.'
+        description: 'llama.cpp tag to bump to (e.g. v1.0.0). Defaults to latest stable.'
         required: false
         type: string
 

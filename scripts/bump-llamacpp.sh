@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Bump llama.cpp submodule to the latest (or specified) tagged release.
 # Usage: ./scripts/bump-llamacpp.sh [<tag>]
-#   <tag>  - a specific llama.cpp tag (e.g. b8068). Defaults to the latest b* tag.
+#   <tag>  - a specific llama.cpp tag (e.g. v1.0.0). Defaults to the latest stable vX.Y.Z tag.
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SUBMODULE_PATH="llamacpp/native/vendor/llama.cpp"
@@ -31,15 +31,15 @@ if [[ -n "${1:-}" ]]; then
         exit 1
     fi
 else
-    # Find the latest b* tag by sorting numerically on the part after 'b'
-    TARGET_TAG=$(git -C "$SUBMODULE_DIR" tag -l 'b[0-9]*' --sort=-v:refname | head -1 || true)
+    # Select stable releases only; exclude nightlies and prerelease tags.
+    TARGET_TAG=$(git -C "$SUBMODULE_DIR" tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
     if [[ -z "$TARGET_TAG" ]]; then
-        echo "Error: no b* tags found in llama.cpp" >&2
+        echo "Error: no stable vX.Y.Z tags found in llama.cpp" >&2
         exit 1
     fi
 fi
 
-TARGET_SHA=$(git -C "$SUBMODULE_DIR" rev-parse "refs/tags/$TARGET_TAG")
+TARGET_SHA=$(git -C "$SUBMODULE_DIR" rev-parse "refs/tags/$TARGET_TAG^{commit}")
 
 echo "Current: $CURRENT_TAG ($CURRENT_SHA)"
 echo "Target:  $TARGET_TAG ($TARGET_SHA)"
