@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
-	github.com/containerd/containerd/v2 v2.2.9
+	github.com/containerd/containerd/v2 v2.2.10
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.4
 	github.com/distribution/reference v0.6.0
