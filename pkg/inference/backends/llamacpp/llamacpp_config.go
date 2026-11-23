@@ -23,7 +23,7 @@ func NewDefaultLlamaCppConfig() *Config {
 
 	// Special case for macOS (Apple), optimization
 	if runtime.GOOS == "darwin" {
-		args = append(args, "--no-mmap")
+		args = append(args, "--load-mode", "none")
 	}
 
 	// Special case for ARM64

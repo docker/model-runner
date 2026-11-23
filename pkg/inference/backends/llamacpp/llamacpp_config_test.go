@@ -38,12 +38,12 @@ func TestNewDefaultLlamaCppConfig(t *testing.T) {
 
 	// Test macOS (Apple) specific case
 	if runtime.GOOS == "darwin" {
-		if !containsArg(config.Args, "--no-mmap") {
-			t.Error("Expected --no-mmap argument to be present on macOS")
+		if !containsArg(config.Args, "--load-mode") {
+			t.Error("Expected --load-mode argument to be present on macOS")
 		}
-	} else if containsArg(config.Args, "--no-mmap") {
-		// On non-macOS systems, --no-mmap should not be present by default
-		t.Error("Did not expect --no-mmap argument to be present on non-macOS systems")
+	} else if containsArg(config.Args, "--load-mode") {
+		// On non-macOS systems, --load-mode should not be present by default
+		t.Error("Did not expect --load-mode argument to be present on non-macOS systems")
 	}
 
 	// Test Windows ARM64 specific case
@@ -85,7 +85,7 @@ func TestGetArgs(t *testing.T) {
 	// Build base expected args based on architecture and OS
 	baseArgs := []string{"-ngl", "999", "--metrics"}
 	if runtime.GOOS == "darwin" {
-		baseArgs = append(baseArgs, "--no-mmap")
+		baseArgs = append(baseArgs, "--load-mode", "none")
 	}
 	if runtime.GOARCH == "arm64" {
 		nThreads := max(2, runtime.NumCPU()/2)
