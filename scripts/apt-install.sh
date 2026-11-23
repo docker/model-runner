@@ -61,17 +61,14 @@ rebuild_and_install_mesa() {
 
 # The MUSA base image configures the Moore Threads apt repository, which can
 # refuse CI runners. None of the packages installed here come from it, so drop
-# it before apt-get update.
+# its one-line entries before apt-get update.
 remove_vendor_repos() {
-  local vendor_host="dl.mthreads.com"
-  local files
-  files=$(grep -rlF "$vendor_host" /etc/apt/sources.list.d/ 2>/dev/null || true)
-  if [ -n "$files" ]; then
-    echo "$files" | xargs rm -f
-  fi
-  if [ -f /etc/apt/sources.list ]; then
-    sed -i "\|$vendor_host|d" /etc/apt/sources.list
-  fi
+  local f
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    if [ -f "$f" ]; then
+      sed -i --follow-symlinks '/dl\.mthreads\.com/d' "$f"
+    fi
+  done
 }
 
 main() {
