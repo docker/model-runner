@@ -109,7 +109,7 @@ func TestValidateRuntimeFlags(t *testing.T) {
 				"--temp", "0.7",
 				"--min-p", "0.0",
 				"--presence-penalty", "1.5",
-				"--no-mmap",
+				"--load-mode", "none",
 				"--flash-attn",
 				"--cache-type-k", "q8_0",
 				"--cache-type-v", "q8_0",

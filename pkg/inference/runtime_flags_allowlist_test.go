@@ -142,7 +142,7 @@ func TestLlamaCppAllowedFlags_Categories(t *testing.T) {
 			"-mg", "--main-gpu", "-dev", "--device",
 		},
 		"memory": {
-			"--mlock", "--mmap", "--no-mmap",
+			"-lm", "--load-mode",
 			"-ctk", "--cache-type-k", "-ctv", "--cache-type-v",
 			"-kvo", "--kv-offload", "-nkvo", "--no-kv-offload",
 			"-cram", "--cache-ram",
@@ -251,11 +251,23 @@ func TestDangerousFlagsNotAllowed(t *testing.T) {
 	}
 }
 
+// llama.cpp v1.0.0 replaced these flags with --load-mode and exits on them.
+func TestRemovedLlamaCppFlagsNotAllowed(t *testing.T) {
+	for _, flag := range []string{
+		"--mlock", "--mmap", "--no-mmap",
+		"-dio", "--direct-io", "-ndio", "--no-direct-io",
+	} {
+		if LlamaCppAllowedFlags[flag] {
+			t.Errorf("Removed flag %q should not be in LlamaCppAllowedFlags", flag)
+		}
+	}
+}
+
 func TestIssue515Flags(t *testing.T) {
 	// Verify all flags from GitHub issue #515 are allowed
 	issue515Flags := []string{
 		"--n-gpu-layers",
-		"--no-mmap",
+		"--load-mode",
 		"--flash-attn",
 		"--jinja",
 		"--top-p",

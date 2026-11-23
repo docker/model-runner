@@ -33,7 +33,7 @@ const (
 	// with the Linux bundle (Dockerfile LLAMA_SERVER_VERSION) whenever llama.cpp
 	// is upgraded, so all platforms ship a consistent, tested build. Users can
 	// override it via LLAMA_SERVER_VERSION or `--llama-server-version`.
-	pinnedServerVersion = "b9879"
+	pinnedServerVersion = "v1.0.0"
 )
 
 var (
