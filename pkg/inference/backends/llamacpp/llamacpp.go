@@ -235,6 +235,7 @@ func (l *llamaCpp) Run(ctx context.Context, socket, model string, _ string, mode
 		SandboxPath:      l.installDir,
 		SandboxConfig:    sandbox.ConfigurationLlamaCpp,
 		Args:             args,
+		Env:              defaultEnv(),
 		Logger:           l.log,
 		ServerLogWriter:  logging.NewWriter(l.serverLog),
 		ErrorTransformer: ExtractLlamaCppError,

@@ -36,14 +36,10 @@ func TestNewDefaultLlamaCppConfig(t *testing.T) {
 		t.Errorf("Expected -ngl value to be 999, got %s", config.Args[nglIndex+1])
 	}
 
-	// Test macOS (Apple) specific case
-	if runtime.GOOS == "darwin" {
-		if !containsArg(config.Args, "--load-mode") {
-			t.Error("Expected --load-mode argument to be present on macOS")
-		}
-	} else if containsArg(config.Args, "--load-mode") {
-		// On non-macOS systems, --load-mode should not be present by default
-		t.Error("Did not expect --load-mode argument to be present on non-macOS systems")
+	// The macOS load mode is set through the environment, not as an argument
+	// that older llama.cpp builds would reject.
+	if containsArg(config.Args, "--load-mode") || containsArg(config.Args, "--no-mmap") {
+		t.Error("Did not expect a load mode argument in the default args")
 	}
 
 	// Test Windows ARM64 specific case
@@ -84,9 +80,6 @@ func TestGetArgs(t *testing.T) {
 
 	// Build base expected args based on architecture and OS
 	baseArgs := []string{"-ngl", "999", "--metrics"}
-	if runtime.GOOS == "darwin" {
-		baseArgs = append(baseArgs, "--load-mode", "none")
-	}
 	if runtime.GOARCH == "arm64" {
 		nThreads := max(2, runtime.NumCPU()/2)
 		baseArgs = append(baseArgs, "--threads", strconv.Itoa(nThreads))
@@ -479,4 +472,18 @@ func (f *fakeBundle) RuntimeConfig() types.ModelConfig {
 
 func int32ptr(n int32) *int32 {
 	return &n
+}
+
+func TestDefaultEnv(t *testing.T) {
+	env := defaultEnv()
+	if runtime.GOOS != "darwin" {
+		if len(env) != 0 {
+			t.Errorf("Expected no default env on %s, got %v", runtime.GOOS, env)
+		}
+		return
+	}
+	want := []string{"LLAMA_ARG_LOAD_MODE=none", "LLAMA_ARG_MMAP=false"}
+	if !slices.Equal(env, want) {
+		t.Errorf("Expected %v, got %v", want, env)
+	}
 }

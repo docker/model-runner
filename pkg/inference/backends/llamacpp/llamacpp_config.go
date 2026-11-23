@@ -21,11 +21,6 @@ type Config struct {
 func NewDefaultLlamaCppConfig() *Config {
 	args := []string{"-ngl", "999", "--metrics"}
 
-	// Special case for macOS (Apple), optimization
-	if runtime.GOOS == "darwin" {
-		args = append(args, "--load-mode", "none")
-	}
-
 	// Special case for ARM64
 	if runtime.GOARCH == "arm64" {
 		// Using a thread count equal to core count results in bad performance, and there seems to be little to no gain
@@ -39,6 +34,17 @@ func NewDefaultLlamaCppConfig() *Config {
 	return &Config{
 		Args: args,
 	}
+}
+
+// defaultEnv disables mmap on macOS. llama.cpp v1.0.0 reads
+// LLAMA_ARG_LOAD_MODE and earlier builds read LLAMA_ARG_MMAP; each ignores the
+// other's variable, so overriding the server version to an older build keeps
+// working. A --load-mode runtime flag takes precedence over the environment.
+func defaultEnv() []string {
+	if runtime.GOOS == "darwin" {
+		return []string{"LLAMA_ARG_LOAD_MODE=none", "LLAMA_ARG_MMAP=false"}
+	}
+	return nil
 }
 
 // GetArgs implements BackendConfig.GetArgs.
