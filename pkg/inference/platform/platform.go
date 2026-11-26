@@ -18,13 +18,6 @@ func SupportsSGLang() bool {
 	return runtime.GOOS == "linux"
 }
 
-// SupportsDiffusers returns true if diffusers is supported on the current platform.
-// Diffusers is supported on Linux (for Docker/CUDA) and macOS ARM64 (for MPS/Apple Silicon).
-// Distribution is handled via a self-contained Python environment downloaded from Docker Hub.
-func SupportsDiffusers() bool {
-	return runtime.GOOS == "linux" || (runtime.GOOS == "darwin" && runtime.GOARCH == "arm64")
-}
-
 // SupportsVLLMMetal returns true if vllm-metal is supported on the current platform.
 // vllm-metal requires macOS with ARM64 architecture (Apple Silicon) for Metal acceleration.
 func SupportsVLLMMetal() bool {

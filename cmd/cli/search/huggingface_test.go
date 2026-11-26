@@ -13,11 +13,11 @@ func TestHuggingFaceSearchUsesVerifiedBackend(t *testing.T) {
 
 	server := newHuggingFaceSearchServer(t, []huggingFaceModel{
 		{
-			ModelID:     "stabilityai/stable-diffusion-xl-base-1.0",
+			ModelID:     "HuggingFaceTB/SmolLM2-135M",
 			Likes:       42,
 			Downloads:   1000,
-			Tags:        []string{"text-to-image"},
-			PipelineTag: "text-to-image",
+			Tags:        []string{"gguf"},
+			PipelineTag: "text-generation",
 			CreatedAt:   "2026-01-26T11:32:37.220001Z",
 		},
 	})
@@ -26,11 +26,11 @@ func TestHuggingFaceSearchUsesVerifiedBackend(t *testing.T) {
 	client := &HuggingFaceClient{
 		httpClient:         server.Client(),
 		baseURL:            server.URL + "/api",
-		backendResolver:    fakeBackendResolver{backends: map[string]string{"stabilityai/stable-diffusion-xl-base-1.0": backendDiffusers}},
+		backendResolver:    fakeBackendResolver{backends: map[string]string{"HuggingFaceTB/SmolLM2-135M": backendLlamaCpp}},
 		resolveConcurrency: 1,
 	}
 
-	results, err := client.Search(t.Context(), SearchOptions{Query: "stable-diffusion", Limit: 10})
+	results, err := client.Search(t.Context(), SearchOptions{Query: "smollm2", Limit: 10})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
@@ -38,8 +38,8 @@ func TestHuggingFaceSearchUsesVerifiedBackend(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Backend != backendDiffusers {
-		t.Fatalf("Backend = %q, want %q", results[0].Backend, backendDiffusers)
+	if results[0].Backend != backendLlamaCpp {
+		t.Fatalf("Backend = %q, want %q", results[0].Backend, backendLlamaCpp)
 	}
 }
 

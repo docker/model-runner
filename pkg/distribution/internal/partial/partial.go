@@ -144,10 +144,6 @@ func SafetensorsPaths(i WithLayers) ([]string, error) {
 	return layerPathsByMediaType(i, types.MediaTypeSafetensors, getModelFormat(i))
 }
 
-func DDUFPaths(i WithLayers) ([]string, error) {
-	return layerPathsByMediaType(i, types.MediaTypeDDUF, getModelFormat(i))
-}
-
 func ConfigArchivePath(i WithLayers) (string, error) {
 	paths, err := layerPathsByMediaType(i, types.MediaTypeVLLMConfigArchive, "")
 	if err != nil {
@@ -209,8 +205,6 @@ func inferFormatFromAnnotations(i WithLayers) string {
 			return string(types.FormatGGUF)
 		case files.FileTypeSafetensors:
 			return string(types.FormatSafetensors)
-		case files.FileTypeDDUF:
-			return string(types.FormatDDUF)
 		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
 			// Not a weight file; skip.
 		}
@@ -280,7 +274,7 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 		// mmproj files are packaged as generic weights in CNCF format.
 		// Cannot distinguish from other weight files by media type alone;
 		// rely on filepath annotation during unpack.
-	case types.MediaTypeDDUF, types.MediaTypeDirTar, types.MediaTypeModelConfigV01,
+	case types.MediaTypeDirTar, types.MediaTypeModelConfigV01,
 		types.MediaTypeModelConfigV02,
 		oci.OCIManifestSchema1, oci.OCIImageIndex, oci.OCIConfigJSON,
 		oci.OCILayer, oci.OCILayerGzip, oci.OCILayerZstd,
@@ -303,8 +297,6 @@ func matchesMediaType(layerMT, targetMT oci.MediaType, modelFormat string) bool 
 			return modelFormat == string(types.FormatGGUF)
 		case types.MediaTypeSafetensors:
 			return modelFormat == string(types.FormatSafetensors)
-		case types.MediaTypeDDUF:
-			return modelFormat == string(types.FormatDDUF) || modelFormat == string(types.FormatDiffusers) //nolint:staticcheck // FormatDiffusers kept for backward compatibility
 		case types.MediaTypeLicense, types.MediaTypeMultimodalProjector,
 			types.MediaTypeChatTemplate, types.MediaTypeModelFile, types.MediaTypeVLLMConfigArchive,
 			types.MediaTypeDirTar, types.MediaTypeModelConfigV01, types.MediaTypeModelConfigV02,

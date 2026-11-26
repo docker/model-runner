@@ -204,13 +204,6 @@ func TestUpdateBundleFieldsFromLayer_CNCFMediaTypes(t *testing.T) {
 			expectSafetensors: "",
 			expectGGUF:        "",
 		},
-		{
-			name:        "CNCF generic weight raw with DDUF format",
-			mediaType:   oci.MediaType(modelpack.MediaTypeWeightRaw),
-			relPath:     "model/model.dduf",
-			modelFormat: string(types.FormatDDUF),
-			expectGGUF:  "",
-		},
 	}
 
 	for _, tt := range tests {
@@ -223,9 +216,6 @@ func TestUpdateBundleFieldsFromLayer_CNCFMediaTypes(t *testing.T) {
 			}
 			if bundle.ggufFile != tt.expectGGUF {
 				t.Errorf("ggufFile = %q, want %q", bundle.ggufFile, tt.expectGGUF)
-			}
-			if tt.modelFormat == string(types.FormatDDUF) && bundle.ddufFile != tt.relPath {
-				t.Errorf("ddufFile = %q, want %q", bundle.ddufFile, tt.relPath)
 			}
 		})
 	}
@@ -447,16 +437,6 @@ func TestInferFormatFromLayerAnnotations(t *testing.T) {
 				},
 			},
 			expected: string(types.FormatSafetensors),
-		},
-		{
-			name: "DDUF via MediaTypeWeightRaw annotation",
-			layers: []oci.Layer{
-				&testLayerWithAnnotation{
-					mediaType:  oci.MediaType(modelpack.MediaTypeWeightRaw),
-					annotation: "model.dduf",
-				},
-			},
-			expected: string(types.FormatDDUF),
 		},
 		{
 			name: "no weight layers returns empty",

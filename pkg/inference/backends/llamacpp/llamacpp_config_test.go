@@ -459,10 +459,6 @@ func (f *fakeBundle) SafetensorsPath() string {
 	return ""
 }
 
-func (f *fakeBundle) DDUFPath() string {
-	return ""
-}
-
 func (f *fakeBundle) RuntimeConfig() types.ModelConfig {
 	if f.config == nil {
 		return nil

@@ -37,14 +37,10 @@ func Parse(rootDir string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
-	ddufPath, err := findDDUFFile(modelDir)
-	if err != nil {
-		return nil, err
-	}
 
 	// Ensure at least one model weight format is present
-	if ggufPath == "" && safetensorsPath == "" && ddufPath == "" {
-		return nil, fmt.Errorf("no supported model weights found (neither GGUF, safetensors, nor DDUF)")
+	if ggufPath == "" && safetensorsPath == "" {
+		return nil, fmt.Errorf("no supported model weights found (neither GGUF nor safetensors)")
 	}
 
 	mmprojPath, err := findMultiModalProjectorFile(modelDir)
@@ -66,7 +62,6 @@ func Parse(rootDir string) (*Bundle, error) {
 		mmprojPath:       mmprojPath,
 		ggufFile:         ggufPath,
 		safetensorsFile:  safetensorsPath,
-		ddufFile:         ddufPath,
 		runtimeConfig:    cfg,
 		chatTemplatePath: templatePath,
 	}, nil
@@ -170,11 +165,6 @@ func findGGUFFile(modelDir string) (string, error) {
 func findSafetensorsFile(modelDir string) (string, error) {
 	// Safetensors files are optional.
 	return findModelFile(modelDir, ".safetensors")
-}
-
-func findDDUFFile(modelDir string) (string, error) {
-	// DDUF files are optional.
-	return findModelFile(modelDir, ".dduf")
 }
 
 func findMultiModalProjectorFile(modelDir string) (string, error) {

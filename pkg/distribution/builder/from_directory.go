@@ -174,11 +174,6 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 				detectedFormat = types.FormatGGUF
 			}
 			weightFiles = append(weightFiles, path)
-		case files.FileTypeDDUF:
-			if detectedFormat == "" {
-				detectedFormat = types.FormatDDUF
-			}
-			weightFiles = append(weightFiles, path)
 		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
 			// Non-weight files don't affect format detection
 		}
@@ -209,7 +204,7 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 	}
 
 	if len(weightFiles) == 0 {
-		return nil, fmt.Errorf("no weight files (safetensors, GGUF, or DDUF) found in directory: %s", dirPath)
+		return nil, fmt.Errorf("no weight files (safetensors or GGUF) found in directory: %s", dirPath)
 	}
 
 	// Extract config metadata from weight files using format-specific logic
@@ -232,7 +227,6 @@ func FromDirectory(dirPath string, opts ...DirectoryOption) (*Builder, error) {
 				config.Size = extracted.Size
 				config.GGUF = extracted.GGUF
 				config.Safetensors = extracted.Safetensors
-				config.Diffusers = extracted.Diffusers
 				config.ContextSize = extracted.ContextSize
 			}
 		}
@@ -368,8 +362,6 @@ func fileTypeToMediaType(ft files.FileType) oci.MediaType {
 		return types.MediaTypeGGUF
 	case files.FileTypeSafetensors:
 		return types.MediaTypeSafetensors
-	case files.FileTypeDDUF:
-		return types.MediaTypeDDUF
 	case files.FileTypeLicense:
 		return types.MediaTypeLicense
 	case files.FileTypeChatTemplate:

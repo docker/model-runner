@@ -35,7 +35,7 @@ func newServeCmd() *cobra.Command {
 		Long: `Start the Docker Model Runner daemon.
 
 The daemon manages the lifecycle of inference backends (llama.cpp, vLLM,
-SGLang, MLX, diffusers) and exposes an OpenAI-compatible HTTP API for
+SGLang, MLX) and exposes an OpenAI-compatible HTTP API for
 listing, pulling, and running models. It requires no Docker Desktop or
 Docker Engine installation.
 

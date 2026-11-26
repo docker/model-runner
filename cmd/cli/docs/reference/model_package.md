@@ -6,7 +6,6 @@ Package a model into a Docker Model OCI artifact.
 The model source must be one of:
   --gguf               A GGUF file (single file or first shard of a sharded model)
   --safetensors-dir    A directory containing .safetensors and configuration files
-  --dduf               A .dduf (Diffusers Unified Format) archive
   --from               An existing packaged model reference
 
 By default, the packaged artifact is loaded into the local Model Runner content store.
@@ -30,9 +29,6 @@ Packaging behavior:
     All files under the directory (including nested subdirectories) are
     automatically discovered. Each file is packaged as a separate OCI layer.
 
-  DDUF
-    --dduf must point to a .dduf archive file.
-
   Repackaging
     --from repackages an existing model. You may override selected properties
     such as --context-size to create a variant of the original model.
@@ -46,7 +42,6 @@ Packaging behavior:
 |:--------------------|:--------------|:---------|:---------------------------------------------------------------------------------------|
 | `--chat-template`   | `string`      |          | absolute path to chat template file (must be Jinja format)                             |
 | `--context-size`    | `uint64`      | `0`      | context size in tokens                                                                 |
-| `--dduf`            | `string`      |          | absolute path to DDUF archive file (Diffusers Unified Format)                          |
 | `--format`          | `string`      | `docker` | output artifact format: "docker" (default) or "cncf" (CNCF ModelPack spec)             |
 | `--from`            | `string`      |          | reference to an existing model to repackage                                            |
 | `--gguf`            | `string`      |          | absolute path to gguf file                                                             |

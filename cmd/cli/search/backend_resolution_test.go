@@ -20,8 +20,6 @@ func TestBackendFromFormat(t *testing.T) {
 	}{
 		{name: "gguf", format: disttypes.FormatGGUF, want: backendLlamaCpp},
 		{name: "safetensors", format: disttypes.FormatSafetensors, want: backendVLLM},
-		{name: "dduf", format: disttypes.FormatDDUF, want: backendDiffusers},
-		{name: "diffusers (deprecated)", format: disttypes.FormatDiffusers, want: backendDiffusers}, //nolint:staticcheck // FormatDiffusers kept for backward compatibility
 		{name: "unknown", format: "", want: backendUnknown},
 	}
 
@@ -50,13 +48,6 @@ func TestBackendFromManifestLayers(t *testing.T) {
 				Layers: []oci.Descriptor{{MediaType: disttypes.MediaTypeGGUF}},
 			},
 			want: backendLlamaCpp,
-		},
-		{
-			name: "dduf layer",
-			manifest: &oci.Manifest{
-				Layers: []oci.Descriptor{{MediaType: disttypes.MediaTypeDDUF}},
-			},
-			want: backendDiffusers,
 		},
 		{
 			name: "multiple verified layer types",
@@ -105,13 +96,6 @@ func TestBackendFromRepoFiles(t *testing.T) {
 			want: "llama.cpp, vllm",
 		},
 		{
-			name: "dduf repo",
-			repoFiles: []distributionhf.RepoFile{
-				{Type: "file", Path: "sdxl.dduf"},
-			},
-			want: backendDiffusers,
-		},
-		{
 			name: "no recognized files",
 			repoFiles: []distributionhf.RepoFile{
 				{Type: "file", Path: "README.md"},
@@ -139,9 +123,9 @@ func TestWithDefaultTag(t *testing.T) {
 		reference string
 		want      string
 	}{
-		{name: "adds latest", reference: "ai/stable-diffusion", want: "ai/stable-diffusion:latest"},
-		{name: "keeps existing tag", reference: "ai/stable-diffusion:Q4", want: "ai/stable-diffusion:Q4"},
-		{name: "keeps digest", reference: "ai/stable-diffusion@sha256:deadbeef", want: "ai/stable-diffusion@sha256:deadbeef"},
+		{name: "adds latest", reference: "ai/smollm2", want: "ai/smollm2:latest"},
+		{name: "keeps existing tag", reference: "ai/smollm2:Q4", want: "ai/smollm2:Q4"},
+		{name: "keeps digest", reference: "ai/smollm2@sha256:deadbeef", want: "ai/smollm2@sha256:deadbeef"},
 	}
 
 	for _, tt := range tests {
@@ -170,13 +154,11 @@ func TestResolveSearchResultBackendsConcurrent(t *testing.T) {
 
 	wantBackends := make([]string, numResults)
 	for i := range wantBackends {
-		switch i % 3 {
+		switch i % 2 {
 		case 0:
 			wantBackends[i] = backendLlamaCpp
 		case 1:
 			wantBackends[i] = backendVLLM
-		case 2:
-			wantBackends[i] = backendDiffusers
 		}
 	}
 

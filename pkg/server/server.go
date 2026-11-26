@@ -64,7 +64,6 @@ func Run(ctx context.Context, cfg Config) error {
 	vllmServerPath := envconfig.VLLMServerPath()
 	sglangServerPath := envconfig.SGLangServerPath()
 	mlxServerPath := envconfig.MLXServerPath()
-	diffusersServerPath := envconfig.DiffusersServerPath()
 	vllmMetalServerPath := envconfig.VLLMMetalServerPath()
 
 	// Create a proxy-aware HTTP transport.
@@ -85,9 +84,6 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	if mlxServerPath != "" {
 		log.Info("MLX_SERVER_PATH", "path", mlxServerPath)
-	}
-	if diffusersServerPath != "" {
-		log.Info("DIFFUSERS_SERVER_PATH", "path", diffusersServerPath)
 	}
 	if vllmMetalServerPath != "" {
 		log.Info("VLLM_METAL_SERVER_PATH", "path", vllmMetalServerPath)
@@ -167,16 +163,14 @@ func Run(ctx context.Context, cfg Config) error {
 						&slog.HandlerOptions{Level: envconfig.LogLevel()},
 					))
 				},
-				LlamaCppPath:     llamaServerPath,
-				LlamaCppConfig:   llamaCppConfig,
-				IncludeMLX:       true,
-				MLXPath:          mlxServerPath,
-				IncludeVLLM:      includeVLLM,
-				VLLMPath:         vllmServerPath,
-				VLLMMetalPath:    vllmMetalServerPath,
-				IncludeDiffusers: true,
-				DiffusersPath:    diffusersServerPath,
-				RegistryMirrors:  envconfig.RegistryMirrors(),
+				LlamaCppPath:    llamaServerPath,
+				LlamaCppConfig:  llamaCppConfig,
+				IncludeMLX:      true,
+				MLXPath:         mlxServerPath,
+				IncludeVLLM:     includeVLLM,
+				VLLMPath:        vllmServerPath,
+				VLLMMetalPath:   vllmMetalServerPath,
+				RegistryMirrors: envconfig.RegistryMirrors(),
 			}),
 			routing.BackendDef{Name: sglang.Name, Init: func(mm *models.Manager) (inference.Backend, error) {
 				return sglang.New(log, mm, log.With("component", sglang.Name), nil, sglangServerPath, nil)

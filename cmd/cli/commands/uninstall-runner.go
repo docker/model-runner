@@ -88,6 +88,6 @@ func newUninstallRunner() *cobra.Command {
 	}
 	c.Flags().BoolVar(&models, "models", false, "Remove model storage volume")
 	c.Flags().BoolVar(&images, "images", false, "Remove "+standalone.ControllerImage+" images")
-	c.Flags().StringVar(&backend, "backend", "", "Uninstall a deferred backend (e.g. vllm, diffusers)")
+	c.Flags().StringVar(&backend, "backend", "", "Uninstall a deferred backend (e.g. vllm)")
 	return c
 }

@@ -140,12 +140,6 @@ func MLXServerPath() string {
 	return Var("MLX_SERVER_PATH")
 }
 
-// DiffusersServerPath returns the optional path to the Diffusers server binary.
-// Configured via DIFFUSERS_SERVER_PATH.
-func DiffusersServerPath() string {
-	return Var("DIFFUSERS_SERVER_PATH")
-}
-
 // VLLMMetalServerPath returns the optional path to the vLLM Metal server binary.
 // Configured via VLLM_METAL_SERVER_PATH.
 func VLLMMetalServerPath() string {

@@ -55,7 +55,7 @@ func FilterModelFiles(repoFiles []RepoFile) (weights []RepoFile, configs []RepoF
 			weights = append(weights, f)
 		case files.FileTypeConfig, files.FileTypeChatTemplate:
 			configs = append(configs, f)
-		case files.FileTypeUnknown, files.FileTypeLicense, files.FileTypeDDUF:
+		case files.FileTypeUnknown, files.FileTypeLicense:
 			// Skip these file types
 		}
 	}

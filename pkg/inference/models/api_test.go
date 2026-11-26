@@ -327,7 +327,6 @@ func (m *mockModel) Config() (types.ModelConfig, error)    { return m.config, ni
 func (m *mockModel) Descriptor() (types.Descriptor, error) { return m.desc, nil }
 func (m *mockModel) GGUFPaths() ([]string, error)          { return nil, nil }
 func (m *mockModel) SafetensorsPaths() ([]string, error)   { return nil, nil }
-func (m *mockModel) DDUFPaths() ([]string, error)          { return nil, nil }
 func (m *mockModel) ConfigArchivePath() (string, error)    { return "", nil }
 func (m *mockModel) MMPROJPath() (string, error)           { return "", nil }
 func (m *mockModel) ChatTemplatePath() (string, error)     { return "", nil }

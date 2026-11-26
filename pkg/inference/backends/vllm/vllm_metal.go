@@ -301,8 +301,6 @@ func (v *vllmMetal) buildArgs(bundle types.ModelBundle, socket, model, modelRef 
 		args = append(args, "--runner", "pooling")
 	case inference.BackendModeReranking:
 		return nil, fmt.Errorf("reranking mode not supported by vllm-metal backend")
-	case inference.BackendModeImageGeneration:
-		return nil, fmt.Errorf("image generation mode not supported by vllm-metal backend")
 	}
 
 	// Register model aliases so the model-runner can address the model by its

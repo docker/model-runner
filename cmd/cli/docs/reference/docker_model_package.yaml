@@ -6,7 +6,6 @@ long: |-
     The model source must be one of:
       --gguf               A GGUF file (single file or first shard of a sharded model)
       --safetensors-dir    A directory containing .safetensors and configuration files
-      --dduf               A .dduf (Diffusers Unified Format) archive
       --from               An existing packaged model reference
 
     By default, the packaged artifact is loaded into the local Model Runner content store.
@@ -30,16 +29,13 @@ long: |-
         All files under the directory (including nested subdirectories) are
         automatically discovered. Each file is packaged as a separate OCI layer.
 
-      DDUF
-        --dduf must point to a .dduf archive file.
-
       Repackaging
         --from repackages an existing model. You may override selected properties
         such as --context-size to create a variant of the original model.
 
       Multimodal models
         Use --mmproj to include a multimodal projector file.
-usage: docker model package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL
+usage: docker model package (--gguf <path> | --safetensors-dir <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL
 pname: docker model
 plink: docker_model.yaml
 options:
@@ -56,15 +52,6 @@ options:
       value_type: uint64
       default_value: "0"
       description: context size in tokens
-      deprecated: false
-      hidden: false
-      experimental: false
-      experimentalcli: false
-      kubernetes: false
-      swarm: false
-    - option: dduf
-      value_type: string
-      description: absolute path to DDUF archive file (Diffusers Unified Format)
       deprecated: false
       hidden: false
       experimental: false
