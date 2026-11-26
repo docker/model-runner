@@ -77,12 +77,8 @@ func unpackLegacy(dir string, model types.Model) (*Bundle, error) {
 		if err := unpackSafetensors(bundle, model); err != nil {
 			return nil, fmt.Errorf("unpack safetensors files: %w", err)
 		}
-	case types.FormatDiffusers, types.FormatDDUF: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
-		if err := unpackDDUF(bundle, model); err != nil {
-			return nil, fmt.Errorf("unpack DDUF file: %w", err)
-		}
 	default:
-		return nil, fmt.Errorf("no supported model weights found (expected GGUF, safetensors, or diffusers/DDUF)")
+		return nil, fmt.Errorf("no supported model weights found (expected GGUF or safetensors)")
 	}
 
 	// Unpack optional components based on their presence
@@ -136,39 +132,7 @@ func detectModelFormat(model types.Model) types.Format {
 		return types.FormatSafetensors
 	}
 
-	// Check for DDUF files
-	ddufPaths, err := model.DDUFPaths()
-	if err == nil && len(ddufPaths) > 0 {
-		return types.FormatDDUF
-	}
-
 	return ""
-}
-
-// unpackDDUF unpacks a DDUF (Diffusers Unified Format) file to the bundle.
-func unpackDDUF(bundle *Bundle, mdl types.Model) error {
-	ddufPaths, err := mdl.DDUFPaths()
-	if err != nil {
-		return fmt.Errorf("get DDUF files for model: %w", err)
-	}
-
-	if len(ddufPaths) == 0 {
-		return fmt.Errorf("no DDUF files found")
-	}
-
-	modelDir := filepath.Join(bundle.dir, ModelSubdir)
-
-	// DDUF is a single-file format
-	ddufFilename := filepath.Base(ddufPaths[0])
-	// Ensure the filename has the .dduf extension for proper detection by diffusers server
-	if !strings.HasSuffix(strings.ToLower(ddufFilename), ".dduf") {
-		ddufFilename = ddufFilename + ".dduf"
-	}
-	if err := unpackFile(filepath.Join(modelDir, ddufFilename), ddufPaths[0]); err != nil {
-		return err
-	}
-	bundle.ddufFile = ddufFilename
-	return nil
 }
 
 // hasLayerWithMediaType checks if the model contains a layer with the specified media type
@@ -823,8 +787,6 @@ func inferFormatFromLayerAnnotations(layers []oci.Layer) string {
 			return string(types.FormatGGUF)
 		case files.FileTypeSafetensors:
 			return string(types.FormatSafetensors)
-		case files.FileTypeDDUF:
-			return string(types.FormatDDUF)
 		case files.FileTypeUnknown, files.FileTypeConfig, files.FileTypeLicense, files.FileTypeChatTemplate:
 			// Not a weight file; skip.
 		}
@@ -845,10 +807,6 @@ func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPat
 	case types.MediaTypeSafetensors, modelpack.MediaTypeWeightSafetensors:
 		if bundle.safetensorsFile == "" {
 			bundle.safetensorsFile = relPath
-		}
-	case types.MediaTypeDDUF:
-		if bundle.ddufFile == "" {
-			bundle.ddufFile = relPath
 		}
 	case types.MediaTypeMultimodalProjector:
 		if bundle.mmprojPath == "" {
@@ -880,10 +838,6 @@ func updateBundleFieldsFromLayer(bundle *Bundle, mediaType oci.MediaType, relPat
 			case types.FormatSafetensors:
 				if bundle.safetensorsFile == "" {
 					bundle.safetensorsFile = relPath
-				}
-			case types.FormatDDUF, types.FormatDiffusers: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
-				if bundle.ddufFile == "" {
-					bundle.ddufFile = relPath
 				}
 			}
 		}

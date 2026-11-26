@@ -36,10 +36,6 @@ func (m *mockModelBundle) RuntimeConfig() types.ModelConfig {
 	return m.runtimeConfig
 }
 
-func (m *mockModelBundle) DDUFPath() string {
-	return ""
-}
-
 func (m *mockModelBundle) RootDir() string {
 	return "/path/to/bundle"
 }

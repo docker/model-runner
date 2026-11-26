@@ -71,8 +71,6 @@ func (c *Config) GetArgs(bundle types.ModelBundle, socket string, mode inference
 		args = append(args, "--embeddings")
 	case inference.BackendModeReranking:
 		args = append(args, "--embeddings", "--reranking")
-	case inference.BackendModeImageGeneration:
-		return nil, fmt.Errorf("unsupported backend mode %q", mode)
 	}
 
 	if budget := GetReasoningBudget(config); budget != nil {

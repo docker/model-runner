@@ -16,9 +16,8 @@ import (
 const (
 	backendUnknown = "unknown"
 
-	backendLlamaCpp  = "llama.cpp"
-	backendVLLM      = "vllm"
-	backendDiffusers = "diffusers"
+	backendLlamaCpp = "llama.cpp"
+	backendVLLM     = "vllm"
 
 	defaultBackendResolveConcurrency = 4
 )
@@ -102,8 +101,6 @@ func backendFromFormat(format disttypes.Format) string {
 		return backendLlamaCpp
 	case disttypes.FormatSafetensors:
 		return backendVLLM
-	case disttypes.FormatDDUF, disttypes.FormatDiffusers: //nolint:staticcheck // FormatDiffusers kept for backward compatibility
-		return backendDiffusers
 	default:
 		return backendUnknown
 	}
@@ -122,8 +119,6 @@ func backendFromManifestLayers(manifest *oci.Manifest) string {
 			backends = append(backends, backendLlamaCpp)
 		case disttypes.MediaTypeSafetensors:
 			backends = append(backends, backendVLLM)
-		case disttypes.MediaTypeDDUF:
-			backends = append(backends, backendDiffusers)
 		default:
 			continue
 		}
@@ -145,8 +140,6 @@ func backendFromRepoFiles(repoFiles []distributionhf.RepoFile) string {
 			backends = append(backends, backendLlamaCpp)
 		case files.FileTypeSafetensors:
 			backends = append(backends, backendVLLM)
-		case files.FileTypeDDUF:
-			backends = append(backends, backendDiffusers)
 		default:
 			continue
 		}
@@ -202,7 +195,6 @@ func joinBackends(backends ...string) string {
 	ordered := []string{
 		backendLlamaCpp,
 		backendVLLM,
-		backendDiffusers,
 	}
 
 	var unique []string

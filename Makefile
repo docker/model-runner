@@ -48,7 +48,6 @@ DOCKER_BUILD_COMMON_ARGS = \
 .PHONY: docker-build-musa docker-run-musa docker-build-openvino docker-run-openvino
 .PHONY: test-docker-ce-installation
 .PHONY: vllm-metal-build vllm-metal-install vllm-metal-dev vllm-metal-clean
-.PHONY: diffusers-build diffusers-install diffusers-dev diffusers-clean
 # Default target: build server, CLI plugin, and dmr convenience wrapper
 .DEFAULT_GOAL := build
 
@@ -360,80 +359,6 @@ vllm-metal-clean:
 	rm -f $(VLLM_METAL_TARBALL)
 	@echo "vllm-metal cleaned!"
 
-# diffusers (macOS ARM64 and Linux)
-# The tarball is self-contained: includes a standalone Python 3.12 + all packages.
-DIFFUSERS_INSTALL_DIR := $(HOME)/.docker/model-runner/diffusers
-DIFFUSERS_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
-DIFFUSERS_ARCH := $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
-DIFFUSERS_TARBALL := diffusers-$(DIFFUSERS_OS)-$(DIFFUSERS_ARCH)-$(DIFFUSERS_RELEASE).tar.gz
-
-diffusers-build:
-	@if [ -f "$(DIFFUSERS_TARBALL)" ]; then \
-		echo "Tarball already exists: $(DIFFUSERS_TARBALL)"; \
-	else \
-		set -e; \
-		echo "Building diffusers tarball..."; \
-		scripts/build-diffusers-tarball.sh $(DIFFUSERS_RELEASE) $(DIFFUSERS_TARBALL); \
-		if [ ! -f "$(DIFFUSERS_TARBALL)" ]; then \
-			echo "Error: $(DIFFUSERS_TARBALL) was not created"; \
-			exit 1; \
-		fi; \
-		echo "Tarball created: $(DIFFUSERS_TARBALL)"; \
-	fi
-
-diffusers-install:
-	@VERSION_FILE="$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
-	if [ -f "$$VERSION_FILE" ] && [ "$$(cat "$$VERSION_FILE")" = "$(DIFFUSERS_RELEASE)" ]; then \
-		echo "diffusers $(DIFFUSERS_RELEASE) already installed"; \
-		exit 0; \
-	fi; \
-	if [ ! -f "$(DIFFUSERS_TARBALL)" ]; then \
-		echo "Error: $(DIFFUSERS_TARBALL) not found. Run 'make diffusers-build' first."; \
-		exit 1; \
-	fi; \
-	echo "Installing diffusers to $(DIFFUSERS_INSTALL_DIR)..."; \
-	rm -rf "$(DIFFUSERS_INSTALL_DIR)"; \
-	mkdir -p "$(DIFFUSERS_INSTALL_DIR)"; \
-	tar -xzf "$(DIFFUSERS_TARBALL)" -C "$(DIFFUSERS_INSTALL_DIR)"; \
-	echo "$(DIFFUSERS_RELEASE)" > "$$VERSION_FILE"; \
-	echo "diffusers $(DIFFUSERS_RELEASE) installed successfully!"
-
-diffusers-dev:
-	@if [ -z "$(DIFFUSERS_PATH)" ]; then \
-		echo "Usage: make diffusers-dev DIFFUSERS_PATH=../path-to-diffusers-server"; \
-		exit 1; \
-	fi
-	@set -e; \
-	PYTHON_BIN=""; \
-	if command -v python3.12 >/dev/null 2>&1; then \
-		PYTHON_BIN="python3.12"; \
-	elif command -v python3 >/dev/null 2>&1; then \
-		version=$$(python3 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+'); \
-		if [ "$$version" = "3.12" ]; then \
-			PYTHON_BIN="python3"; \
-		fi; \
-	fi; \
-	if [ -z "$$PYTHON_BIN" ]; then \
-		echo "Error: Python 3.12 required"; \
-		echo "Install with: brew install python@3.12"; \
-		exit 1; \
-	fi; \
-	echo "Installing diffusers from $(DIFFUSERS_PATH)..."; \
-	rm -rf "$(DIFFUSERS_INSTALL_DIR)"; \
-	$$PYTHON_BIN -m venv "$(DIFFUSERS_INSTALL_DIR)"; \
-	. "$(DIFFUSERS_INSTALL_DIR)/bin/activate"; \
-	pip install "diffusers==0.38.0" "torch==2.9.1" "transformers==4.57.5" "accelerate==1.3.0" "safetensors==0.8.0" "huggingface_hub==0.34.0" "bitsandbytes==0.49.1" "fastapi==0.115.12" "uvicorn[standard]==0.34.1" "pillow==11.2.1"; \
-	SITE_PACKAGES="$(DIFFUSERS_INSTALL_DIR)/lib/python3.12/site-packages"; \
-	cp -Rp "$(DIFFUSERS_PATH)/python/diffusers_server" "$$SITE_PACKAGES/diffusers_server"; \
-	echo "dev" > "$(DIFFUSERS_INSTALL_DIR)/.diffusers-version"; \
-	echo "diffusers dev installed from $(DIFFUSERS_PATH)"
-
-diffusers-clean:
-	@echo "Removing diffusers installation and build artifacts..."
-	rm -rf "$(DIFFUSERS_INSTALL_DIR)"
-	rm -f $(DIFFUSERS_TARBALL)
-	@echo "diffusers cleaned!"
-
 help:
 	@echo "Available targets:"
 	@echo "  build				- Build server, CLI plugin, and dmr wrapper (default)"
@@ -469,10 +394,6 @@ help:
 	@echo "  vllm-metal-install		- Install vllm-metal from local tarball"
 	@echo "  vllm-metal-dev		- Install vllm-metal from local source (editable)"
 	@echo "  vllm-metal-clean		- Clean vllm-metal installation and tarball"
-	@echo "  diffusers-build		- Build diffusers tarball locally"
-	@echo "  diffusers-install		- Install diffusers from local tarball"
-	@echo "  diffusers-dev			- Install diffusers from local source (editable)"
-	@echo "  diffusers-clean		- Clean diffusers installation and tarball"
 	@echo "  help				- Show this help message"
 	@echo ""
 	@echo "Backend configuration options:"
@@ -494,11 +415,3 @@ help:
 	@echo "     make vllm-metal-build && make vllm-metal-install && make run"
 	@echo "  3. Install from local source (for development, requires Python 3.12):"
 	@echo "     make vllm-metal-dev VLLM_METAL_PATH=../vllm-metal && make run"
-	@echo ""
-	@echo "diffusers (macOS ARM64 and Linux):"
-	@echo "  1. Auto-pull from Docker Hub (clean dev installs first: make diffusers-clean):"
-	@echo "     make run"
-	@echo "  2. Build and install from tarball:"
-	@echo "     make diffusers-build && make diffusers-install && make run"
-	@echo "  3. Install from local source (for development, requires Python 3.12):"
-	@echo "     make diffusers-dev DIFFUSERS_PATH=. && make run"

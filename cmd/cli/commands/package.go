@@ -38,14 +38,13 @@ func newPackagedCmd() *cobra.Command {
 	var opts packageOptions
 
 	c := &cobra.Command{
-		Use:   "package (--gguf <path> | --safetensors-dir <path> | --dduf <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
+		Use:   "package (--gguf <path> | --safetensors-dir <path> | --from <model>) [--license <path>...] [--mmproj <path>] [--context-size <tokens>] [--push] MODEL",
 		Short: "Package a model into a Docker Model OCI artifact",
 		Long: `Package a model into a Docker Model OCI artifact.
 
 The model source must be one of:
   --gguf               A GGUF file (single file or first shard of a sharded model)
   --safetensors-dir    A directory containing .safetensors and configuration files
-  --dduf               A .dduf (Diffusers Unified Format) archive
   --from               An existing packaged model reference
 
 By default, the packaged artifact is loaded into the local Model Runner content store.
@@ -69,9 +68,6 @@ Packaging behavior:
     All files under the directory (including nested subdirectories) are
     automatically discovered. Each file is packaged as a separate OCI layer.
 
-  DDUF
-    --dduf must point to a .dduf archive file.
-
   Repackaging
     --from repackages an existing model. You may override selected properties
     such as --context-size to create a variant of the original model.
@@ -83,15 +79,12 @@ Packaging behavior:
 				return err
 			}
 
-			// Validate that exactly one of --gguf, --safetensors-dir, --dduf, or --from is provided (mutually exclusive)
+			// Validate that exactly one of --gguf, --safetensors-dir, or --from is provided (mutually exclusive)
 			sourcesProvided := 0
 			if opts.ggufPath != "" {
 				sourcesProvided++
 			}
 			if opts.safetensorsDir != "" {
-				sourcesProvided++
-			}
-			if opts.ddufPath != "" {
 				sourcesProvided++
 			}
 			if opts.fromModel != "" {
@@ -100,13 +93,13 @@ Packaging behavior:
 
 			if sourcesProvided == 0 {
 				return fmt.Errorf(
-					"One of --gguf, --safetensors-dir, --dduf, or --from is required.\n\n" +
+					"One of --gguf, --safetensors-dir, or --from is required.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
 			if sourcesProvided > 1 {
 				return fmt.Errorf(
-					"Cannot specify more than one of --gguf, --safetensors-dir, --dduf, or --from. Please use only one source.\n\n" +
+					"Cannot specify more than one of --gguf, --safetensors-dir, or --from. Please use only one source.\n\n" +
 						"See 'docker model package --help' for more information",
 				)
 			}
@@ -177,15 +170,6 @@ Packaging behavior:
 				}
 			}
 
-			// Validate DDUF path if provided
-			if opts.ddufPath != "" {
-				var err error
-				opts.ddufPath, err = validateAbsolutePath(opts.ddufPath, "DDUF")
-				if err != nil {
-					return err
-				}
-			}
-
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -201,7 +185,6 @@ Packaging behavior:
 
 	c.Flags().StringVar(&opts.ggufPath, "gguf", "", "absolute path to gguf file")
 	c.Flags().StringVar(&opts.safetensorsDir, "safetensors-dir", "", "absolute path to directory containing safetensors files and config")
-	c.Flags().StringVar(&opts.ddufPath, "dduf", "", "absolute path to DDUF archive file (Diffusers Unified Format)")
 	c.Flags().StringVar(&opts.fromModel, "from", "", "reference to an existing model to repackage")
 	c.Flags().StringVar(&opts.chatTemplatePath, "chat-template", "", "absolute path to chat template file (must be Jinja format)")
 	c.Flags().StringArrayVarP(&opts.licensePaths, "license", "l", nil, "absolute path to a license file")
@@ -218,7 +201,6 @@ type packageOptions struct {
 	contextSize      uint64
 	ggufPath         string
 	safetensorsDir   string
-	ddufPath         string
 	fromModel        string
 	licensePaths     []string
 	mmprojPath       string
@@ -235,7 +217,7 @@ type builderInitResult struct {
 	cleanupFunc func()               // Optional cleanup function for temporary files.
 }
 
-// initializeBuilder creates a package builder from GGUF, Safetensors, DDUF,
+// initializeBuilder creates a package builder from GGUF, Safetensors,
 // or existing model.
 func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.Client, opts packageOptions) (*builderInitResult, error) {
 	result := &builderInitResult{}
@@ -299,13 +281,6 @@ func initializeBuilder(ctx context.Context, cmd *cobra.Command, client *desktop.
 		pkg, err := builder.FromPath(opts.ggufPath, buildOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("add gguf file: %w", err)
-		}
-		result.builder = pkg
-	} else if opts.ddufPath != "" {
-		cmd.PrintErrf("Adding DDUF file from %q\n", opts.ddufPath)
-		pkg, err := builder.FromPath(opts.ddufPath, buildOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("add dduf file: %w", err)
 		}
 		result.builder = pkg
 	} else if opts.safetensorsDir != "" {

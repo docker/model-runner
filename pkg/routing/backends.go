@@ -4,7 +4,6 @@ import (
 	"os/exec"
 
 	"github.com/docker/model-runner/pkg/inference"
-	"github.com/docker/model-runner/pkg/inference/backends/diffusers"
 	"github.com/docker/model-runner/pkg/inference/backends/llamacpp"
 	"github.com/docker/model-runner/pkg/inference/backends/mlx"
 	"github.com/docker/model-runner/pkg/inference/backends/vllm"
@@ -33,9 +32,6 @@ type BackendsConfig struct {
 	IncludeVLLM   bool
 	VLLMPath      string
 	VLLMMetalPath string
-
-	IncludeDiffusers bool
-	DiffusersPath    string
 
 	// RegistryMirrors is a list of registry mirrors tried before registry-1.docker.io
 	// when pulling backend images. Populated from MODEL_RUNNER_REGISTRY_MIRRORS or
@@ -93,16 +89,6 @@ func DefaultBackendDefs(cfg BackendsConfig) []BackendDef {
 					RegistryMirrors: cfg.RegistryMirrors,
 					CommandModifier: cfg.CommandModifier,
 				})
-			},
-		})
-	}
-
-	if cfg.IncludeDiffusers {
-		defs = append(defs, BackendDef{
-			Name:     diffusers.Name,
-			Deferred: true,
-			Init: func(mm *models.Manager) (inference.Backend, error) {
-				return diffusers.New(cfg.Log, mm, sl(diffusers.Name), nil, cfg.DiffusersPath, cfg.RegistryMirrors, cfg.RegistryCredentials, cfg.CommandModifier)
 			},
 		})
 	}

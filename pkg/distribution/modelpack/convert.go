@@ -15,7 +15,7 @@ import (
 type LayerKind int
 
 const (
-	// KindWeight is a primary model weight file (GGUF, safetensors, DDUF,
+	// KindWeight is a primary model weight file (GGUF, safetensors,
 	// mmproj, etc.).
 	KindWeight LayerKind = iota
 	// KindWeightConfig is a weight config file: tokenizer.json, config.json,
@@ -41,7 +41,7 @@ func ClassifyLayer(dockerMT oci.MediaType, path string) LayerKind {
 	// Docker-format weight types.
 	case types.MediaTypeMultimodalProjector:
 		return KindWeight
-	case types.MediaTypeGGUF, types.MediaTypeSafetensors, types.MediaTypeDDUF:
+	case types.MediaTypeGGUF, types.MediaTypeSafetensors:
 		return KindWeight
 	// CNCF model-spec weight types (including legacy typed media types).
 	case MediaTypeWeightRaw, MediaTypeWeightGGUF, MediaTypeWeightSafetensors:
@@ -68,7 +68,7 @@ func ClassifyLayer(dockerMT oci.MediaType, path string) LayerKind {
 func classifyByPath(path string) LayerKind {
 	ft := files.Classify(path)
 	switch ft {
-	case files.FileTypeGGUF, files.FileTypeSafetensors, files.FileTypeDDUF:
+	case files.FileTypeGGUF, files.FileTypeSafetensors:
 		return KindWeight
 	case files.FileTypeLicense:
 		return KindDoc

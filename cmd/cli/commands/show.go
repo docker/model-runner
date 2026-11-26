@@ -97,7 +97,6 @@ func formatModelInfo(model dmrm.Model) string {
 
 			printMetadata("GGUF Metadata", cfg.GGUF)
 			printMetadata("Safetensors Metadata", cfg.Safetensors)
-			printMetadata("Diffusers Metadata", cfg.Diffusers)
 		}
 	}
 

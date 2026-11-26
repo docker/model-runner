@@ -30,9 +30,9 @@ func TestDockerHubSearchUsesVerifiedBackend(t *testing.T) {
 	server := newDockerHubSearchServer(t, dockerHubRepoListResponse{
 		Results: []dockerHubRepo{
 			{
-				Name:        "stable-diffusion",
+				Name:        "smollm2",
 				Namespace:   "ai",
-				Description: "Image generation model, uses a base latent diffusion model plus a refiner.",
+				Description: "Small language model for text generation.",
 				StarCount:   3,
 				PullCount:   18900,
 				LastUpdated: "2026-01-26T11:32:37.220001Z",
@@ -44,11 +44,11 @@ func TestDockerHubSearchUsesVerifiedBackend(t *testing.T) {
 	client := &DockerHubClient{
 		httpClient:         server.Client(),
 		baseURL:            server.URL,
-		backendResolver:    fakeBackendResolver{backends: map[string]string{"ai/stable-diffusion": backendDiffusers}},
+		backendResolver:    fakeBackendResolver{backends: map[string]string{"ai/smollm2": backendLlamaCpp}},
 		resolveConcurrency: 1,
 	}
 
-	results, err := client.Search(t.Context(), SearchOptions{Query: "stable-diffusion", Limit: 10})
+	results, err := client.Search(t.Context(), SearchOptions{Query: "smollm2", Limit: 10})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
@@ -56,8 +56,8 @@ func TestDockerHubSearchUsesVerifiedBackend(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Backend != backendDiffusers {
-		t.Fatalf("Backend = %q, want %q", results[0].Backend, backendDiffusers)
+	if results[0].Backend != backendLlamaCpp {
+		t.Fatalf("Backend = %q, want %q", results[0].Backend, backendLlamaCpp)
 	}
 }
 
@@ -67,9 +67,9 @@ func TestDockerHubSearchUsesUnknownWhenVerificationFails(t *testing.T) {
 	server := newDockerHubSearchServer(t, dockerHubRepoListResponse{
 		Results: []dockerHubRepo{
 			{
-				Name:        "stable-diffusion",
+				Name:        "smollm2",
 				Namespace:   "ai",
-				Description: "Image generation model",
+				Description: "Small language model",
 				StarCount:   3,
 				PullCount:   18900,
 				LastUpdated: "2026-01-26T11:32:37.220001Z",
@@ -81,11 +81,11 @@ func TestDockerHubSearchUsesUnknownWhenVerificationFails(t *testing.T) {
 	client := &DockerHubClient{
 		httpClient:         server.Client(),
 		baseURL:            server.URL,
-		backendResolver:    fakeBackendResolver{errs: map[string]error{"ai/stable-diffusion": errors.New("lookup failed")}},
+		backendResolver:    fakeBackendResolver{errs: map[string]error{"ai/smollm2": errors.New("lookup failed")}},
 		resolveConcurrency: 1,
 	}
 
-	results, err := client.Search(t.Context(), SearchOptions{Query: "stable-diffusion", Limit: 10})
+	results, err := client.Search(t.Context(), SearchOptions{Query: "smollm2", Limit: 10})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}

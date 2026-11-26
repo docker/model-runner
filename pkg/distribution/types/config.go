@@ -32,9 +32,6 @@ const (
 	// MediaTypeDirTar indicates a tar archive containing a directory with its structure preserved.
 	MediaTypeDirTar MediaType = "application/vnd.docker.ai.dir.tar"
 
-	// MediaTypeDDUF indicates a file in DDUF format (Diffusers Unified Format).
-	MediaTypeDDUF MediaType = "application/vnd.docker.ai.dduf"
-
 	// MediaTypeLicense indicates a plain text file containing a license
 	MediaTypeLicense MediaType = "application/vnd.docker.ai.license"
 
@@ -50,10 +47,6 @@ const (
 
 	FormatGGUF        = Format("gguf")
 	FormatSafetensors = Format("safetensors")
-	FormatDDUF        = Format("dduf")
-	// Deprecated: FormatDiffusers is kept for backward compatibility with models
-	// that have "format": "diffusers" in their config. Use FormatDDUF instead.
-	FormatDiffusers = Format("diffusers")
 
 	// OCI Annotation keys for model layers
 	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md
@@ -100,7 +93,6 @@ type Config struct {
 	Size         string            `json:"size,omitempty"`
 	GGUF         map[string]string `json:"gguf,omitempty"`
 	Safetensors  map[string]string `json:"safetensors,omitempty"`
-	Diffusers    map[string]string `json:"diffusers,omitempty"`
 	ContextSize  *int32            `json:"context_size,omitempty"`
 }
 

@@ -17,7 +17,7 @@ type SearchResult struct {
 	Source      string // "Docker Hub" or "HuggingFace"
 	Official    bool   // Whether this is an official model
 	UpdatedAt   string // Last update timestamp
-	Backend     string // Backend type: "llama.cpp", "vllm", "diffusers", "unknown", or a comma-separated combination
+	Backend     string // Backend type: "llama.cpp", "vllm", "unknown", or a comma-separated combination
 	Size        int64  // Total size in bytes (0 if unknown)
 }
 

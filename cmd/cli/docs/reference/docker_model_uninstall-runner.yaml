@@ -7,7 +7,7 @@ plink: docker_model.yaml
 options:
     - option: backend
       value_type: string
-      description: Uninstall a deferred backend (e.g. vllm, diffusers)
+      description: Uninstall a deferred backend (e.g. vllm)
       deprecated: false
       hidden: false
       experimental: false
