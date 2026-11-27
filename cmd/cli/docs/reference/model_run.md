@@ -5,14 +5,14 @@ Run a model and interact with it using a submitted prompt or chat mode
 
 ### Options
 
-| Name                   | Type     | Default | Description                                             |
-|:-----------------------|:---------|:--------|:--------------------------------------------------------|
-| `--color`              | `string` | `no`    | Use colored output (auto\|yes\|no)                      |
-| `--debug`              | `bool`   |         | Enable debug logging                                    |
-| `-d`, `--detach`       | `bool`   |         | Load the model in the background without interaction    |
-| `--openaiurl`          | `string` |         | OpenAI-compatible API endpoint URL to chat with         |
-| `--websearch`          | `bool`   |         | Enable web search tool during chat                      |
-| `--websearch-provider` | `string` | `exa`   | Web search provider used with --websearch (exa\|youcom) |
+| Name                   | Type     | Default | Description                                                       |
+|:-----------------------|:---------|:--------|:------------------------------------------------------------------|
+| `--color`              | `string` | `no`    | Use colored output (auto\|yes\|no)                                |
+| `--debug`              | `bool`   |         | Enable debug logging                                              |
+| `-d`, `--detach`       | `bool`   |         | Load the model in the background without interaction              |
+| `--openaiurl`          | `string` |         | OpenAI-compatible API endpoint URL to chat with                   |
+| `--websearch`          | `bool`   |         | Enable web search tool during chat                                |
+| `--websearch-provider` | `string` | `exa`   | Web search provider used with --websearch (exa\|youcom\|keenable) |
 
 
 <!---MARKER_GEN_END-->
@@ -76,3 +76,11 @@ docker model run --websearch --websearch-provider youcom ai/smollm2
 ```
 
 Set `YDC_API_KEY` to use your You.com API key for higher rate limits.
+
+To search with Keenable instead, which also works with no API key:
+
+```console
+docker model run --websearch --websearch-provider keenable ai/smollm2
+```
+
+Set `KEENABLE_API_KEY` to use your Keenable API key for higher rate limits.

@@ -221,6 +221,7 @@ func TestRunCmdPreRunValidatesWebSearchProvider(t *testing.T) {
 	}{
 		{"unknown provider with websearch", "true", "bing", true},
 		{"youcom with websearch", "true", "youcom", false},
+		{"keenable with websearch", "true", "keenable", false},
 		{"default provider with websearch", "true", "", false},
 		{"unknown provider without websearch is ignored", "false", "bing", false},
 	}

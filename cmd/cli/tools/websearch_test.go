@@ -103,6 +103,63 @@ func TestWebSearchYouComURLSelection(t *testing.T) {
 	}
 }
 
+const keenableSSE = "event: message\n" +
+	`data: {"result":{"content":[{"type":"text","text":"Title: Docker Model Runner\nURL: https://docs.docker.com/ai/model-runner/"}]},"jsonrpc":"2.0","id":1}` + "\n\n"
+
+func TestWebSearchKeenableKeyless(t *testing.T) {
+	srv, captured := newMCPServer(t, keenableSSE)
+	tool := &WebSearchTool{Provider: ProviderKeenable, endpoint: srv.URL, apiKey: strPtr("")}
+
+	out, err := tool.Execute(t.Context(), map[string]any{"query": "docker model runner"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out, "https://docs.docker.com/ai/model-runner/") {
+		t.Errorf("unexpected output: %q", out)
+	}
+	if got := captured.header.Get("X-API-Key"); got != "" {
+		t.Errorf("keyless request should not send X-API-Key, got %q", got)
+	}
+	if got := captured.header.Get("Authorization"); got != "" {
+		t.Errorf("keyless request should not send Authorization, got %q", got)
+	}
+	name, args := toolCall(t, captured.body)
+	if name != "search_web_pages" {
+		t.Errorf("tool name = %q, want search_web_pages", name)
+	}
+	if args["query"] != "docker model runner" {
+		t.Errorf("query = %v", args["query"])
+	}
+	if args["max_results"] != float64(defaultNumResults) {
+		t.Errorf("max_results = %v, want %d", args["max_results"], defaultNumResults)
+	}
+}
+
+func TestWebSearchKeenableKeyed(t *testing.T) {
+	srv, captured := newMCPServer(t, keenableSSE)
+	tool := &WebSearchTool{Provider: ProviderKeenable, endpoint: srv.URL, apiKey: strPtr("test-key")}
+
+	if _, err := tool.Execute(t.Context(), map[string]any{"query": "q"}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := captured.header.Get("X-API-Key"); got != "test-key" {
+		t.Errorf("X-API-Key = %q, want test-key", got)
+	}
+}
+
+func TestWebSearchKeenableURLSelection(t *testing.T) {
+	keyless := &WebSearchTool{Provider: ProviderKeenable, apiKey: strPtr("")}
+	url, _, _, err := keyless.buildRequest("q")
+	if err != nil || url != keenableFreeMCPURL {
+		t.Errorf("keyless url = %q, err = %v; want %q", url, err, keenableFreeMCPURL)
+	}
+	keyed := &WebSearchTool{Provider: ProviderKeenable, apiKey: strPtr("k")}
+	url, _, _, err = keyed.buildRequest("q")
+	if err != nil || url != keenableMCPURL {
+		t.Errorf("keyed url = %q, err = %v; want %q", url, err, keenableMCPURL)
+	}
+}
+
 func TestWebSearchExaDefault(t *testing.T) {
 	srv, captured := newMCPServer(t, `data: {"result":{"content":[{"type":"text","text":"exa results"}]}}`+"\n")
 	tool := &WebSearchTool{endpoint: srv.URL}
@@ -172,7 +229,7 @@ func TestParseMCPToolResponse(t *testing.T) {
 }
 
 func TestValidateWebSearchProvider(t *testing.T) {
-	for _, p := range []string{"", ProviderExa, ProviderYouCom} {
+	for _, p := range []string{"", ProviderExa, ProviderYouCom, ProviderKeenable} {
 		if err := ValidateWebSearchProvider(p); err != nil {
 			t.Errorf("ValidateWebSearchProvider(%q) = %v", p, err)
 		}
